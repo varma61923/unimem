@@ -37,9 +37,10 @@ class CircuitBreaker:
     def call(self, fn: Callable[[], T], *, transient: Callable[[BaseException], bool]) -> T:
         with self._lock:
             now = self._clock()
-            probe = self._opened is not None
-            if probe:
-                remaining = self.recovery_seconds - (now - self._opened)
+            opened = self._opened
+            probe = opened is not None
+            if opened is not None:
+                remaining = self.recovery_seconds - (now - opened)
                 if remaining > 0 or self._probe:
                     raise CircuitOpenError(remaining)
                 self._probe = True
