@@ -11,6 +11,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 
@@ -201,13 +202,27 @@ def _spawn(script: str, path: str, root: str | None, env: dict) -> bool:
     if root:
         cmd.extend(["--warm-root", root])
     try:
-        subprocess.Popen(
+        process = subprocess.Popen(
             cmd, env=env, cwd=os.path.dirname(path),
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             start_new_session=True, close_fds=True,
         )
     except OSError:
         return False
+    try:
+        # The worker intentionally outlives this call. Retain its Popen owner
+        # until exit so long-lived callers reap it instead of leaking zombies.
+        threading.Thread(target=process.wait, name="unimem-warm-reaper", daemon=True).start()
+    except BaseException as error:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        if isinstance(error, RuntimeError):
+            return False
+        raise
     return True
 
 
