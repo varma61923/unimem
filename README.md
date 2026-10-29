@@ -1,22 +1,48 @@
 # UniMem
 
-**A referee for how agents and robots change themselves.**
+**The memory system for intelligent machines.**
 
-Agents with memory repeat fewer mistakes, until a memory goes stale. Then the agent acts confidently on something that is no longer true, and nothing tells you which memory caused it. UniMem is the independent referee for how agents and robots change themselves: it measures memories, skills, writers and optimizer edits through randomized evidence; governs promotion and rollback; and carries verifiable evidence across trust boundaries. Its memory trials withhold eligible memories from a small random share of tasks, compare outcomes, withdraw harmful memories, and learn where each memory helps. The Python package and executable remain `unimem`.
+UniMem gives AI agents and robots a complete, governed memory: reusable lessons, facts that know when they were true, a temporal knowledge graph, conversations, core-memory blocks and procedures, recalled through one token budget. Then it does what no retrieval score can: it measures which memories actually improve outcomes, by withholding each one from a small random share of tasks, and acts on the evidence. Harmful memories are withdrawn, proven ones are always delivered, and every change is reviewable and reversible.
 
-- **Causal, not correlational.** A randomized holdout per memory and per task gives a real cause-and-effect estimate for each memory, with integrity checks that catch a broken experiment before you quote it.
-- **Governed.** Lessons need review receipts, facts carry valid time and record time, every write is scoped to a tenant, and anything an agent cannot see can never leak into its answers.
-- **Local-first.** The core is pure Python with one dependency (PyYAML). It runs offline, needs no LLM, and starts in seconds.
-- **Agent-native.** It ships an MCP server with 60+ tools, an HTTP gateway, framework middleware, and one-command installs for coding agents.
+- **A complete memory.** Lessons, bitemporal facts (`as_of` / `known_at`), knowledge graph, conversations, memory blocks, procedural memory and knowledge pages. Hybrid lexical and dense retrieval, ten named retrievers including multi-hop graph walks, rerankers, and contradiction detection at write time.
+- **Measured, not assumed.** A randomized holdout per memory and per task gives a real cause-and-effect estimate, with anytime-valid confidence sequences and an integrity audit that refuses to print a number from a broken experiment.
+- **Governed.** Review receipts bound to exact content, tenant scopes on every write, harm withdrawal, preregistered promotion and rollback, transparency logs, and subject erasure.
+- **Fast and local-first.** Pure Python with one dependency (PyYAML), offline, no LLM required. On LoCoMo the gateway delivers the gold evidence for 95.8% of 1,540 questions at 152 ms p50 on CPU ([benchmarks](docs/memory-benchmarks.md)).
+- **Agent- and robot-native.** MCP server with 60+ tools, HTTP gateway, framework middleware, one-command installs for coding agents, and a ROS 2 bridge for physical AI.
 
-```
+### See the whole loop in 30 seconds
+
+```bash
 pip install -e .        # Python 3.10+
+unimem demo             # offline, no LLM, no API key
 ```
+
+```
+1/3 REMEMBER  facts that know when they were true
+    Q: How are refunds issued?
+    today            → Refunds are issued through the v2 payments API.
+    as of 2026-01-02 → Refunds are issued through the v1 refunds endpoint.
+
+2/3 MEASURE   1,000 simulated support tickets; every memory randomly withheld on half
+    integrity audit: SOUND
+    memory                planted  measured   95% interval     verdict
+    verify-owner             +20%      +20%   [+4%, +35%]      HELPS
+    retry-429                 +0%       +1%   [-15%, +17%]     NO_MEASURABLE_EFFECT
+    legacy-refund-api        -20%      -23%   [-38%, -7%]      HURTS
+
+3/3 GOVERN    the evidence changes what the agent sees next
+    withdrawn  (proven harmful, never delivered)  legacy-refund-api
+    graduated  (proven helpful, always delivered) verify-owner
+    under test (still randomized)                 retry-429
+```
+
+<sub>The agent and its outcomes are simulated with planted effects so the measured effects can be checked against ground truth. The store, randomization, integrity audit, analysis and withdrawal are the real product. `--keep DIR` keeps the store for inspection.</sub>
 
 ---
 
 ## Contents
 
+- [See the whole loop in 30 seconds](#see-the-whole-loop-in-30-seconds)
 - [Quickstart](#quickstart)
 - [Prove that memory helps](#prove-that-memory-helps)
 - [Learn where each memory helps: the causal gate](#learn-where-each-memory-helps-the-causal-gate)

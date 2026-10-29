@@ -30,6 +30,7 @@ _COMMANDS = (
     "migrate", "pack",
     "codegraph", "market", "allocate", "integration", "providers", "help", "setup", "lineage", "log", "incident",
     "promote", "safety", "frontier", "skill", "team", "stream", "erasure", "tier", "sentinel", "person",
+    "demo",
 )
 
 ALIASES = {
@@ -50,6 +51,7 @@ _COMMAND_GROUPS = {
     'erasure': 'nextwave',
     'tier': 'nextwave',
     'providers': 'platform',
+    'demo': 'platform',
     'codegraph': 'platform',
     'migrate': 'platform',
     'connect': 'platform',

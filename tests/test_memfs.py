@@ -174,6 +174,23 @@ def test_keygen_is_private_and_required(store, monkeypatch):
         memfs.handoff(store, audience="b")
 
 
+def test_forced_keygen_replaces_a_loose_key_privately_without_following_links(store, tmp_path):
+    path = memfs.keygen(store)
+    os.chmod(path, 0o644)
+    old = open(path).read()
+    memfs.keygen(store, force=True)
+    assert os.stat(path).st_mode & 0o077 == 0
+    assert open(path).read() != old
+    if hasattr(os, "symlink"):
+        decoy = tmp_path / "decoy"
+        os.remove(path)
+        os.symlink(decoy, path)
+        memfs.keygen(store, force=True)
+        assert not decoy.exists() and not os.path.islink(path)
+        assert os.stat(path).st_mode & 0o077 == 0
+    assert not [n for n in os.listdir(os.path.dirname(path)) if n.endswith(".tmp")]
+
+
 def test_cli_memory_commands(store):
     def ct(*args):
         return subprocess.run([sys.executable, "-m", "unimem.cli", "memory", *args, "--dest", store],  # nosec

@@ -117,11 +117,18 @@ def write_json(path: str, value: Any) -> None:
     _replace(path, _write)
 
 
-def append_row(path: str, row: dict[str, Any]) -> None:
-    """Append one JSON object line to *path* in a single write."""
+def append_row(path: str, row: dict[str, Any], *, fsync: bool = False, nofollow: bool = False) -> None:
+    """Append one JSON object line to *path* in a single write.
+
+    ``fsync`` flushes through the same descriptor that wrote, so durability costs
+    no second open. ``nofollow`` refuses a symlink at *path* before writing.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     data = (json.dumps(row, ensure_ascii=False) + "\n").encode("utf-8")
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    if nofollow:
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags, 0o600)
     try:
         # os.write may write fewer bytes than asked (a signal, a nearly full
         # disk, some network filesystems). A dropped tail leaves a truncated
@@ -132,5 +139,7 @@ def append_row(path: str, row: dict[str, Any]) -> None:
             if written <= 0:
                 raise OSError(f"could not append to {path}: write made no progress")
             view = view[written:]
+        if fsync:
+            os.fsync(fd)
     finally:
         os.close(fd)

@@ -4,6 +4,7 @@ files, and signed handoffs that let one agent pass a known memory state to anoth
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -12,6 +13,7 @@ import re
 import secrets
 import shlex
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 
@@ -315,9 +317,19 @@ def keygen(root: str, *, force: bool = False) -> str:
     if os.path.exists(path) and not force:
         raise MemfsError(f"{path} exists; pass --force to replace it (outstanding handoffs stop verifying)")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as fh:
-        fh.write(secrets.token_urlsafe(48))
+    # A fresh 0600 file swapped in atomically: a replaced key never inherits a
+    # looser mode from the old file, and a symlink at *path* is replaced, not followed.
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix="." + KEY_FILE + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(secrets.token_urlsafe(48))
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
     return path
 
 
