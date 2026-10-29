@@ -1,4 +1,5 @@
 """Atomic facts: distilled propositions with a governed, bitemporal lifecycle."""
+
 from __future__ import annotations
 
 import contextlib
@@ -72,11 +73,15 @@ class AtomicFact:
     retracted_at: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        if (type(self) is not AtomicFact or type(self.evidence) is not list or self.evidence
-                or type(self.origin) is not dict or any(
-                    type(key) not in _FACT_SCALARS or type(value) not in _FACT_SCALARS
-                    for key, value in self.origin.items()
-                )):
+        if (
+            type(self) is not AtomicFact
+            or type(self.evidence) is not list
+            or self.evidence
+            or type(self.origin) is not dict
+            or any(
+                type(key) not in _FACT_SCALARS or type(value) not in _FACT_SCALARS for key, value in self.origin.items()
+            )
+        ):
             return asdict(self)
         result = {}
         for name in AtomicFact.__dataclass_fields__:
@@ -151,8 +156,7 @@ def _coerce_fact(data: dict[str, Any]) -> AtomicFact:
         forgotten = bool(forgotten)
     raw_sources = data.get("source_traces")
     source_values = (
-        raw_sources if isinstance(raw_sources, (list, tuple, set))
-        else ([raw_sources] if raw_sources else [])
+        raw_sources if isinstance(raw_sources, (list, tuple, set)) else ([raw_sources] if raw_sources else [])
     )
     clean: dict[str, Any] = {
         "id": str(data.get("id") or _fact_id(statement, scopes)),
@@ -183,8 +187,12 @@ def _coerce_fact(data: dict[str, Any]) -> AtomicFact:
     clean["evidence"] = receipts
     bound = data.get("evidence_bound", bool(raw_evidence))
     minimum = data.get("min_support", 1)
-    if not isinstance(bound, bool) or not isinstance(minimum, int) or isinstance(minimum, bool) \
-            or not 1 <= minimum <= MAX_EVIDENCE:
+    if (
+        not isinstance(bound, bool)
+        or not isinstance(minimum, int)
+        or isinstance(minimum, bool)
+        or not 1 <= minimum <= MAX_EVIDENCE
+    ):
         raise TypeError("invalid fact evidence policy")
     clean["evidence_bound"], clean["min_support"] = bound, minimum
     clean["evidence_revision"] = str(data.get("evidence_revision") or "")
@@ -268,7 +276,8 @@ class _StatementFeatures:
 
 _FEATURE_MISSING = object()
 _STATEMENT_FEATURES: contextvars.ContextVar[_StatementFeatures | None] = contextvars.ContextVar(
-    "statement_features", default=None)
+    "statement_features", default=None
+)
 
 
 def _cached_feature(kind: str, key: Any, build: Callable) -> Any:
@@ -450,9 +459,34 @@ def _mutate_legacy_facts(root: str) -> Iterator[dict[str, AtomicFact]]:
 
 _WORD = re.compile(r"[a-z0-9']+")
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
-_NEGATIONS = frozenset({"not", "no", "never", "none", "nobody", "nothing", "neither", "nor", "without",
-                        "cannot", "can't", "don't", "doesn't", "didn't", "isn't", "aren't", "wasn't",
-                        "weren't", "won't", "wouldn't", "shouldn't", "couldn't", "hasn't", "haven't"})
+_NEGATIONS = frozenset(
+    {
+        "not",
+        "no",
+        "never",
+        "none",
+        "nobody",
+        "nothing",
+        "neither",
+        "nor",
+        "without",
+        "cannot",
+        "can't",
+        "don't",
+        "doesn't",
+        "didn't",
+        "isn't",
+        "aren't",
+        "wasn't",
+        "weren't",
+        "won't",
+        "wouldn't",
+        "shouldn't",
+        "couldn't",
+        "hasn't",
+        "haven't",
+    }
+)
 NEAR_DUPLICATE_JACCARD = 0.85
 NEAR_DUPLICATE_COSINE = 0.95
 
@@ -550,8 +584,7 @@ class _StatementIndex:
                 return existing
         return None
 
-    def near(self, statement: str, scopes: list[str],
-             threshold: float = NEAR_DUPLICATE_JACCARD) -> AtomicFact | None:
+    def near(self, statement: str, scopes: list[str], threshold: float = NEAR_DUPLICATE_JACCARD) -> AtomicFact | None:
         words, numbers, negations = _signature(statement)
         content = _content(words)
         if len(content) < 3:
@@ -567,9 +600,14 @@ class _StatementIndex:
         for fid in sorted(candidates):
             existing = self.facts.get(fid)
             other = self.content.get(fid, frozenset())
-            if (existing is None or existing.status != "active" or existing.forgotten or len(other) < 3
-                    or len(content & other) / len(content | other) < threshold
-                    or not _scopes_compatible(requested, existing.scopes)):
+            if (
+                existing is None
+                or existing.status != "active"
+                or existing.forgotten
+                or len(other) < 3
+                or len(content & other) / len(content | other) < threshold
+                or not _scopes_compatible(requested, existing.scopes)
+            ):
                 continue
             if best is None or existing.confirmations > best.confirmations:
                 best = existing
@@ -587,48 +625,65 @@ def _index_add(index, fact: AtomicFact, snapshot: dict[str, Any]) -> None:
     from unimem import fact_store
 
     add_with_snapshot = getattr(index, "add_with_snapshot", None)
-    if (isinstance(index, fact_store.StatementIndex) and callable(add_with_snapshot)
-            and getattr(type(index), "add", None) is fact_store.StatementIndex.add):
+    if (
+        isinstance(index, fact_store.StatementIndex)
+        and callable(add_with_snapshot)
+        and getattr(type(index), "add", None) is fact_store.StatementIndex.add
+    ):
         add_with_snapshot(fact, snapshot)
     else:
         index.add(fact)
 
 
-def _matching_active(facts: dict[str, AtomicFact], statement: str, scopes: list[str],
-                     index: _StatementIndex | None = None) -> AtomicFact | None:
+def _matching_active(
+    facts: dict[str, AtomicFact], statement: str, scopes: list[str], index: _StatementIndex | None = None
+) -> AtomicFact | None:
     return (index or _statement_index(facts)).exact(statement, scopes)
 
 
 def _semantic_pool(root, facts, statement, scopes, *, exclude=frozenset()):
     """Bounded indexed candidates; JSONL retains its legacy compatibility scan."""
     from unimem import fact_store
+
     requested = frozenset(scopes)
     if isinstance(facts, fact_store.FactMap):
         tokens = sorted(_signature(statement)[0])[:32]
         expression = " OR ".join('"' + token.replace('"', '""') + '"' for token in tokens)
-        identities = [row[0] for row in facts.connection.execute(
-            "SELECT fact_id FROM fact_fts WHERE fact_fts MATCH ? ORDER BY bm25(fact_fts) LIMIT 100",
-            (expression,),
-        )] if expression else []
+        identities = (
+            [
+                row[0]
+                for row in facts.connection.execute(
+                    "SELECT fact_id FROM fact_fts WHERE fact_fts MATCH ? ORDER BY bm25(fact_fts) LIMIT 100",
+                    (expression,),
+                )
+            ]
+            if expression
+            else []
+        )
         # Pending writes are not yet in the materialized FTS projection.
-        identities += [key for key, fact in facts.loaded.items()
-                       if set(tokens) & _signature(fact.statement)[0]][:100]
+        identities += [key for key, fact in facts.loaded.items() if set(tokens) & _signature(fact.statement)[0]][:100]
         if root:
             from unimem import fact_vector_projection
+
             try:
-                identities += [key for key, score in fact_vector_projection.search(root, statement, limit=15)
-                               if score >= 0.6]
+                identities += [
+                    key for key, score in fact_vector_projection.search(root, statement, limit=15) if score >= 0.6
+                ]
             except (ImportError, OSError, ValueError, RuntimeError):
                 pass
         pool = [facts[key] for key in dict.fromkeys(identities) if key in facts and key not in exclude]
     else:
         pool = [fact for fact in facts.values() if fact.id not in exclude]
-    return [fact for fact in pool if fact.status == "active" and not fact.forgotten
-            and _scopes_compatible(requested, fact.scopes)]
+    return [
+        fact
+        for fact in pool
+        if fact.status == "active" and not fact.forgotten and _scopes_compatible(requested, fact.scopes)
+    ]
 
 
-def _semantic_duplicate(root: str | None, facts: dict[str, AtomicFact], statement: str,
-                        scopes: list[str], decision: dict | None = None) -> AtomicFact | None:
+def _semantic_duplicate(
+    root: str | None, facts: dict[str, AtomicFact], statement: str, scopes: list[str], decision: dict | None = None
+) -> AtomicFact | None:
     """An embedding near-duplicate in compatible scope with the same numbers and negations."""
     if not root:
         return None
@@ -638,11 +693,18 @@ def _semantic_duplicate(root: str | None, facts: dict[str, AtomicFact], statemen
     pool = _semantic_pool(root, facts, statement, scopes)
     if decision is not None and _configuration_getenv("UNIMEM_FACT_CONFLICT_JUDGE", "").lower() == "llm":
         from unimem import fact_conflicts
+
         ranked = fact_embeddings.similar(statement, pool, root=root, threshold=0.6)
         candidates = [fact for fact, _ in ranked[:15]] if ranked is not None else pool[:15]
         decision.update(fact_conflicts.judge_joint(statement, candidates))
-        return next((fact for fact in candidates if fact.id in decision["duplicates"]
-                     and _signature(fact.statement)[1:] == (numbers, negations)), None)
+        return next(
+            (
+                fact
+                for fact in candidates
+                if fact.id in decision["duplicates"] and _signature(fact.statement)[1:] == (numbers, negations)
+            ),
+            None,
+        )
     pool = [fact for fact in pool if _signature(fact.statement)[1:] == (numbers, negations)]
     if not pool:
         return None
@@ -653,9 +715,17 @@ def _semantic_duplicate(root: str | None, facts: dict[str, AtomicFact], statemen
 MAX_VALUE_VARIANTS = 2
 
 
-def _detect_conflicts(facts: dict[str, AtomicFact], index: _StatementIndex, fact: AtomicFact,
-                      root: str | None, sink: list, *, may_supersede: bool, later=frozenset(),
-                      joint_decision=None) -> None:
+def _detect_conflicts(
+    facts: dict[str, AtomicFact],
+    index: _StatementIndex,
+    fact: AtomicFact,
+    root: str | None,
+    sink: list,
+    *,
+    may_supersede: bool,
+    later=frozenset(),
+    joint_decision=None,
+) -> None:
     """Contradictions between a newly added fact and active facts in identical scope (see fact_conflicts).
 
     Candidates come from the index by lookup: the same slot with the opposite
@@ -686,8 +756,16 @@ def _detect_conflicts(facts: dict[str, AtomicFact], index: _StatementIndex, fact
         return
 
     def live(ids) -> list[AtomicFact]:
-        return [facts[i] for i in ids if i != fact.id and i not in later and i in facts and facts[i].status == "active"
-                and not facts[i].forgotten and facts[i].scopes == fact.scopes]
+        return [
+            facts[i]
+            for i in ids
+            if i != fact.id
+            and i not in later
+            and i in facts
+            and facts[i].status == "active"
+            and not facts[i].forgotten
+            and facts[i].scopes == fact.scopes
+        ]
 
     found: dict[str, tuple[AtomicFact, str]] = {}
     for older in live(index.slots.get((slot, not negations), {}).get(numbers, ())):
@@ -705,8 +783,8 @@ def _detect_conflicts(facts: dict[str, AtomicFact], index: _StatementIndex, fact
             pool = [f for f, _k in found.values()]
             if root:
                 from unimem import fact_embeddings
-                candidates = _semantic_pool(root, facts, fact.statement, fact.scopes,
-                                            exclude=later | {fact.id})
+
+                candidates = _semantic_pool(root, facts, fact.statement, fact.scopes, exclude=later | {fact.id})
                 near = fact_embeddings.similar(fact.statement, candidates, root=root, threshold=0.6) or []
                 pool += [f for f, _cos in near[:15] if f not in pool]
             judged = fact_conflicts.judge(fact.statement, pool[:15])
@@ -718,27 +796,40 @@ def _detect_conflicts(facts: dict[str, AtomicFact], index: _StatementIndex, fact
     now = _now()
     for fid, (older, kind) in sorted(found.items()):
         action = "flagged"
-        if may_supersede and mode == "supersede" and kind in ("negation", "judged") \
-                and (not root or fid not in safety.protected(root)):
+        if (
+            may_supersede
+            and mode == "supersede"
+            and kind in ("negation", "judged")
+            and (not root or fid not in safety.protected(root))
+        ):
             try:
                 _supersede_locked(facts, older.id, fact.id, contradiction=True)
                 action = "superseded"
             except ValueError as exc:  # the temporal guard refused: different windows
-                sink.append(fact_conflicts.Conflict(older.id, fact.id, kind, older.statement, fact.statement,
-                                                    now, "flagged", str(exc)))
+                sink.append(
+                    fact_conflicts.Conflict(
+                        older.id, fact.id, kind, older.statement, fact.statement, now, "flagged", str(exc)
+                    )
+                )
                 continue
         sink.append(fact_conflicts.Conflict(older.id, fact.id, kind, older.statement, fact.statement, now, action))
 
 
-def _batch_conflicts(facts: dict[str, AtomicFact], index: _StatementIndex, added: list[AtomicFact],
-                     root: str | None, sink: list, *, may_supersede: bool) -> None:
+def _batch_conflicts(
+    facts: dict[str, AtomicFact],
+    index: _StatementIndex,
+    added: list[AtomicFact],
+    root: str | None,
+    sink: list,
+    *,
+    may_supersede: bool,
+) -> None:
     """Conflict detection once a batch is indexed, so the value-variant cap sees the whole batch."""
     later = {fact.id for fact in added}
     for fact in added:
         later.discard(fact.id)
         if facts[fact.id].status == "active":
-            _detect_conflicts(facts, index, fact, root, sink, may_supersede=may_supersede,
-                              later=later)
+            _detect_conflicts(facts, index, fact, root, sink, may_supersede=may_supersede, later=later)
 
 
 def _add_locked(
@@ -764,7 +855,7 @@ def _add_locked(
     index = index if index is not None else _statement_index(facts)
     preflight = team_io.contradictions(root, facts, index, statement, scopes)
     existing = index.exact(statement, scopes)
-    decision = {}
+    decision: dict[str, set[str]] = {}
     if existing is None and not preflight and dedupe in ("near", "semantic") and evidence is None:
         # A paraphrase of an active fact reinforces it instead of becoming a second record.
         existing = index.near(statement, scopes)
@@ -842,8 +933,7 @@ def _add_locked(
         if team_isolation.REQUEST.get() is not None:
             conflicts.extend(team_io.resolved_conflicts(preflight, fact.id))
         else:
-            _detect_conflicts(facts, index, fact, root, conflicts, may_supersede=True,
-                              joint_decision=decision or None)
+            _detect_conflicts(facts, index, fact, root, conflicts, may_supersede=True, joint_decision=decision or None)
     return fact, "ADD"
 
 
@@ -886,21 +976,38 @@ def add_fact(
     also idempotent; anonymous legacy reinforcement remains compatible.
     """
     statement, category, valid_from, valid_until, expires_at = prepare_fact(
-        statement, category, valid_from, valid_until, expires_at)
+        statement, category, valid_from, valid_until, expires_at
+    )
     _validate_evidence_policy(min_support)
     found: list = []
     with mutate_facts(root) as facts:
         clean_scopes = _write_scopes(root, scopes)
         if evidence is not None:
             existing = _matching_active(facts, statement, clean_scopes)
-            if existing and any(receipt.kind == "fact" and receipt.source_id == existing.id
-                                for receipt in evidence if isinstance(receipt, FactEvidence)):
+            if existing and any(
+                receipt.kind == "fact" and receipt.source_id == existing.id
+                for receipt in evidence
+                if isinstance(receipt, FactEvidence)
+            ):
                 raise EvidenceError("a fact cannot support or refute itself")
             EvidenceResolver(root, facts).validate_receipts(evidence, existing.scopes if existing else clean_scopes)
         fact, action = _add_locked(
-            facts, statement, category, clean_scopes, valid_from, valid_until,
-            expires_at, confidence, source_trace_id, _normalize_stability(stability), created_at,
-            evidence, min_support, dedupe=dedup_mode(), root=root, conflicts=found,
+            facts,
+            statement,
+            category,
+            clean_scopes,
+            valid_from,
+            valid_until,
+            expires_at,
+            confidence,
+            source_trace_id,
+            _normalize_stability(stability),
+            created_at,
+            evidence,
+            min_support,
+            dedupe=dedup_mode(),
+            root=root,
+            conflicts=found,
         )
     _after_conflicts(root, found)
     _link_entities_best_effort(root, [(fact.id, fact.statement)])
@@ -927,13 +1034,28 @@ def add_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFact, 
     prepared = []
     for item in items:
         statement, category, valid_from, valid_until, expires_at = prepare_fact(
-            item.get("statement", ""), item.get("category", DEFAULT_CATEGORY),
-            item.get("valid_from"), item.get("valid_until"), item.get("expires_at"))
-        prepared.append((statement, category, _write_scopes(root, item.get("scopes")), valid_from,
-                         valid_until, expires_at, float(item.get("confidence", 0.8)),
-                         str(item.get("source_trace_id", "") or ""),
-                         _normalize_stability(item.get("stability", "")),
-                         item.get("created_at"), item.get("evidence"), item.get("min_support", 1)))
+            item.get("statement", ""),
+            item.get("category", DEFAULT_CATEGORY),
+            item.get("valid_from"),
+            item.get("valid_until"),
+            item.get("expires_at"),
+        )
+        prepared.append(
+            (
+                statement,
+                category,
+                _write_scopes(root, item.get("scopes")),
+                valid_from,
+                valid_until,
+                expires_at,
+                float(item.get("confidence", 0.8)),
+                str(item.get("source_trace_id", "") or ""),
+                _normalize_stability(item.get("stability", "")),
+                item.get("created_at"),
+                item.get("evidence"),
+                item.get("min_support", 1),
+            )
+        )
     if not prepared:
         return []
     mode = dedup_mode()
@@ -941,8 +1063,7 @@ def add_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFact, 
     with mutate_facts(root) as facts:
         if hasattr(facts, "defer_new_fts"):
             facts.defer_new_fts = (
-                mode != "semantic"
-                and _configuration_getenv("UNIMEM_FACT_CONFLICT_JUDGE", "").strip().lower() != "llm"
+                mode != "semantic" and _configuration_getenv("UNIMEM_FACT_CONFLICT_JUDGE", "").strip().lower() != "llm"
             )
         index = _statement_index(facts)
         results = []
@@ -952,16 +1073,38 @@ def add_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFact, 
                 if not isinstance(receipts, (list, tuple)):
                     raise EvidenceError("evidence must be a sequence of FactEvidence receipts")
                 existing = index.exact(s, sc)
-                if existing and any(receipt.kind == "fact" and receipt.source_id == existing.id
-                                    for receipt in receipts if isinstance(receipt, FactEvidence)):
+                if existing and any(
+                    receipt.kind == "fact" and receipt.source_id == existing.id
+                    for receipt in receipts
+                    if isinstance(receipt, FactEvidence)
+                ):
                     raise EvidenceError("a fact cannot support or refute itself")
                 EvidenceResolver(root, facts).validate_receipts(receipts, existing.scopes if existing else sc)
-            results.append(_add_locked(facts, s, c, sc, vf, vu, ea, conf, src, stab, created, receipts, minimum,
-                                       index=index, dedupe=mode, root=root,
-                                       conflicts=found if team_isolation.REQUEST.get() is not None else None))
+            results.append(
+                _add_locked(
+                    facts,
+                    s,
+                    c,
+                    sc,
+                    vf,
+                    vu,
+                    ea,
+                    conf,
+                    src,
+                    stab,
+                    created,
+                    receipts,
+                    minimum,
+                    index=index,
+                    dedupe=mode,
+                    root=root,
+                    conflicts=found if team_isolation.REQUEST.get() is not None else None,
+                )
+            )
         if team_isolation.REQUEST.get() is None:
-            _batch_conflicts(facts, index, [f for f, action in results if action == "ADD"], root, found,
-                             may_supersede=True)
+            _batch_conflicts(
+                facts, index, [f for f, action in results if action == "ADD"], root, found, may_supersede=True
+            )
     _after_conflicts(root, found)
     _link_entities_best_effort(root, [(fact.id, fact.statement) for fact, _ in results])
     return results
@@ -984,8 +1127,17 @@ def append_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFac
     prepared = []
     for item in items:
         if not isinstance(item, dict) or set(item) - {
-                "statement", "category", "scopes", "valid_from", "valid_until", "expires_at",
-                "confidence", "source_trace_id", "stability", "memory_type"}:
+            "statement",
+            "category",
+            "scopes",
+            "valid_from",
+            "valid_until",
+            "expires_at",
+            "confidence",
+            "source_trace_id",
+            "stability",
+            "memory_type",
+        }:
             raise ValueError("unsupported ADD-only fact fields")
         from unimem.decay import HALF_LIVES_DAYS
         from unimem.ttl import expiry_for_type
@@ -995,10 +1147,15 @@ def append_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFac
             raise ValueError("unknown memory type")
         expiry_input = item.get("expires_at") or expiry_for_type(memory_type, valid_from=item.get("valid_from"))
         statement, category, start, end, expiry = prepare_fact(
-            item.get("statement", ""), item.get("category", DEFAULT_CATEGORY),
-            item.get("valid_from"), item.get("valid_until"), expiry_input)
+            item.get("statement", ""),
+            item.get("category", DEFAULT_CATEGORY),
+            item.get("valid_from"),
+            item.get("valid_until"),
+            expiry_input,
+        )
         statement = memory_guard.sanitize_metadata(
-            {"statement": statement}, pii=memory_guard.privacy_redaction_enabled())[0]["statement"]
+            {"statement": statement}, pii=memory_guard.privacy_redaction_enabled()
+        )[0]["statement"]
         if injection_guard.injection_labels({"text": statement}):
             raise ValueError("fact failed the injection screen")
         confidence = float(item.get("confidence", 0.8))
@@ -1011,21 +1168,45 @@ def append_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFac
             domains = [label[7:] for label in labels if label.startswith("domain:")]
             if len(domains) != 1 or not domains[0].strip() or len(domains[0]) > 48:
                 raise ValueError("personal-opinion memory requires exactly one explicit domain scope")
-        prepared.append((statement, category, _write_scopes(root, labels), start, end, expiry,
-                         confidence, str(item.get("source_trace_id", "")), item.get("stability", ""), memory_type))
+        prepared.append(
+            (
+                statement,
+                category,
+                _write_scopes(root, labels),
+                start,
+                end,
+                expiry,
+                confidence,
+                str(item.get("source_trace_id", "")),
+                item.get("stability", ""),
+                memory_type,
+            )
+        )
     results = []
     mode = dedup_mode()
     found: list = []
     with mutate_facts(root) as facts:
         index = _statement_index(facts)
         for statement, category, labels, start, end, expiry, confidence, source, stability, memory_type in prepared:
+
             def same_record(f: AtomicFact) -> bool:
-                return (not f.forgotten and f.scopes == labels and (start is None or f.valid_from == start)
-                        and f.valid_until == end and f.expires_at == expiry)
+                return (
+                    not f.forgotten
+                    and f.scopes == labels
+                    and (start is None or f.valid_from == start)
+                    and f.valid_until == end
+                    and f.expires_at == expiry
+                )
 
             preflight = team_io.contradictions(root, facts, index, statement, labels)
-            duplicate = next((facts[fid] for fid in index.by_norm.get(_normalize_statement(statement), ())
-                              if facts[fid].status == "active" and same_record(facts[fid])), None)
+            duplicate = next(
+                (
+                    facts[fid]
+                    for fid in index.by_norm.get(_normalize_statement(statement), ())
+                    if facts[fid].status == "active" and same_record(facts[fid])
+                ),
+                None,
+            )
             if duplicate is None and not preflight and mode != "exact":
                 # ADD-only admission never edits the existing record; a paraphrase is a NOOP.
                 near = index.near(statement, labels)
@@ -1036,8 +1217,9 @@ def append_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFac
                 continue
             # _add_locked reinforces overlapping scope sets. Use a fresh map
             # to construct only the new record, then allocate an unused ID.
-            fact, action = _add_locked({}, statement, category, labels, start, end, expiry,
-                                       confidence, source, stability)
+            fact, action = _add_locked(
+                {}, statement, category, labels, start, end, expiry, confidence, source, stability
+            )
             fact.id = _free_id(fact.id, facts)
             fact.memory_type = memory_type
             from unimem import memory_authority
@@ -1050,8 +1232,9 @@ def append_facts(root: str, items: list[dict[str, Any]]) -> list[tuple[AtomicFac
             results.append((fact, action))
         # ADD-only admission never edits an existing fact: contradictions are flagged for review.
         if team_isolation.REQUEST.get() is None:
-            _batch_conflicts(facts, index, [f for f, action in results if action == "ADD"], root, found,
-                             may_supersede=False)
+            _batch_conflicts(
+                facts, index, [f for f, action in results if action == "ADD"], root, found, may_supersede=False
+            )
     _after_conflicts(root, found)
     _link_entities_best_effort(root, [(fact.id, fact.statement) for fact, action in results if action == "ADD"])
     return results
@@ -1098,7 +1281,8 @@ def update_fact(
             raise ValueError(
                 f"fact '{fact_id}' scopes are immutable via update "
                 f"(currently {list(fact.scopes)}); supersede the fact with explicit "
-                "scopes to move it, so the old scope stays on record")
+                "scopes to move it, so the old scope stays on record"
+            )
         if confidence is not None:
             fact.confidence = min(1.0, max(0.0, round(float(confidence), 3)))
         if new_until is not None:
@@ -1127,8 +1311,9 @@ def supersede_fact(
 
     safety.assert_mutable(root, [old_fact_id])
     with mutate_facts(root) as facts:
-        result = _supersede_locked(facts, old_fact_id, new_fact_id_or_statement,
-                                  scopes=scopes, category=category, as_of=as_of)
+        result = _supersede_locked(
+            facts, old_fact_id, new_fact_id_or_statement, scopes=scopes, category=category, as_of=as_of
+        )
         from unimem import lineage
 
         lineage.invalidate(root, old_fact_id)
@@ -1136,9 +1321,14 @@ def supersede_fact(
 
 
 def _supersede_locked(
-    facts: dict[str, AtomicFact], old_fact_id: str, new_fact_id_or_statement: str, *,
-    scopes: list[str] | None = None, category: str | None = None,
-    as_of: str | None = None, contradiction: bool = False,
+    facts: dict[str, AtomicFact],
+    old_fact_id: str,
+    new_fact_id_or_statement: str,
+    *,
+    scopes: list[str] | None = None,
+    category: str | None = None,
+    as_of: str | None = None,
+    contradiction: bool = False,
 ) -> tuple[AtomicFact, AtomicFact]:
     """Validate and close the old window under the same fact transaction."""
     explicit = _moment(as_of, "as_of")
@@ -1148,7 +1338,8 @@ def _supersede_locked(
     old_fact = facts[old_fact_id]
     if old_fact.status != "active":
         raise ValueError(
-            f"fact '{old_fact_id}' is {old_fact.status}, not active; only an active fact can be superseded")
+            f"fact '{old_fact_id}' is {old_fact.status}, not active; only an active fact can be superseded"
+        )
     target = new_fact_id_or_statement
     new_fact: AtomicFact | None
     if target in facts:
@@ -1174,8 +1365,11 @@ def _supersede_locked(
             raise ValueError("replacement predates the contradicted fact")
         if old_fact.valid_until and lesson_cache.parse_moment(old_fact.valid_until) <= new_from:
             raise ValueError("These cover different windows, not a contradiction.")
-        if new_fact is not None and new_fact.valid_until \
-                and lesson_cache.parse_moment(new_fact.valid_until) <= old_from:
+        if (
+            new_fact is not None
+            and new_fact.valid_until
+            and lesson_cache.parse_moment(new_fact.valid_until) <= old_from
+        ):
             raise ValueError("These cover different windows, not a contradiction.")
         if new_fact is not None and new_fact.scopes != old_fact.scopes:
             raise ValueError("contradictory facts must have identical scopes")
@@ -1183,8 +1377,17 @@ def _supersede_locked(
             raise ValueError("contradictory facts must have identical scopes")
     if new_fact is None:
         new_fact, _action = _add_locked(
-            facts, statement, cat, new_scopes, when, None, None, old_fact.confidence, "",
-            evidence=[] if old_fact.evidence_bound else None, min_support=old_fact.min_support,
+            facts,
+            statement,
+            cat,
+            new_scopes,
+            when,
+            None,
+            None,
+            old_fact.confidence,
+            "",
+            evidence=[] if old_fact.evidence_bound else None,
+            min_support=old_fact.min_support,
         )
     old_fact.status = "superseded"
     old_fact.valid_until = when
@@ -1279,8 +1482,13 @@ def resolve_contradiction(
     safety.assert_mutable(root, [old_fact_id])
     with mutate_facts(root) as facts:
         return _supersede_locked(
-            facts, old_fact_id, new_fact_id_or_statement, scopes=scopes,
-            category=category, as_of=as_of, contradiction=True,
+            facts,
+            old_fact_id,
+            new_fact_id_or_statement,
+            scopes=scopes,
+            category=category,
+            as_of=as_of,
+            contradiction=True,
         )
 
 
@@ -1562,19 +1770,58 @@ def search_facts(
     from unimem.fact_index import search
 
     if fact_store.enabled(root):
-        return fact_store.search(root, query, scope=scope, category=category, as_of=as_of, limit=limit,
-                                 include_forgotten=include_forgotten, show_expired=show_expired,
-                                 stability=stability, scorer=scorer, known_at=known_at)
+        return fact_store.search(
+            root,
+            query,
+            scope=scope,
+            category=category,
+            as_of=as_of,
+            limit=limit,
+            include_forgotten=include_forgotten,
+            show_expired=show_expired,
+            stability=stability,
+            scorer=scorer,
+            known_at=known_at,
+        )
     if known_at is None:
-        return search(root, query, scope=scope, category=category, as_of=as_of, limit=limit,
-                      include_forgotten=include_forgotten, show_expired=show_expired,
-                      stability=stability, scorer=scorer)
+        return search(
+            root,
+            query,
+            scope=scope,
+            category=category,
+            as_of=as_of,
+            limit=limit,
+            include_forgotten=include_forgotten,
+            show_expired=show_expired,
+            stability=stability,
+            scorer=scorer,
+        )
     # Transaction time: rank only what the store believed then, with the same scorer.
-    believed = {f.id for f in list_facts(root, scope=scope, category=category, as_of=as_of, known_at=known_at,
-                                         include_forgotten=include_forgotten, show_expired=show_expired,
-                                         stability=stability)}
-    ranked = search(root, query, scope=scope, category=category, as_of=as_of or known_at, limit=1000,
-                    include_forgotten=include_forgotten, show_expired=True, stability=stability, scorer=scorer)
+    believed = {
+        f.id
+        for f in list_facts(
+            root,
+            scope=scope,
+            category=category,
+            as_of=as_of,
+            known_at=known_at,
+            include_forgotten=include_forgotten,
+            show_expired=show_expired,
+            stability=stability,
+        )
+    }
+    ranked = search(
+        root,
+        query,
+        scope=scope,
+        category=category,
+        as_of=as_of or known_at,
+        limit=1000,
+        include_forgotten=include_forgotten,
+        show_expired=True,
+        stability=stability,
+        scorer=scorer,
+    )
     return [(f, score) for f, score in ranked if f.id in believed][:limit]
 
 
@@ -1592,69 +1839,311 @@ class _EntityCandidate:
 
 
 _GENERIC_HEADS = {
-    "thing", "stuff", "way", "time", "experience", "situation", "case",
-    "fact", "matter", "issue", "idea", "thought", "feeling", "place",
-    "area", "part", "kind", "type", "sort", "lot", "bit", "day", "year",
-    "week", "month", "moment", "instance", "example", "technique", "method",
-    "approach", "process", "step", "tool", "result", "outcome", "goal",
-    "task", "item", "topic", "scale", "size", "level", "degree", "amount",
-    "number", "style", "look", "color", "colour", "shape", "form", "piece",
-    "section", "side", "end", "edge", "surface", "point",
+    "thing",
+    "stuff",
+    "way",
+    "time",
+    "experience",
+    "situation",
+    "case",
+    "fact",
+    "matter",
+    "issue",
+    "idea",
+    "thought",
+    "feeling",
+    "place",
+    "area",
+    "part",
+    "kind",
+    "type",
+    "sort",
+    "lot",
+    "bit",
+    "day",
+    "year",
+    "week",
+    "month",
+    "moment",
+    "instance",
+    "example",
+    "technique",
+    "method",
+    "approach",
+    "process",
+    "step",
+    "tool",
+    "result",
+    "outcome",
+    "goal",
+    "task",
+    "item",
+    "topic",
+    "scale",
+    "size",
+    "level",
+    "degree",
+    "amount",
+    "number",
+    "style",
+    "look",
+    "color",
+    "colour",
+    "shape",
+    "form",
+    "piece",
+    "section",
+    "side",
+    "end",
+    "edge",
+    "surface",
+    "point",
 }
 
 _ACCEPTED_NER_LABELS = {
-    "PERSON", "ORG", "GPE", "LOC", "FAC", "PRODUCT", "WORK_OF_ART",
-    "EVENT", "NORP", "LAW", "LANGUAGE",
+    "PERSON",
+    "ORG",
+    "GPE",
+    "LOC",
+    "FAC",
+    "PRODUCT",
+    "WORK_OF_ART",
+    "EVENT",
+    "NORP",
+    "LAW",
+    "LANGUAGE",
 }
 
 _REJECTED_NER_LABELS = {
-    "DATE", "TIME", "CARDINAL", "ORDINAL", "QUANTITY", "MONEY", "PERCENT",
+    "DATE",
+    "TIME",
+    "CARDINAL",
+    "ORDINAL",
+    "QUANTITY",
+    "MONEY",
+    "PERCENT",
 }
 
 _GENERIC_SINGLE_ENTITY_TERMS = {
-    "user", "assistant", "agent", "customer", "client", "person", "people",
-    "human", "memory", "message", "conversation", "chat", "session", "system",
+    "user",
+    "assistant",
+    "agent",
+    "customer",
+    "client",
+    "person",
+    "people",
+    "human",
+    "memory",
+    "message",
+    "conversation",
+    "chat",
+    "session",
+    "system",
     "top",
 }
 
 _CIRCUMSTANTIAL_MODS = {
-    "solo", "individual", "team", "group", "joint", "collaborative", "first",
-    "last", "next", "previous", "final", "initial", "main", "side", "top",
+    "solo",
+    "individual",
+    "team",
+    "group",
+    "joint",
+    "collaborative",
+    "first",
+    "last",
+    "next",
+    "previous",
+    "final",
+    "initial",
+    "main",
+    "side",
+    "top",
 }
 
 _NON_SPECIFIC_ADJ = {
-    "many", "few", "several", "some", "any", "all", "most", "more", "less",
-    "much", "little", "enough", "various", "numerous", "multiple", "countless",
-    "great", "good", "bad", "nice", "terrible", "awful", "awesome", "amazing",
-    "wonderful", "horrible", "excellent", "poor", "best", "worst", "fine",
-    "okay", "new", "old", "recent", "past", "future", "current", "previous",
-    "next", "last", "first", "latest", "early", "late", "former", "modern",
-    "ancient", "big", "small", "large", "tiny", "huge", "enormous", "long",
-    "short", "tall", "high", "low", "wide", "narrow", "thick", "thin", "deep",
-    "shallow", "similar", "different", "same", "other", "another", "such",
-    "certain", "important", "main", "major", "minor", "key", "primary", "real",
-    "actual", "true", "whole", "entire", "full", "complete", "total", "basic",
-    "simple", "interesting", "boring", "exciting", "special", "particular",
-    "general", "common", "unique", "rare", "typical", "usual", "normal",
-    "regular", "possible", "likely", "potential", "available", "necessary",
-    "only", "solo", "individual", "team", "group", "joint", "collaborative",
-    "final", "initial", "side",
+    "many",
+    "few",
+    "several",
+    "some",
+    "any",
+    "all",
+    "most",
+    "more",
+    "less",
+    "much",
+    "little",
+    "enough",
+    "various",
+    "numerous",
+    "multiple",
+    "countless",
+    "great",
+    "good",
+    "bad",
+    "nice",
+    "terrible",
+    "awful",
+    "awesome",
+    "amazing",
+    "wonderful",
+    "horrible",
+    "excellent",
+    "poor",
+    "best",
+    "worst",
+    "fine",
+    "okay",
+    "new",
+    "old",
+    "recent",
+    "past",
+    "future",
+    "current",
+    "previous",
+    "next",
+    "last",
+    "first",
+    "latest",
+    "early",
+    "late",
+    "former",
+    "modern",
+    "ancient",
+    "big",
+    "small",
+    "large",
+    "tiny",
+    "huge",
+    "enormous",
+    "long",
+    "short",
+    "tall",
+    "high",
+    "low",
+    "wide",
+    "narrow",
+    "thick",
+    "thin",
+    "deep",
+    "shallow",
+    "similar",
+    "different",
+    "same",
+    "other",
+    "another",
+    "such",
+    "certain",
+    "important",
+    "main",
+    "major",
+    "minor",
+    "key",
+    "primary",
+    "real",
+    "actual",
+    "true",
+    "whole",
+    "entire",
+    "full",
+    "complete",
+    "total",
+    "basic",
+    "simple",
+    "interesting",
+    "boring",
+    "exciting",
+    "special",
+    "particular",
+    "general",
+    "common",
+    "unique",
+    "rare",
+    "typical",
+    "usual",
+    "normal",
+    "regular",
+    "possible",
+    "likely",
+    "potential",
+    "available",
+    "necessary",
+    "only",
+    "solo",
+    "individual",
+    "team",
+    "group",
+    "joint",
+    "collaborative",
+    "final",
+    "initial",
+    "side",
 }
 
 _GENERIC_ENDINGS = {
-    "work", "works", "job", "jobs", "task", "tasks", "stuff", "things",
-    "thing", "info", "information", "details", "data", "content", "material",
-    "materials", "activities", "activity", "efforts", "effort", "options",
-    "option", "choices", "choice", "results", "result", "output", "outputs",
-    "products", "product", "items", "item",
+    "work",
+    "works",
+    "job",
+    "jobs",
+    "task",
+    "tasks",
+    "stuff",
+    "things",
+    "thing",
+    "info",
+    "information",
+    "details",
+    "data",
+    "content",
+    "material",
+    "materials",
+    "activities",
+    "activity",
+    "efforts",
+    "effort",
+    "options",
+    "option",
+    "choices",
+    "choice",
+    "results",
+    "result",
+    "output",
+    "outputs",
+    "products",
+    "product",
+    "items",
+    "item",
 }
 
 _GENERIC_CAPS = {
-    "works", "items", "things", "stuff", "resources", "options", "tips",
-    "ideas", "steps", "ways", "methods", "tools", "features", "benefits",
-    "examples", "details", "notes", "instructions", "guidelines",
-    "recommendations", "suggestions", "overview", "summary", "conclusion",
-    "introduction", "pros", "cons", "advantages", "disadvantages",
+    "works",
+    "items",
+    "things",
+    "stuff",
+    "resources",
+    "options",
+    "tips",
+    "ideas",
+    "steps",
+    "ways",
+    "methods",
+    "tools",
+    "features",
+    "benefits",
+    "examples",
+    "details",
+    "notes",
+    "instructions",
+    "guidelines",
+    "recommendations",
+    "suggestions",
+    "overview",
+    "summary",
+    "conclusion",
+    "introduction",
+    "pros",
+    "cons",
+    "advantages",
+    "disadvantages",
 }
 
 _FORMATTING_MARKERS = {"*", "-", "+", "\u2022", "\u2013", "\u2014", "#", "##", "###", "**", "__"}
@@ -1678,13 +2167,15 @@ def _strip_generic_ending(toks: list) -> list:
 
 
 def _has_artifacts(txt: str) -> bool:
-    return any([
-        "**" in txt or "__" in txt or ":*" in txt,
-        re.search(r"\s\*\s|\s\*$|^\*\s", txt),
-        "  " in txt or "\n" in txt or "\t" in txt,
-        len(txt) > 100,
-        txt.startswith(("\u2022", "-", "+", "\u2013", "\u2014")),
-    ])
+    return any(
+        [
+            "**" in txt or "__" in txt or ":*" in txt,
+            re.search(r"\s\*\s|\s\*$|^\*\s", txt),
+            "  " in txt or "\n" in txt or "\t" in txt,
+            len(txt) > 100,
+            txt.startswith(("\u2022", "-", "+", "\u2013", "\u2014")),
+        ]
+    )
 
 
 def _clean_text(txt: str) -> str:
@@ -2068,6 +2559,7 @@ def _get_spacy_nlp():
 
     try:
         from spacy import load as spacy_load
+
         nlp = spacy_load("en_core_web_sm")
         if "ner" in getattr(nlp, "pipe_names", []):
             _SPACY_NLP = nlp

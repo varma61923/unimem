@@ -118,7 +118,8 @@ def code_evidence_current(root: str, evidence: list[dict]) -> bool:
 
 
 def scope_from_labels(labels: list[str]) -> dict:
-    result, extra = {}, []
+    result: dict[str, str | list[str]] = {}
+    extra: list[str] = []
     for label in labels:
         key, _, value = label.partition(":")
         if key in ("tenant", "user", "agent", "session", "repo") and value:

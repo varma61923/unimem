@@ -1,4 +1,5 @@
 """Scaffolding content generators for `unimem init` / `capture` / `lesson new`."""
+
 from __future__ import annotations
 
 import datetime
@@ -75,7 +76,7 @@ def trace_frontmatter(
     valid_until: str = "",
     expires_at: str = "",
 ) -> dict[str, Any]:
-    fm = {
+    fm: dict[str, str | list[str] | dict[str, Any]] = {
         "id": trace_id,
         "title": title,
         "agent_type": agent_type,
@@ -139,9 +140,7 @@ def trace_body(context_text: str, solution_text: str) -> str:
 def index_md(agent_type: str, has_episodes: bool = False) -> str:
     domains = STARTER_DOMAINS.get(agent_type, STARTER_DOMAINS["custom"])
     second = "Episodes" if has_episodes else "Traces"
-    sections = "\n\n".join(
-        f"### {d.replace('-', ' ').title()}\n\n#### Lessons\n\n#### {second}\n" for d in domains
-    )
+    sections = "\n\n".join(f"### {d.replace('-', ' ').title()}\n\n#### Lessons\n\n#### {second}\n" for d in domains)
     return (
         f"# Memory Index — agent_type: {agent_type}\n\n"
         "Hierarchical index by domain. See protocol/PROTOCOL.md for the full spec.\n\n"

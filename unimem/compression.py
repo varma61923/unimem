@@ -3,6 +3,7 @@
 This is a separate fixed-horizon randomized experiment. It never changes the
 Protocol 13.1 holdout or makes its experimental outputs billable.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,8 +24,13 @@ class KVReuse(Protocol):
     def invalidate(self, version: str) -> None: ...
 
 
-def cache_prefix(items: Sequence[dict[str, Any]], *, pricing: dict[str, float] | None = None,
-                 max_churn: int = 2, minimum_value: float = .01) -> dict[str, Any]:
+def cache_prefix(
+    items: Sequence[dict[str, Any]],
+    *,
+    pricing: dict[str, float] | None = None,
+    max_churn: int = 2,
+    minimum_value: float = 0.01,
+) -> dict[str, Any]:
     """Deterministic approved, positive-value prefix before a provider breakpoint.
 
     Cache prices and latency rates are supplied by the deployment, never baked
@@ -48,15 +54,25 @@ def cache_prefix(items: Sequence[dict[str, Any]], *, pricing: dict[str, float] |
     content = "\n\n".join("[" + item["id"] + "]\n" + item["text"].strip() for item in accepted)
     version = fp.digest(accepted)
     tokens = (len(content) + 3) // 4
-    bill = {"estimated_tokens": tokens, "tokenizer": "four-character estimate", "savings_usd": None,
-            "latency_savings_ms": None, "kind": "configuration-based estimate"}
+    bill = {
+        "estimated_tokens": tokens,
+        "tokenizer": "four-character estimate",
+        "savings_usd": None,
+        "latency_savings_ms": None,
+        "kind": "configuration-based estimate",
+    }
     if pricing is not None:
         for name in ("uncached_per_million", "cached_per_million", "uncached_ms_per_token", "cached_ms_per_token"):
             fp.number(pricing[name], 0, 1e6, name)
         bill["savings_usd"] = tokens * (pricing["uncached_per_million"] - pricing["cached_per_million"]) / 1e6
         bill["latency_savings_ms"] = tokens * (pricing["uncached_ms_per_token"] - pricing["cached_ms_per_token"])
-    return {"version": version, "text": content, "ids": [item["id"] for item in accepted],
-            "placement": "before-provider-cache-breakpoint", "context_bill": bill}
+    return {
+        "version": version,
+        "text": content,
+        "ids": [item["id"] for item in accepted],
+        "placement": "before-provider-cache-breakpoint",
+        "context_bill": bill,
+    }
 
 
 def proven_prefix(root: str, admitted: Sequence[dict[str, Any]], *, pricing: dict[str, float] | None = None) -> dict:
@@ -74,11 +90,17 @@ def proven_prefix(root: str, admitted: Sequence[dict[str, Any]], *, pricing: dic
         if identity not in positive or path is None:
             continue
         fm, body = frontmatter.read(path)
-        if (body == item.get("body") and fm.get("approval_receipt")
-                and lesson_admission.eligible(root, path, fm, body)):
+        if body == item.get("body") and fm.get("approval_receipt") and lesson_admission.eligible(root, path, fm, body):
             changes = sum(lesson_io.canonical_slug(row["lesson"]) == identity for row in history)
-            rows.append({"id": identity, "text": body, "value": positive[identity]["effect"],
-                         "approved": True, "churn": changes})
+            rows.append(
+                {
+                    "id": identity,
+                    "text": body,
+                    "value": positive[identity]["effect"],
+                    "approved": True,
+                    "churn": changes,
+                }
+            )
     prefix = cache_prefix(rows, pricing=pricing)
     from unimem import frontier_protocol as fp
 
@@ -120,13 +142,26 @@ def _source(root, source_id):
     receipt = trace.get("extensions", {}).get("profile", {}).get("origin", {})
     if not memory_authority.permits_record(root, receipt, record) or not receipt:
         raise PermissionError("compression requires authenticated source traces")
-    return {"id": source_id, "digest": policy.digest(record),
-            "text": trace.get("context_text", "")+"\n"+trace.get("solution_text", ""),
-            "scopes": trace.get("scopes", [])}
+    return {
+        "id": source_id,
+        "digest": policy.digest(record),
+        "text": trace.get("context_text", "") + "\n" + trace.get("solution_text", ""),
+        "scopes": trace.get("scopes", []),
+    }
 
 
-def propose(root: str, text: str, *, level: str, sources: list[str], parent: str = "", actor: str,
-            applies_when: str, do_not_apply_when: str, deny_tools: list[str] | None = None) -> dict:
+def propose(
+    root: str,
+    text: str,
+    *,
+    level: str,
+    sources: list[str],
+    parent: str = "",
+    actor: str,
+    applies_when: str,
+    do_not_apply_when: str,
+    deny_tools: list[str] | None = None,
+) -> dict:
     from unimem import safety
 
     safety.assert_mutable(root, sources)
@@ -136,7 +171,7 @@ def propose(root: str, text: str, *, level: str, sources: list[str], parent: str
     parent_row = None
     if LEVELS.index(level) > 1:
         parent_row = next((r for r in active(root) if r["id"] == parent), None)
-        if parent_row is None or parent_row["data"]["level"] != LEVELS[LEVELS.index(level)-1]:
+        if parent_row is None or parent_row["data"]["level"] != LEVELS[LEVELS.index(level) - 1]:
             raise ValueError("promotion must compare against an active adjacent-level parent")
         if set(parent_row["data"]["sources"]) != set(sources):
             raise ValueError("adjacent parent must retain identical raw evidence")
@@ -144,28 +179,49 @@ def propose(root: str, text: str, *, level: str, sources: list[str], parent: str
     for tool in deny_tools or []:
         if not isinstance(tool, str) or not tool or len(tool) > 128:
             raise ValueError("invalid deny tool identifier")
-    return memory_control.put(root, "compression", text, actor=actor, labels=labels, data={
-        "level": level, "parent": parent, "status": "review", "sources": sorted(set(sources)),
-        "source_digests": {r["id"]: r["digest"] for r in raw}, "author": actor,
-        "parent_sha256": policy.digest(parent_row) if parent_row else None,
-        "applies_when": applies_when, "do_not_apply_when": do_not_apply_when,
-        "deny_tools": deny_tools or []})
+    return memory_control.put(
+        root,
+        "compression",
+        text,
+        actor=actor,
+        labels=labels,
+        data={
+            "level": level,
+            "parent": parent,
+            "status": "review",
+            "sources": sorted(set(sources)),
+            "source_digests": {r["id"]: r["digest"] for r in raw},
+            "author": actor,
+            "parent_sha256": policy.digest(parent_row) if parent_row else None,
+            "applies_when": applies_when,
+            "do_not_apply_when": do_not_apply_when,
+            "deny_tools": deny_tools or [],
+        },
+    )
 
 
 def active(root: str, *, context: list[str] | None = None) -> list[dict]:
     rows = memory_control.records(root, "compression")
     candidates = {r["id"]: r for r in rows if r["data"].get("status") == "active"}
     admissions = [r for r in _events(root) if r["event"] == "admit"]
-    valid = {}
+    valid: dict[str, dict] = {}
     for row in sorted(candidates.values(), key=lambda r: LEVELS.index(r["data"]["level"])):
         data = row["data"]
-        admission = next((r for r in admissions if r["proposal_id"] == row["id"]
-                          and r["admitted_sha256"] == policy.digest(row)), None)
-        if (admission is None or admission["actor"] == data["author"]
-                or evaluate(root, admission["experiment_id"])["verdict"] != "HELPS"):
+        admission = next(
+            (r for r in admissions if r["proposal_id"] == row["id"] and r["admitted_sha256"] == policy.digest(row)),
+            None,
+        )
+        if (
+            admission is None
+            or admission["actor"] == data["author"]
+            or evaluate(root, admission["experiment_id"])["verdict"] != "HELPS"
+        ):
             continue
-        experiments = [r for r in _events(root) if r["event"] == "register"
-                       and r["proposal_id"] == row["id"] and r["proposal_sha256"] == policy.digest(row)]
+        experiments = [
+            r
+            for r in _events(root)
+            if r["event"] == "register" and r["proposal_id"] == row["id"] and r["proposal_sha256"] == policy.digest(row)
+        ]
         if any(evaluate(root, e["id"])["verdict"] == "HURTS" for e in experiments):
             continue
         if memory_authority.lineage_blocked(root, row["id"]):
@@ -179,8 +235,11 @@ def active(root: str, *, context: list[str] | None = None) -> list[dict]:
         if parent and (parent not in valid or policy.digest(valid[parent]) != data["parent_sha256"]):
             continue
         valid[row["id"]] = row
-    return [r for r in valid.values() if context is None or memory_control.matches(
-        r["scopes"], context, governed=r["data"]["level"] != "directive")]
+    return [
+        r
+        for r in valid.values()
+        if context is None or memory_control.matches(r["scopes"], context, governed=r["data"]["level"] != "directive")
+    ]
 
 
 def register(root: str, proposal_id: str, *, trials: int = 300, seed: str | None = None) -> dict:
@@ -195,11 +254,21 @@ def register(root: str, proposal_id: str, *, trials: int = 300, seed: str | None
     parent = next((r for r in active(root) if r["id"] == row["data"]["parent"]), None)
     if row["data"]["parent"] and not parent:
         raise ValueError("parent is no longer active")
-    record = {"id": uuid.uuid4().hex, "event": "register", "proposal_id": proposal_id,
-              "proposal_sha256": policy.digest(row), "trials": trials, "seed": seed or uuid.uuid4().hex,
-              "contexts": {"candidate": row["text"], "parent": parent["text"] if parent else
-                           "\n".join(r["text"] for r in raw), "raw": "\n".join(r["text"] for r in raw)},
-              "alpha": .05, "source_sha256": policy.digest(raw)}
+    record = {
+        "id": uuid.uuid4().hex,
+        "event": "register",
+        "proposal_id": proposal_id,
+        "proposal_sha256": policy.digest(row),
+        "trials": trials,
+        "seed": seed or uuid.uuid4().hex,
+        "contexts": {
+            "candidate": row["text"],
+            "parent": parent["text"] if parent else "\n".join(r["text"] for r in raw),
+            "raw": "\n".join(r["text"] for r in raw),
+        },
+        "alpha": 0.05,
+        "source_sha256": policy.digest(raw),
+    }
     with _jsonl.locked(_file(root)):
         _append(root, record)
     return record
@@ -208,27 +277,37 @@ def register(root: str, proposal_id: str, *, trials: int = 300, seed: str | None
 def next_trial(root: str, experiment_id: str) -> dict:
     with _jsonl.locked(_file(root)):
         events = _events(root)
-        experiment = next((r for r in events
-                           if r["id"] == experiment_id and r["event"] == "register"), None)
+        experiment = next((r for r in events if r["id"] == experiment_id and r["event"] == "register"), None)
         if experiment is None:
             raise ValueError("unknown compression experiment")
         index = sum(r["event"] == "assign" and r["experiment_id"] == experiment_id for r in events)
         if index >= experiment["trials"]:
             raise ValueError("preregistered trial budget exhausted")
         # Uniform pseudo-random assignment from the committed seed and index.
-        arm_index = int.from_bytes(
-            hashlib.sha256((experiment["seed"]+"\0"+str(index)).encode()).digest(), "big") % 3
+        arm_index = (
+            int.from_bytes(hashlib.sha256((experiment["seed"] + "\0" + str(index)).encode()).digest(), "big") % 3
+        )
         arm = ("candidate", "parent", "raw")[arm_index]
-        record = {"id": uuid.uuid4().hex, "event": "assign", "experiment_id": experiment_id,
-                  "index": index, "arm": arm, "probability": 1/3,
-                  "context_sha256": policy.digest({"context": experiment["contexts"][arm]})}
+        record = {
+            "id": uuid.uuid4().hex,
+            "event": "assign",
+            "experiment_id": experiment_id,
+            "index": index,
+            "arm": arm,
+            "probability": 1 / 3,
+            "context_sha256": policy.digest({"context": experiment["contexts"][arm]}),
+        }
         _append(root, record)
         return {**record, "context": experiment["contexts"][arm]}
 
 
 def outcome(root: str, trial_id: str, value: float):
-    if (isinstance(value, bool) or not isinstance(value, (int, float))
-            or not math.isfinite(value) or not 0 <= value <= 1):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or not 0 <= value <= 1
+    ):
         raise ValueError("trial outcome must be finite in [0,1]")
     with _jsonl.locked(_file(root)):
         events = _events(root)
@@ -249,25 +328,38 @@ def evaluate(root: str, experiment_id: str) -> dict:
         raise ValueError("unknown compression experiment")
     assigned = [r for r in events if r["event"] == "assign" and r["experiment_id"] == experiment_id]
     outcomes = {r["id"]: r["value"] for r in events if r["event"] == "outcome"}
-    report = {"experiment_id": experiment_id, "billing_eligible": False, "verdict": "UNIDENTIFIED",
-              "proposal_sha256": experiment["proposal_sha256"], "log_sha256": policy.digest(events)}
+    report = {
+        "experiment_id": experiment_id,
+        "billing_eligible": False,
+        "verdict": "UNIDENTIFIED",
+        "proposal_sha256": experiment["proposal_sha256"],
+        "log_sha256": policy.digest(events),
+    }
     if len(assigned) != experiment["trials"] or any(r["id"] not in outcomes for r in assigned):
         return {**report, "reason": "complete preregistered fixed horizon required"}
-    groups = {arm: [outcomes[r["id"]] for r in assigned if r["arm"] == arm]
-              for arm in ("candidate", "parent", "raw")}
+    groups = {arm: [outcomes[r["id"]] for r in assigned if r["arm"] == arm] for arm in ("candidate", "parent", "raw")}
     if any(len(v) < 30 for v in groups.values()):
         return {**report, "reason": "insufficient randomized arm support"}
-    means = {arm: sum(v)/len(v) for arm, v in groups.items()}
+    means = {arm: sum(v) / len(v) for arm, v in groups.items()}
     comparisons = {}
     for arm in ("parent", "raw"):
-        radius = sum(math.sqrt(math.log(8/experiment["alpha"])/(2*len(groups[a])))
-                     for a in ("candidate", arm))
-        effect = means["candidate"]-means[arm]
-        comparisons[arm] = {"effect": effect, "ci_low": effect-radius, "ci_high": effect+radius}
-    verdict = ("HELPS" if all(r["ci_low"] > 0 for r in comparisons.values()) else
-               "HURTS" if any(r["ci_high"] < 0 for r in comparisons.values()) else "NO_MEASURABLE_EFFECT")
-    return {**report, "verdict": verdict, "comparisons": comparisons,
-            "counts": {a: len(v) for a, v in groups.items()}, "interval": "fixed-horizon Hoeffding, joint alpha .05"}
+        radius = sum(math.sqrt(math.log(8 / experiment["alpha"]) / (2 * len(groups[a]))) for a in ("candidate", arm))
+        effect = means["candidate"] - means[arm]
+        comparisons[arm] = {"effect": effect, "ci_low": effect - radius, "ci_high": effect + radius}
+    verdict = (
+        "HELPS"
+        if all(r["ci_low"] > 0 for r in comparisons.values())
+        else "HURTS"
+        if any(r["ci_high"] < 0 for r in comparisons.values())
+        else "NO_MEASURABLE_EFFECT"
+    )
+    return {
+        **report,
+        "verdict": verdict,
+        "comparisons": comparisons,
+        "counts": {a: len(v) for a, v in groups.items()},
+        "interval": "fixed-horizon Hoeffding, joint alpha .05",
+    }
 
 
 def review(root: str, proposal_id: str, experiment_id: str, *, actor: str, expected_revision: str) -> dict:
@@ -287,17 +379,40 @@ def review(root: str, proposal_id: str, experiment_id: str, *, actor: str, expec
         if report["verdict"] == "UNIDENTIFIED":
             raise ValueError(report["reason"])
         status = "active" if report["verdict"] == "HELPS" else "demoted"
-        admitted = memory_control.put(root, "compression", row["text"], record_id=proposal_id,
-            labels=row["scopes"], actor=actor, data={**data, "status": status, "experiment": report})
-        _append(root, {"id": uuid.uuid4().hex, "event": "admit", "proposal_id": proposal_id,
-                       "experiment_id": experiment_id, "actor": actor, "admitted_sha256": policy.digest(admitted)})
+        admitted = memory_control.put(
+            root,
+            "compression",
+            row["text"],
+            record_id=proposal_id,
+            labels=row["scopes"],
+            actor=actor,
+            data={**data, "status": status, "experiment": report},
+        )
+        _append(
+            root,
+            {
+                "id": uuid.uuid4().hex,
+                "event": "admit",
+                "proposal_id": proposal_id,
+                "experiment_id": experiment_id,
+                "actor": actor,
+                "admitted_sha256": policy.digest(admitted),
+            },
+        )
         return admitted
 
 
 def export_training(root: str, *, context: list[str] | None = None) -> dict:
     rows = active(root, context=context)
-    examples = [{"prompt": r["data"]["applies_when"], "chosen": r["text"],
-                 "sources": r["data"]["sources"], "experiment": r["data"]["experiment"]} for r in rows]
+    examples = [
+        {
+            "prompt": r["data"]["applies_when"],
+            "chosen": r["text"],
+            "sources": r["data"]["sources"],
+            "experiment": r["data"]["experiment"],
+        }
+        for r in rows
+    ]
     return {"format": "evidence-linked-sft", "examples": examples, "training_performed": False}
 
 
@@ -316,8 +431,11 @@ def export_preferences(root: str, *, context: list[str] | None = None) -> dict:
     rows = {r["id"]: r for r in memory_control.records(root, "compression")}
     for experiment in (r for r in _events(root) if r["event"] == "register"):
         row = rows.get(experiment["proposal_id"])
-        if row is None or memory_authority.lineage_blocked(root, row["id"]) or any(
-                memory_authority.lineage_blocked(root, sid) for sid in row["data"]["sources"]):
+        if (
+            row is None
+            or memory_authority.lineage_blocked(root, row["id"])
+            or any(memory_authority.lineage_blocked(root, sid) for sid in row["data"]["sources"])
+        ):
             continue
         if context is not None and not memory_control.matches(row["scopes"], context):
             continue
@@ -331,11 +449,22 @@ def export_preferences(root: str, *, context: list[str] | None = None) -> dict:
                 continue
             if chosen == rejected:
                 continue
-            pairs.append({
-                "prompt": row["data"]["applies_when"], "chosen": chosen, "rejected": rejected,
-                "evidence": {"experiment": experiment["id"], "proposal": row["id"], "level": row["data"]["level"],
-                             "against": arm, "effect": comparison["effect"],
-                             "ci": [comparison["ci_low"], comparison["ci_high"]],
-                             "counts": report.get("counts"), "interval": report.get("interval"),
-                             "randomized": True}})
+            pairs.append(
+                {
+                    "prompt": row["data"]["applies_when"],
+                    "chosen": chosen,
+                    "rejected": rejected,
+                    "evidence": {
+                        "experiment": experiment["id"],
+                        "proposal": row["id"],
+                        "level": row["data"]["level"],
+                        "against": arm,
+                        "effect": comparison["effect"],
+                        "ci": [comparison["ci_low"], comparison["ci_high"]],
+                        "counts": report.get("counts"),
+                        "interval": report.get("interval"),
+                        "randomized": True,
+                    },
+                }
+            )
     return {"format": "evidence-linked-dpo", "pairs": pairs, "training_performed": False}

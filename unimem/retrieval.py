@@ -7,7 +7,7 @@ import sys
 import threading
 import weakref
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -49,6 +49,7 @@ def default_floor(scorer: str) -> float:
     if scorer in (SCORER_ADAPTIVE, SCORER_IDF_V2, SCORER_BM25):
         return IDF_V2_FLOOR
     return IDF_V3_FLOOR
+
 
 _LENGTH_B = 0.5
 _LENGTH_CLAMP = (0.5, 1.5)
@@ -151,6 +152,7 @@ def _build_index(lessons, term_cache, scorer: str) -> _CorpusIndex:
     n_terms: list[int] = []
     postings: dict[str, tuple[list[int], list[float], list[float]]] = {}
     for i, (path, fm) in enumerate(lessons):
+        pairs: Iterable[tuple[list[str], float]]
         cached = term_cache.get(path) if term_cache else None
         if cached is not None and len(cached) == len(_FIELD_WEIGHTS):
             pairs = zip(cached, _FIELD_WEIGHTS)
@@ -200,6 +202,7 @@ def _index_bytes(fingerprint: tuple, index: _CorpusIndex) -> int:
     use fixed float sizes and an upper bound for document-ID integer sizes.
     The budget bounds cached indexes, not a caller's active query or build.
     """
+
     def sequence_bytes(value) -> int:
         size = 0
         pending = [value]
@@ -211,22 +214,36 @@ def _index_bytes(fingerprint: tuple, index: _CorpusIndex) -> int:
         return size
 
     values = vars(index)
-    size = (512 + sys.getsizeof(index) + sys.getsizeof(values)
-            + sum(sys.getsizeof(name) for name in values)
-            + sequence_bytes(fingerprint) + sequence_bytes(index.n_terms)
-            + sequence_bytes(index.tie_breaks)
-            + sys.getsizeof(index.n_docs) + sys.getsizeof(index.avg_field_len)
-            + sys.getsizeof(index.max_idf) + sys.getsizeof(index.length_factors)
-            + len(index.length_factors) * sys.getsizeof(0.0)
-            + sys.getsizeof(index.postings) + sys.getsizeof(index.doc_freq))
+    size = (
+        512
+        + sys.getsizeof(index)
+        + sys.getsizeof(values)
+        + sum(sys.getsizeof(name) for name in values)
+        + sequence_bytes(fingerprint)
+        + sequence_bytes(index.n_terms)
+        + sequence_bytes(index.tie_breaks)
+        + sys.getsizeof(index.n_docs)
+        + sys.getsizeof(index.avg_field_len)
+        + sys.getsizeof(index.max_idf)
+        + sys.getsizeof(index.length_factors)
+        + len(index.length_factors) * sys.getsizeof(0.0)
+        + sys.getsizeof(index.postings)
+        + sys.getsizeof(index.doc_freq)
+    )
     id_bytes, float_bytes = sys.getsizeof(index.n_docs), sys.getsizeof(0.0)
     for term, posting in index.postings.items():
         ids, weights, best = posting
-        size += (2 * sys.getsizeof(term) + sys.getsizeof(posting)
-                 + sys.getsizeof(ids) + len(ids) * id_bytes
-                 + sys.getsizeof(weights) + len(weights) * float_bytes
-                 + sys.getsizeof(best) + len(best) * float_bytes
-                 + sys.getsizeof(index.doc_freq[term]))
+        size += (
+            2 * sys.getsizeof(term)
+            + sys.getsizeof(posting)
+            + sys.getsizeof(ids)
+            + len(ids) * id_bytes
+            + sys.getsizeof(weights)
+            + len(weights) * float_bytes
+            + sys.getsizeof(best)
+            + len(best) * float_bytes
+            + sys.getsizeof(index.doc_freq[term])
+        )
     return size
 
 
@@ -267,8 +284,7 @@ class _CorpusIndexCache:
             self._flights.clear()
             self.bytes_used = 0
 
-    def get_or_build(self, key: tuple, fingerprint: tuple,
-                     build: Callable[[], _CorpusIndex]) -> _CorpusIndex:
+    def get_or_build(self, key: tuple, fingerprint: tuple, build: Callable[[], _CorpusIndex]) -> _CorpusIndex:
         while True:
             with self._lock:
                 hit = self._entries.get(key)
@@ -302,8 +318,7 @@ class _CorpusIndexCache:
                         if replaced is not None:
                             self.bytes_used -= replaced[2]
                         while self._entries and (
-                            len(self._entries) >= _INDEX_CACHE_MAX
-                            or self.bytes_used + size > _INDEX_CACHE_MAX_BYTES
+                            len(self._entries) >= _INDEX_CACHE_MAX or self.bytes_used + size > _INDEX_CACHE_MAX_BYTES
                         ):
                             _old_key, old = self._entries.popitem(last=False)
                             self.bytes_used -= old[2]
@@ -387,27 +402,50 @@ def rank_lessons(
     index = _corpus_index(lessons, term_cache, scorer)
 
     def rank():
-        return _rank_numeric(query_terms, index, lessons, top_k, floor, scorer,
-                             reliability_lookup, reliability_weight, recency_lookup,
-                             recency_weight, adaptive_tail, graph_boost_lookup, graph_weight)
+        return _rank_numeric(
+            query_terms,
+            index,
+            lessons,
+            top_k,
+            floor,
+            scorer,
+            reliability_lookup,
+            reliability_weight,
+            recency_lookup,
+            recency_weight,
+            adaptive_tail,
+            graph_boost_lookup,
+            graph_weight,
+        )
 
     # Dynamic signals are never frozen in a result cache. Weak identity keeps
     # this cache from retaining a corpus, and cannot alias a recycled object ID.
-    cache_enabled = cache_results and _configuration_getenv("UNIMEM_QUERY_CACHE", "1").strip().lower() \
-        not in ("0", "false", "off", "no")
+    cache_enabled = cache_results and _configuration_getenv("UNIMEM_QUERY_CACHE", "1").strip().lower() not in (
+        "0",
+        "false",
+        "off",
+        "no",
+    )
     if cache_enabled and not (reliability_lookup or recency_lookup or graph_boost_lookup):
         key = (_IndexIdentity(index), scorer, tuple(sorted(query_terms)), top_k, floor, adaptive_tail)
         rows = _QUERY_CACHE.get_or_load(key, rank)
     else:
         rows = rank()
-    return [RankedLesson(
-        path=lessons[i][0], slug=str(lessons[i][1].get("name", "")),
-        description=str(lessons[i][1].get("description", "")),
-        score=score, matched_terms=list(matches), relevance=round(rel, 6), scorer=scorer,
-        reliability_adjustment=round(reliability_adj, 6) if reliability_lookup else 0.0,
-        recency_adjustment=round(recency_adj, 6) if recency_lookup else 0.0,
-        graph_adjustment=round(graph_adj, 6) if graph_boost_lookup else 0.0,
-    ) for i, score, matches, rel, reliability_adj, recency_adj, graph_adj in rows]
+    return [
+        RankedLesson(
+            path=lessons[i][0],
+            slug=str(lessons[i][1].get("name", "")),
+            description=str(lessons[i][1].get("description", "")),
+            score=score,
+            matched_terms=list(matches),
+            relevance=round(rel, 6),
+            scorer=scorer,
+            reliability_adjustment=round(reliability_adj, 6) if reliability_lookup else 0.0,
+            recency_adjustment=round(recency_adj, 6) if recency_lookup else 0.0,
+            graph_adjustment=round(graph_adj, 6) if graph_boost_lookup else 0.0,
+        )
+        for i, score, matches, rel, reliability_adj, recency_adj, graph_adj in rows
+    ]
 
 
 class _IndexIdentity:
@@ -423,8 +461,7 @@ class _IndexIdentity:
         return self.ident
 
     def __eq__(self, other) -> bool:
-        return (isinstance(other, _IndexIdentity) and self.ref() is not None
-                and self.ref() is other.ref())
+        return isinstance(other, _IndexIdentity) and self.ref() is not None and self.ref() is other.ref()
 
 
 def _query_bytes(key, rows) -> int:
@@ -446,15 +483,25 @@ _QUERY_ROW_BYTES = sys.getsizeof((None,) * 7) + sys.getsizeof(sys.maxsize) + 5 *
 _QUERY_CACHE = RuntimeCache(max_entries=256, max_bytes=8 * 1024 * 1024, ttl=30.0, weigh=_query_bytes)
 
 
-def _rank_numeric(query_terms, index, lessons, top_k, floor, scorer,
-                  reliability_lookup, reliability_weight, recency_lookup,
-                  recency_weight, adaptive_tail, graph_boost_lookup, graph_weight):
+def _rank_numeric(
+    query_terms,
+    index,
+    lessons,
+    top_k,
+    floor,
+    scorer,
+    reliability_lookup,
+    reliability_weight,
+    recency_lookup,
+    recency_weight,
+    adaptive_tail,
+    graph_boost_lookup,
+    graph_weight,
+):
     doc_freq = index.doc_freq
     n_docs = index.n_docs
 
-    query_idf = {
-        t: _idf(n_docs, doc_freq[t]) for t in query_terms if doc_freq.get(t, 0) > 0
-    }
+    query_idf = {t: _idf(n_docs, doc_freq[t]) for t in query_terms if doc_freq.get(t, 0) > 0}
     max_idf = index.max_idf
     total_query_idf = len(query_terms) * max_idf
 
@@ -479,8 +526,11 @@ def _rank_numeric(query_terms, index, lessons, top_k, floor, scorer,
         bit = 1 << position if compact_matches else 0
         for i, weight_sum, best in zip(*post):
             previous = masks.get(i, 0) if sparse else masks[i]
-            contribution = _bm25_term(weight_sum, term_idf, index.n_terms[i], index.avg_field_len) if is_bm25 \
+            contribution = (
+                _bm25_term(weight_sum, term_idf, index.n_terms[i], index.avg_field_len)
+                if is_bm25
                 else term_idf * (best / _MAX_FIELD_WEIGHT)
+            )
             if previous:
                 scores[i] += weight_sum
                 coverage[i] += contribution
@@ -528,25 +578,36 @@ def _rank_numeric(query_terms, index, lessons, top_k, floor, scorer,
         reliability_adj = reliability_lookup.get(slug, 0.0) if reliability_lookup else 0.0
         recency_adj = recency_lookup.get(slug, 0.0) if recency_lookup else 0.0
         graph_adj = graph_boost_lookup.get(slug, 0.0) if graph_boost_lookup else 0.0
-        adjusted = min(1.0, max(0.0,
-            rel + reliability_weight * reliability_adj
-            + recency_weight * recency_adj + graph_weight * graph_adj,
-        ))
-        importance, uses = tie_breaks[i] if tie_breaks else (
-            _rank_int(fm.get("importance", 0)), _rank_int(fm.get("uses", 0)))
+        adjusted = min(
+            1.0,
+            max(
+                0.0,
+                rel + reliability_weight * reliability_adj + recency_weight * recency_adj + graph_weight * graph_adj,
+            ),
+        )
+        importance, uses = (
+            tie_breaks[i] if tie_breaks else (_rank_int(fm.get("importance", 0)), _rank_int(fm.get("uses", 0)))
+        )
         # Accumulation visits posting lists in term order. Explicitly preserve
         # the former stable corpus-order tie break without sorting candidates.
-        scored.append((adjusted, score, importance, uses, -i, i, path, slug, rel,
-                       reliability_adj, recency_adj, graph_adj))
+        scored.append(
+            (adjusted, score, importance, uses, -i, i, path, slug, rel, reliability_adj, recency_adj, graph_adj)
+        )
 
     top = heapq.nlargest(max(0, top_k), scored, key=lambda item: item[:5])
     return tuple(
-        (i, score,
-         tuple(term for position, term in enumerate(terms) if masks[i] & (1 << position))
-         if compact_matches else tuple(masks[i]),
-         rel, reliability_adj, recency_adj, graph_adj)
-        for (_adj, score, _imp, _uses, _order, i, path, slug, rel,
-             reliability_adj, recency_adj, graph_adj) in top
+        (
+            i,
+            score,
+            tuple(term for position, term in enumerate(terms) if masks[i] & (1 << position))
+            if compact_matches
+            else tuple(masks[i]),
+            rel,
+            reliability_adj,
+            recency_adj,
+            graph_adj,
+        )
+        for (_adj, score, _imp, _uses, _order, i, path, slug, rel, reliability_adj, recency_adj, graph_adj) in top
     )
 
 

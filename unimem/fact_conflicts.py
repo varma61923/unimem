@@ -20,6 +20,7 @@ negation or judged contradiction close the older fact's validity window (the
 Graphiti rule, through the same temporal guard as `resolve_contradiction`);
 ``off`` disables detection. Value pairs are always flagged only.
 """
+
 from __future__ import annotations
 
 import json
@@ -60,7 +61,7 @@ def _stem(word: str) -> str:
         word = word[:-1]
     match = _STEM.search(word)
     if match and len(word) - len(match.group()) >= 2:
-        word = word[:match.start()]
+        word = word[: match.start()]
     if word.endswith("e") and len(word) >= 3:
         word = word[:-1]
     return word
@@ -105,8 +106,8 @@ def judge(newer: str, candidates: list, complete=None) -> set[str]:
     Defensive: only ids that were offered are accepted, and any failure means none.
     """
     if complete is None:
-        return judge_joint(newer, candidates)['contradictions']
-    return judge_joint(newer, candidates, complete=lambda prompt: (complete(prompt), {}))['contradictions']
+        return judge_joint(newer, candidates)["contradictions"]
+    return judge_joint(newer, candidates, complete=lambda prompt: (complete(prompt), {}))["contradictions"]
 
 
 def _queue_path(root: str) -> str:
@@ -163,7 +164,7 @@ def judge_joint(newer: str, candidates: list, complete=None) -> dict[str, set[st
     from unimem.llm_runtime import purpose
 
     offered = {fact.id: fact.statement for fact in candidates[:15]}
-    empty = {"duplicates": set(), "contradictions": set()}
+    empty: dict[str, set[str]] = {"duplicates": set(), "contradictions": set()}
     if not offered:
         return empty
     try:
@@ -180,8 +181,11 @@ def judge_joint(newer: str, candidates: list, complete=None) -> dict[str, set[st
             identities = payload.get(key, payload.get("replaces", []) if key == "contradictions" else [])
             # Strings and object keys are iterable too. Neither is a validated
             # decision, and malformed output must never close a fact's window.
-            if (not isinstance(identities, list) or len(identities) > 15
-                    or any(not isinstance(identity, str) for identity in identities)):
+            if (
+                not isinstance(identities, list)
+                or len(identities) > 15
+                or any(not isinstance(identity, str) for identity in identities)
+            ):
                 return empty
             result[key] = {identity for identity in identities if identity in offered}
         if result["duplicates"] & result["contradictions"]:
