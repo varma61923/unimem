@@ -193,12 +193,14 @@ def test_http_and_cli_export_use_the_real_wire_format(tmp_path, monkeypatch, cap
                          headers={"Content-Type": "application/json", "Authorization": "Bearer test-root-token"})
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request, timeout=5)
-        assert error.value.code == 400
+        with error.value:
+            assert error.value.code == 400
         request = urllib.request.Request(endpoint, data=json.dumps(body).encode(), headers={
             "Content-Type": "application/json", "Authorization": "Bearer test-root-token", "X-Container-Tag": "b"})
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request, timeout=5)
-        assert error.value.code == 403
+        with error.value:
+            assert error.value.code == 403
     finally:
         server.shutdown()
         server.server_close()

@@ -103,10 +103,10 @@ def build_vectors() -> dict:
         ledgers.append({"rows": rows, "hashes": ref_ledger(rows)})
     digests = []
     for n in (0, 1, 5, 40):
-        rows = [[f"m{rng.randint(0, 3)}", f"o{k}", rng.choice(["injected", "withheld"]),
+        digest_rows = [[f"m{rng.randint(0, 3)}", f"o{k}", rng.choice(["injected", "withheld"]),
                  rng.choice(["true", "false", ""]), "2026-01-01T00:00:00+00:00", "", "r1", "0.5", "salt-1"]
                 for k in range(n)]
-        digests.append({"rows": rows, "digest": ref_digest(rows)})
+        digests.append({"rows": digest_rows, "digest": ref_digest(digest_rows)})
     revisions = []
     for fm, body in (
             ({"applies_when": "when  a  refund  is asked", "do_not_apply_when": "never", "tags": ["b", "a"]},
@@ -245,10 +245,11 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
         with urllib.request.urlopen(request, timeout=10) as resp:  # nosec B310 - scheme checked above
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:
-        try:
-            return exc.code, json.loads(exc.read() or b"{}")
-        except ValueError:
-            return exc.code, {}
+        with exc:
+            try:
+                return exc.code, json.loads(exc.read() or b"{}")
+            except ValueError:
+                return exc.code, {}
     except (urllib.error.URLError, OSError) as exc:
         return 0, {"error": str(exc)}
 

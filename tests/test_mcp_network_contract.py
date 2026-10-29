@@ -104,7 +104,8 @@ def request_status(
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status
     except urllib.error.HTTPError as exc:
-        return exc.code
+        with exc:
+            return exc.code
 
 
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])

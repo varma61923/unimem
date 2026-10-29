@@ -62,7 +62,12 @@ def _redirect_target_is_public(url: str) -> bool:
     except ValueError:
         answers = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80),
                                      type=socket.SOCK_STREAM)
-        addresses = [ipaddress.ip_address(answer[4][0].split("%", 1)[0]) for answer in answers]
+        addresses = []
+        for answer in answers:
+            address = answer[4][0]
+            if not isinstance(address, str):
+                return False
+            addresses.append(ipaddress.ip_address(address.split("%", 1)[0]))
     return bool(addresses) and all(
         address.is_global and not address.is_multicast
         and not getattr(address, "is_site_local", False) for address in addresses
@@ -101,12 +106,16 @@ def _get(url: str, user_agent: str, timeout: float, limit: int) -> tuple[str, by
     if limit <= 0:
         raise ValueError("web crawling response size limit must be positive")
     req = urllib.request.Request(url, headers={"User-Agent": user_agent})
-    with _OPENER.open(req, timeout=timeout) as resp:  # nosec B310 - http(s) only, checked above
-        ctype = str(resp.headers.get("Content-Type", "") or "")
-        raw = resp.read(limit + 1)
-        if len(raw) > limit:
-            raise ValueError("web crawling response exceeds size limit")
-        return ctype, raw
+    try:
+        with _OPENER.open(req, timeout=timeout) as resp:  # nosec B310 - http(s) only, checked above
+            ctype = str(resp.headers.get("Content-Type", "") or "")
+            raw = resp.read(limit + 1)
+            if len(raw) > limit:
+                raise ValueError("web crawling response exceeds size limit")
+            return ctype, raw
+    except urllib.error.HTTPError as exc:
+        exc.close()
+        raise
 
 
 def _robots_allowed(url: str, user_agent: str, timeout: float) -> bool:
@@ -115,7 +124,8 @@ def _robots_allowed(url: str, user_agent: str, timeout: float) -> bool:
     try:
         _ctype, raw = _get(robots_url, user_agent, timeout, MAX_ROBOTS_BYTES)
     except urllib.error.HTTPError as exc:
-        return exc.code not in (401, 403)
+        with exc:
+            return exc.code not in (401, 403)
     except ValueError:
         # Truncated robots rules must never silently turn a disallow into allow.
         return False

@@ -99,12 +99,14 @@ def _post(url: str, headers: dict, body: dict, timeout: float, retries: int) -> 
             with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - configured API URL
                 return json.loads(response.read())
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")[:500]
-            if exc.code in (408, 409, 429, 500, 502, 503, 504) and attempt < retries:
+            with exc:
+                status = exc.code
+                detail = exc.read(4096).decode("utf-8", "replace")[:500]
+            if status in (408, 409, 429, 500, 502, 503, 504) and attempt < retries:
                 time.sleep(delay)
                 delay *= 2
                 continue
-            raise HarnessError(f"model API {exc.code}: {detail}") from None
+            raise HarnessError(f"model API {status}: {detail}") from None
         except (urllib.error.URLError, TimeoutError) as exc:
             if attempt < retries:
                 time.sleep(delay)
