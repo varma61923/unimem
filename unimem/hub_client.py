@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp import ClientSession
+
 import asyncio
 import contextlib
 import glob
@@ -153,6 +158,7 @@ def _validate_hub_url(hub_url: str) -> None:
             "the API key is sent as a Bearer token on every call. Use https://, "
             "or connect to localhost/127.0.0.1 for local development."
         )
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
         ip = ipaddress.ip_address(hostname)
     except ValueError:
@@ -486,10 +492,13 @@ class HubSession:
         self._max_attempts = max_attempts
         self._probe = probe
         self._gate = gate if gate is not None else _RateLimitGate()
-        self._session = None
+        self._session: ClientSession | None = None
 
     async def call(self, name: str, arguments: dict[str, Any], *, retry_transport: bool = True) -> dict:
         """One tool call, with retries."""
+        current_session = self._session
+        if current_session is None:
+            raise HubConnectionError("Hub session is not open")
         last_exc: Exception | None = None
         attempts = 0
         transport_attempts = 0
@@ -501,7 +510,7 @@ class HubSession:
                 self._probe.reset()
             await self._gate.wait()
             try:
-                result = _unwrap_result(name, await self._session.call_tool(name, arguments))
+                result = _unwrap_result(name, await current_session.call_tool(name, arguments))
                 refusal = _tool_rate_limit(result)
                 if refusal is not None:
                     raise refusal
@@ -718,6 +727,8 @@ async def _call_tool(
                 break
             await asyncio.sleep(_backoff_delay(attempt, exc))
 
+    if last_exc is None:
+        raise HubConfigurationError("max_attempts must be a positive integer")
     raise _transport_failure(hub_url, attempts, last_exc) from last_exc
 
 
@@ -899,6 +910,8 @@ async def push_active_lessons(
             if result.get("error"):
                 return PushResult(slug=slug, hub_trace_id=str(existing_hub_id), error=result["error"])
             amended_id = result.get("id")
+            if not isinstance(amended_id, str) or not amended_id.strip() or len(amended_id) > 256:
+                return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
             try:
                 await asyncio.to_thread(_write_hub_push_fields, path, amended_id, fingerprint)
             except Exception as exc:  # noqa: BLE001 - the Hub write already succeeded; a
@@ -933,6 +946,8 @@ async def push_active_lessons(
             return PushResult(slug=slug, hub_trace_id=None, error=result["error"])
 
         hub_trace_id = result.get("id")
+        if not isinstance(hub_trace_id, str) or not hub_trace_id.strip() or len(hub_trace_id) > 256:
+            return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
         try:
             await asyncio.to_thread(_write_hub_push_fields, path, hub_trace_id, fingerprint)
         except Exception as exc:  # noqa: BLE001 - see the amend branch above for why this
@@ -1024,6 +1039,8 @@ async def push_captured_traces(
             if result.get("error"):
                 return PushResult(slug=slug, hub_trace_id=str(existing_hub_id), error=result["error"])
             amended_id = result.get("id")
+            if not isinstance(amended_id, str) or not amended_id.strip() or len(amended_id) > 256:
+                return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
             try:
                 await asyncio.to_thread(_write_hub_push_fields, path, amended_id, fingerprint)
             except Exception as exc:  # noqa: BLE001 - see push_active_lessons's identical
@@ -1059,6 +1076,8 @@ async def push_captured_traces(
             return PushResult(slug=slug, hub_trace_id=None, error=result["error"])
 
         new_id = result.get("id")
+        if not isinstance(new_id, str) or not new_id.strip() or len(new_id) > 256:
+            return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
         try:
             await asyncio.to_thread(_write_hub_push_fields, path, new_id, fingerprint)
         except Exception as exc:  # noqa: BLE001 - see the amend branch above for why this

@@ -7,8 +7,8 @@ import pytest
 httpx2 = pytest.importorskip("httpx2")
 streamable = pytest.importorskip("mcp.client.streamable_http")
 
-from hub import smoke
-from unimem import hub_client
+from hub import smoke  # noqa: E402
+from unimem import hub_client  # noqa: E402
 
 
 @pytest.mark.asyncio
