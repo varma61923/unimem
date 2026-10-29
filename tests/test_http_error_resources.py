@@ -35,10 +35,10 @@ def test_robots_status_checks_close_the_refusal(monkeypatch, status, allowed):
     body = io.BytesIO(b"refused")
     error = urllib.error.HTTPError("https://example.com/robots.txt", status, "refused", {}, body)
 
-    def fail(*args):
+    def fail(*args, **kwargs):
         raise error
 
-    monkeypatch.setattr(web_crawler, "_get", fail)
+    monkeypatch.setattr(web_crawler, "_OPENER", SimpleNamespace(open=fail))
     assert web_crawler._robots_allowed("https://example.com/page", "test", 1) is allowed
     assert body.closed
 

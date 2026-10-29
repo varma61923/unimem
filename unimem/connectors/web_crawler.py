@@ -114,6 +114,7 @@ def _get(url: str, user_agent: str, timeout: float, limit: int) -> tuple[str, by
                 raise ValueError("web crawling response exceeds size limit")
             return ctype, raw
     except urllib.error.HTTPError as exc:
+        # The fetch boundary owns the body; callers may retain status metadata.
         exc.close()
         raise
 
@@ -124,8 +125,7 @@ def _robots_allowed(url: str, user_agent: str, timeout: float) -> bool:
     try:
         _ctype, raw = _get(robots_url, user_agent, timeout, MAX_ROBOTS_BYTES)
     except urllib.error.HTTPError as exc:
-        with exc:
-            return exc.code not in (401, 403)
+        return exc.code not in (401, 403)
     except ValueError:
         # Truncated robots rules must never silently turn a disallow into allow.
         return False
