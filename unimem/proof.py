@@ -66,8 +66,12 @@ def _design(kit: functions.FunctionKit, daily: float, baseline, effect, rate):
 
 def _state_for(kit, label, fc, vpo, registration, *, synthetic, now) -> dict:
     return {
-        "schema": SCHEMA, "label": label, "kit": kit.to_dict(),
-        "baseline": fc.baseline, "effect": fc.effect, "rate": fc.rate,
+        "schema": SCHEMA,
+        "label": label,
+        "kit": kit.to_dict(),
+        "baseline": fc.baseline,
+        "effect": fc.effect,
+        "rate": fc.rate,
         "daily_occasions": fc.daily_occasions,
         "planned_occasions": fc.design.occasions_needed,
         "forecast_days_to_verdict": fc.days_to_verdict,
@@ -80,10 +84,19 @@ def _state_for(kit, label, fc, vpo, registration, *, synthetic, now) -> dict:
 
 
 def start(
-    root: str, kit: functions.FunctionKit, *, label: str, daily: float,
-    value_per_occasion: float | None = None, baseline: float | None = None,
-    effect: float | None = None, rate: float | None = None, max_days: int = MAX_DAYS,
-    force: bool = False, salt: str | None = None, now: datetime.datetime | None = None,
+    root: str,
+    kit: functions.FunctionKit,
+    *,
+    label: str,
+    daily: float,
+    value_per_occasion: float | None = None,
+    baseline: float | None = None,
+    effect: float | None = None,
+    rate: float | None = None,
+    max_days: int = MAX_DAYS,
+    force: bool = False,
+    salt: str | None = None,
+    now: datetime.datetime | None = None,
 ) -> tuple[dict, functions.Forecast]:
     """Forecast, refuse what cannot answer, start the holdout, register the design."""
     label = (label or "").strip()
@@ -96,7 +109,8 @@ def start(
         raise ProofError(
             f"this store already has a proof in progress ({existing['label']!r}, started "
             f"{existing['started_at'][:10]}). Report it, or pass --force to start a new one "
-            "(which begins a fresh randomization; earlier assignments are not pooled in).")
+            "(which begins a fresh randomization; earlier assignments are not pooled in)."
+        )
     try:
         fc = _design(kit, daily, baseline, effect, rate)
     except ValueError as exc:
@@ -106,35 +120,49 @@ def start(
             f"at {daily:g} {kit.occasion_label}s a day a verdict takes ~{fc.days_to_verdict} days, "
             f"beyond {max_days}. A run that cannot answer in time is a spent pilot.\n\n"
             + functions.render_forecast(fc)
-            + "\n\nRaise the volume, accept a larger effect (--effect), or pass --force.")
+            + "\n\nRaise the volume, accept a larger effect (--effect), or pass --force."
+        )
     config = holdout_io.configure(
-        root, rate=fc.rate, detect=fc.effect, salt=salt, note=f"Agent Learning Proof: {label}")
+        root, rate=fc.rate, detect=fc.effect, salt=salt, note=f"Agent Learning Proof: {label}"
+    )
     registration = prereg.register(
-        primary_outcome=kit.outcome.success, minimum_practical_effect=fc.effect,
-        holdout_rate=fc.rate, planned_occasions=fc.design.occasions_needed,
-        stopping_rule=prereg.STOP_SEQUENTIAL, salt=config.salt,
+        primary_outcome=kit.outcome.success,
+        minimum_practical_effect=fc.effect,
+        holdout_rate=fc.rate,
+        planned_occasions=fc.design.occasions_needed,
+        stopping_rule=prereg.STOP_SEQUENTIAL,
+        salt=config.salt,
         notes=f"{kit.title}; occasion = one {kit.occasion_label}; window {kit.outcome.window_days:g}d",
-        now=now)
+        now=now,
+    )
     state = _state_for(kit, label, fc, value_per_occasion, registration, synthetic=False, now=now)
     _save_state(root, state)
     return state, fc
 
 
 def start_demo(
-    root: str, kit: functions.FunctionKit, *, value_per_occasion: float | None = None,
-    seed: int = 0, now: datetime.datetime | None = None,
+    root: str,
+    kit: functions.FunctionKit,
+    *,
+    value_per_occasion: float | None = None,
+    seed: int = 0,
+    now: datetime.datetime | None = None,
 ) -> dict:
     """A proof on synthetic data, so the report can be shown before there is any."""
     moment = _now(now)
     fc = functions.forecast(kit, max(1.0, functions.DEMO_OCCASIONS / 30))
     registration = prereg.register(
-        primary_outcome=kit.outcome.success, minimum_practical_effect=kit.planning.effect,
-        holdout_rate=kit.planning.holdout_rate, planned_occasions=fc.design.occasions_needed,
-        stopping_rule=prereg.STOP_SEQUENTIAL, salt=f"demo-{kit.key}-{seed}",
-        notes=f"{functions.DEMO_NOTE}: not a customer measurement", now=moment)
+        primary_outcome=kit.outcome.success,
+        minimum_practical_effect=kit.planning.effect,
+        holdout_rate=kit.planning.holdout_rate,
+        planned_occasions=fc.design.occasions_needed,
+        stopping_rule=prereg.STOP_SEQUENTIAL,
+        salt=f"demo-{kit.key}-{seed}",
+        notes=f"{functions.DEMO_NOTE}: not a customer measurement",
+        now=moment,
+    )
     functions.seed_demo(root, kit, seed=seed)
-    state = _state_for(kit, f"demo-{kit.key}", fc, value_per_occasion, registration,
-                       synthetic=True, now=moment)
+    state = _state_for(kit, f"demo-{kit.key}", fc, value_per_occasion, registration, synthetic=True, now=moment)
     _save_state(root, state)
     return state
 
@@ -143,8 +171,9 @@ SIM_MEMORIES = (("sim-helpful-memory", +1), ("sim-harmful-memory", -1), ("sim-ne
 SIM_PLAN_MULTIPLE = 5
 
 
-def simulate_fleet(root: str, kit: functions.FunctionKit, *, seed: int = 0,
-                   occasions: int | None = None, planted: float | None = None) -> dict:
+def simulate_fleet(
+    root: str, kit: functions.FunctionKit, *, seed: int = 0, occasions: int | None = None, planted: float | None = None
+) -> dict:
     """Drive a simulated fleet through the real path of a proof that was just started."""
     import random
 
@@ -152,15 +181,17 @@ def simulate_fleet(root: str, kit: functions.FunctionKit, *, seed: int = 0,
 
     log = holdout_io.holdout_log_path(root)
     if os.path.isfile(log) and os.path.getsize(log) > 0:
-        raise ProofError("simulation needs a fresh store: it would otherwise mix synthetic occasions "
-                         "into a real log")
+        raise ProofError("simulation needs a fresh store: it would otherwise mix synthetic occasions into a real log")
+    state = load_state(root)
+    if state is None:
+        raise ProofError("start a proof before simulating a fleet")
     rng = random.Random(f"sim:{kit.key}:{seed}")
     texts = {slug: f"{slug} (simulation)" for slug, _ in SIM_MEMORIES}
     truth = dict(SIM_MEMORIES)
     current = {"slug": SIM_MEMORIES[0][0]}
-    memory = CausalMemory(lambda q, **kw: [{"id": current["slug"], "memory": texts[current["slug"]]}],
-                          root=root, on_harm="inform")
-    state = load_state(root)
+    memory = CausalMemory(
+        lambda q, **kw: [{"id": current["slug"], "memory": texts[current["slug"]]}], root=root, on_harm="inform"
+    )
     baseline = state["baseline"]
     occasions = occasions or int(state["planned_occasions"]) * SIM_PLAN_MULTIPLE
     planted = planted if planted is not None else max(0.15, 1.5 * float(state["effect"]))
@@ -194,17 +225,15 @@ def _mode(state: dict) -> str:
     return "fixed-horizon" if state.get("stopping_rule") == prereg.STOP_FIXED_N else "sequential"
 
 
-def analyse_rows(rows: list, mode: str, audited_at: str, vpo: float | None,
-                 schedules: list | None = None) -> Analysis:
+def analyse_rows(rows: list, mode: str, audited_at: str, vpo: float | None, schedules: list | None = None) -> Analysis:
     from unimem.commands import experiment_cmd
 
     at = datetime.datetime.fromisoformat(audited_at)
     report = integrity.audit(rows, now=at, schedules=schedules or None)
-    effects = experiment.analyze(
-        experiment_cmd._observations(rows, schedules), sequential=(mode == "sequential"))
+    effects = experiment.analyze(experiment_cmd._observations(rows, schedules), sequential=(mode == "sequential"))
     priced = value.compute(
-        effects, report, value_per_occasion=vpo,
-        overlap=value.overlap_from_assignments(rows), assignments=rows)
+        effects, report, value_per_occasion=vpo, overlap=value.overlap_from_assignments(rows), assignments=rows
+    )
     return Analysis(rows, report, effects, mode, audited_at, priced)
 
 
@@ -250,24 +279,38 @@ def status(root: str, *, now: datetime.datetime | None = None) -> Status:
     planned = int(state["planned_occasions"])
     registration = prereg.Preregistration.from_dict(state["preregistration"])
     base = dict(
-        label=state["label"], synthetic=bool(state.get("synthetic")), kit_key=state["kit"]["key"],
-        started_at=state["started_at"], days_elapsed=round(elapsed, 1), planned_occasions=planned,
-        occasions=occasions, resolved_occasions=resolved,
+        label=state["label"],
+        synthetic=bool(state.get("synthetic")),
+        kit_key=state["kit"]["key"],
+        started_at=state["started_at"],
+        days_elapsed=round(elapsed, 1),
+        planned_occasions=planned,
+        occasions=occasions,
+        resolved_occasions=resolved,
         progress=min(1.0, resolved / planned) if planned else 0.0,
     )
     if not rows:
-        return Status(**base, projected_days_remaining=None, state="no-data", integrity="",
-                      prereg_note=prereg.check(registration).note,
-                      next_step="No assignments yet. Retrieve with an occasion id and report the outcome "
-                                "under the same id (`unimem function show` has the occasion and outcome model).")
-    analysis = analyse_rows(rows, _mode(state), moment.isoformat(), state.get("value_per_occasion"),
-                            allocation.history(root))
+        return Status(
+            **base,
+            projected_days_remaining=None,
+            state="no-data",
+            integrity="",
+            prereg_note=prereg.check(registration).note,
+            next_step="No assignments yet. Retrieve with an occasion id and report the outcome "
+            "under the same id (`unimem function show` has the occasion and outcome model).",
+        )
+    analysis = analyse_rows(
+        rows, _mode(state), moment.isoformat(), state.get("value_per_occasion"), allocation.history(root)
+    )
     check = prereg.check(
-        registration, actual_salt=rows[0].salt,
+        registration,
+        actual_salt=rows[0].salt,
         actual_holdout_rate=sum(r.rate for r in rows) / len(rows),
-        actual_detectable=state["effect"], actual_occasions=resolved,
+        actual_detectable=state["effect"],
+        actual_occasions=resolved,
         first_observation_at=min((r.at for r in rows if r.at is not None), default=None),
-        actual_primary_outcome=registration.primary_outcome)
+        actual_primary_outcome=registration.primary_outcome,
+    )
     memories = [dataclasses.asdict(e) for e in analysis.effects]
     undecided = [e for e in analysis.effects if e.verdict == experiment.VERDICT_UNDERPOWERED]
     rate_per_day = resolved / elapsed if elapsed > 0.01 and resolved else None
@@ -275,28 +318,48 @@ def status(root: str, *, now: datetime.datetime | None = None) -> Status:
     if rate_per_day and resolved < planned:
         remaining = round((planned - resolved) / rate_per_day, 1)
     if not analysis.report.readable:
-        phase, step = "compromised", ("The experiment cannot be trusted as it stands; no effect or "
-                                      "value is stated. Fix what the findings name, then start a fresh "
-                                      "randomization (`unimem experiment --configure`).")
+        phase, step = (
+            "compromised",
+            (
+                "The experiment cannot be trusted as it stands; no effect or "
+                "value is stated. Fix what the findings name, then start a fresh "
+                "randomization (`unimem experiment --configure`)."
+            ),
+        )
     elif undecided and resolved < planned:
-        phase, step = "collecting", (f"{len(undecided)} memory/memories not yet decided; "
-                                     f"{planned - resolved:,} more resolved occasions planned.")
+        phase, step = (
+            "collecting",
+            (
+                f"{len(undecided)} memory/memories not yet decided; "
+                f"{planned - resolved:,} more resolved occasions planned."
+            ),
+        )
     else:
         phase, step = "ready", "Enough to report: `unimem proof report`."
     findings = [
         {"severity": f.severity, "check": f.check, "headline": f.headline}
-        for f in analysis.report.findings if f.severity != integrity.SEVERITY_OK
+        for f in analysis.report.findings
+        if f.severity != integrity.SEVERITY_OK
     ]
-    return Status(**base, projected_days_remaining=remaining, state=phase,
-                  integrity=analysis.report.verdict, findings=findings, memories=memories,
-                  prereg_note=check.note, deviations=[d.headline for d in check.deviations],
-                  next_step=step)
+    return Status(
+        **base,
+        projected_days_remaining=remaining,
+        state=phase,
+        integrity=analysis.report.verdict,
+        findings=findings,
+        memories=memories,
+        prereg_note=check.note,
+        deviations=[d.headline for d in check.deviations],
+        next_step=step,
+    )
 
 
 def render_status(s: Status) -> str:
     banner = "**SYNTHETIC DEMO DATA -- not a customer measurement.**\n\n" if s.synthetic else ""
     lines = [
-        f"# Proof: {s.label}", "", banner + f"State: **{s.state}**  ·  {s.resolved_occasions:,} of "
+        f"# Proof: {s.label}",
+        "",
+        banner + f"State: **{s.state}**  ·  {s.resolved_occasions:,} of "
         f"{s.planned_occasions:,} planned occasions resolved ({s.progress:.0%}), day {s.days_elapsed:g}",
     ]
     if s.projected_days_remaining is not None:
@@ -309,7 +372,8 @@ def render_status(s: Status) -> str:
         for m in s.memories:
             lines.append(
                 f"| `{m['lesson_slug']}` | {m['verdict']} | {m['effect']:+.1%} | "
-                f"[{m['ci_low']:+.1%}, {m['ci_high']:+.1%}] | {m['n_injected']} / {m['n_withheld']} |")
+                f"[{m['ci_low']:+.1%}, {m['ci_high']:+.1%}] | {m['n_injected']} / {m['n_withheld']} |"
+            )
     lines += ["", s.prereg_note] + [f"- deviation: {d}" for d in s.deviations]
     lines += ["", f"**Next:** {s.next_step}"]
     return "\n".join(lines)
@@ -327,14 +391,19 @@ _NOT_SHOWN = (
 
 def _headline(state: dict, a: Analysis, final: bool) -> str:
     if not a.report.readable:
-        return ("**No figure is stated.** The experiment is COMPROMISED by a named mechanism "
-                "(below); every effect computed from it would be biased in a direction nobody "
-                "can state.")
+        return (
+            "**No figure is stated.** The experiment is COMPROMISED by a named mechanism "
+            "(below); every effect computed from it would be biased in a direction nobody "
+            "can state."
+        )
     helps = [e for e in a.effects if e.verdict == experiment.VERDICT_HELPS]
     hurts = [e for e in a.effects if e.verdict == experiment.VERDICT_HURTS]
     undecided = [e for e in a.effects if e.verdict == experiment.VERDICT_UNDERPOWERED]
-    parts = [f"{len(helps)} memory/memories HELP", f"{len(hurts)} HURT",
-             f"{len(a.effects) - len(helps) - len(hurts) - len(undecided)} show no measurable effect"]
+    parts = [
+        f"{len(helps)} memory/memories HELP",
+        f"{len(hurts)} HURT",
+        f"{len(a.effects) - len(helps) - len(hurts) - len(undecided)} show no measurable effect",
+    ]
     if undecided:
         parts.append(f"{len(undecided)} not yet decided")
     text = "; ".join(parts) + "."
@@ -359,14 +428,16 @@ def harm_recovery(a: Analysis, vpo: float | None) -> dict | None:
     spread_high = sum((m.ci_high - m.occasions_improved) ** 2 for m in lost) ** 0.5
     rate = a.value.rate if vpo else None
     return {
-        "memories": [m.slug for m in lost], "occasions": occasions,
+        "memories": [m.slug for m in lost],
+        "occasions": occasions,
         "ci_95": [occasions - spread_high, occasions + spread_low],
         "money": occasions * rate if rate else None,
     }
 
 
-def build_record(root: str, state: dict, *, key: bytes | None, org_id: str,
-                 now: datetime.datetime | None = None) -> tuple[dict, str, Analysis]:
+def build_record(
+    root: str, state: dict, *, key: bytes | None, org_id: str, now: datetime.datetime | None = None
+) -> tuple[dict, str, Analysis]:
     """The machine-readable record, the raw CSV text, and the analysis behind them."""
     moment = _now(now)
     rows = _current_rows(root)
@@ -375,57 +446,97 @@ def build_record(root: str, state: dict, *, key: bytes | None, org_id: str,
     audited_at = moment.isoformat()
     schedules = [s for s in allocation.history(root) if s.salt == rows[0].salt]
     a = analyse_rows(rows, _mode(state), audited_at, state.get("value_per_occasion"), schedules)
+    value_report = a.value
+    if value_report is None:
+        raise ProofError("proof analysis did not produce a value report")
     export = raw_export.export(rows)
     registration = prereg.Preregistration.from_dict(state["preregistration"])
     check = prereg.check(
-        registration, actual_salt=rows[0].salt,
+        registration,
+        actual_salt=rows[0].salt,
         actual_holdout_rate=sum(r.rate for r in rows) / len(rows),
         actual_detectable=state["effect"],
         actual_occasions=len({r.occasion_id for r in rows if r.succeeded is not None}),
         first_observation_at=min((r.at for r in rows if r.at is not None), default=None),
-        actual_primary_outcome=registration.primary_outcome)
+        actual_primary_outcome=registration.primary_outcome,
+    )
     resolved = len({r.occasion_id for r in rows if r.succeeded is not None})
     final = resolved >= int(state["planned_occasions"]) or all(
-        e.verdict != experiment.VERDICT_UNDERPOWERED for e in a.effects)
-    ledger = a.value.ledger() if a.value is not None else []
+        e.verdict != experiment.VERDICT_UNDERPOWERED for e in a.effects
+    )
+    ledger = value_report.ledger() if a.value is not None else []
     signature = None
     if key is not None:
         signature = value.sign_ledger(
-            ledger, key, org_id=org_id, issued_at=audited_at,
-            evidence_digest=export.digest, prereg_fingerprint=check.fingerprint)
+            ledger,
+            key,
+            org_id=org_id,
+            issued_at=audited_at,
+            evidence_digest=export.digest,
+            prereg_fingerprint=check.fingerprint,
+        )
     policy = retrieval_io.read_harm_policy(root)
     hurts = [e.lesson_slug for e in a.effects if e.verdict == experiment.VERDICT_HURTS]
     record = {
-        "schema": SCHEMA, "label": state["label"], "synthetic": bool(state.get("synthetic")),
-        "final": final, "mode": a.mode, "audited_at": audited_at, "org_id": org_id,
-        "design": {k: state[k] for k in ("kit", "baseline", "effect", "rate", "daily_occasions",
-                                         "planned_occasions", "value_per_occasion", "started_at")},
-        "preregistration": state["preregistration"], "preregistration_fingerprint": check.fingerprint,
-        "preregistration_clean": check.clean, "deviations": [d.headline for d in check.deviations],
-        "integrity": {"verdict": a.report.verdict, "readable": a.report.readable,
-                      "findings": [dataclasses.asdict(f) for f in a.report.findings]},
+        "schema": SCHEMA,
+        "label": state["label"],
+        "synthetic": bool(state.get("synthetic")),
+        "final": final,
+        "mode": a.mode,
+        "audited_at": audited_at,
+        "org_id": org_id,
+        "design": {
+            k: state[k]
+            for k in (
+                "kit",
+                "baseline",
+                "effect",
+                "rate",
+                "daily_occasions",
+                "planned_occasions",
+                "value_per_occasion",
+                "started_at",
+            )
+        },
+        "preregistration": state["preregistration"],
+        "preregistration_fingerprint": check.fingerprint,
+        "preregistration_clean": check.clean,
+        "deviations": [d.headline for d in check.deviations],
+        "integrity": {
+            "verdict": a.report.verdict,
+            "readable": a.report.readable,
+            "findings": [dataclasses.asdict(f) for f in a.report.findings],
+        },
         "memories": _memory_rows(a),
-        "harmful": {"memories": hurts, "store_policy": policy,
-                    "withdrawn_automatically": bool(hurts) and policy == "withdraw",
-                    "recoverable": harm_recovery(a, state.get("value_per_occasion"))},
+        "harmful": {
+            "memories": hurts,
+            "store_policy": policy,
+            "withdrawn_automatically": bool(hurts) and policy == "withdraw",
+            "recoverable": harm_recovery(a, state.get("value_per_occasion")),
+        },
         "value": {
-            "readable": a.value.readable, "reason": a.value.reason,
-            "aggregate_readable": a.value.aggregate_readable,
-            "occasions_improved": a.value.occasions_improved,
-            "ci_95": [a.value.ci_low, a.value.ci_high], "money": a.value.money,
+            "readable": value_report.readable,
+            "reason": value_report.reason,
+            "aggregate_readable": value_report.aggregate_readable,
+            "occasions_improved": value_report.occasions_improved,
+            "ci_95": [value_report.ci_low, value_report.ci_high],
+            "money": value_report.money,
             "value_per_occasion": state.get("value_per_occasion"),
-            "memories": [dataclasses.asdict(m) for m in a.value.memories],
+            "memories": [dataclasses.asdict(m) for m in value_report.memories],
         },
         "ledger": [dataclasses.asdict(e) for e in ledger],
         "ledger_root": value.ledger_root(ledger),
         # The adaptive-allocation schedules behind any rate change, so a verifier can
         # check every assignment's rate against the schedule in force when it was made.
         "allocation": [{**s.body(), "digest": s.digest} for s in schedules],
-        "evidence": {"digest": export.digest, "rows": export.n_rows, "occasions": export.n_occasions,
-                     "file": DATA_NAME},
+        "evidence": {
+            "digest": export.digest,
+            "rows": export.n_rows,
+            "occasions": export.n_occasions,
+            "file": DATA_NAME,
+        },
         "signature": signature,
-        "signed_over": ["org_id", "audited_at", "ledger_root", "evidence.digest",
-                        "preregistration_fingerprint"],
+        "signed_over": ["org_id", "audited_at", "ledger_root", "evidence.digest", "preregistration_fingerprint"],
     }
     return record, export.csv_text, a
 
@@ -435,68 +546,122 @@ def render_report(record: dict, a: Analysis) -> str:
     kit = d["kit"]
     lines = [f"# Agent Learning Proof: {record['label']}", ""]
     if record["synthetic"]:
-        lines += ["> **SYNTHETIC DEMO DATA -- not a customer measurement.** Outcomes were drawn by the "
-                  "tool from planted effects so this report can be shown before there is real data.", ""]
+        lines += [
+            "> **SYNTHETIC DEMO DATA -- not a customer measurement.** Outcomes were drawn by the "
+            "tool from planted effects so this report can be shown before there is real data.",
+            "",
+        ]
     lines += [
         f"Function: **{kit['title']}**. Occasion: one {kit['occasion']['label']}. "
         f"Success: {kit['outcome']['success']}. Window: {kit['outcome']['window_days']:g} days.",
-        "", "## Result", "", _headline(record, a, record["final"]), "",
-        integrity.render(a.report), "", "## What each memory did", "",
-        "| Memory | Verdict | Effect | 95% CI | Injected | Withheld |", "|---|---|---|---|---|---|",
+        "",
+        "## Result",
+        "",
+        _headline(record, a, record["final"]),
+        "",
+        integrity.render(a.report),
+        "",
+        "## What each memory did",
+        "",
+        "| Memory | Verdict | Effect | 95% CI | Injected | Withheld |",
+        "|---|---|---|---|---|---|",
     ]
     for m in record["memories"]:
-        lines.append(f"| `{m['lesson_slug']}` | **{m['verdict']}** | {m['effect']:+.1%} | "
-                     f"[{m['ci_low']:+.1%}, {m['ci_high']:+.1%}] | {m['n_injected']} | {m['n_withheld']} |")
+        lines.append(
+            f"| `{m['lesson_slug']}` | **{m['verdict']}** | {m['effect']:+.1%} | "
+            f"[{m['ci_low']:+.1%}, {m['ci_high']:+.1%}] | {m['n_injected']} | {m['n_withheld']} |"
+        )
     lines.append("")
     if a.mode == "sequential":
-        lines += ["_Intervals are anytime-valid: they stay valid however often the run was looked at, "
-                  "which is why they are wider than a single look at a finished run would give._", ""]
+        lines += [
+            "_Intervals are anytime-valid: they stay valid however often the run was looked at, "
+            "which is why they are wider than a single look at a finished run would give._",
+            "",
+        ]
     h = record["harmful"]
     if h["memories"]:
-        lines += ["## Harmful memories", "",
-                  "These made outcomes WORSE: " + ", ".join(f"`{s}`" for s in h["memories"]) + ". "
-                  + ("The store's policy is `withdraw`, so they are no longer delivered."
-                     if h["withdrawn_automatically"] else
-                     "The store's policy is `inform`, so they are still being delivered: "
-                     "`unimem retrieval --on-harm withdraw` stops that."), ""]
+        lines += [
+            "## Harmful memories",
+            "",
+            "These made outcomes WORSE: "
+            + ", ".join(f"`{s}`" for s in h["memories"])
+            + ". "
+            + (
+                "The store's policy is `withdraw`, so they are no longer delivered."
+                if h["withdrawn_automatically"]
+                else "The store's policy is `inform`, so they are still being delivered: "
+                "`unimem retrieval --on-harm withdraw` stops that."
+            ),
+            "",
+        ]
         rec = h.get("recoverable")
         if rec:
             lo, hi = rec["ci_95"]
             money = f" (about {rec['money']:,.2f} at your rate)" if rec["money"] is not None else ""
-            lines += [f"Over the measured window they cost about **{rec['occasions']:,.0f} occasions**{money}, "
-                      f"95% interval {lo:,.0f} to {hi:,.0f}. That is what stopping them gives back; it "
-                      "is measured, not forecast, and it is not billed.", ""]
+            lines += [
+                f"Over the measured window they cost about **{rec['occasions']:,.0f} occasions**{money}, "
+                f"95% interval {lo:,.0f} to {hi:,.0f}. That is what stopping them gives back; it "
+                "is measured, not forecast, and it is not billed.",
+                "",
+            ]
     if a.value is not None:
         lines += [value.render(a.value), ""]
-    lines += ["## Pre-registration", "",
-              ("Registered before the run and run as registered." if record["preregistration_clean"]
-               else "Registered, with deviations the reader should weigh:"), ""]
+    lines += [
+        "## Pre-registration",
+        "",
+        (
+            "Registered before the run and run as registered."
+            if record["preregistration_clean"]
+            else "Registered, with deviations the reader should weigh:"
+        ),
+        "",
+    ]
     lines += [f"- {x}" for x in record["deviations"]]
     lines += [f"- fingerprint `{record['preregistration_fingerprint']}`", ""]
     lines += ["## Ledger and signature", ""]
     if record["ledger"]:
         lines += ["| # | Memory | Verdict | Occasions improved | Rate | Amount |", "|---|---|---|---|---|---|"]
         for e in record["ledger"]:
-            lines.append(f"| {e['index']} | `{e['slug']}` | {e['verdict']} | {e['occasions_improved']:+,.1f} "
-                         f"| {e['rate']:g} | {e['money']:,.2f} |")
+            lines.append(
+                f"| {e['index']} | `{e['slug']}` | {e['verdict']} | {e['occasions_improved']:+,.1f} "
+                f"| {e['rate']:g} | {e['money']:,.2f} |"
+            )
         lines.append("")
     else:
-        lines += ["No ledger: nothing is billable here (no agreed value per occasion, an unreadable "
-                  "experiment, or nothing established).", ""]
+        lines += [
+            "No ledger: nothing is billable here (no agreed value per occasion, an unreadable "
+            "experiment, or nothing established).",
+            "",
+        ]
     lines += [f"Ledger root `{record['ledger_root']}`", f"Data digest `{record['evidence']['digest']}`", ""]
-    lines += [("Signed by the issuer over the ledger root, the data digest and the pre-registration "
-               f"fingerprint (HMAC-SHA256, org `{record['org_id']}`, {record['audited_at']})."
-               if record["signature"] else
-               "**Not signed.** The chain and the data digest still check; without an issuer "
-               "signature a party with write access could replace the whole package.")]
-    lines += ["", "## Check it yourself", "",
-              f"`{RECORD_NAME}` is this report in machine-readable form and `{DATA_NAME}` is one row per "
-              "arm decision, including those that never got an outcome. Run:", "",
-              "    unimem proof verify <this directory> [--key-file KEY]", "",
-              "It recomputes the audit, every estimate and the value arithmetic from the CSV alone, "
-              "and checks the digest, the ledger chain, the pre-registration fingerprint and the "
-              "signature. The digest rule is in `unimem/raw_export.py` and is short enough to "
-              "reimplement in any language.", "", "## What this does not show", "", _NOT_SHOWN, ""]
+    lines += [
+        (
+            "Signed by the issuer over the ledger root, the data digest and the pre-registration "
+            f"fingerprint (HMAC-SHA256, org `{record['org_id']}`, {record['audited_at']})."
+            if record["signature"]
+            else "**Not signed.** The chain and the data digest still check; without an issuer "
+            "signature a party with write access could replace the whole package."
+        )
+    ]
+    lines += [
+        "",
+        "## Check it yourself",
+        "",
+        f"`{RECORD_NAME}` is this report in machine-readable form and `{DATA_NAME}` is one row per "
+        "arm decision, including those that never got an outcome. Run:",
+        "",
+        "    unimem proof verify <this directory> [--key-file KEY]",
+        "",
+        "It recomputes the audit, every estimate and the value arithmetic from the CSV alone, "
+        "and checks the digest, the ledger chain, the pre-registration fingerprint and the "
+        "signature. The digest rule is in `unimem/raw_export.py` and is short enough to "
+        "reimplement in any language.",
+        "",
+        "## What this does not show",
+        "",
+        _NOT_SHOWN,
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -507,13 +672,15 @@ def read_key(path: str) -> bytes:
     except OSError as exc:
         raise ProofError(f"cannot read the key file: {exc.strerror or exc}") from None
     if len(key) < MIN_KEY_BYTES:
-        raise ProofError(f"a signing key under {MIN_KEY_BYTES} bytes can be guessed; use a longer one "
-                         "(e.g. `openssl rand -hex 32`)")
+        raise ProofError(
+            f"a signing key under {MIN_KEY_BYTES} bytes can be guessed; use a longer one (e.g. `openssl rand -hex 32`)"
+        )
     return key
 
 
-def build(root: str, out_dir: str, *, key: bytes | None = None, org_id: str = "",
-          now: datetime.datetime | None = None) -> dict:
+def build(
+    root: str, out_dir: str, *, key: bytes | None = None, org_id: str = "", now: datetime.datetime | None = None
+) -> dict:
     """Write the package into `out_dir` and return its record."""
     state = load_state(root)
     if state is None:
@@ -522,10 +689,12 @@ def build(root: str, out_dir: str, *, key: bytes | None = None, org_id: str = ""
     os.makedirs(out_dir, exist_ok=True)
     from unimem import proof_page
 
-    for name, text in ((MARKDOWN_NAME, render_report(record, a)),
-                       (PAGE_NAME, proof_page.render(record)),
-                       (RECORD_NAME, json.dumps(record, indent=2, sort_keys=True) + "\n"),
-                       (DATA_NAME, csv_text)):
+    for name, text in (
+        (MARKDOWN_NAME, render_report(record, a)),
+        (PAGE_NAME, proof_page.render(record)),
+        (RECORD_NAME, json.dumps(record, indent=2, sort_keys=True) + "\n"),
+        (DATA_NAME, csv_text),
+    ):
         with open(os.path.join(out_dir, name), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
     return record
@@ -553,10 +722,19 @@ def rows_from_csv(csv_text: str) -> list[integrity.Assignment]:
             continue
         try:
             memory, occasion, arm, succeeded, assigned, resolved, revision, rate, salt = cells
-            rows.append(integrity.Assignment(
-                lesson=memory, occasion_id=occasion, injected=(arm == "injected"), rate=float(rate),
-                salt=salt, succeeded={"true": True, "false": False, "": None}[succeeded],
-                at=when(assigned), resolved_at=when(resolved), revision=revision or None))
+            rows.append(
+                integrity.Assignment(
+                    lesson=memory,
+                    occasion_id=occasion,
+                    injected=(arm == "injected"),
+                    rate=float(rate),
+                    salt=salt,
+                    succeeded={"true": True, "false": False, "": None}[succeeded],
+                    at=when(assigned),
+                    resolved_at=when(resolved),
+                    revision=revision or None,
+                )
+            )
         except (ValueError, KeyError) as exc:
             raise ProofError(f"assignments.csv row {number} is unreadable: {exc}") from None
     return rows
@@ -604,10 +782,15 @@ def verify(directory: str, *, key: bytes | None = None) -> list[Check]:
 
     checks: list[Check] = []
     digest = record["evidence"]["digest"]
-    checks.append(Check("data digest", PASS if raw_export.verify(csv_text, digest) else FAIL,
-                        "assignments.csv hashes to the digest the package commits to"
-                        if raw_export.verify(csv_text, digest) else
-                        "assignments.csv does not hash to the recorded digest: the data was changed"))
+    checks.append(
+        Check(
+            "data digest",
+            PASS if raw_export.verify(csv_text, digest) else FAIL,
+            "assignments.csv hashes to the digest the package commits to"
+            if raw_export.verify(csv_text, digest)
+            else "assignments.csv does not hash to the recorded digest: the data was changed",
+        )
+    )
 
     try:
         rows = rows_from_csv(csv_text)
@@ -624,61 +807,110 @@ def verify(directory: str, *, key: bytes | None = None) -> list[Check]:
     problems = _diff_memories(record["memories"], _memory_rows(a))
     if record["integrity"]["verdict"] != a.report.verdict:
         problems.append(f"integrity: report says {record['integrity']['verdict']}, data gives {a.report.verdict}")
-    checks.append(Check(
-        "recomputed estimates", FAIL if problems else PASS,
-        "; ".join(problems[:6]) if problems else
-        f"{len(a.effects)} memories and the validity audit recomputed from {len(rows)} rows"))
+    checks.append(
+        Check(
+            "recomputed estimates",
+            FAIL if problems else PASS,
+            "; ".join(problems[:6])
+            if problems
+            else f"{len(a.effects)} memories and the validity audit recomputed from {len(rows)} rows",
+        )
+    )
 
     recovery = harm_recovery(a, vpo)
     recorded_recovery = record["harmful"].get("recoverable")
     same_recovery = (recovery is None) == (recorded_recovery is None) and (
-        recovery is None or (
+        recovery is None
+        or (
             recovery["memories"] == recorded_recovery["memories"]
             and _same(recovery["occasions"], recorded_recovery["occasions"])
             and all(_same(x, y) for x, y in zip(recovery["ci_95"], recorded_recovery["ci_95"]))
             and (recovery["money"] is None) == (recorded_recovery["money"] is None)
-            and (recovery["money"] is None or _same(recovery["money"], recorded_recovery["money"]))))
-    checks.append(Check("recomputed harm recovery", PASS if same_recovery else FAIL,
-                        "what withdrawing the harmful memories would give back follows from the data"
-                        if same_recovery else "the harm-recovery figure does not follow from the data"))
+            and (recovery["money"] is None or _same(recovery["money"], recorded_recovery["money"]))
+        )
+    )
+    checks.append(
+        Check(
+            "recomputed harm recovery",
+            PASS if same_recovery else FAIL,
+            "what withdrawing the harmful memories would give back follows from the data"
+            if same_recovery
+            else "the harm-recovery figure does not follow from the data",
+        )
+    )
 
     ledger = a.value.ledger() if a.value is not None else []
     recomputed = [dataclasses.asdict(e) for e in ledger]
     recorded = record["ledger"]
     same = len(recomputed) == len(recorded) and all(
-        all(_same(x[k], y[k]) for k in x) for x, y in zip(recorded, recomputed))
-    checks.append(Check("recomputed value ledger", PASS if same else FAIL,
-                        f"{len(recorded)} line(s) match the arithmetic on the data" if same else
-                        "the ledger does not follow from the data and the agreed rate"))
+        all(_same(x[k], y[k]) for k in x) for x, y in zip(recorded, recomputed)
+    )
+    checks.append(
+        Check(
+            "recomputed value ledger",
+            PASS if same else FAIL,
+            f"{len(recorded)} line(s) match the arithmetic on the data"
+            if same
+            else "the ledger does not follow from the data and the agreed rate",
+        )
+    )
 
     entries = [value.LedgerEntry(**e) for e in recorded]
     bad = value.verify_ledger(entries)
-    checks.append(Check("ledger chain", PASS if bad is None else FAIL,
-                        "every line follows from the one before it" if bad is None else
-                        f"line {bad} does not follow from the previous: the ledger was edited"))
+    checks.append(
+        Check(
+            "ledger chain",
+            PASS if bad is None else FAIL,
+            "every line follows from the one before it"
+            if bad is None
+            else f"line {bad} does not follow from the previous: the ledger was edited",
+        )
+    )
 
     try:
         registration = prereg.Preregistration.from_dict(record["preregistration"])
         fingerprint_ok = registration.fingerprint() == record["preregistration_fingerprint"]
     except prereg.PreregError as exc:
         fingerprint_ok, _ = False, exc
-    checks.append(Check("pre-registration", PASS if fingerprint_ok else FAIL,
-                        "the registered design matches its fingerprint" if fingerprint_ok else
-                        "the registered design does not match its fingerprint: it was changed"))
+    checks.append(
+        Check(
+            "pre-registration",
+            PASS if fingerprint_ok else FAIL,
+            "the registered design matches its fingerprint"
+            if fingerprint_ok
+            else "the registered design does not match its fingerprint: it was changed",
+        )
+    )
 
     if not record.get("signature"):
-        checks.append(Check("issuer signature", UNSIGNED,
-                            "this package carries no signature, so who issued it is not established"))
+        checks.append(
+            Check(
+                "issuer signature", UNSIGNED, "this package carries no signature, so who issued it is not established"
+            )
+        )
     elif key is None:
-        checks.append(Check("issuer signature", SKIP,
-                            "a signature is present; pass the issuer's key (--key-file) to check it"))
+        checks.append(
+            Check("issuer signature", SKIP, "a signature is present; pass the issuer's key (--key-file) to check it")
+        )
     else:
         ok = value.verify_ledger_signature(
-            entries, record["signature"], key, org_id=record["org_id"], issued_at=record["audited_at"],
-            evidence_digest=digest, prereg_fingerprint=record["preregistration_fingerprint"])
-        checks.append(Check("issuer signature", PASS if ok else FAIL,
-                            "signed by the holder of this key over this ledger, data and design" if ok else
-                            "the signature does not verify: wrong key, or the package was changed"))
+            entries,
+            record["signature"],
+            key,
+            org_id=record["org_id"],
+            issued_at=record["audited_at"],
+            evidence_digest=digest,
+            prereg_fingerprint=record["preregistration_fingerprint"],
+        )
+        checks.append(
+            Check(
+                "issuer signature",
+                PASS if ok else FAIL,
+                "signed by the holder of this key over this ledger, data and design"
+                if ok
+                else "the signature does not verify: wrong key, or the package was changed",
+            )
+        )
     return checks
 
 

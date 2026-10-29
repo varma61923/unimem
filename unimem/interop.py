@@ -1,4 +1,5 @@
 """COGX-style portable envelope plus third-party memory dump adapters."""
+
 from __future__ import annotations
 
 import datetime
@@ -44,7 +45,7 @@ def _as_text(value: object) -> str:
         return str(value)[:_MAX_TEXT]
 
 
-def _slugify(title: str) -> str:
+def _slugify(title: object) -> str:
     slug = _SLUG_RE.sub("-", str(title or "").lower()).strip("-")
     return slug[:60] or "imported"
 
@@ -52,9 +53,7 @@ def _slugify(title: str) -> str:
 def make_record(kind: str, data: dict[str, Any]) -> dict[str, Any]:
     """One envelope record. Raises ValueError on a bad kind or data."""
     if kind not in ACCEPTED_KINDS:
-        raise ValueError(
-            f"unknown record kind {kind!r}; expected one of {', '.join(ACCEPTED_KINDS)}"
-        )
+        raise ValueError(f"unknown record kind {kind!r}; expected one of {', '.join(ACCEPTED_KINDS)}")
     if not isinstance(data, dict):
         raise ValueError(f"record data for kind {kind!r} must be a mapping")
     return {"kind": kind, "data": data}
@@ -87,13 +86,9 @@ def loads_cogx(text: str) -> dict[str, Any]:
     if not isinstance(doc, dict):
         raise ValueError("not a COGX document: top level must be an object")
     if doc.get("format") != COGX_FORMAT:
-        raise ValueError(
-            f"not a COGX document: format is {doc.get('format')!r}, expected {COGX_FORMAT!r}"
-        )
+        raise ValueError(f"not a COGX document: format is {doc.get('format')!r}, expected {COGX_FORMAT!r}")
     if doc.get("schema_version") not in (SCHEMA_VERSION, str(SCHEMA_VERSION)):
-        raise ValueError(
-            f"unsupported COGX schema_version {doc.get('schema_version')!r}"
-        )
+        raise ValueError(f"unsupported COGX schema_version {doc.get('schema_version')!r}")
     records = doc.get("records")
     if not isinstance(records, list):
         raise ValueError("not a COGX document: 'records' must be a list")
@@ -126,11 +121,7 @@ def read_cogx(path: str) -> dict[str, Any]:
 
 def is_cogx_document(obj: object) -> bool:
     """True when *obj* (parsed JSON) looks like a COGX envelope."""
-    return (
-        isinstance(obj, dict)
-        and obj.get("format") == COGX_FORMAT
-        and isinstance(obj.get("records"), list)
-    )
+    return isinstance(obj, dict) and obj.get("format") == COGX_FORMAT and isinstance(obj.get("records"), list)
 
 
 def detect_file_format(path: str) -> str:
@@ -151,8 +142,7 @@ def detect_file_format(path: str) -> str:
         return "jsonl"
 
 
-def _lesson_records(root: str, status: str | None = None,
-                     agent_type: str | None = None) -> list[dict[str, Any]]:
+def _lesson_records(root: str, status: str | None = None, agent_type: str | None = None) -> list[dict[str, Any]]:
     from unimem.commands._format import read_or_warn
 
     out: list[dict[str, Any]] = []
@@ -168,13 +158,18 @@ def _lesson_records(root: str, status: str | None = None,
             continue
         if agent_type is not None and str(fm.get("agent_type") or "") != agent_type:
             continue
-        stem = os.path.basename(path)[:-len(".md")]
-        slug = stem[len("lesson_"):] if stem.startswith("lesson_") else stem
-        out.append(make_record(KIND_LESSON, {
-            "slug": slug,
-            "frontmatter": fm,
-            "body": body,
-        }))
+        stem = os.path.basename(path)[: -len(".md")]
+        slug = stem[len("lesson_") :] if stem.startswith("lesson_") else stem
+        out.append(
+            make_record(
+                KIND_LESSON,
+                {
+                    "slug": slug,
+                    "frontmatter": fm,
+                    "body": body,
+                },
+            )
+        )
     return out
 
 
@@ -223,27 +218,33 @@ def _block_records(root: str) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for block in blocks:
         try:
-            out.append(make_record(KIND_BLOCK, {
-                "name": block.name,
-                "content": block.content,
-                "max_chars": block.max_chars,
-                "metadata": block.metadata,
-            }))
+            out.append(
+                make_record(
+                    KIND_BLOCK,
+                    {
+                        "name": block.name,
+                        "content": block.content,
+                        "max_chars": block.max_chars,
+                        "metadata": block.metadata,
+                    },
+                )
+            )
         except Exception:
             continue
     return out
 
 
-def collect_store(root: str, kinds: list[str] | tuple[str, ...] | None = None,
-                   status: str | None = None,
-                   agent_type: str | None = None) -> list[dict[str, Any]]:
+def collect_store(
+    root: str,
+    kinds: list[str] | tuple[str, ...] | None = None,
+    status: str | None = None,
+    agent_type: str | None = None,
+) -> list[dict[str, Any]]:
     """Read a store into envelope-style records."""
     want = tuple(kinds) if kinds is not None else RECORD_KINDS
     for kind in want:
         if kind not in RECORD_KINDS:
-            raise ValueError(
-                f"unknown collect kind {kind!r}; expected one of {', '.join(RECORD_KINDS)}"
-            )
+            raise ValueError(f"unknown collect kind {kind!r}; expected one of {', '.join(RECORD_KINDS)}")
     out: list[dict[str, Any]] = []
     if KIND_LESSON in want:
         out.extend(_lesson_records(root, status=status, agent_type=agent_type))
@@ -261,10 +262,12 @@ def collect_store(root: str, kinds: list[str] | tuple[str, ...] | None = None,
         data = row["data"]
         kind = row["kind"]
         metadata = data.get("frontmatter", data)
-        memory_class = ("lesson" if kind == KIND_LESSON else data.get("memory_type", "general")
-                        if kind == KIND_FACT else kind)
-        return policy_io.permits(root, {"memory_type": memory_class,
-                                       "scopes": metadata.get("scopes", [])}, action="export")
+        memory_class = (
+            "lesson" if kind == KIND_LESSON else data.get("memory_type", "general") if kind == KIND_FACT else kind
+        )
+        return policy_io.permits(
+            root, {"memory_type": memory_class, "scopes": metadata.get("scopes", [])}, action="export"
+        )
 
     out = [row for row in out if permitted(row)]
     return out
@@ -286,8 +289,8 @@ def _apply_lesson(root: str, data: dict[str, Any]) -> bool:
         if not fm.get("name") and not data.get("slug"):
             return False
     slug = str(data.get("slug") or fm.get("name") or "imported")
-    slug = slug[:-len(".md")] if slug.endswith(".md") else slug
-    slug = _slugify(slug[len("lesson_"):] if slug.startswith("lesson_") else slug)
+    slug = slug[: -len(".md")] if slug.endswith(".md") else slug
+    slug = _slugify(slug[len("lesson_") :] if slug.startswith("lesson_") else slug)
     if lesson_io.lesson_path(root, slug) is not None:
         return False
     fm = dict(fm)
@@ -327,9 +330,12 @@ def _apply_fact(root: str, data: dict[str, Any]) -> bool:
         confidence = 0.8
     try:
         hierarchical.add_fact(
-            root=root, statement=statement,
+            root=root,
+            statement=statement,
             category=str(data.get("category") or hierarchical.DEFAULT_CATEGORY),
-            scopes=scopes, confidence=confidence, source_trace_id=str(data.get("source_id") or ""),
+            scopes=scopes,
+            confidence=confidence,
+            source_trace_id=str(data.get("source_id") or ""),
             valid_from=data.get("valid_from"),
             valid_until=data.get("valid_until"),
             expires_at=data.get("expires_at") or data.get("expiration_date"),
@@ -349,8 +355,13 @@ def _apply_graph_node(root: str, data: dict[str, Any]) -> bool:
     with graph_mod.batch(root) as txn:
         existing = txn.nodes.get(node_id)
         if existing is not None:
-            graph_mod.add_node(root, node_id, existing.entity_type, name=str(data.get("name") or ""),
-                               properties=data.get("properties") if isinstance(data.get("properties"), dict) else None)
+            graph_mod.add_node(
+                root,
+                node_id,
+                existing.entity_type,
+                name=str(data.get("name") or ""),
+                properties=data.get("properties") if isinstance(data.get("properties"), dict) else None,
+            )
             return True
         fields = {k: v for k, v in data.items() if k in graph_mod.GraphNode.__dataclass_fields__}
         fields["id"] = node_id
@@ -378,7 +389,10 @@ def _apply_graph_edge(root: str, data: dict[str, Any]) -> bool:
         return False
     try:
         edge = graph_mod.add_edge(
-            root, source, target, str(data.get("relation") or graph_mod.FALLBACK_RELATION),
+            root,
+            source,
+            target,
+            str(data.get("relation") or graph_mod.FALLBACK_RELATION),
             weight=data.get("weight", 1.0),
             valid_at=data.get("valid_at") or data.get("valid_from") or None,
             invalid_at=data.get("invalid_at") or data.get("valid_until") or None,
@@ -406,7 +420,12 @@ def _apply_block(root: str, data: dict[str, Any], actor: str) -> bool:
     metadata = data.get("metadata")
     try:
         memory_blocks.set_block(
-            root=root, name=name, content=content, max_chars=max_chars, actor=actor, reason="cogx import",
+            root=root,
+            name=name,
+            content=content,
+            max_chars=max_chars,
+            actor=actor,
+            reason="cogx import",
             metadata=dict(metadata) if isinstance(metadata, dict) else None,
         )
     except memory_blocks.MemoryBlockError:
@@ -425,20 +444,26 @@ def _apply_trace(root: str, data: dict[str, Any], agent_type: str) -> bool:
     tags = data.get("tags")
     tags = [str(t) for t in tags if str(t).strip()] if isinstance(tags, list) else []
     try:
-        trace_io.write_new(root, title=title, context=context, solution=solution, tags=tags,
-                           agent_type=str(data.get("agent_type") or agent_type or "general"))
+        trace_io.write_new(
+            root,
+            title=title,
+            context=context,
+            solution=solution,
+            tags=tags,
+            agent_type=str(data.get("agent_type") or agent_type or "general"),
+        )
     except ValueError:
         return False
     return True
 
 
-def apply_store(root: str, records: list[dict[str, Any]],
-                actor: str = "import", agent_type: str = "general") -> dict[str, int]:
+def apply_store(
+    root: str, records: list[dict[str, Any]], actor: str = "import", agent_type: str = "general"
+) -> dict[str, int]:
     """Write envelope records into a store. Returns per-kind applied counts."""
     from unimem import graph as graph_mod
 
-    counts = {"lesson": 0, "fact": 0, "graph_node": 0, "graph_edge": 0,
-              "block": 0, "trace": 0, "skipped": 0}
+    counts = {"lesson": 0, "fact": 0, "graph_node": 0, "graph_edge": 0, "block": 0, "trace": 0, "skipped": 0}
     appliers = {
         KIND_LESSON: lambda d: _apply_lesson(root, d),
         KIND_FACT: lambda d: _apply_fact(root, d),
@@ -483,14 +508,15 @@ def import_mem0_dump(doc: Any) -> list[dict[str, Any]]:
     from unimem import hierarchical
 
     items = _coerce_items(doc, "memories", "results", "data", "items", "facts")
-    if isinstance(doc, dict) and not items and _as_text(
-            doc.get("memory", doc.get("text", doc.get("content")))):
+    if isinstance(doc, dict) and not items and _as_text(doc.get("memory", doc.get("text", doc.get("content")))):
         items = [doc]
     out: list[dict[str, Any]] = []
     for item in items:
-        meta = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        text = _as_text(item.get("memory", item.get("text",
-                             item.get("content", item.get("statement", item.get("fact"))))))
+        raw_metadata = item.get("metadata")
+        meta = raw_metadata if isinstance(raw_metadata, dict) else {}
+        text = _as_text(
+            item.get("memory", item.get("text", item.get("content", item.get("statement", item.get("fact")))))
+        )
         if not text:
             continue
         user = str(item.get("user_id", item.get("userId", meta.get("user_id", "")))).strip()
@@ -498,7 +524,8 @@ def import_mem0_dump(doc: Any) -> list[dict[str, Any]]:
         if category not in hierarchical.CATEGORIES:
             category = hierarchical.DEFAULT_CATEGORY
         try:
-            confidence = float(item.get("confidence", meta.get("confidence", 0.8)))
+            raw_confidence = item.get("confidence", meta.get("confidence", 0.8))
+            confidence = float(raw_confidence) if raw_confidence is not None else 0.8
         except (TypeError, ValueError):
             confidence = 0.8
         source_id = str(item.get("id", item.get("memory_id", item.get("uuid", "")))).strip()
@@ -522,8 +549,7 @@ def import_mem0_dump(doc: Any) -> list[dict[str, Any]]:
     return out
 
 
-def _lesson_frontmatter(slug: str, title: str, body: str,
-                        agent_type: str, source: str) -> dict[str, Any]:
+def _lesson_frontmatter(slug: str, title: str, body: str, agent_type: str, source: str) -> dict[str, Any]:
     description = (title or body.splitlines()[0] if body else source)[:140] or source
     return {
         "name": slug,
@@ -546,8 +572,9 @@ def import_zep_episodes(doc: Any, agent_type: str = "general") -> list[dict[str,
     items = _coerce_items(doc, "episodes", "messages", "results", "data", "facts", "items")
     out: list[dict[str, Any]] = []
     for item in items:
-        content = _as_text(item.get("content", item.get("text",
-                              item.get("fact", item.get("summary", item.get("statement"))))))
+        content = _as_text(
+            item.get("content", item.get("text", item.get("fact", item.get("summary", item.get("statement")))))
+        )
         if not content:
             continue
         title = _as_text(item.get("title", item.get("name", item.get("role", "")))) or "Zep episode"
@@ -568,9 +595,16 @@ def import_zep_episodes(doc: Any, agent_type: str = "general") -> list[dict[str,
         created = str(item.get("created_at", item.get("createdAt", ""))).strip()
         if created:
             body += f"\n\n<!-- imported from zep episode {raw_id or slug} at {created} -->"
-        out.append(make_record(KIND_LESSON, {
-            "slug": slug, "frontmatter": fm, "body": body,
-        }))
+        out.append(
+            make_record(
+                KIND_LESSON,
+                {
+                    "slug": slug,
+                    "frontmatter": fm,
+                    "body": body,
+                },
+            )
+        )
     return out
 
 
@@ -600,11 +634,7 @@ def import_letta_blocks(doc: Any) -> list[dict[str, Any]]:
         out.append(make_record(KIND_FACT, data))
     items = _coerce_items(doc, "blocks", "core_memory", "memory", "data", "items")
     if isinstance(doc, dict) and not items:
-        items = [
-            {"label": str(k), "value": v}
-            for k, v in doc.items()
-            if isinstance(v, (str, dict)) and k != "format"
-        ]
+        items = [{"label": str(k), "value": v} for k, v in doc.items() if isinstance(v, (str, dict)) and k != "format"]
     for item in items:
         label = str(item.get("label", item.get("name", item.get("key", "")))).strip()
         value = item.get("value", item.get("content", item.get("text", "")))
@@ -620,12 +650,17 @@ def import_letta_blocks(doc: Any) -> list[dict[str, Any]]:
             limit = int(item.get("limit", item.get("max_chars", 2000)))
         except (TypeError, ValueError):
             limit = 2000
-        out.append(make_record(KIND_BLOCK, {
-            "name": label.strip().lower(),
-            "content": content.strip(),
-            "max_chars": max(limit, len(content.strip()), 1),
-            "metadata": {"source": "letta"},
-        }))
+        out.append(
+            make_record(
+                KIND_BLOCK,
+                {
+                    "name": label.strip().lower(),
+                    "content": content.strip(),
+                    "max_chars": max(limit, len(content.strip()), 1),
+                    "metadata": {"source": "letta"},
+                },
+            )
+        )
     return out
 
 
@@ -641,23 +676,33 @@ def import_cognee_dump(doc: Any) -> list[dict[str, Any]]:
             desc = _as_text(node.get("description", node.get("summary", node.get("text", ""))))
             etype = _as_text(node.get("type", node.get("entity_type", "concept"))) or "concept"
             node_id = f"cognee:{raw_id}" if raw_id else f"cognee:{_slugify(name)}"
-            out.append(make_record(KIND_GRAPH_NODE, {
-                "id": node_id,
-                "entity_type": etype,
-                "name": name,
-                "properties": {
-                    "description": desc,
-                    "labels": node.get("labels", []),
-                    "created_at": node.get("created_at"),
-                },
-            }))
+            out.append(
+                make_record(
+                    KIND_GRAPH_NODE,
+                    {
+                        "id": node_id,
+                        "entity_type": etype,
+                        "name": name,
+                        "properties": {
+                            "description": desc,
+                            "labels": node.get("labels", []),
+                            "created_at": node.get("created_at"),
+                        },
+                    },
+                )
+            )
             if desc:
-                out.append(make_record(KIND_FACT, {
-                    "statement": desc,
-                    "category": "general",
-                    "source_id": node_id,
-                    "created_at": str(node.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": desc,
+                            "category": "general",
+                            "source_id": node_id,
+                            "created_at": str(node.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
         for edge in doc.get("edges", []):
             if not isinstance(edge, dict):
                 continue
@@ -666,24 +711,34 @@ def import_cognee_dump(doc: Any) -> list[dict[str, Any]]:
             raw_rel = edge.get("relation", edge.get("relationship_name", edge.get("relationship_type", "relates_to")))
             rel = _as_text(raw_rel) or "relates_to"
             if src and tgt:
-                out.append(make_record(KIND_GRAPH_EDGE, {
-                    "source": f"cognee:{src}" if not src.startswith("cognee:") else src,
-                    "target": f"cognee:{tgt}" if not tgt.startswith("cognee:") else tgt,
-                    "relation": rel,
-                    "properties": {"created_at": edge.get("created_at"), "uuid": str(edge.get("id", ""))},
-                }))
-        for chunk in doc.get("chunks", doc.get("document_chunks", [])):
+                out.append(
+                    make_record(
+                        KIND_GRAPH_EDGE,
+                        {
+                            "source": f"cognee:{src}" if not src.startswith("cognee:") else src,
+                            "target": f"cognee:{tgt}" if not tgt.startswith("cognee:") else tgt,
+                            "relation": rel,
+                            "properties": {"created_at": edge.get("created_at"), "uuid": str(edge.get("id", ""))},
+                        },
+                    )
+                )
+        for chunk in _coerce_items(doc, "chunks", "document_chunks"):
             if not isinstance(chunk, dict):
                 continue
             text = _as_text(chunk.get("text", chunk.get("chunk_text", chunk.get("content", ""))))
             if text:
                 cid = str(chunk.get("id", chunk.get("chunk_id", ""))).strip()
-                out.append(make_record(KIND_FACT, {
-                    "statement": text,
-                    "category": "general",
-                    "source_id": f"cognee:{cid}" if cid else "",
-                    "created_at": str(chunk.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": text,
+                            "category": "general",
+                            "source_id": f"cognee:{cid}" if cid else "",
+                            "created_at": str(chunk.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
     if not out:
         items = _coerce_items(doc, "data_points", "items", "data", "facts", "memories")
         for item in items:
@@ -691,12 +746,17 @@ def import_cognee_dump(doc: Any) -> list[dict[str, Any]]:
             if not text:
                 continue
             iid = str(item.get("id", item.get("uuid", ""))).strip()
-            out.append(make_record(KIND_FACT, {
-                "statement": text,
-                "category": "general",
-                "source_id": f"cognee:{iid}" if iid else "",
-                "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
-            }))
+            out.append(
+                make_record(
+                    KIND_FACT,
+                    {
+                        "statement": text,
+                        "category": "general",
+                        "source_id": f"cognee:{iid}" if iid else "",
+                        "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
+                    },
+                )
+            )
     return out
 
 
@@ -713,30 +773,46 @@ def import_supermemory_dump(doc: Any) -> list[dict[str, Any]]:
             doc_id = str(document.get("id", document.get("customId", ""))).strip()
             name = _slugify(title or doc_id or "document")
             if content:
-                out.append(make_record(KIND_BLOCK, {
-                    "name": name,
-                    "content": content,
-                }))
+                out.append(
+                    make_record(
+                        KIND_BLOCK,
+                        {
+                            "name": name,
+                            "content": content,
+                        },
+                    )
+                )
             if summary:
                 doc_created = str(document.get("createdAt", document.get("created_at", ""))).strip()
-                out.append(make_record(KIND_FACT, {
-                    "statement": summary,
-                    "category": "general",
-                    "source_id": f"supermemory:{doc_id}" if doc_id else "",
-                    "created_at": doc_created or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": summary,
+                            "category": "general",
+                            "source_id": f"supermemory:{doc_id}" if doc_id else "",
+                            "created_at": doc_created or _utcnow_iso(),
+                        },
+                    )
+                )
         for chunk in doc.get("chunks", []):
             if not isinstance(chunk, dict):
                 continue
             text = _as_text(chunk.get("content", chunk.get("embeddedContent", "")))
             if text:
                 cid = str(chunk.get("id", "")).strip()
-                out.append(make_record(KIND_FACT, {
-                    "statement": text,
-                    "category": "general",
-                    "source_id": f"supermemory:{cid}" if cid else "",
-                    "created_at": str(chunk.get("createdAt", chunk.get("created_at", ""))).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": text,
+                            "category": "general",
+                            "source_id": f"supermemory:{cid}" if cid else "",
+                            "created_at": str(chunk.get("createdAt", chunk.get("created_at", ""))).strip()
+                            or _utcnow_iso(),
+                        },
+                    )
+                )
         for mem in doc.get("memories", []):
             if not isinstance(mem, dict):
                 continue
@@ -744,12 +820,17 @@ def import_supermemory_dump(doc: Any) -> list[dict[str, Any]]:
             if not text:
                 continue
             mid = str(mem.get("id", mem.get("memoryId", ""))).strip()
-            out.append(make_record(KIND_FACT, {
-                "statement": text,
-                "category": "general",
-                "source_id": f"supermemory:{mid}" if mid else "",
-                "created_at": str(mem.get("createdAt", mem.get("created_at", ""))).strip() or _utcnow_iso(),
-            }))
+            out.append(
+                make_record(
+                    KIND_FACT,
+                    {
+                        "statement": text,
+                        "category": "general",
+                        "source_id": f"supermemory:{mid}" if mid else "",
+                        "created_at": str(mem.get("createdAt", mem.get("created_at", ""))).strip() or _utcnow_iso(),
+                    },
+                )
+            )
     if not out:
         items = _coerce_items(doc, "memories", "results", "data", "items", "facts")
         for mem in items:
@@ -757,12 +838,17 @@ def import_supermemory_dump(doc: Any) -> list[dict[str, Any]]:
             if not text:
                 continue
             mid = str(mem.get("id", mem.get("memoryId", ""))).strip()
-            out.append(make_record(KIND_FACT, {
-                "statement": text,
-                "category": "general",
-                "source_id": f"supermemory:{mid}" if mid else "",
-                "created_at": str(mem.get("createdAt", mem.get("created_at", ""))).strip() or _utcnow_iso(),
-            }))
+            out.append(
+                make_record(
+                    KIND_FACT,
+                    {
+                        "statement": text,
+                        "category": "general",
+                        "source_id": f"supermemory:{mid}" if mid else "",
+                        "created_at": str(mem.get("createdAt", mem.get("created_at", ""))).strip() or _utcnow_iso(),
+                    },
+                )
+            )
     return out
 
 
@@ -770,7 +856,7 @@ def import_hindsight_dump(doc: Any) -> list[dict[str, Any]]:
     """Convert a Hindsight export (facts, mental_models, observations, directives) to fact and block records."""
     out: list[dict[str, Any]] = []
     if isinstance(doc, dict):
-        for fact in doc.get("facts", doc.get("world_facts", [])):
+        for fact in _coerce_items(doc, "facts", "world_facts"):
             if not isinstance(fact, dict):
                 continue
             text = _as_text(fact.get("text", fact.get("statement", fact.get("content", ""))))
@@ -789,44 +875,64 @@ def import_hindsight_dump(doc: Any) -> list[dict[str, Any]]:
                 if invalid_at:
                     data["valid_until"] = invalid_at
                 out.append(make_record(KIND_FACT, data))
-        for model in doc.get("mental_models", doc.get("models", [])):
+        for model in _coerce_items(doc, "mental_models", "models"):
             if not isinstance(model, dict):
                 continue
             name = _slugify(model.get("name", model.get("title", model.get("id", "mental_model"))))
             content = _as_text(model.get("content", model.get("description", model.get("text", ""))))
             if content:
-                out.append(make_record(KIND_BLOCK, {
-                    "name": name,
-                    "content": content,
-                }))
-                out.append(make_record(KIND_FACT, {
-                    "statement": content,
-                    "category": "general",
-                    "source_id": f"hindsight:{model.get('id', '')}",
-                    "created_at": str(model.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_BLOCK,
+                        {
+                            "name": name,
+                            "content": content,
+                        },
+                    )
+                )
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": content,
+                            "category": "general",
+                            "source_id": f"hindsight:{model.get('id', '')}",
+                            "created_at": str(model.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
         for obs in doc.get("observations", []):
             if not isinstance(obs, dict):
                 continue
             text = _as_text(obs.get("text", obs.get("content", "")))
             if text:
-                out.append(make_record(KIND_FACT, {
-                    "statement": text,
-                    "category": "general",
-                    "source_id": f"hindsight:{obs.get('id', '')}",
-                    "created_at": str(obs.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": text,
+                            "category": "general",
+                            "source_id": f"hindsight:{obs.get('id', '')}",
+                            "created_at": str(obs.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
         for directive in doc.get("directives", []):
             if not isinstance(directive, dict):
                 continue
             text = _as_text(directive.get("text", directive.get("directive", "")))
             if text:
-                out.append(make_record(KIND_FACT, {
-                    "statement": text,
-                    "category": "general",
-                    "source_id": f"hindsight:{directive.get('id', '')}",
-                    "created_at": str(directive.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": text,
+                            "category": "general",
+                            "source_id": f"hindsight:{directive.get('id', '')}",
+                            "created_at": str(directive.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
     if not out:
         items = _coerce_items(doc, "facts", "items", "data", "memories")
         for item in items:
@@ -834,12 +940,17 @@ def import_hindsight_dump(doc: Any) -> list[dict[str, Any]]:
             if not text:
                 continue
             iid = str(item.get("id", "")).strip()
-            out.append(make_record(KIND_FACT, {
-                "statement": text,
-                "category": "general",
-                "source_id": f"hindsight:{iid}" if iid else "",
-                "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
-            }))
+            out.append(
+                make_record(
+                    KIND_FACT,
+                    {
+                        "statement": text,
+                        "category": "general",
+                        "source_id": f"hindsight:{iid}" if iid else "",
+                        "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
+                    },
+                )
+            )
     return out
 
 
@@ -866,7 +977,7 @@ def import_everos_dump(doc: Any) -> list[dict[str, Any]]:
                 if valid_until:
                     data["valid_until"] = valid_until
                 out.append(make_record(KIND_FACT, data))
-        for skill in doc.get("agent_skills", doc.get("skills", [])):
+        for skill in _coerce_items(doc, "agent_skills", "skills"):
             if not isinstance(skill, dict):
                 continue
             name = _as_text(skill.get("name", skill.get("title", ""))) or "skill"
@@ -882,32 +993,49 @@ def import_everos_dump(doc: Any) -> list[dict[str, Any]]:
                 if isinstance(source_cases, list) and source_cases:
                     fm["source_traces"] = [str(c) for c in source_cases]
                 body = f"# {name}\n\n{content}"
-                out.append(make_record(KIND_LESSON, {
-                    "slug": slug, "frontmatter": fm, "body": body,
-                }))
-        for case in doc.get("agent_cases", doc.get("cases", [])):
+                out.append(
+                    make_record(
+                        KIND_LESSON,
+                        {
+                            "slug": slug,
+                            "frontmatter": fm,
+                            "body": body,
+                        },
+                    )
+                )
+        for case in _coerce_items(doc, "agent_cases", "cases"):
             if not isinstance(case, dict):
                 continue
             intent = _as_text(case.get("task_intent", ""))
             insight = _as_text(case.get("insight", case.get("fix", case.get("approach", ""))))
             if insight:
                 statement = f"When {intent}: {insight}" if intent else insight
-                out.append(make_record(KIND_FACT, {
-                    "statement": statement,
-                    "category": "general",
-                    "source_id": f"everos:{case.get('id', '')}",
-                    "created_at": str(case.get("created_at", "")).strip() or _utcnow_iso(),
-                }))
-        for cell in doc.get("memcells", doc.get("episodes", [])):
+                out.append(
+                    make_record(
+                        KIND_FACT,
+                        {
+                            "statement": statement,
+                            "category": "general",
+                            "source_id": f"everos:{case.get('id', '')}",
+                            "created_at": str(case.get("created_at", "")).strip() or _utcnow_iso(),
+                        },
+                    )
+                )
+        for cell in _coerce_items(doc, "memcells", "episodes"):
             if not isinstance(cell, dict):
                 continue
             content = _as_text(cell.get("content", cell.get("text", "")))
             if content:
                 name = _slugify(cell.get("session_id", cell.get("id", "cell")))
-                out.append(make_record(KIND_BLOCK, {
-                    "name": name,
-                    "content": content,
-                }))
+                out.append(
+                    make_record(
+                        KIND_BLOCK,
+                        {
+                            "name": name,
+                            "content": content,
+                        },
+                    )
+                )
     if not out:
         items = _coerce_items(doc, "atomic_facts", "facts", "skills", "items", "data")
         for item in items:
@@ -915,11 +1043,15 @@ def import_everos_dump(doc: Any) -> list[dict[str, Any]]:
             if not text:
                 continue
             iid = str(item.get("id", "")).strip()
-            out.append(make_record(KIND_FACT, {
-                "statement": text,
-                "category": "general",
-                "source_id": f"everos:{iid}" if iid else "",
-                "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
-            }))
+            out.append(
+                make_record(
+                    KIND_FACT,
+                    {
+                        "statement": text,
+                        "category": "general",
+                        "source_id": f"everos:{iid}" if iid else "",
+                        "created_at": str(item.get("created_at", "")).strip() or _utcnow_iso(),
+                    },
+                )
+            )
     return out
-
