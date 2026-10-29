@@ -26,7 +26,7 @@ httpx==0.28.1               # official Encode HTTP client (was pinned to the uno
 # is Python >= 3.11 only, so pinning higher silently drops 3.10 support.
 sqlalchemy[asyncio]==2.0.55
 asyncpg==0.32.0            # async Postgres driver
-alembic==1.20.0
+alembic==1.20.1
 argon2-cffi==25.1.0        # API key hashing
 jsonschema==4.26.0         # protocol/schemas/*.json validation
 PyJWT==2.15.1              # OIDC bearer-token verification (hub/sso.py) -- was
