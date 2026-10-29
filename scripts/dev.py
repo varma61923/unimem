@@ -34,9 +34,14 @@ def main() -> int:
     elif args.task == "lint":
         ruff_bin = shutil.which("ruff") or sys.executable
         if ruff_bin != sys.executable:
-            command = [ruff_bin, "check", ".", "--no-cache", *extra]
+            check_command = [ruff_bin, "check", ".", "--no-cache", *extra]
+            command = [ruff_bin, "format", "--check", ".", *extra]
         else:
-            command = [sys.executable, "-m", "ruff", "check", ".", "--no-cache", *extra]
+            check_command = [sys.executable, "-m", "ruff", "check", ".", "--no-cache", *extra]
+            command = [sys.executable, "-m", "ruff", "format", "--check", ".", *extra]
+        checked = subprocess.run(check_command, cwd=ROOT, env=env, check=False)
+        if checked.returncode:
+            return checked.returncode
     elif args.task == "check":
         command = ["git", "diff", "--check", *extra]
     else:

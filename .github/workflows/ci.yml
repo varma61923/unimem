@@ -602,8 +602,7 @@ jobs:
             unimem/recall.py unimem/memory_authority.py unimem/reranking.py hub/auth.py \
             unimem/conformance.py unimem/connectors/web_crawler.py
 
-      - name: mypy (known findings, informational only)
-        continue-on-error: true
+      - name: mypy (full codebase)
         run: mypy unimem/ hub/ --ignore-missing-imports
 
   deploy-assets:
