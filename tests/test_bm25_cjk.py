@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from unimem import corpus_bin, lesson_cache, retrieval, retrieval_io
@@ -239,9 +241,9 @@ class TestCorpusBinV3:
         scorer = "bm25-v1"
         lessons, fingerprint = _save_load_roundtrip(tmp_path, scorer)
         path = corpus_bin.bin_path(str(tmp_path), scorer)
-        blob = bytearray(open(path, "rb").read())
+        blob = bytearray(Path(path).read_bytes())
         blob[4] = version
-        open(path, "wb").write(bytes(blob))
+        Path(path).write_bytes(bytes(blob))
         assert corpus_bin.load(str(tmp_path), scorer, lessons, fingerprint) is None
         ranked = retrieval.rank_lessons(
             "payment refund", lessons, scorer=scorer, floor=0.0)

@@ -1,6 +1,7 @@
 import json
 import math
 import os
+from pathlib import Path
 
 import pytest
 import yaml
@@ -634,7 +635,7 @@ class TestSemanticPathRunsTheExperiment:
 
         records = [
             json.loads(line)
-            for line in open(holdout_log_path(str(store)), encoding="utf-8")
+            for line in Path(holdout_log_path(str(store))).read_text(encoding='utf-8').splitlines(keepends=True)
             if line.strip()
         ]
         assert {r["lesson"] for r in records} == {"lesson_alpha", "lesson_beta", "lesson_gamma"}
@@ -657,7 +658,7 @@ class TestSemanticPathRunsTheExperiment:
         main(["query", "q", "--experiment", "--occasion-id", "t", "--dest", str(store)])
         slugs = {
             json.loads(line)["lesson"]
-            for line in open(holdout_log_path(str(store)), encoding="utf-8") if line.strip()
+            for line in Path(holdout_log_path(str(store))).read_text(encoding='utf-8').splitlines(keepends=True) if line.strip()
         }
         assert not any(s.startswith("#") for s in slugs)
         assert len(slugs) == 3
@@ -699,7 +700,7 @@ class TestSemanticPathRunsTheExperiment:
         assert "lesson_alpha" not in out and "lesson_beta" in out and "quarantined lesson_alpha" in err
         assert "evil@example.com" not in out + err
         assert main(["query", "q", "--experiment", "--occasion-id", "t", "--dest", str(store)]) == 0
-        logged = {json.loads(line)["lesson"] for line in open(holdout_log_path(str(store)), encoding="utf-8")}
+        logged = {json.loads(line)["lesson"] for line in Path(holdout_log_path(str(store))).read_text(encoding='utf-8').splitlines(keepends=True)}
         assert logged == {"lesson_beta", "lesson_gamma"}
 
     def test_the_agent_type_filter_reaches_the_semantic_script(self, store, monkeypatch):

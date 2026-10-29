@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -94,7 +95,7 @@ class TestAgentLoop:
         result = loop.run(prompt=prompt)
 
         assert result.trace_path
-        content = open(result.trace_path, encoding="utf-8").read()
+        content = Path(result.trace_path).read_text(encoding='utf-8')
         assert "payment processing" in content.lower() or "Agent" in content
 
     def test_max_turns_respected(self, store):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -57,7 +58,7 @@ def test_pinned_vendor_fixtures_stable_ids_and_safe_provenance(provider, tmp_pat
     if detailed.items:
         assert not detailed.items[0].raw["ifc"]["procedure"]
     assert provider in memory_adapters.comparative_report(root)["stores"]
-    assert "secret-token" not in open(fp.filename(root, "lineage.jsonl")).read()
+    assert "secret-token" not in Path(fp.filename(root, 'lineage.jsonl')).read_text()
 
 
 def test_credential_bearing_transport_errors_are_sanitized():

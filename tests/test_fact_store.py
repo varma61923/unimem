@@ -6,9 +6,11 @@ import os
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import _jsonl, fact_store
 from unimem import hierarchical as h
 
@@ -330,15 +332,15 @@ def test_equal_valued_invalid_confidence_cannot_reuse_staged_payload(tmp_path):
 
 def test_migration_checksum_export_and_rebuild(tmp_path):
     old, _ = h.add_fact(str(tmp_path), "Project requires Python 3.10", scopes=["project"])
-    source = open(h._facts_file(str(tmp_path)), "rb").read()
+    source = Path(h._facts_file(str(tmp_path))).read_bytes()
     report = activate(tmp_path)
     assert report["facts"] == 1
     assert report["source_sha256"]
     assert report["normalized_sha256"] == report["destination_sha256"]
-    assert open(h._facts_file(str(tmp_path)), "rb").read() == source
+    assert Path(h._facts_file(str(tmp_path))).read_bytes() == source
     new, _ = h.add_fact(str(tmp_path), "SQLite uses a durable journal", scopes=["project"])
     assert set(h.load_facts(str(tmp_path))) == {old.id, new.id}
-    assert open(h._facts_file(str(tmp_path)), "rb").read() == source
+    assert Path(h._facts_file(str(tmp_path))).read_bytes() == source
     destination = os.path.join(str(tmp_path), "export.jsonl")
     fact_store.export(str(tmp_path), destination)
     assert {row["id"] for row in _jsonl.read_rows(destination)} == {old.id, new.id}
@@ -611,7 +613,7 @@ def test_warm_idle_connections_are_closed_before_fork(tmp_path):
         h.add_fact(root, "child remains usable after a second fork")
 
     worker = multiprocessing.get_context("fork").Process(target=child)
-    worker.start()
+    intentional_fork(worker.start)
     worker.join(timeout=30)
     try:
         assert worker.exitcode == 0

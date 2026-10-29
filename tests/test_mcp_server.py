@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -244,8 +245,7 @@ def test_holdout_assigns_both_arms_and_logs_every_one(server, store):
         assert "holdout_note" in out
     assert arms == {True, False}, "40 occasions produced only one arm"
 
-    lines = [json.loads(x) for x in open(
-        os.path.join(paths.memory_dir(store), "holdout_log.jsonl"), encoding="utf-8")]
+    lines = [json.loads(x) for x in Path(os.path.join(paths.memory_dir(store), 'holdout_log.jsonl')).read_text(encoding='utf-8').splitlines(keepends=True)]
     assert len(lines) == 40
     assert {line["injected"] for line in lines} == {True, False}
 
@@ -764,7 +764,7 @@ def _set_budget(root: str, **kwargs) -> None:
     from unimem import retrieval_io
 
     path = retrieval_io.config_path(root)
-    raw = json.loads(open(path).read()) if os.path.isfile(path) else {}
+    raw = json.loads(Path(path).read_text()) if os.path.isfile(path) else {}
     raw.update(kwargs)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:

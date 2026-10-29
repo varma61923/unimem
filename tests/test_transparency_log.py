@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -12,7 +13,7 @@ from unimem import transparency_log as log
 def test_rfc_golden_vectors():
     assert log.EMPTY == hashlib.sha256(b"").hexdigest()
     assert log.leaf_hash({}) == hashlib.sha256(b"\x00{}").hexdigest()
-    vector = json.loads(open("protocol/conformance/transparency.json").read())
+    vector = json.loads(Path('protocol/conformance/transparency.json').read_text())
     assert log.leaf_hash(vector["statement"]) == vector["leaf_hash"]
     assert log.node_hash(vector["leaf_hash"], vector["leaf_hash"]) == vector["node_hash"]
     # Interoperability with the RFC 6962 reference tree (raw-byte leaves).

@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -177,10 +178,10 @@ def test_keygen_is_private_and_required(store, monkeypatch):
 def test_forced_keygen_replaces_a_loose_key_privately_without_following_links(store, tmp_path):
     path = memfs.keygen(store)
     os.chmod(path, 0o644)
-    old = open(path).read()
+    old = Path(path).read_text()
     memfs.keygen(store, force=True)
     assert os.stat(path).st_mode & 0o077 == 0
-    assert open(path).read() != old
+    assert Path(path).read_text() != old
     if hasattr(os, "symlink"):
         decoy = tmp_path / "decoy"
         os.remove(path)

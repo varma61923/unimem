@@ -5,6 +5,7 @@ import multiprocessing
 import os
 import stat
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +23,7 @@ def test_first_start_is_atomic_across_processes(tmp_path):
     with ProcessPoolExecutor(6, mp_context=ctx) as pool:
         values = list(pool.map(_create, [root] * 24))
     assert len(set(values)) == 1
-    assert json.loads(open(tokens.token_path(root)).read())["token"] == values[0]
+    assert json.loads(Path(tokens.token_path(root)).read_text())["token"] == values[0]
     assert stat.S_IMODE(os.stat(tokens.token_path(root)).st_mode) == 0o600
 
 

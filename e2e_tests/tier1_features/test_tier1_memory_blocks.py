@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from e2e_tests.harness.cli_runner import run_cli
 
@@ -109,7 +110,11 @@ def test_t1_block_sha256_revision_history_audit(isolated_store: str):
     history_file = os.path.join(isolated_store, "memory", "blocks", "history.jsonl")
     assert os.path.exists(history_file), "history.jsonl must exist"
 
-    lines = [json.loads(line) for line in open(history_file, encoding="utf-8") if line.strip()]
+    lines = [
+        json.loads(line)
+        for line in Path(history_file).read_text(encoding="utf-8").splitlines(keepends=True)
+        if line.strip()
+    ]
     audit_entries = [entry for entry in lines if entry.get("block") == "audit_test"]
     assert len(audit_entries) >= 3, "Must have recorded all 3 mutation revisions"
 

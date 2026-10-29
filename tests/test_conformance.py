@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -19,8 +20,7 @@ def test_the_committed_vectors_are_exactly_what_the_reference_produces():
 
 
 def test_the_packaged_vectors_and_the_copy_beside_the_spec_are_identical():
-    assert open(conformance.VECTORS_PATH, encoding="utf-8").read() == open(conformance.SPEC_VECTORS_PATH,
-                                                                           encoding="utf-8").read()
+    assert Path(conformance.VECTORS_PATH).read_text(encoding='utf-8') == Path(conformance.SPEC_VECTORS_PATH).read_text(encoding='utf-8')
 
 
 def test_the_vectors_are_deterministic_and_cover_the_edges():
@@ -93,17 +93,17 @@ def test_a_store_that_flipped_assignments_is_not_randomizing(store):
     for i in range(30):
         holdout_io.assign_and_log(store, ["m1"], occasion_id=f"o{i}", rate=0.5, salt="conf-1", revisions={"m1": "r"})
     path = holdout_io.holdout_log_path(store)
-    rows = [json.loads(line) for line in open(path)]
+    rows = [json.loads(line) for line in Path(path).read_text().splitlines(keepends=True)]
     for row in rows[:5]:
         row["injected"] = not row["injected"]
-    open(path, "w").write("".join(json.dumps(r) + "\n" for r in rows))
+    Path(path).write_text(''.join((json.dumps(r) + '\n' for r in rows)))
     failed = [r for r in conformance.check_store(store) if not r.ok]
     assert [r.name for r in failed] == ["store:assignments follow the randomization"]
 
 
 def test_a_malformed_lesson_fails_the_store_check(store):
     bad = os.path.join(paths.lessons_dir(store), "lesson_bad.md")
-    open(bad, "w").write("---\nname: bad\nstatus: not-a-status\n---\nbody\n")
+    Path(bad).write_text('---\nname: bad\nstatus: not-a-status\n---\nbody\n')
     failed = [r.name for r in conformance.check_store(store) if not r.ok]
     assert "store:lessons validate" in failed
 

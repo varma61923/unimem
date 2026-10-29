@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -121,7 +122,7 @@ def test_a_duplicate_is_a_no_op_and_a_conflict_still_raises(tmp_path):
     assert holdout_io.record_outcome(root, "x", True) is False
     with pytest.raises(holdout_io.ConflictingOutcome):
         holdout_io.record_outcome(root, "x", False)
-    assert sum(1 for _ in open(holdout_io.outcomes_log_path(root), encoding="utf-8")) == 1
+    assert sum(1 for _ in Path(holdout_io.outcomes_log_path(root)).read_text(encoding='utf-8').splitlines(keepends=True)) == 1
 
 
 def test_the_returned_dict_is_a_copy(tmp_path):

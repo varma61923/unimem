@@ -1,6 +1,7 @@
 """`unimem lesson edit`: Markdown-first editing that keeps governance intact."""
 import os
 import sys
+from pathlib import Path
 
 from unimem import frontmatter, lesson_io
 from unimem.cli import main
@@ -69,7 +70,7 @@ def test_secret_in_the_edit_is_refused(tmp_path, capsys):
     root = _store(tmp_path)
     leaked = FILLED + "\nKey: AKIA" + "IOSFODNN7EXAMPLE\n"
     assert main(["lesson", "edit", "edit_me", "--dest", root, "--editor", _editor(tmp_path, _replace_body(leaked))]) == 1
-    assert "AKIA" not in open(lesson_io.lesson_path(root, "edit_me")).read()
+    assert "AKIA" not in Path(lesson_io.lesson_path(root, 'edit_me')).read_text()
 
 
 def test_editing_an_active_lesson_returns_it_to_review(tmp_path, capsys):

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -95,7 +96,7 @@ class TestFactLifecycle:
         result = _cli("fact", "supersede", fact.id, "cache ttl is FIVE minutes", "--dest", store)
         assert result.returncode == 1
         assert "restates" in result.stderr
-        rows = [json.loads(line) for line in open(os.path.join(store, "memory", "facts", "facts.jsonl"))]
+        rows = [json.loads(line) for line in Path(os.path.join(store, 'memory', 'facts', 'facts.jsonl')).read_text().splitlines(keepends=True)]
         assert [r["status"] for r in rows] == ["active"]
 
 

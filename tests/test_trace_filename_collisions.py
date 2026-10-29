@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from unimem import paths
 from unimem.cli import main
@@ -69,7 +70,7 @@ class TestNoCaptureIsLost:
         tdir = paths.traces_dir(str(tmp_path))
         for name in sorted(os.listdir(tdir)):
             if name.endswith(".md") and name != "README.md":
-                bodies.append(open(os.path.join(tdir, name), encoding="utf-8").read())
+                bodies.append(Path(os.path.join(tdir, name)).read_text(encoding='utf-8'))
         assert len(bodies) == 3
         for i in range(3):
             assert any(f"context number {i}" in b for b in bodies), f"lost context {i}"
@@ -84,7 +85,7 @@ class TestNoCaptureIsLost:
         tdir = paths.traces_dir(str(tmp_path))
         files = [n for n in os.listdir(tdir) if n.endswith(".md") and n != "README.md"]
         assert len(files) == 1
-        assert "resolved: true" in open(os.path.join(tdir, files[0]), encoding="utf-8").read()
+        assert "resolved: true" in Path(os.path.join(tdir, files[0])).read_text(encoding='utf-8')
 
     def test_the_occasions_remain_joinable_to_their_arms(self, tmp_path):
         assert main(["init", "--dest", str(tmp_path)]) == 0

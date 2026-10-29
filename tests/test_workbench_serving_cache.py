@@ -3,6 +3,7 @@ import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -65,7 +66,7 @@ def test_same_size_same_mtime_edit_replacement_and_deletion_are_fresh(tmp_path):
     path = lesson(tmp_path, "lesson_live")
     first = workbench._lessons(str(tmp_path))[0]
     st = os.stat(path)
-    text = open(path, encoding="utf-8").read().replace("idempotency", "replacement")
+    text = Path(path).read_text(encoding='utf-8').replace("idempotency", "replacement")
     assert len(text.encode()) == st.st_size
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)

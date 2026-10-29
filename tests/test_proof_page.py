@@ -1,6 +1,7 @@
 import os
 import random
 import re
+from pathlib import Path
 
 import pytest
 
@@ -42,7 +43,7 @@ def started(tmp_path):
 def test_the_package_includes_a_self_contained_page(started, tmp_path):
     _run_fleet(started, 900)
     record = _record(started, tmp_path)
-    page = open(tmp_path / "pkg" / proof.PAGE_NAME, encoding="utf-8").read()
+    page = Path(tmp_path / 'pkg' / proof.PAGE_NAME).read_text(encoding='utf-8')
     assert page == proof_page.render(record)
     assert "Agent Learning Proof: Acme support" in page and "What each memory did" in page
     assert all(slug in page for slug in ("helps", "hurts", "null"))
@@ -54,7 +55,7 @@ def test_the_package_includes_a_self_contained_page(started, tmp_path):
 def test_the_page_has_no_script_and_no_external_request(started, tmp_path):
     _run_fleet(started, 900)
     _record(started, tmp_path)
-    page = open(tmp_path / "pkg" / proof.PAGE_NAME, encoding="utf-8").read()
+    page = Path(tmp_path / 'pkg' / proof.PAGE_NAME).read_text(encoding='utf-8')
     assert not re.search(r"<script|src=|<link|@import|url\(", page)
 
 
@@ -68,14 +69,14 @@ def test_a_hostile_memory_name_is_text_never_markup(started, tmp_path):
                                              salt=config.salt, revisions={evil: "r1"})
         holdout_io.record_outcome(root, f"E-{i}", rng.random() < (0.5 if evil in withheld else 0.7))
     _record(root, tmp_path)
-    page = open(tmp_path / "pkg" / proof.PAGE_NAME, encoding="utf-8").read()
+    page = Path(tmp_path / 'pkg' / proof.PAGE_NAME).read_text(encoding='utf-8')
     assert "<img" not in page and "&lt;img src=x onerror=alert(1)&gt;" in page
 
 
 def test_a_compromised_run_shows_no_figure_and_says_why(started, tmp_path):
     _run_fleet(started, 900, rates={i: 0.1 for i in range(300, 900)})
     record = _record(started, tmp_path)
-    page = open(tmp_path / "pkg" / proof.PAGE_NAME, encoding="utf-8").read()
+    page = Path(tmp_path / 'pkg' / proof.PAGE_NAME).read_text(encoding='utf-8')
     assert record["integrity"]["verdict"] == "COMPROMISED"
     assert "no effect is stated" in page and "Why there is no figure" in page
     assert "What each memory did" not in page

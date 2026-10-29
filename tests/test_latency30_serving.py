@@ -6,6 +6,7 @@ import os
 import select
 import signal
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -164,7 +165,7 @@ def test_gateway_cold_changed_and_warm_recall_use_one_verified_scan(tmp_path, mo
     gateway._cached_active(str(tmp_path), frontmatter.read)
     assert len(scans) == 2
     before = os.stat(path)
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding='utf-8')
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text.replace("alpha", "bravo"))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))

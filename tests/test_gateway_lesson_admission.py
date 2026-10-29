@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -51,7 +52,7 @@ def test_durable_revocation_survives_old_active_file_restore(root):
     gw = gateway.Gateway(root, token=TOKEN)
     assert remember(gw, "warm")["deliver"]
     path = lesson_io.lesson_path(root, "lesson_good")
-    old = open(path, encoding="utf-8").read()
+    old = Path(path).read_text(encoding='utf-8')
     lesson_admission.revoke(root, path, actor="console")
     assert remember(gw, "revoked")["deliver"] == []
     with open(path, "w", encoding="utf-8") as file:

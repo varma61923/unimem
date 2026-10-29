@@ -66,7 +66,7 @@ def test_unknown_history_never_skips(tmp_path, monkeypatch):
 
 
 def test_core_gates_always_run_and_heavy_jobs_wait_on_the_filter():
-    jobs = yaml.safe_load(open(".github/workflows/ci.yml"))["jobs"]
+    jobs = yaml.safe_load(Path(".github/workflows/ci.yml").read_text())["jobs"]
     for always in ("test-core", "test-dev", "test-hub", "security-scan", "deploy-assets"):
         assert "if" not in jobs[always] and "needs" not in jobs[always]
     gated = [name for name, job in jobs.items() if job.get("needs") == "changes"]
@@ -75,7 +75,7 @@ def test_core_gates_always_run_and_heavy_jobs_wait_on_the_filter():
 
 
 def test_each_commit_runs_once_and_the_suite_runs_in_parallel():
-    workflow = yaml.safe_load(open(".github/workflows/ci.yml"))
+    workflow = yaml.safe_load(Path(".github/workflows/ci.yml").read_text())
     triggers = workflow.get(True, workflow.get("on"))
     assert triggers["push"] == {"branches": ["main"]}  # branch commits run through their PR only
     jobs = workflow["jobs"]

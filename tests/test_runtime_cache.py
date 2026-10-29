@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.runtime_cache import RuntimeCache
 
 
@@ -100,7 +101,7 @@ def test_child_does_not_inherit_a_locked_cache():
     cache = make_cache()
     cache.get_or_load("k", lambda: "parent")
     cache._lock.acquire()
-    pid = os.fork()
+    pid = intentional_fork(os.fork)
     if pid == 0:
         try:
             import signal
