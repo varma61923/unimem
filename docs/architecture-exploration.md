@@ -61,8 +61,9 @@ graphify diagnose multigraph --json \
   --graph ../unimem-architecture/graphify-out/graph.json
 ```
 
-The workflow checks missing edge endpoints and reviewed
-module and reachability budgets. Its unreachable candidates require inspection: callbacks, SDK exports,
+The workflow rejects empty extractions, duplicate node IDs, missing runtime entry
+points, missing source packages and dangling edge endpoints before enforcing the
+reviewed module and reachability budgets. Its unreachable candidates require inspection: callbacks, SDK exports,
 and generated entry points can be absent from a static call graph. Self-loops
 can reflect recursive calls or imperfect name resolution; inspect them before
 calling them defects. A successful graph audit does not replace type checks,
