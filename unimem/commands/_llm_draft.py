@@ -8,7 +8,8 @@ MAX_EVIDENCE_CHARS = 16_000
 
 
 def _within_budget(lines: list[str], limit: int = MAX_EVIDENCE_CHARS) -> list[str]:
-    kept, used = [], 0
+    kept: list[str] = []
+    used = 0
     for i, line in enumerate(lines):
         used += len(line) + 1
         if used > limit:
