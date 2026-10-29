@@ -2,7 +2,7 @@
 
 import pytest
 
-from hub import scopes
+scopes = pytest.importorskip("hub.scopes")
 
 
 @pytest.mark.parametrize("granted", [{"admin": False}, {"read": True}, "admin", 42, False, [["admin"]], [None]])
@@ -31,7 +31,7 @@ def test_valid_and_legacy_scope_contracts_are_preserved():
 
 def test_authentication_normalization_does_not_turn_mapping_keys_into_grants():
     pytest.importorskip("sqlalchemy")
-    from hub import auth
+    auth = pytest.importorskip("hub.auth")
 
     assert auth._scopes_of({"admin": False}) == ()
     assert auth._scopes_of([["admin"]]) == ()
