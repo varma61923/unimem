@@ -5,6 +5,7 @@ Adapted from Cognee session ledger architecture (#3 L):
 - Groups and attributes usage per session, per model, and per occasion (e.g. recall, extraction, answer).
 - Provides instant session-level and global financial observability for agent workflows.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,7 +49,7 @@ def _lock_file(root: str) -> str:
 def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
     """Calculate estimated cost in USD based on model identifier and token counts."""
     m_clean = str(model or "").lower().strip()
-    rate = DEFAULT_PRICING_PER_MILLION.get("default")
+    rate = DEFAULT_PRICING_PER_MILLION["default"]
 
     for key, (in_rate, out_rate) in DEFAULT_PRICING_PER_MILLION.items():
         if key in m_clean or m_clean in key:
@@ -120,9 +121,15 @@ def record_usage(
 
 def _new_usage_stat() -> dict[str, Any]:
     return {
-        "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-        "cache_hit_calls": 0, "cached_tokens": 0, "known_cost_usd": 0.0,
-        "unpriced_calls": 0, "historical_cached_cost_usd": 0.0,
+        "calls": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cache_hit_calls": 0,
+        "cached_tokens": 0,
+        "known_cost_usd": 0.0,
+        "unpriced_calls": 0,
+        "historical_cached_cost_usd": 0.0,
         "cached_unpriced_calls": 0,
     }
 
@@ -145,8 +152,7 @@ def _add_usage(stat: dict[str, Any], entry: LedgerEntry) -> None:
         if history_known:
             history_cost = metadata.get("historical_cost_usd", entry.cost_usd)
             if isinstance(history_cost, (float, int)) and not isinstance(history_cost, bool):
-                stat["historical_cached_cost_usd"] = round(
-                    stat["historical_cached_cost_usd"] + float(history_cost), 6)
+                stat["historical_cached_cost_usd"] = round(stat["historical_cached_cost_usd"] + float(history_cost), 6)
         else:
             stat["cached_unpriced_calls"] += 1
 

@@ -9,6 +9,7 @@ import os
 import re
 import tempfile
 from dataclasses import dataclass
+from typing import SupportsIndex, SupportsInt
 
 from unimem import dosage, harm, paths, retrieval
 from unimem.configuration import getenv as _configuration_getenv
@@ -53,8 +54,8 @@ def default_rerank() -> str:
 
     return RERANK_CE if rerank_arm.available() else RERANK_NONE
 
-_FUSION_LABEL = re.compile(
-    r"^(?P<mode>rrf|gated)\((?P<lexical>[^+()@]+)\+semantic(?:@(?P<embedder>[\w.-]+))?\)$")
+
+_FUSION_LABEL = re.compile(r"^(?P<mode>rrf|gated)\((?P<lexical>[^+()@]+)\+semantic(?:@(?P<embedder>[\w.-]+))?\)$")
 
 EMBEDDER_TAGS = {
     "multi-qa-mpnet-base-dot-v1": "",
@@ -64,11 +65,16 @@ EMBEDDER_TAGS = {
 
 def embedder_tag(model_name: str | None) -> str:
     return EMBEDDER_TAGS.get(model_name or "", "")
+
+
 _RERANK_LABEL = re.compile(r"^ce:(?P<model>[^()]+)\((?P<inner>.+)\)$")
 
 
 def eligibility_label(
-    scorer: str, fusion: str, rerank: str = RERANK_NONE, embedder: str = "",
+    scorer: str,
+    fusion: str,
+    rerank: str = RERANK_NONE,
+    embedder: str = "",
 ) -> str:
     if fusion in (FUSION_RRF, FUSION_GATED):
         label = f"{fusion}({scorer}+semantic{'@' + embedder if embedder else ''})"
@@ -159,14 +165,17 @@ class RetrievalConfig:
         if not fused:
             return eligibility_label(self.scorer, FUSION_NONE)
         return eligibility_label(self.scorer, self.fusion, embedder=embedder)
+
     configured_at: str = ""
     note: str = ""
     pinned_for_running_experiment: bool = False
 
 
 def _int_or(value: object, default: int) -> int:
+    if not isinstance(value, (str, bytes, bytearray, SupportsInt, SupportsIndex)):
+        return default
     try:
-        parsed = int(value)  # type: ignore[arg-type]
+        parsed = int(value)
     except (TypeError, ValueError, OverflowError):
         return default
     return parsed if parsed >= 0 else default
@@ -240,8 +249,7 @@ def logged_embedding_model(root: str) -> str | None:
     logged = _last_logged_settings(root)
     if logged is None:
         return None
-    if (parse_eligibility_label(logged[0])[1] == FUSION_NONE
-            and not _is_semantic_only(parse_rerank_label(logged[0])[0])):
+    if parse_eligibility_label(logged[0])[1] == FUSION_NONE and not _is_semantic_only(parse_rerank_label(logged[0])[0]):
         return None
     tag = parse_embedder(logged[0])
     return next((name for name, t in EMBEDDER_TAGS.items() if t == tag), None)
@@ -289,31 +297,26 @@ def load_config(root: str) -> RetrievalConfig:
                 return RetrievalConfig(
                     scorer=scorer,
                     floor=_unit_float_or(raw.get("floor"), retrieval.default_floor(scorer)),
-                    max_lessons=_int_or(
-                        raw.get("max_lessons"), dosage.DEFAULT_MAX_LESSONS),
+                    max_lessons=_int_or(raw.get("max_lessons"), dosage.DEFAULT_MAX_LESSONS),
                     max_chars=_int_or(raw.get("max_chars"), dosage.DEFAULT_MAX_CHARS),
                     redundancy_threshold=_unit_float_or(
-                        raw.get("redundancy_threshold"), dosage.DEFAULT_REDUNDANCY_THRESHOLD),
+                        raw.get("redundancy_threshold"), dosage.DEFAULT_REDUNDANCY_THRESHOLD
+                    ),
                     reliability_weight=_unit_float_or(raw.get("reliability_weight"), 0.0),
                     recency_weight=_unit_float_or(raw.get("recency_weight"), 0.0),
                     graph_weight=_nonnegative_float_or(raw.get("graph_weight"), 1.0),
                     fusion=(
                         str(raw["fusion"])
                         if raw.get("fusion") in FUSIONS
-                        else FUSION_NONE if raw.get("fusion")
+                        else FUSION_NONE
+                        if raw.get("fusion")
                         else _unchosen_fusion(root)
                     ),
                     rrf_k=max(1, _int_or(raw.get("rrf_k"), retrieval.DEFAULT_RRF_K)),
                     harm_policy=(
-                        str(raw.get("harm_policy"))
-                        if raw.get("harm_policy") in harm.POLICIES
-                        else harm.POLICY_INFORM
+                        str(raw.get("harm_policy")) if raw.get("harm_policy") in harm.POLICIES else harm.POLICY_INFORM
                     ),
-                    rerank=(
-                        str(raw.get("rerank"))
-                        if raw.get("rerank") in RERANKS
-                        else _unchosen_rerank(root)
-                    ),
+                    rerank=(str(raw.get("rerank")) if raw.get("rerank") in RERANKS else _unchosen_rerank(root)),
                     configured_at=str(raw.get("configured_at") or ""),
                     note=str(raw.get("note") or ""),
                 )
@@ -340,20 +343,28 @@ def load_config(root: str) -> RetrievalConfig:
     return RetrievalConfig(fusion=default_fusion(), rerank=default_rerank())
 
 
-def configure(root: str, *, scorer: str | None = None, floor: float | None = None,
-              fusion: str | None = None, max_lessons: int | None = None,
-              max_chars: int | None = None, redundancy_threshold: float | None = None,
-              reliability_weight: float | None = None, recency_weight: float | None = None,
-              graph_weight: float | None = None,
-              harm_policy: str | None = None, rerank: str | None = None,
-              note: str = "") -> RetrievalConfig:
+def configure(
+    root: str,
+    *,
+    scorer: str | None = None,
+    floor: float | None = None,
+    fusion: str | None = None,
+    max_lessons: int | None = None,
+    max_chars: int | None = None,
+    redundancy_threshold: float | None = None,
+    reliability_weight: float | None = None,
+    recency_weight: float | None = None,
+    graph_weight: float | None = None,
+    harm_policy: str | None = None,
+    rerank: str | None = None,
+    note: str = "",
+) -> RetrievalConfig:
     """Persist this store's retrieval settings. Returns the new settings."""
     current = load_config(root)
     new_scorer = current.scorer if scorer is None else scorer
     if new_scorer not in retrieval.LEXICAL_SCORERS:
         raise ValueError(
-            f"unknown scorer {new_scorer!r}: expected one of "
-            f"{', '.join(repr(s) for s in retrieval.LEXICAL_SCORERS)}"
+            f"unknown scorer {new_scorer!r}: expected one of {', '.join(repr(s) for s in retrieval.LEXICAL_SCORERS)}"
         )
     if floor is not None:
         new_floor = float(floor)
@@ -365,51 +376,26 @@ def configure(root: str, *, scorer: str | None = None, floor: float | None = Non
         raise ValueError(f"relevance floor must be in [0.0, 1.0], got {new_floor}")
     new_fusion = current.fusion if fusion is None else fusion
     if new_fusion not in FUSIONS:
-        raise ValueError(
-            f"unknown fusion mode {new_fusion!r}: expected one of "
-            f"{', '.join(repr(f) for f in FUSIONS)}"
-        )
-    new_redundancy = (
-        current.redundancy_threshold if redundancy_threshold is None
-        else float(redundancy_threshold)
-    )
+        raise ValueError(f"unknown fusion mode {new_fusion!r}: expected one of {', '.join(repr(f) for f in FUSIONS)}")
+    new_redundancy = current.redundancy_threshold if redundancy_threshold is None else float(redundancy_threshold)
     if not 0.0 <= new_redundancy <= 1.0:
-        raise ValueError(
-            f"redundancy threshold must be in [0.0, 1.0] (0 disables it), "
-            f"got {new_redundancy}"
-        )
-    new_reliability_weight = (
-        current.reliability_weight if reliability_weight is None else float(reliability_weight)
-    )
+        raise ValueError(f"redundancy threshold must be in [0.0, 1.0] (0 disables it), got {new_redundancy}")
+    new_reliability_weight = current.reliability_weight if reliability_weight is None else float(reliability_weight)
     if not 0.0 <= new_reliability_weight <= 1.0:
-        raise ValueError(
-            f"reliability weight must be in [0.0, 1.0] (0 disables it), "
-            f"got {new_reliability_weight}"
-        )
-    new_recency_weight = (
-        current.recency_weight if recency_weight is None else float(recency_weight)
-    )
+        raise ValueError(f"reliability weight must be in [0.0, 1.0] (0 disables it), got {new_reliability_weight}")
+    new_recency_weight = current.recency_weight if recency_weight is None else float(recency_weight)
     if not 0.0 <= new_recency_weight <= 1.0:
-        raise ValueError(
-            f"recency weight must be in [0.0, 1.0] (0 disables it), "
-            f"got {new_recency_weight}"
-        )
-    new_graph_weight = (
-        current.graph_weight if graph_weight is None else float(graph_weight)
-    )
+        raise ValueError(f"recency weight must be in [0.0, 1.0] (0 disables it), got {new_recency_weight}")
+    new_graph_weight = current.graph_weight if graph_weight is None else float(graph_weight)
     if not math.isfinite(new_graph_weight) or new_graph_weight < 0.0:
         raise ValueError(f"graph weight must be finite and >= 0.0, got {new_graph_weight}")
     new_rerank = current.rerank if rerank is None else rerank
     if new_rerank not in RERANKS:
-        raise ValueError(
-            f"unknown reranker {new_rerank!r}: expected one of "
-            f"{', '.join(repr(r) for r in RERANKS)}"
-        )
+        raise ValueError(f"unknown reranker {new_rerank!r}: expected one of {', '.join(repr(r) for r in RERANKS)}")
     new_harm_policy = current.harm_policy if harm_policy is None else harm_policy
     if new_harm_policy not in harm.POLICIES:
         raise ValueError(
-            f"unknown harm policy {new_harm_policy!r}: expected one of "
-            f"{', '.join(repr(p) for p in harm.POLICIES)}"
+            f"unknown harm policy {new_harm_policy!r}: expected one of {', '.join(repr(p) for p in harm.POLICIES)}"
         )
 
     config = RetrievalConfig(
@@ -417,10 +403,8 @@ def configure(root: str, *, scorer: str | None = None, floor: float | None = Non
         floor=new_floor,
         fusion=new_fusion,
         rrf_k=current.rrf_k,
-        max_lessons=(
-            current.max_lessons if max_lessons is None else max(0, int(max_lessons))),
-        max_chars=(
-            current.max_chars if max_chars is None else max(0, int(max_chars))),
+        max_lessons=(current.max_lessons if max_lessons is None else max(0, int(max_lessons))),
+        max_chars=(current.max_chars if max_chars is None else max(0, int(max_chars))),
         redundancy_threshold=new_redundancy,
         reliability_weight=new_reliability_weight,
         recency_weight=new_recency_weight,
@@ -435,9 +419,7 @@ def configure(root: str, *, scorer: str | None = None, floor: float | None = Non
     os.makedirs(paths.memory_dir(root), exist_ok=True)
     target = config_path(root)
     with frontmatter.locked(target):
-        fd, tmp = tempfile.mkstemp(
-            dir=os.path.dirname(target) or ".",
-            prefix=CONFIG_NAME + ".", suffix=".tmp")
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target) or ".", prefix=CONFIG_NAME + ".", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
                 json.dump(

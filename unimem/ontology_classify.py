@@ -106,7 +106,7 @@ class Classification:
         return self.type is not None
 
     def to_dict(self) -> dict:
-        out = {"type": self.type, "confidence": round(self.confidence, 4), "method": self.method,
+        out: dict[str, object] = {"type": self.type, "confidence": round(self.confidence, 4), "method": self.method,
                "ancestors": list(self.ancestors)}
         if self.evidence:
             out["evidence"] = [{"source": s, "type": t, "score": round(v, 4)} for s, t, v in self.evidence]
@@ -507,7 +507,13 @@ def _learned_probabilities(name: str, context: str) -> dict[str, float]:
     if os.environ.get("UNIMEM_TYPING_MODEL", "on").strip().lower() == "off" or LEARNED_MODE == "off":
         return {}
     model = ontology_learned.load()
-    return model.probabilities(name, context) if model is not None else {}
+    if model is None:
+        return {}
+    try:
+        return model.probabilities(name, context)
+    except (ValueError, OverflowError):
+        # A corrupt optional classifier must not suppress other type evidence.
+        return {}
 
 
 def by_learned(name: str, context: str, types: list[str],

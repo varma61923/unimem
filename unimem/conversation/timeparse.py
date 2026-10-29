@@ -1,5 +1,6 @@
 """Time in conversation: when a message was said, what its relative time words
 point at, and which window a question asks about. Deterministic, no model."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -7,14 +8,44 @@ import re
 from bisect import bisect_left
 from dataclasses import dataclass
 
-MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august",
-          "september", "october", "november", "december")
-MONTH_NUMBER = {**{m: i for i, m in enumerate(MONTHS, 1)},
-                **{m[:3]: i for i, m in enumerate(MONTHS, 1)}, "sept": 9}
+MONTHS = (
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+)
+MONTH_NUMBER = {**{m: i for i, m in enumerate(MONTHS, 1)}, **{m[:3]: i for i, m in enumerate(MONTHS, 1)}, "sept": 9}
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-NUMBER_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-                "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
-                "a couple of": 2, "a couple": 2, "couple of": 2, "a few": 3, "few": 3, "several": 3}
+NUMBER_WORDS = {
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "a couple of": 2,
+    "a couple": 2,
+    "couple of": 2,
+    "a few": 3,
+    "few": 3,
+    "several": 3,
+}
 SEASONS = {"spring": (3, 5), "summer": (6, 8), "fall": (9, 11), "autumn": (9, 11), "winter": (12, 2)}
 
 _MONTH_RE = "|".join(sorted(MONTH_NUMBER, key=len, reverse=True))
@@ -48,13 +79,16 @@ def _number(word: str) -> int:
 
 # --- when a message was said ---------------------------------------------------
 
-_ISO = re.compile(r"^\s*(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?)?"
-                  r"\s*(Z|[+-]\d{2}:?\d{2})?\s*$")
+_ISO = re.compile(
+    r"^\s*(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.(\d+))?)?"
+    r"\s*(Z|[+-]\d{2}:?\d{2})?\s*$"
+)
 _SLASHED = re.compile(r"^\s*(\d{4})/(\d{1,2})/(\d{1,2})(?:\s*\(\w+\))?(?:\s+(\d{1,2}):(\d{2}))?\s*$")
 _SPOKEN = re.compile(
     rf"^\s*(?:(\d{{1,2}})(?::(\d{{2}}))?\s*([ap])\.?m\.?\s*(?:on\s+)?)?"
     rf"(?:(?:{_WEEKDAY_RE}),?\s+)?(?:(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_RE})\.?|({_MONTH_RE})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?),?\s+(\d{{4}})\s*$",
-    re.I)
+    re.I,
+)
 
 
 _TRAILING_TIME = re.compile(r"^(.*?)[,\s]+(?:at\s+)?(\d{1,2}):(\d{2})(?:\s*([ap])\.?m\.?)?\s*$", re.I)
@@ -81,8 +115,15 @@ def parse_moment(text: str | None) -> dt.datetime | None:
                 offset = tz[1:].replace(":", "")
                 if int(offset[:2]) > 23 or int(offset[2:]) > 59:
                     return None
-            moment = dt.datetime(int(y), int(mo), int(d), int(hh or 0), int(mm or 0), int(ss or 0),
-                                 int((fraction or "").ljust(6, "0")[:6]))
+            moment = dt.datetime(
+                int(y),
+                int(mo),
+                int(d),
+                int(hh or 0),
+                int(mm or 0),
+                int(ss or 0),
+                int((fraction or "").ljust(6, "0")[:6]),
+            )
         except ValueError:
             return None
         # the speaker's wall clock is what "this morning" and "yesterday" refer to, so an
@@ -100,21 +141,24 @@ def parse_moment(text: str | None) -> dt.datetime | None:
         hh, mm, ampm, d1, mon1, mon2, d2, y = m.groups()
         hour = int(hh or 0) % 12 + (12 if (ampm or "").lower() == "p" else 0)
         try:
-            return dt.datetime(int(y), MONTH_NUMBER[(mon1 or mon2).lower().rstrip(".")],
-                               int(d1 or d2), hour, int(mm or 0))
+            return dt.datetime(
+                int(y), MONTH_NUMBER[(mon1 or mon2).lower().rstrip(".")], int(d1 or d2), hour, int(mm or 0)
+            )
         except ValueError:
             return None
     m = _TRAILING_TIME.match(text)
     if m and _SPOKEN.match(m.group(1)):
         day = parse_moment(m.group(1))
-        hour = int(m.group(2)) % 12 + (12 if (m.group(4) or "").lower() == "p" else 0) if m.group(4) \
-            else int(m.group(2))
+        hour = (
+            int(m.group(2)) % 12 + (12 if (m.group(4) or "").lower() == "p" else 0) if m.group(4) else int(m.group(2))
+        )
         if day and hour < 24 and int(m.group(3)) < 60:
             return day.replace(hour=hour, minute=int(m.group(3)))
     return None
 
 
 # --- what a message's relative time words point at -----------------------------
+
 
 @dataclass(frozen=True)
 class Grounding:
@@ -167,13 +211,20 @@ _RELATIVE = re.compile(
     rf"|\b(?P<wrel>last|this|next|on|this past|this coming)\s+(?P<wday>{_WEEKDAY_RE})\b"
     r"|\b(?P<srel>last|this|next)\s+(?P<season>spring|summer|fall|autumn|winter)\b"
     r"|\b(?P<lately>recently|the other day|lately)\b",
-    re.I)
+    re.I,
+)
 
 
-_FUTURE = re.compile(r"\b(?:will|'ll|going to|gonna|plan(?:ning)?|hope to|want to|can't wait|is|are|am|'s|'re"
-                     r"|starts?|begins?|tomorrow|next|upcoming|coming)\b", re.I)
-_PAST = re.compile(r"\b(?:was|were|went|had|did|got|made|saw|took|came|ran|ate|bought|met|said|told"
-                   r"|[a-z]+ed)\b", re.I)
+_FUTURE = re.compile(
+    r"\b(?:will|'ll|going to|gonna|plan(?:ning)?|hope to|want to|can't wait|is|are|am|'s|'re"
+    r"|starts?|begins?|tomorrow|next|upcoming|coming)\b",
+    re.I,
+)
+_PAST = re.compile(
+    r"\b(?:was|were|went|had|did|got|made|saw|took|came|ran|ate|bought|met|said|told"
+    r"|[a-z]+ed)\b",
+    re.I,
+)
 
 
 class _ClauseTense:
@@ -276,7 +327,8 @@ def ground(text: str, anchor: dt.date | dt.datetime | None) -> list[Grounding]:
             if which in ("this", "on") and clauses is None:
                 clauses = _ClauseTense(text)
             ahead = which in ("next", "this coming") or (
-                which in ("this", "on") and clauses.future(m.start(), m.end()))
+                which in ("this", "on") and clauses is not None and clauses.future(m.start(), m.end())
+            )
             if ahead:
                 day = anchor + dt.timedelta(days=(weekday - anchor.weekday()) % 7 or 7)
             else:
@@ -291,13 +343,14 @@ def ground(text: str, anchor: dt.date | dt.datetime | None) -> list[Grounding]:
             elif which == "next":
                 lo, hi = next(sp for sp in spans if sp[0] > anchor)
             else:
-                lo, hi = next((sp for sp in spans if sp[0] <= anchor <= sp[1]),
-                              next(sp for sp in spans if sp[0] > anchor))
+                lo, hi = next(
+                    (sp for sp in spans if sp[0] <= anchor <= sp[1]), next(sp for sp in spans if sp[0] > anchor)
+                )
             text_label = f"{season} {lo.year}"
         elif g["lately"]:
             lo, hi = anchor - dt.timedelta(days=14), anchor
             text_label = f"shortly before {label(anchor)}"
-        if lo is None:
+        if lo is None or hi is None:
             continue
         out.append(Grounding(m.start(), m.end(), m.group(0), text_label, lo, hi))
     return out
@@ -309,7 +362,7 @@ def annotate(text: str, groundings: list[Grounding]) -> str:
         return text
     pieces, cursor = [], 0
     for g in groundings:
-        pieces.append(text[cursor:g.end])
+        pieces.append(text[cursor : g.end])
         pieces.append(f" [{g.label}]")
         cursor = g.end
     pieces.append(text[cursor:])
@@ -320,7 +373,9 @@ def annotate(text: str, groundings: list[Grounding]) -> str:
 
 _Q_EXACT = re.compile(
     rf"\b(?:on\s+)?(?:(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_RE})|({_MONTH_RE})\s+(\d{{1,2}})(?:st|nd|rd|th)?),?"
-    rf"\s+(\d{{4}})\b", re.I)
+    rf"\s+(\d{{4}})\b",
+    re.I,
+)
 _Q_RANGE = re.compile(
     rf"\b(?:between|from)\s+({_MONTH_RE})(?:\s+of)?,?\s+(\d{{4}})\s+(?:and|to|-)\s+({_MONTH_RE})(?:\s+of)?,?\s+(\d{{4}})\b",
     re.I,
@@ -331,8 +386,9 @@ _Q_YEAR_RANGE = re.compile(
 )
 _Q_MONTH = re.compile(rf"\b(?:in\s+|during\s+)?({_MONTH_RE})(?:\s+of)?,?\s+(\d{{4}})\b", re.I)
 _Q_YEAR = re.compile(r"\b(?:in|during|of|since|before|after)\s+((?:19|20)\d{2})\b", re.I)
-_Q_PAST = re.compile(rf"\b(?:in|over|during)\s+the\s+(?:past|last)\s+(?:({_NUM_RE})\s+)?(day|week|month|year)s?\b",
-                     re.I)
+_Q_PAST = re.compile(
+    rf"\b(?:in|over|during)\s+the\s+(?:past|last)\s+(?:({_NUM_RE})\s+)?(day|week|month|year)s?\b", re.I
+)
 
 
 def question_window(question: str, now: dt.date | dt.datetime | None) -> tuple[dt.date, dt.date, str] | None:
@@ -363,8 +419,11 @@ def question_window(question: str, now: dt.date | dt.datetime | None) -> tuple[d
         y1, y2 = int(m.group(1)), int(m.group(2))
         return dt.date(y1, 1, 1), dt.date(y2, 12, 31), f"{y1} to {y2}"
     m = _Q_MONTH.search(question)
-    may_verb = m and m.group(1).lower() == "may" and not re.search(
-        r"\b(?:in|during|of)\s+may\b|\bmay\s+(?:of\s+)?\d{4}", question, re.I)
+    may_verb = (
+        m
+        and m.group(1).lower() == "may"
+        and not re.search(r"\b(?:in|during|of)\s+may\b|\bmay\s+(?:of\s+)?\d{4}", question, re.I)
+    )
     if m and not may_verb:
         y, mo = int(m.group(2)), MONTH_NUMBER[m.group(1).lower()]
         lo, hi = _month_bounds(y, mo)

@@ -1,4 +1,5 @@
 """Minimal JSON Schema (draft 2020-12 subset) validator."""
+
 from __future__ import annotations
 
 import json
@@ -6,7 +7,7 @@ import math
 import os
 from typing import Any, TypeGuard
 
-_TYPE_MAP = {
+_TYPE_MAP: dict[str, type | tuple[type, ...]] = {
     "string": str,
     "integer": int,
     "number": (int, float),
@@ -59,19 +60,34 @@ def _check_type(value: Any, expected: str | list) -> bool:
         py_type = _TYPE_MAP.get(et)
         if py_type is None:
             continue
-        if et in ("integer", "number") and (isinstance(value, bool)
-                or isinstance(value, float) and not math.isfinite(value)):
+        if et in ("integer", "number") and (
+            isinstance(value, bool) or isinstance(value, float) and not math.isfinite(value)
+        ):
             continue
         if isinstance(value, py_type):
             return True
     return False
 
 
-_SUPPORTED_KEYWORDS = frozenset({
-    "type", "properties", "required", "items",
-    "enum", "minLength", "maxLength", "minimum", "maximum",
-    "$schema", "$id", "title", "description", "default", "examples",
-})
+_SUPPORTED_KEYWORDS = frozenset(
+    {
+        "type",
+        "properties",
+        "required",
+        "items",
+        "enum",
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "$schema",
+        "$id",
+        "title",
+        "description",
+        "default",
+        "examples",
+    }
+)
 
 _PERMISSIVE_ONLY = {"additionalProperties": (True,)}
 
@@ -135,8 +151,11 @@ def validate(instance: dict, schema: dict) -> list[str]:
 
 def _validate_value(label: str, value: Any, schema: dict) -> list[str]:
     errors: list[str] = []
-    if value is None and schema.get("type") not in (None, "null") and "null" not in (
-        schema.get("type") if isinstance(schema.get("type"), list) else [schema.get("type")]
+    schema_type = schema.get("type")
+    if (
+        value is None
+        and schema_type not in (None, "null")
+        and "null" not in (schema_type if isinstance(schema_type, list) else [schema_type])
     ):
         if schema.get("type") is not None:
             errors.append(f"'{label}': null not allowed")

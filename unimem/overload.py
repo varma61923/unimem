@@ -1,4 +1,5 @@
 """Shared adaptive provider admission: fail fast during a bounded server cooldown."""
+
 from __future__ import annotations
 
 import threading
@@ -26,27 +27,28 @@ class OverloadPolicy:
 
     def admit(self) -> None:
         with self._lock:
-            delay = self._until-self._clock()
+            delay = self._until - self._clock()
         if delay > 0:
             raise Overloaded(delay)
 
     def on_error(self, error: BaseException) -> None:
         seen = set()
-        while error is not None and id(error) not in seen:
-            seen.add(id(error))
-            response = getattr(error, "response", {})
+        current: BaseException | None = error
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            response = getattr(current, "response", {})
             meta = response.get("ResponseMetadata", {}) if isinstance(response, dict) else {}
-            status = (getattr(error, "code", None) or getattr(error, "status_code", None)
-                      or meta.get("HTTPStatusCode"))
+            status = (
+                getattr(current, "code", None) or getattr(current, "status_code", None) or meta.get("HTTPStatusCode")
+            )
             if status in (429, 503, 529):
-                headers = getattr(error, "headers", None) or meta.get("HTTPHeaders", {})
+                headers = getattr(current, "headers", None) or meta.get("HTTPHeaders", {})
                 with self._lock:
-                    self._failures = min(6, self._failures+1)
-                    delay = retry_after_seconds(headers.get("Retry-After", headers.get("retry-after")),
-                                                self._failures)
-                    self._until = max(self._until, self._clock()+delay)
+                    self._failures = min(6, self._failures + 1)
+                    delay = retry_after_seconds(headers.get("Retry-After", headers.get("retry-after")), self._failures)
+                    self._until = max(self._until, self._clock() + delay)
                 return
-            error = error.__cause__
+            current = current.__cause__
 
     def on_success(self) -> None:
         with self._lock:

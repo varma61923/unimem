@@ -24,6 +24,7 @@ Two questions per lesson:
 These are fixed-horizon, exploratory readings: they are not the anytime-valid
 billing verdict and must not replace it.
 """
+
 from __future__ import annotations
 
 import json
@@ -70,9 +71,13 @@ class LessonHeterogeneity:
 
     def as_dict(self) -> dict:
         return {
-            "lesson": self.lesson_slug, "flag": self.flag, "q": self.q_statistic,
-            "df": self.degrees_of_freedom, "q_p_value": self.q_p_value,
-            "groups": [g.__dict__ for g in self.groups], "untested_groups": self.untested_groups,
+            "lesson": self.lesson_slug,
+            "flag": self.flag,
+            "q": self.q_statistic,
+            "df": self.degrees_of_freedom,
+            "q_p_value": self.q_p_value,
+            "groups": [g.__dict__ for g in self.groups],
+            "untested_groups": self.untested_groups,
         }
 
 
@@ -122,11 +127,12 @@ def _effect(s1: int, n1: int, s0: int, n0: int, group: str) -> SubgroupEffect:
     p1, p0 = s1 / n1, s0 / n0
     lo, hi = experiment.diff_confidence_interval(s1, n1, s0, n0)
     _z, p = experiment.two_proportion_test(s1, n1, s0, n0)
-    return SubgroupEffect(group, n1, n0, round(p1, 4), round(p0, 4), round(p1 - p0, 4),
-                          round(lo, 4), round(hi, 4), round(p, 6))
+    return SubgroupEffect(
+        group, n1, n0, round(p1, 4), round(p0, 4), round(p1 - p0, 4), round(lo, 4), round(hi, 4), round(p, 6)
+    )
 
 
-def _cochran_q(groups: list[SubgroupEffect]) -> tuple[float, float] | None:
+def _cochran_q(groups: list[SubgroupEffect]) -> tuple[float, float]:
     weights, effects = [], []
     for g in groups:
         # Unpooled per-arm variance with a half-count continuity floor, so a
@@ -142,8 +148,13 @@ def _cochran_q(groups: list[SubgroupEffect]) -> tuple[float, float] | None:
     return q, chi2_sf(q, len(groups) - 1)
 
 
-def analyze(observations: Iterable[experiment.HoldoutObservation], group_of: Mapping[str, str], *,
-            min_arm: int = experiment.DEFAULT_MIN_ARM, alpha: float = 0.05) -> list[LessonHeterogeneity]:
+def analyze(
+    observations: Iterable[experiment.HoldoutObservation],
+    group_of: Mapping[str, str],
+    *,
+    min_arm: int = experiment.DEFAULT_MIN_ARM,
+    alpha: float = 0.05,
+) -> list[LessonHeterogeneity]:
     """Per-subgroup effects and a heterogeneity test for every lesson.
 
     `group_of` maps occasion id -> pre-treatment subgroup label. Occasions with
@@ -169,8 +180,9 @@ def analyze(observations: Iterable[experiment.HoldoutObservation], group_of: Map
     staged: list[tuple[str, list[SubgroupEffect], list[str]]] = []
     for slug in sorted(counts):
         if len(counts[slug]) > MAX_GROUPS_PER_LESSON:
-            raise ValueError(f"lesson {slug!r} spans more than {MAX_GROUPS_PER_LESSON} subgroups; "
-                             "choose a coarser grouping")
+            raise ValueError(
+                f"lesson {slug!r} spans more than {MAX_GROUPS_PER_LESSON} subgroups; choose a coarser grouping"
+            )
         tested, untested = [], []
         for group, (s1, n1, s0, n0) in sorted(counts[slug].items()):
             if n1 >= min_arm and n0 >= min_arm:
@@ -257,13 +269,14 @@ def occasion_groups_from_file(path: str) -> dict[str, str]:
 
 def narrowing(h: LessonHeterogeneity) -> tuple[list[SubgroupEffect], list[SubgroupEffect]]:
     """(subgroups where the lesson significantly helps, where it significantly hurts)."""
-    return ([g for g in h.groups if g.significant and g.effect > 0],
-            [g for g in h.groups if g.significant and g.effect < 0])
+    return (
+        [g for g in h.groups if g.significant and g.effect > 0],
+        [g for g in h.groups if g.significant and g.effect < 0],
+    )
 
 
 def _effect_text(g: SubgroupEffect) -> str:
-    return (f"{g.group} ({g.effect:+.1%} [{g.ci_low:+.1%}, {g.ci_high:+.1%}], "
-            f"n={g.n_injected}/{g.n_withheld})")
+    return f"{g.group} ({g.effect:+.1%} [{g.ci_low:+.1%}, {g.ci_high:+.1%}], n={g.n_injected}/{g.n_withheld})"
 
 
 def draft_narrowing(root: str, h: LessonHeterogeneity, by: str, *, actor: str = "experiment") -> str | None:
@@ -299,29 +312,43 @@ def draft_narrowing(root: str, h: LessonHeterogeneity, by: str, *, actor: str = 
             slug=draft_slug,
             description=f"Narrowed revision of {stem}: only where randomized evidence shows it helps",
             agent_type=str(fm.get("agent_type") or paths.store_agent_type(root)),
-            domain=str(fm.get("domain") or ""), tags=list(fm.get("tags") or []),
+            domain=str(fm.get("domain") or ""),
+            tags=list(fm.get("tags") or []),
             applies_when=f"{fm.get('applies_when', '')} Only when {by} is one of: {only}.".strip(),
             do_not_apply_when=f"{fm.get('do_not_apply_when', '')} Not when {by} is one of: {never}.".strip(),
             importance=int(fm.get("importance") or 3),
-            importance_rationale=(f"Randomized subgroup effects for {stem} cross zero "
-                                  f"(Cochran's Q={h.q_statistic}, p={h.q_p_value})."),
-            source_traces=[], status="review", scopes=list(fm.get("scopes") or []),
+            importance_rationale=(
+                f"Randomized subgroup effects for {stem} cross zero (Cochran's Q={h.q_statistic}, p={h.q_p_value})."
+            ),
+            source_traces=[],
+            status="review",
+            scopes=list(fm.get("scopes") or []),
         )
         draft["revises"] = stem
         draft["narrowed_to"] = {"by": by, "include": [g.group for g in helps], "exclude": [g.group for g in hurts]}
         evidence = [f"- helps: {_effect_text(g)}" for g in helps] + [f"- hurts: {_effect_text(g)}" for g in hurts]
         evidence += [f"- other: {_effect_text(g)}" for g in h.groups if g not in helps and g not in hurts]
-        text = (body.rstrip("\n") + "\n\n## Evidence for narrowing\n"
-                f"Randomized holdout effects by {by} (injected minus withheld success rate, BH-corrected; "
-                "exploratory and fixed-horizon, not the billing verdict):\n" + "\n".join(evidence) + "\n")
-        lesson_io.write_lesson(out_path, draft, text, root=root, actor=actor,
-                               reason=f"narrowing draft of {stem} from CROSSING subgroup effects by {by}")
+        text = (
+            body.rstrip("\n") + "\n\n## Evidence for narrowing\n"
+            f"Randomized holdout effects by {by} (injected minus withheld success rate, BH-corrected; "
+            "exploratory and fixed-horizon, not the billing verdict):\n" + "\n".join(evidence) + "\n"
+        )
+        lesson_io.write_lesson(
+            out_path,
+            draft,
+            text,
+            root=root,
+            actor=actor,
+            reason=f"narrowing draft of {stem} from CROSSING subgroup effects by {by}",
+        )
     return out_path
 
 
 def render(results: list[LessonHeterogeneity], by: str) -> str:
-    lines = [f"Subgroup effects by {by} (exploratory, fixed-horizon; BH across all subgroup tests; "
-             "not the billing verdict)", ""]
+    lines = [
+        f"Subgroup effects by {by} (exploratory, fixed-horizon; BH across all subgroup tests; not the billing verdict)",
+        "",
+    ]
     if not results:
         lines.append("No lesson has outcomes in two labelled subgroups yet.")
         return "\n".join(lines)
@@ -332,13 +359,17 @@ def render(results: list[LessonHeterogeneity], by: str) -> str:
         lines.append(head)
         for g in h.groups:
             mark = "*" if g.significant else " "
-            lines.append(f"  {mark} {g.group:<24} {g.effect:+.1%}  [{g.ci_low:+.1%}, {g.ci_high:+.1%}]  "
-                         f"n={g.n_injected}/{g.n_withheld}")
+            lines.append(
+                f"  {mark} {g.group:<24} {g.effect:+.1%}  [{g.ci_low:+.1%}, {g.ci_high:+.1%}]  "
+                f"n={g.n_injected}/{g.n_withheld}"
+            )
         if h.untested_groups:
             lines.append(f"    below the per-arm floor: {', '.join(h.untested_groups)}")
         if h.flag == FLAG_CROSSING:
-            lines.append("    -> helps in one context and hurts in another: `unimem experiment "
-                         f"--by {by} --draft-revisions` drafts a narrowed revision for review.")
+            lines.append(
+                "    -> helps in one context and hurts in another: `unimem experiment "
+                f"--by {by} --draft-revisions` drafts a narrowed revision for review."
+            )
     lines.append("")
     lines.append("* = significant after correction. Effects are injected minus withheld success rate.")
     return "\n".join(lines)

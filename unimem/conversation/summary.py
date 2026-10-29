@@ -2,6 +2,7 @@
 Extractive by default (no model, nothing invented); written by the configured model
 when there is one and it is asked for. `rolling` keeps a growing session's summary
 current from only its new turns, with a hash-chain integrity check."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -36,6 +37,7 @@ def _select_candidates(candidates: list[dict], count: int) -> list[dict]:
     has_dated = False
     max_order = max((int(row.get("order", i)) for i, row in enumerate(remaining)), default=0)
     while remaining and len(selected) < count:
+
         def score(row: dict) -> tuple[float, int]:
             words = set(row["words"])
             novelty = len(words - covered) / max(1, len(words))
@@ -69,10 +71,18 @@ def extractive(turns: list[Turn], sentences: int = SENTENCES, limit: int = MAX_C
     for i, (turn, sentence, words) in enumerate(candidates):
         weight = sum(math.log(1 + freq[w]) for w in set(words)) / math.sqrt(len(set(words)))
         weight *= 1.3 if turn.dates else 1.0
-        scored.append({"weight": weight, "order": i, "words": set(words), "dated": bool(turn.dates),
-                       "turn": turn, "sentence": sentence})
+        scored.append(
+            {
+                "weight": weight,
+                "order": i,
+                "words": set(words),
+                "dated": bool(turn.dates),
+                "turn": turn,
+                "sentence": sentence,
+            }
+        )
     keep = sorted(_select_candidates(scored, sentences), key=lambda row: row["order"])
-    out = []
+    out: list[str] = []
     for row in keep:
         line = f"{row['turn'].speaker}: {row['sentence']}"
         if sum(len(x) + 1 for x in out) + len(line) > limit:
@@ -108,8 +118,7 @@ def written(turns: Iterable[Turn], complete=None) -> str:
     return _model_summary(chain((first,), turns) if first is not None else (), complete, when=when)
 
 
-def _model_summary(turns: Iterable[Turn], complete, *, when: str = "unknown date",
-                   previous: str = "") -> str:
+def _model_summary(turns: Iterable[Turn], complete, *, when: str = "unknown date", previous: str = "") -> str:
     """Fold an iterable of source turns with fixed-size prompts and bounded memory."""
     summary = previous
     fragments: list[str] = []
@@ -120,10 +129,13 @@ def _model_summary(turns: Iterable[Turn], complete, *, when: str = "unknown date
         if not fragments:
             return
         transcript = "".join(fragments)
-        prompt = (ROLLING_PROMPT.format(summary=summary, transcript=transcript) if summary else
-                  PROMPT.format(when=when, transcript=transcript))
+        prompt = (
+            ROLLING_PROMPT.format(summary=summary, transcript=transcript)
+            if summary
+            else PROMPT.format(when=when, transcript=transcript)
+        )
         text, _usage = complete(prompt)
-        cleaned = " ".join(text.split())[:MAX_CHARS * 2]
+        cleaned = " ".join(text.split())[: MAX_CHARS * 2]
         if cleaned:
             summary = cleaned
         fragments, size = [], 0
@@ -142,7 +154,7 @@ def _model_summary(turns: Iterable[Turn], complete, *, when: str = "unknown date
             if size and len(line) - offset > room:
                 flush()
                 continue
-            fragment = line[offset:offset + room]
+            fragment = line[offset : offset + room]
             fragments.append(separator + fragment)
             size += len(separator) + len(fragment)
             offset += len(fragment)
@@ -163,8 +175,9 @@ def _model_turns(store: Store, session: str):
         after = page[-1].idx
 
 
-def summarize(store: Store, sessions: list[str] | None = None, *, method: str = "extractive",
-              force: bool = False, complete=None) -> dict:
+def summarize(
+    store: Store, sessions: list[str] | None = None, *, method: str = "extractive", force: bool = False, complete=None
+) -> dict:
     """Write a summary for each session that has none (or has grown since its last one)."""
     if method not in ("extractive", "model"):
         raise ConversationError("method must be extractive or model")
@@ -182,8 +195,11 @@ def summarize(store: Store, sessions: list[str] | None = None, *, method: str = 
             revision = store.unit_stamp()
             if not store.db.execute("SELECT 1 FROM turns WHERE session=? LIMIT 1", (session,)).fetchone():
                 raise ConversationError(f"no session {session!r} in space {store.space!r}")
-            text = written(_model_turns(store, session), complete) if method == "model" else \
-                extractive(store.session_turns(session))
+            text = (
+                written(_model_turns(store, session), complete)
+                if method == "model"
+                else extractive(store.session_turns(session))
+            )
         if text:
             store.set_summary(session, text, method, expected_revision=revision)
             written_n += 1
@@ -265,8 +281,7 @@ def _prefix_intact(store: Store, session: str, state: dict, verify: str) -> bool
     through = int(state.get("through_idx", -1))
     if through < 0:
         return int(state.get("turns", 0)) == 0
-    count = store.db.execute("SELECT COUNT(*) FROM turns WHERE session=? AND idx<=?",
-                             (session, through)).fetchone()[0]
+    count = store.db.execute("SELECT COUNT(*) FROM turns WHERE session=? AND idx<=?", (session, through)).fetchone()[0]
     if count != int(state.get("turns", -1)):
         return False
     if verify == "tail":
@@ -301,14 +316,24 @@ def _fold_extractive(state: dict, turns: Iterable[Turn], sentences: int, limit: 
         for pos, sentence, words in _candidates(turn):
             for w in words:
                 freq[w] = freq.get(w, 0) + 1
-            pool.append({"idx": turn.idx, "pos": pos, "order": order, "speaker": turn.speaker,
-                         "sentence": sentence, "words": words, "dated": bool(turn.dates)})
+            pool.append(
+                {
+                    "idx": turn.idx,
+                    "pos": pos,
+                    "order": order,
+                    "speaker": turn.speaker,
+                    "sentence": sentence,
+                    "words": words,
+                    "dated": bool(turn.dates),
+                }
+            )
             order += 1
     state["order"] = order
     if len(freq) > ROLLING_VOCAB:
         state["freq"] = freq = dict(sorted(freq.items(), key=lambda kv: (-kv[1], kv[0]))[:ROLLING_VOCAB])
     ranked = _select_candidates(
-        [{**entry, "weight": _weight(entry, freq)} for entry in pool], max(ROLLING_POOL, sentences),
+        [{**entry, "weight": _weight(entry, freq)} for entry in pool],
+        max(ROLLING_POOL, sentences),
     )
     # Keep a bounded summary working set ordered by current salience and
     # coverage so a repeated topic cannot crowd every distinct fact out.
@@ -322,8 +347,17 @@ def _fold_extractive(state: dict, turns: Iterable[Turn], sentences: int, limit: 
     return " ".join(out)
 
 
-def rolling(store: Store, session: str, *, method: str = "extractive", complete=None, force: bool = False,
-            verify: str = "full", sentences: int = SENTENCES, limit: int = MAX_CHARS) -> dict:
+def rolling(
+    store: Store,
+    session: str,
+    *,
+    method: str = "extractive",
+    complete=None,
+    force: bool = False,
+    verify: str = "full",
+    sentences: int = SENTENCES,
+    limit: int = MAX_CHARS,
+) -> dict:
     """Bring one session's rolling summary up to date, reading only turns it has not seen.
 
     ``mode`` in the result is ``unchanged`` (nothing new), ``incremental`` (only
@@ -346,8 +380,9 @@ def rolling(store: Store, session: str, *, method: str = "extractive", complete=
     raise ConversationError("session kept changing during summarization; retry")
 
 
-def _rolling_once(store: Store, session: str, method: str, complete, force: bool, verify: str,
-                  sentences: int, limit: int) -> dict:
+def _rolling_once(
+    store: Store, session: str, method: str, complete, force: bool, verify: str, sentences: int, limit: int
+) -> dict:
     with store.read_snapshot():
         revision = store.unit_stamp()
         total = store.db.execute("SELECT COUNT(*) FROM turns WHERE session=?", (session,)).fetchone()[0]
@@ -365,16 +400,31 @@ def _rolling_once(store: Store, session: str, method: str, complete, force: bool
             reason = "history-changed"
         if reason or state is None:
             previous_text = ""
-            state = {"version": ROLLING_VERSION, "method": method, "through_idx": -1, "through_turn": None,
-                     "turns": 0, "chain": "", "tail": ""}
+            state = {
+                "version": ROLLING_VERSION,
+                "method": method,
+                "through_idx": -1,
+                "through_turn": None,
+                "turns": 0,
+                "chain": "",
+                "tail": "",
+            }
         else:
             previous_text = str(state.get("text") or "")
         new_iter = iter(_pages(store, session, after_idx=int(state["through_idx"])))
         first = next(new_iter, None)
         if first is None and not reason:
-            return {"space": store.space, "session": session, "method": method, "mode": "unchanged",
-                    "reason": "", "new_turns": 0, "turns": int(state["turns"]),
-                    "through_idx": int(state["through_idx"]), "text": previous_text}
+            return {
+                "space": store.space,
+                "session": session,
+                "method": method,
+                "mode": "unchanged",
+                "reason": "",
+                "new_turns": 0,
+                "turns": int(state["turns"]),
+                "through_idx": int(state["through_idx"]),
+                "text": previous_text,
+            }
         chain_hash = str(state.get("chain") or "")
         new_count = 0
         last = None
@@ -398,22 +448,44 @@ def _rolling_once(store: Store, session: str, method: str, complete, force: bool
             text = _fold_extractive(state, turns, sentences, limit)
     if last is not None:
         state.update(through_idx=last.idx, through_turn=last.id, tail=last.evidence_hash())
-    state.update(turns=int(state["turns"]) + new_count, chain=chain_hash, text=text, method=method,
-                 updated_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"))
+    state.update(
+        turns=int(state["turns"]) + new_count,
+        chain=chain_hash,
+        text=text,
+        method=method,
+        updated_at=dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+    )
     with store._lock, write_txn(store.db):
         if store.unit_stamp() != revision:
             raise ConversationError("session evidence changed during summarization; retry")
-        store.db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)",
-                         (ROLLING_KEY + session, json.dumps(state, ensure_ascii=False, sort_keys=True)))
+        store.db.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)",
+            (ROLLING_KEY + session, json.dumps(state, ensure_ascii=False, sort_keys=True)),
+        )
         if text:
             store.set_summary(session, text, "rolling-" + method, expected_revision=revision)
-    return {"space": store.space, "session": session, "method": method,
-            "mode": "full" if reason else "incremental", "reason": reason, "new_turns": new_count,
-            "turns": state["turns"], "through_idx": state["through_idx"], "text": text}
+    return {
+        "space": store.space,
+        "session": session,
+        "method": method,
+        "mode": "full" if reason else "incremental",
+        "reason": reason,
+        "new_turns": new_count,
+        "turns": state["turns"],
+        "through_idx": state["through_idx"],
+        "text": text,
+    }
 
 
-def rolling_all(store: Store, sessions: list[str] | None = None, *, method: str = "extractive",
-                complete=None, force: bool = False, verify: str = "full") -> dict:
+def rolling_all(
+    store: Store,
+    sessions: list[str] | None = None,
+    *,
+    method: str = "extractive",
+    complete=None,
+    force: bool = False,
+    verify: str = "full",
+) -> dict:
     """``rolling`` for each session (all by default), with counts by mode."""
     targets = sessions or [s["id"] for s in store.sessions()]
     counts = {"unchanged": 0, "incremental": 0, "full": 0}

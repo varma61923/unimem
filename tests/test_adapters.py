@@ -82,13 +82,11 @@ class TestLangfuse:
         assert norm(self.TRACE, "langfuse")["resolved"] is True
 
     def test_a_zero_success_score_is_a_failure(self):
-        flat = norm(
-            {**self.TRACE, "scores": [{"name": "correctness", "value": 0}]}, "langfuse")
+        flat = norm({**self.TRACE, "scores": [{"name": "correctness", "value": 0}]}, "langfuse")
         assert flat["resolved"] is False
 
     def test_an_unrecognised_score_name_is_not_guessed_at(self):
-        flat = norm(
-            {**self.TRACE, "scores": [{"name": "toxicity", "value": 0}]}, "langfuse")
+        flat = norm({**self.TRACE, "scores": [{"name": "toxicity", "value": 0}]}, "langfuse")
         assert "resolved" not in flat
 
     def test_an_error_level_is_a_failure(self):
@@ -96,8 +94,7 @@ class TestLangfuse:
         assert norm({**trace, "level": "ERROR"}, "langfuse")["resolved"] is False
 
     def test_a_boolean_score_is_read_as_itself(self):
-        flat = norm(
-            {**self.TRACE, "scores": [{"name": "resolved", "value": False}]}, "langfuse")
+        flat = norm({**self.TRACE, "scores": [{"name": "resolved", "value": False}]}, "langfuse")
         assert flat["resolved"] is False
 
     def test_usage_totals_are_carried(self):
@@ -206,22 +203,35 @@ class TestOtel:
         span = {
             "name": "s",
             "attributes": [
-                {"key": "k", "value": {"arrayValue": {"values": [
-                    {"stringValue": "a"}, {"stringValue": "b"},
-                ]}}},
+                {
+                    "key": "k",
+                    "value": {
+                        "arrayValue": {
+                            "values": [
+                                {"stringValue": "a"},
+                                {"stringValue": "b"},
+                            ]
+                        }
+                    },
+                },
             ],
         }
         assert adapters.otel_attributes(span) == {"k": ["a", "b"]}
 
     def test_attribute_unwrapping_handles_each_scalar_wrapper(self):
-        span = {"attributes": [
-            {"key": "s", "value": {"stringValue": "x"}},
-            {"key": "i", "value": {"intValue": 3}},
-            {"key": "d", "value": {"doubleValue": 1.5}},
-            {"key": "b", "value": {"boolValue": True}},
-        ]}
+        span = {
+            "attributes": [
+                {"key": "s", "value": {"stringValue": "x"}},
+                {"key": "i", "value": {"intValue": 3}},
+                {"key": "d", "value": {"doubleValue": 1.5}},
+                {"key": "b", "value": {"boolValue": True}},
+            ]
+        }
         assert adapters.otel_attributes(span) == {
-            "s": "x", "i": 3, "d": 1.5, "b": True,
+            "s": "x",
+            "i": 3,
+            "d": 1.5,
+            "b": True,
         }
 
 
@@ -276,7 +286,10 @@ class TestSharedImportPath:
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -297,20 +310,19 @@ def _write(tmp_path, name: str, rows: list[dict]) -> str:
 
 class TestThroughTheCLI:
     def test_a_langsmith_export_imports_with_no_field_flags(self, tmp_path, store):
-        export = _write(tmp_path, "runs.jsonl", [
-            TestLangSmith.RUN,
-            {**TestLangSmith.RUN, "id": "run-2", "error": "boom",
-             "inputs": {"input": "refund over the limit"}},
-        ])
-        result = cli("import", export, "--source", "langsmith",
-                     "--agent-type", "support", "--dest", store)
+        export = _write(
+            tmp_path,
+            "runs.jsonl",
+            [
+                TestLangSmith.RUN,
+                {**TestLangSmith.RUN, "id": "run-2", "error": "boom", "inputs": {"input": "refund over the limit"}},
+            ],
+        )
+        result = cli("import", export, "--source", "langsmith", "--agent-type", "support", "--dest", store)
         assert result.returncode == 0, result.stderr
         assert "2 row(s) parseable" in result.stdout
 
-        written = [
-            f for f in os.listdir(paths.traces_dir(store)) if f.endswith(".md")
-            and f != "README.md"
-        ]
+        written = [f for f in os.listdir(paths.traces_dir(store)) if f.endswith(".md") and f != "README.md"]
         assert len(written) == 2
         outcomes = []
         for name in written:
@@ -320,23 +332,22 @@ class TestThroughTheCLI:
 
     def test_an_otel_export_imports(self, tmp_path, store):
         export = _write(tmp_path, "spans.jsonl", [_OTLP_SPAN, _FLAT_SPAN])
-        result = cli("import", export, "--source", "otel",
-                     "--agent-type", "support", "--dest", store)
+        result = cli("import", export, "--source", "otel", "--agent-type", "support", "--dest", store)
         assert result.returncode == 0, result.stderr
         assert "2 row(s) parseable" in result.stdout
 
     def test_dry_run_writes_nothing(self, tmp_path, store):
         export = _write(tmp_path, "runs.jsonl", [TestLangSmith.RUN])
         before = set(os.listdir(paths.traces_dir(store)))
-        result = cli("import", export, "--source", "langsmith", "--dry-run",
-                     "--agent-type", "support", "--dest", store)
+        result = cli("import", export, "--source", "langsmith", "--dry-run", "--agent-type", "support", "--dest", store)
         assert result.returncode == 0, result.stderr
         assert set(os.listdir(paths.traces_dir(store))) == before
 
     def test_the_source_id_is_recorded_for_traceability(self, tmp_path, store):
         export = _write(tmp_path, "runs.jsonl", [TestLangSmith.RUN])
-        assert cli("import", export, "--source", "langsmith",
-                   "--agent-type", "support", "--dest", store).returncode == 0
+        assert (
+            cli("import", export, "--source", "langsmith", "--agent-type", "support", "--dest", store).returncode == 0
+        )
         bodies = []
         for name in os.listdir(paths.traces_dir(store)):
             if name.endswith(".md") and name != "README.md":
@@ -359,6 +370,7 @@ class TestOtelOccasionAttributes:
 
     def test_the_occasion_comes_from_ours_then_openinference_then_genai(self):
         from unimem import adapters
+
         norm = lambda **a: adapters.normalize(self._row(**a), source="otel")  # noqa: E731
         assert norm(**{"unimem.occasion_id": "x", "session.id": "y"})["occasion_id"] == "x"
         assert norm(**{"session.id": "y", "gen_ai.conversation.id": "z"})["occasion_id"] == "y"
@@ -367,9 +379,24 @@ class TestOtelOccasionAttributes:
 
     def test_only_an_explicit_boolean_is_an_outcome(self):
         from unimem import adapters
+
         norm = lambda **a: adapters.normalize(  # noqa: E731
-            {"spanId": "s", "name": "n", "status": {"code": "OK"}, "attributes": a}, source="otel")
+            {"spanId": "s", "name": "n", "status": {"code": "OK"}, "attributes": a}, source="otel"
+        )
         assert norm(**{"unimem.occasion.succeeded": False})["occasion_succeeded"] is False
         assert norm(**{"unimem.occasion.succeeded": True})["occasion_succeeded"] is True
         assert "occasion_succeeded" not in norm(**{"unimem.occasion.succeeded": "yes"})
         assert "occasion_succeeded" not in norm()
+
+
+@pytest.mark.parametrize(
+    "source, row",
+    [
+        ("langsmith", {"total_tokens": float("inf")}),
+        ("langfuse", {"usage": {"total": float("-inf")}}),
+        ("braintrust", {"metrics": {"tokens": float("nan")}}),
+        ("otel", {"attributes": {"gen_ai.usage.input_tokens": float("inf")}}),
+    ],
+)
+def test_nonfinite_token_counts_do_not_abort_trace_import(source, row):
+    assert "tokens_used" not in adapters.normalize(row, source)

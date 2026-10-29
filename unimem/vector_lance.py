@@ -76,7 +76,7 @@ class LanceVectorIndex:
         await self._run(execute)
 
     async def upsert(self, records: Iterable[VectorRecord]) -> int:
-        rows = []
+        rows: list[dict[str, str | list[float]]] = []
         for record in records:
             if len(rows) >= MAX_BATCH:
                 raise ValueError("vector batch exceeds the bounded ingestion limit")
@@ -162,6 +162,7 @@ class LanceVectorIndex:
                 return {"rows": count, "approximate": False}
             if not any("key" in index.columns for index in indexes):
                 from lancedb.index import BTree
+
                 self._table.create_index("key", config=BTree())
             vector_indexes = [index for index in indexes if "vector" in index.columns]
             if not vector_indexes:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import SupportsIndex, SupportsInt
 
 __all__ = ["ADAPTERS", "GENERIC", "SOURCES", "Adapter", "normalize", "otel_attributes"]
 
@@ -42,9 +43,11 @@ def _tags(value: object) -> list[str]:
 
 
 def _int_or_none(value: object) -> int | None:
+    if not isinstance(value, (str, bytes, bytearray, SupportsInt, SupportsIndex)):
+        return None
     try:
-        return int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+        return int(value)
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -74,21 +77,23 @@ def _titled(name: str, subject: object) -> str:
     return combined[:_MAX_TITLE].rstrip()
 
 
+def _mapping(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def _langsmith(row: dict) -> dict:
     inputs = _first(row, "inputs", "input")
     outputs = _first(row, "outputs", "output")
     error = _as_text(_first(row, "error"))
-    extra = row.get("extra") if isinstance(row.get("extra"), dict) else {}
-    metadata = extra.get("metadata") if isinstance(extra.get("metadata"), dict) else {}
+    extra = _mapping(row.get("extra"))
+    metadata = _mapping(extra.get("metadata"))
 
     context = _as_text(inputs)
     if error:
         context = (context + "\n\nError:\n" + error).strip()
 
-    flat = {
-        "title": _titled(
-            _as_text(_first(row, "name", "run_type")) or "LangSmith run", inputs
-        ),
+    flat: dict[str, str | list[str] | bool | int] = {
+        "title": _titled(_as_text(_first(row, "name", "run_type")) or "LangSmith run", inputs),
         "context": context,
         "solution": _as_text(outputs),
         "tags": _tags(row.get("tags")),
@@ -96,16 +101,14 @@ def _langsmith(row: dict) -> dict:
     }
     if "error" in row:
         flat["resolved"] = not error
-    tokens = _int_or_none(
-        _first(row, "total_tokens") or metadata.get("total_tokens")
-    )
+    tokens = _int_or_none(_first(row, "total_tokens") or metadata.get("total_tokens"))
     if tokens is not None:
         flat["tokens_used"] = tokens
     return flat
 
 
 def _langfuse(row: dict) -> dict:
-    flat = {
+    flat: dict[str, str | list[str] | bool | int] = {
         "title": _titled(
             _as_text(_first(row, "name")) or "Langfuse trace",
             _first(row, "input", "inputs"),
@@ -136,17 +139,25 @@ def _langfuse(row: dict) -> dict:
                 flat["resolved"] = value.strip().lower() in _TRUTHY_STRINGS
             break
 
-    usage = row.get("usage") if isinstance(row.get("usage"), dict) else {}
+    usage = _mapping(row.get("usage"))
     tokens = _int_or_none(_first(usage, "total", "totalTokens", "total_tokens"))
     if tokens is not None:
         flat["tokens_used"] = tokens
     return flat
 
 
-_SUCCESS_SCORE_NAMES = frozenset({
-    "resolved", "success", "successful", "correct", "correctness",
-    "pass", "passed", "accuracy",
-})
+_SUCCESS_SCORE_NAMES = frozenset(
+    {
+        "resolved",
+        "success",
+        "successful",
+        "correct",
+        "correctness",
+        "pass",
+        "passed",
+        "accuracy",
+    }
+)
 
 _TRUTHY_STRINGS = frozenset({"true", "yes", "pass", "passed", "success", "correct", "1"})
 
@@ -156,22 +167,15 @@ def _braintrust(row: dict) -> dict:
     expected = _as_text(_first(row, "expected"))
     solution = output
     if expected and expected != output:
-        solution = (
-            f"{output}\n\nExpected:\n{expected}" if output else f"Expected:\n{expected}"
-        )
+        solution = f"{output}\n\nExpected:\n{expected}" if output else f"Expected:\n{expected}"
 
-    span_attrs = (
-        row.get("span_attributes")
-        if isinstance(row.get("span_attributes"), dict) else {}
-    )
-    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+    span_attrs = _mapping(row.get("span_attributes"))
+    metadata = _mapping(row.get("metadata"))
 
-    flat = {
+    flat: dict[str, str | list[str] | bool | int] = {
         "title": _titled(
-            _as_text(
-                _first(span_attrs, "name") or _first(metadata, "name")
-                or _first(row, "name")
-            ) or "Braintrust span",
+            _as_text(_first(span_attrs, "name") or _first(metadata, "name") or _first(row, "name"))
+            or "Braintrust span",
             _first(row, "input"),
         ),
         "context": _as_text(_first(row, "input")),
@@ -182,17 +186,14 @@ def _braintrust(row: dict) -> dict:
 
     scores = row.get("scores")
     if isinstance(scores, dict):
-        named = {
-            str(k).strip().lower(): v for k, v in scores.items()
-            if isinstance(v, (int, float, bool))
-        }
+        named = {str(k).strip().lower(): v for k, v in scores.items() if isinstance(v, (int, float, bool))}
         for name in _SUCCESS_SCORE_NAMES:
             if name in named:
                 value = named[name]
                 flat["resolved"] = bool(value) if isinstance(value, bool) else value >= 1.0
                 break
 
-    metrics = row.get("metrics") if isinstance(row.get("metrics"), dict) else {}
+    metrics = _mapping(row.get("metrics"))
     tokens = _int_or_none(_first(metrics, "tokens", "total_tokens"))
     if tokens is None:
         prompt = _int_or_none(metrics.get("prompt_tokens")) or 0
@@ -204,7 +205,11 @@ def _braintrust(row: dict) -> dict:
 
 
 _OTLP_VALUE_KEYS = (
-    "stringValue", "intValue", "doubleValue", "boolValue", "arrayValue",
+    "stringValue",
+    "intValue",
+    "doubleValue",
+    "boolValue",
+    "arrayValue",
 )
 
 
@@ -236,34 +241,39 @@ def otel_attributes(row: dict) -> dict:
 
 def _otel(row: dict) -> dict:
     attrs = otel_attributes(row)
-    status = row.get("status") if isinstance(row.get("status"), dict) else {}
-    status_code = str(
-        _first(status, "code") or _first(row, "status_code") or ""
-    ).strip().upper()
+    status = _mapping(row.get("status"))
+    status_code = str(_first(status, "code") or _first(row, "status_code") or "").strip().upper()
 
-    context = _as_text(_first(
-        attrs,
-        "gen_ai.prompt", "gen_ai.input.messages", "gen_ai.request.messages",
-        "traceloop.entity.input", "input.value",
-    ))
-    solution = _as_text(_first(
-        attrs,
-        "gen_ai.completion", "gen_ai.output.messages", "gen_ai.response.messages",
-        "traceloop.entity.output", "output.value",
-    ))
+    context = _as_text(
+        _first(
+            attrs,
+            "gen_ai.prompt",
+            "gen_ai.input.messages",
+            "gen_ai.request.messages",
+            "traceloop.entity.input",
+            "input.value",
+        )
+    )
+    solution = _as_text(
+        _first(
+            attrs,
+            "gen_ai.completion",
+            "gen_ai.output.messages",
+            "gen_ai.response.messages",
+            "traceloop.entity.output",
+            "output.value",
+        )
+    )
 
     message = _as_text(_first(status, "message"))
     if message:
         context = (context + "\n\nStatus:\n" + message).strip()
 
-    flat = {
+    flat: dict[str, str | list[str] | bool | int] = {
         "title": _titled(_as_text(_first(row, "name")) or "OTel span", context),
         "context": context,
         "solution": solution,
-        "tags": [
-            str(attrs[key]) for key in ("gen_ai.system", "gen_ai.request.model")
-            if attrs.get(key)
-        ],
+        "tags": [str(attrs[key]) for key in ("gen_ai.system", "gen_ai.request.model") if attrs.get(key)],
         "id": _as_text(_first(row, "spanId", "span_id", "traceId", "trace_id")),
     }
     if "ERROR" in status_code:
@@ -271,10 +281,8 @@ def _otel(row: dict) -> dict:
     elif status_code.endswith("OK"):
         flat["resolved"] = True
 
-    prompt = _int_or_none(_first(
-        attrs, "gen_ai.usage.input_tokens", "gen_ai.usage.prompt_tokens")) or 0
-    completion = _int_or_none(_first(
-        attrs, "gen_ai.usage.output_tokens", "gen_ai.usage.completion_tokens")) or 0
+    prompt = _int_or_none(_first(attrs, "gen_ai.usage.input_tokens", "gen_ai.usage.prompt_tokens")) or 0
+    completion = _int_or_none(_first(attrs, "gen_ai.usage.output_tokens", "gen_ai.usage.completion_tokens")) or 0
     if prompt or completion:
         flat["tokens_used"] = prompt + completion
     occasion = _first(attrs, *OTEL_OCCASION_KEYS)
@@ -293,15 +301,18 @@ OTEL_OUTCOME_KEY = "unimem.occasion.succeeded"
 @dataclass(frozen=True)
 class Adapter:
     """A named export adapter and its normalization callable."""
+
     name: str
     describe: str
     normalize: Callable[[dict], dict]
 
 
 ADAPTERS: dict[str, Adapter] = {
-    a.name: a for a in (
+    a.name: a
+    for a in (
         Adapter(
-            GENERIC, "flat rows, mapped with --title-field and friends",
+            GENERIC,
+            "flat rows, mapped with --title-field and friends",
             lambda row: row,
         ),
         Adapter(
@@ -321,8 +332,7 @@ ADAPTERS: dict[str, Adapter] = {
         ),
         Adapter(
             "otel",
-            "OpenTelemetry spans under the GenAI semantic conventions "
-            "(OTLP-JSON or flat attributes)",
+            "OpenTelemetry spans under the GenAI semantic conventions (OTLP-JSON or flat attributes)",
             _otel,
         ),
     )
@@ -349,10 +359,7 @@ def normalize(row: dict, source: str = GENERIC) -> dict:
     try:
         adapter = ADAPTERS[source]
     except KeyError:
-        raise ValueError(
-            f"unknown import source {source!r}; known sources: "
-            + ", ".join(SOURCES)
-        ) from None
+        raise ValueError(f"unknown import source {source!r}; known sources: " + ", ".join(SOURCES)) from None
     if not isinstance(row, dict):
         return {}
     return adapter.normalize(row)

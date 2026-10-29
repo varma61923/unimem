@@ -1,4 +1,5 @@
 """Factorial interaction readings and evidence-drafted narrowing of CROSSING lessons."""
+
 import os
 import random
 
@@ -13,8 +14,10 @@ def _world(n=4000, interaction=-0.4, seed=7):
         p = 0.4 + 0.2 * a + 0.2 * b + interaction * (a and b)
         ok = rng.random() < p
         occasion = f"o{i}"
-        obs += [experiment.HoldoutObservation("lesson-a", occasion, a, ok),
-                experiment.HoldoutObservation("lesson-b", occasion, b, ok)]
+        obs += [
+            experiment.HoldoutObservation("lesson-a", occasion, a, ok),
+            experiment.HoldoutObservation("lesson-b", occasion, b, ok),
+        ]
         if i % 3 == 0:  # a third lesson that rides along on some occasions with no effect
             obs.append(experiment.HoldoutObservation("lesson-c", occasion, rng.random() < 0.5, ok))
     return obs
@@ -50,11 +53,26 @@ def test_crossing_lesson_gets_a_narrowed_review_draft(tmp_path):
     root = str(tmp_path)
     os.makedirs(paths.lessons_dir(root))
     fm = templates.lesson_frontmatter(
-        slug="retry", description="Retry flaky calls", agent_type="coder", domain="ops", tags=["retry"],
-        applies_when="a call fails transiently.", do_not_apply_when="the call mutates state.", importance=3,
-        importance_rationale="saves reruns", source_traces=[], status="active")
-    lesson_io.write_lesson(os.path.join(paths.lessons_dir(root), "lesson_retry.md"), fm, "## Rule\nRetry.\n",
-                           root=root, actor="t", reason="t")
+        slug="retry",
+        description="Retry flaky calls",
+        agent_type="coder",
+        domain="ops",
+        tags=["retry"],
+        applies_when="a call fails transiently.",
+        do_not_apply_when="the call mutates state.",
+        importance=3,
+        importance_rationale="saves reruns",
+        source_traces=[],
+        status="active",
+    )
+    lesson_io.write_lesson(
+        os.path.join(paths.lessons_dir(root), "lesson_retry.md"),
+        fm,
+        "## Rule\nRetry.\n",
+        root=root,
+        actor="t",
+        reason="t",
+    )
     path = heterogeneity.draft_narrowing(root, _crossing("retry"), "agent_type")
     draft, body = frontmatter.read(path)
     assert draft["status"] == "review" and draft["revises"] == "retry"
@@ -68,3 +86,29 @@ def test_crossing_lesson_gets_a_narrowed_review_draft(tmp_path):
     consistent = _crossing("retry")
     consistent.flag = heterogeneity.FLAG_CONSISTENT
     assert heterogeneity.draft_narrowing(root, consistent, "agent_type") is None
+
+
+def test_zero_pairs_does_not_consume_observations():
+    def observations():
+        raise AssertionError("zero-pair analysis consumed input")
+        yield
+
+    assert interactions.analyze(observations(), max_pairs=0) == []
+
+
+def test_pair_limit_selects_most_frequent_pair():
+    full = interactions.analyze(_world())
+    limited = interactions.analyze(_world(), max_pairs=1)
+    assert [(p.lesson_a, p.lesson_b) for p in limited] == [("lesson-a", "lesson-b")]
+    assert limited[0].cells == full[0].cells
+
+
+def test_pair_budgets_require_nonnegative_integers():
+    import pytest
+
+    for limit in (-1, True, 1.5):
+        with pytest.raises(ValueError, match="max_pairs"):
+            interactions.analyze([], max_pairs=limit)
+    for count in (True, 2.5):
+        with pytest.raises(ValueError, match="min_cell"):
+            interactions.analyze([], min_cell=count)

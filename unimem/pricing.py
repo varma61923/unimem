@@ -1,4 +1,5 @@
 """Billing on proven value, and only on proven value."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -12,10 +13,16 @@ from unimem import proof
 SCHEMA = "unimem.invoice.v1"
 BOOK_NAME = "billing.json"
 
-_FIELDS = {
-    "currency": str, "platform_fee_per_agent_month": (int, float), "value_share": (int, float),
-    "value_basis": str, "cap_per_invoice": (int, float, type(None)), "minimum_invoice": (int, float),
-    "credit_negative_value_against_platform_fee": bool, "require_signature": bool, "bill_interim": bool,
+_FIELDS: dict[str, type | tuple[type, ...]] = {
+    "currency": str,
+    "platform_fee_per_agent_month": (int, float),
+    "value_share": (int, float),
+    "value_basis": str,
+    "cap_per_invoice": (int, float, type(None)),
+    "minimum_invoice": (int, float),
+    "credit_negative_value_against_platform_fee": bool,
+    "require_signature": bool,
+    "bill_interim": bool,
 }
 VALUE_BASES = ("point_estimate", "ci_low")
 
@@ -48,7 +55,8 @@ class PriceSchedule:
             raise PricingError(
                 "a price schedule sets every term and no others"
                 + (f"; missing: {', '.join(missing)}" if missing else "")
-                + (f"; unknown: {', '.join(extra)}" if extra else ""))
+                + (f"; unknown: {', '.join(extra)}" if extra else "")
+            )
         for key, types in _FIELDS.items():
             value = data[key]
             if isinstance(value, bool) and types is not bool:
@@ -150,47 +158,72 @@ def assess(directory: str, schedule: PriceSchedule, key: bytes | None = None) ->
             record = json.load(fh)
     except (proof.ProofError, OSError, ValueError) as exc:
         return Assessment(False, f"the package cannot be read: {exc}")
-    evidence = {"label": record.get("label"), "ledger_root": record.get("ledger_root"),
-                "data_digest": (record.get("evidence") or {}).get("digest"),
-                "audited_at": record.get("audited_at"), "verify": f"unimem proof verify {directory}"}
+    evidence = {
+        "label": record.get("label"),
+        "ledger_root": record.get("ledger_root"),
+        "data_digest": (record.get("evidence") or {}).get("digest"),
+        "audited_at": record.get("audited_at"),
+        "verify": f"unimem proof verify {directory}",
+    }
     if not proof.verified(checks):
         failed = [c.name for c in checks if c.status == proof.FAIL]
-        return Assessment(False, f"the package does not verify ({', '.join(failed)}): nothing is billed on it",
-                          evidence=evidence)
+        return Assessment(
+            False, f"the package does not verify ({', '.join(failed)}): nothing is billed on it", evidence=evidence
+        )
     if record.get("synthetic"):
         return Assessment(False, "synthetic demo data is never billed", evidence=evidence)
     if schedule.require_signature and not record.get("signature"):
-        return Assessment(False, "the package is not signed and the schedule requires a signature",
-                          evidence=evidence)
+        return Assessment(False, "the package is not signed and the schedule requires a signature", evidence=evidence)
     if schedule.require_signature and key is None:
-        return Assessment(False, "the schedule requires a signature and no key was given to check it",
-                          evidence=evidence)
+        return Assessment(
+            False, "the schedule requires a signature and no key was given to check it", evidence=evidence
+        )
     if record["integrity"]["verdict"] == "COMPROMISED":
-        return Assessment(False, "the experiment is COMPROMISED: no effect is stated, so none is billed",
-                          evidence=evidence)
+        return Assessment(
+            False, "the experiment is COMPROMISED: no effect is stated, so none is billed", evidence=evidence
+        )
     if not record.get("final") and not schedule.bill_interim:
         return Assessment(False, "the run is interim and the schedule bills final results only", evidence=evidence)
     value = record.get("value") or {}
     if not value.get("readable") or not value.get("aggregate_readable") or value.get("money") is None:
-        return Assessment(False, f"no established value: {value.get('reason') or 'the value is not readable'}",
-                          evidence=evidence)
+        return Assessment(
+            False, f"no established value: {value.get('reason') or 'the value is not readable'}", evidence=evidence
+        )
     rate = value.get("value_per_occasion")
     if not rate:
         return Assessment(False, "the proof carries no agreed worth per occasion", evidence=evidence)
     low, high = value["ci_95"]
     basis = value["money"] if schedule.value_basis == "point_estimate" else low * rate
     experiment = str((record.get("preregistration") or {}).get("salt") or record.get("preregistration_fingerprint"))
-    return Assessment(True, experiment=experiment, basis=float(basis), evidence={
-        **evidence, "occasions_improved": value["occasions_improved"], "ci_95": [low, high],
-        "value_per_occasion": rate, "basis": schedule.value_basis})
+    return Assessment(
+        True,
+        experiment=experiment,
+        basis=float(basis),
+        evidence={
+            **evidence,
+            "occasions_improved": value["occasions_improved"],
+            "ci_95": [low, high],
+            "value_per_occasion": rate,
+            "basis": schedule.value_basis,
+        },
+    )
 
 
 def _round(x: float) -> float:
     return round(x + 0.0, 2)
 
 
-def invoice(book: dict, schedule: PriceSchedule, *, org: str, period: str, agent_months: float,
-            packages: list[str], key: bytes | None = None, commit: bool = True) -> Invoice:
+def invoice(
+    book: dict,
+    schedule: PriceSchedule,
+    *,
+    org: str,
+    period: str,
+    agent_months: float,
+    packages: list[str],
+    key: bytes | None = None,
+    commit: bool = True,
+) -> Invoice:
     if agent_months < 0:
         raise PricingError("agent_months cannot be negative")
     if any(i["org"] == org and i["period"] == period for i in book["invoices"]):
@@ -199,8 +232,15 @@ def invoice(book: dict, schedule: PriceSchedule, *, org: str, period: str, agent
     platform = _round(agent_months * schedule.platform_fee_per_agent_month)
     inv.platform_subtotal = platform
     if agent_months:
-        inv.lines.append(Line("platform", f"Platform: {agent_months:g} agent-months", platform, agent_months,
-                              schedule.platform_fee_per_agent_month))
+        inv.lines.append(
+            Line(
+                "platform",
+                f"Platform: {agent_months:g} agent-months",
+                platform,
+                agent_months,
+                schedule.platform_fee_per_agent_month,
+            )
+        )
 
     new_state: dict[str, dict] = {}
     value_total = 0.0
@@ -212,23 +252,35 @@ def invoice(book: dict, schedule: PriceSchedule, *, org: str, period: str, agent
             continue
         state = book["experiments"].get(a.experiment, {"billed_basis": 0.0, "ledger_roots": []})
         if a.evidence["ledger_root"] in state["ledger_roots"]:
-            inv.refused.append({"package": directory, "reason": "this package was already billed",
-                                "evidence": a.evidence})
+            inv.refused.append(
+                {"package": directory, "reason": "this package was already billed", "evidence": a.evidence}
+            )
             continue
         delta = a.basis - state["billed_basis"]
         amount = _round(delta * schedule.value_share)
-        evidence = {**a.evidence, "experiment": a.experiment, "basis_value": _round(a.basis),
-                    "previously_charged_basis": _round(state["billed_basis"]), "share": schedule.value_share}
+        evidence = {
+            **a.evidence,
+            "experiment": a.experiment,
+            "basis_value": _round(a.basis),
+            "previously_charged_basis": _round(state["billed_basis"]),
+            "share": schedule.value_share,
+        }
         if amount >= 0:
-            inv.lines.append(Line("value", f"Proven value since last invoice: {a.evidence['label']}", amount,
-                                  evidence=evidence))
+            inv.lines.append(
+                Line("value", f"Proven value since last invoice: {a.evidence['label']}", amount, evidence=evidence)
+            )
             value_total += amount
         else:
-            inv.lines.append(Line("credit", f"Proven value fell since last invoice: {a.evidence['label']}", amount,
-                                  evidence=evidence))
+            inv.lines.append(
+                Line(
+                    "credit", f"Proven value fell since last invoice: {a.evidence['label']}", amount, evidence=evidence
+                )
+            )
             credit_pool += -amount
-        new_state[a.experiment] = {"billed_basis": a.basis,
-                                   "ledger_roots": [*state["ledger_roots"], a.evidence["ledger_root"]]}
+        new_state[a.experiment] = {
+            "billed_basis": a.basis,
+            "ledger_roots": [*state["ledger_roots"], a.evidence["ledger_root"]],
+        }
 
     applied = min(credit_pool, value_total)
     if applied:
@@ -245,8 +297,13 @@ def invoice(book: dict, schedule: PriceSchedule, *, org: str, period: str, agent
     inv.value_subtotal = _round(value_total)
     total = platform_after + value_total
     if schedule.cap_per_invoice is not None and total > schedule.cap_per_invoice:
-        inv.lines.append(Line("credit", f"Capped at {schedule.cap_per_invoice:g} per invoice",
-                              -_round(total - schedule.cap_per_invoice)))
+        inv.lines.append(
+            Line(
+                "credit",
+                f"Capped at {schedule.cap_per_invoice:g} per invoice",
+                -_round(total - schedule.cap_per_invoice),
+            )
+        )
         inv.notes.append("The cap applies; the value basis above the cap is not carried forward as owed.")
         total = schedule.cap_per_invoice
     if total < schedule.minimum_invoice:
@@ -257,9 +314,14 @@ def invoice(book: dict, schedule: PriceSchedule, *, org: str, period: str, agent
     if commit:
         book["experiments"].update(new_state)
         book["credit"] = credit_pool
-        book["invoices"].append({"org": org, "period": period, "total": inv.total,
-                                 "digest": hashlib.sha256(json.dumps(inv.to_dict(), sort_keys=True).encode()
-                                                          ).hexdigest()})
+        book["invoices"].append(
+            {
+                "org": org,
+                "period": period,
+                "total": inv.total,
+                "digest": hashlib.sha256(json.dumps(inv.to_dict(), sort_keys=True).encode()).hexdigest(),
+            }
+        )
     return inv
 
 
@@ -268,8 +330,10 @@ def render(inv: Invoice) -> str:
     for line in inv.lines:
         lines.append(f"  {line.kind:9s} {line.amount:>12,.2f}  {line.description}")
         if line.evidence:
-            lines.append(f"            evidence: ledger root {line.evidence.get('ledger_root')}, "
-                         f"digest {line.evidence.get('data_digest')}")
+            lines.append(
+                f"            evidence: ledger root {line.evidence.get('ledger_root')}, "
+                f"digest {line.evidence.get('data_digest')}"
+            )
             lines.append(f"            check: {line.evidence.get('verify')}")
     lines.append(f"  {'TOTAL':9s} {inv.total:>12,.2f}")
     for r in inv.refused:

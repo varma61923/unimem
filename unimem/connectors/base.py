@@ -1,4 +1,5 @@
 """Connector framework: resumable syncs from external sources into governed memory."""
+
 from __future__ import annotations
 
 import base64
@@ -132,7 +133,11 @@ def record_chunks(
     details = []
     try:
         for chunk in chunks:
-            detail = {"connector": connector, "breadcrumb": chunk.breadcrumb, "chunk_type": chunk.chunk_type}
+            detail: dict[str, str | dict] = {
+                "connector": connector,
+                "breadcrumb": chunk.breadcrumb,
+                "chunk_type": chunk.chunk_type,
+            }
             if chunk.provenance:
                 detail["extraction"] = chunk.provenance
             if chunk.modality:
@@ -147,15 +152,19 @@ def record_chunks(
     for chunk in chunks:
         statement = _screened_statement(f"{chunk.breadcrumb}: {chunk.content[:200]}", result)
         if statement:
-            items.append({
-                "statement": statement, "category": categorize_heading(chunk.breadcrumb),
-                "scopes": [scope] if scope else [], "confidence": 0.7, "source_trace_id": source_id,
-            })
+            items.append(
+                {
+                    "statement": statement,
+                    "category": categorize_heading(chunk.breadcrumb),
+                    "scopes": [scope] if scope else [],
+                    "confidence": 0.7,
+                    "source_trace_id": source_id,
+                }
+            )
     try:
         written = hierarchical.add_facts(root, items)
         result.facts_written += len(written)
-        hierarchical.retire_source(root, source_id, keep={f.id for f, _ in written},
-                                   scopes=[scope] if scope else [])
+        hierarchical.retire_source(root, source_id, keep={f.id for f, _ in written}, scopes=[scope] if scope else [])
     except (OSError, ValueError) as exc:
         result.errors.append(f"fact error: {exc}")
         return False
@@ -163,7 +172,10 @@ def record_chunks(
     for chunk, detail in zip(chunks, details):
         try:
             provenance.append_provenance(
-                root, target_kind="chunk", target_id=chunk.chunk_id, source_path=chunk.source_path,
+                root,
+                target_kind="chunk",
+                target_id=chunk.chunk_id,
+                source_path=chunk.source_path,
                 run_id=run_id,
                 detail=detail,
             )
@@ -176,6 +188,7 @@ def record_chunks(
 @dataclass
 class SyncResult:
     """Outcome of one connector sync pass."""
+
     connector: str
     chunks: list[Chunk] = field(default_factory=list)
     result: IngestionResult | None = None
@@ -186,14 +199,16 @@ class SyncResult:
 
     def to_dict(self) -> dict[str, Any]:
         base = self.result.to_dict() if self.result is not None else {}
-        base.update({
-            "connector": self.connector,
-            "chunks": len(self.chunks),
-            "new_state_token": self.new_state_token,
-            "run_id": self.run_id,
-            "dry_run": self.dry_run,
-            "pending": self.pending,
-        })
+        base.update(
+            {
+                "connector": self.connector,
+                "chunks": len(self.chunks),
+                "new_state_token": self.new_state_token,
+                "run_id": self.run_id,
+                "dry_run": self.dry_run,
+                "pending": self.pending,
+            }
+        )
         return base
 
 
