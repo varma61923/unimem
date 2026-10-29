@@ -215,7 +215,8 @@ def _seed_harm(root, n=300):
 def test_a_memory_measured_to_hurt_is_withdrawn_through_the_gateway(root):
     _start_experiment(root)
     os.makedirs(os.path.dirname(retrieval_io.config_path(root)), exist_ok=True)
-    json.dump({"harm_policy": "withdraw"}, open(retrieval_io.config_path(root), "w"))
+    with open(retrieval_io.config_path(root), "w") as target:
+        json.dump({"harm_policy": "withdraw"}, target)
     _seed_harm(root)
     g = gateway.Gateway(root, token=TOKEN)
     r = recall(g, "live-1", [{"id": "harm", "text": "retry 3x"}, {"id": "ok", "text": "check key"}])[1]

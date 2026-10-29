@@ -21,10 +21,13 @@ def intentional_fork(call: Callable[P, T], *args: P.args, **kwargs: P.kwargs) ->
     recovery. Python 3.12+ warns when the test runner already owns threads; older
     interpreters and single-threaded parents need not emit that warning.
     """
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter("always", DeprecationWarning)
-        result = call(*args, **kwargs)
-    for item in recorded:
-        if not (issubclass(item.category, DeprecationWarning) and _EXPECTED.fullmatch(str(item.message))):
-            warnings.warn_explicit(item.message, item.category, item.filename, item.lineno)
+    recorded: list[warnings.WarningMessage] = []
+    try:
+        with warnings.catch_warnings(record=True) as recorded:
+            warnings.simplefilter("always", DeprecationWarning)
+            result = call(*args, **kwargs)
+    finally:
+        for item in recorded:
+            if not (issubclass(item.category, DeprecationWarning) and _EXPECTED.fullmatch(str(item.message))):
+                warnings.warn_explicit(item.message, item.category, item.filename, item.lineno)
     return result

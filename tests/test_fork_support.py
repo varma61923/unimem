@@ -7,6 +7,16 @@ import pytest
 from tests.fork_support import intentional_fork
 
 
+def test_unrelated_warnings_survive_a_failing_probe():
+    def failing_probe():
+        warnings.warn("probe warning", UserWarning)
+        raise ValueError("probe failed")
+
+    with pytest.warns(UserWarning, match="probe warning"):
+        with pytest.raises(ValueError, match="probe failed"):
+            intentional_fork(failing_probe)
+
+
 def test_unrelated_warning_remains_observable():
     with pytest.warns(UserWarning, match="unexpected warning"):
         intentional_fork(warnings.warn, "unexpected warning", UserWarning)

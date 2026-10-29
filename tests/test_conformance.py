@@ -112,9 +112,14 @@ def test_a_malformed_lesson_fails_the_store_check(store):
 def running(store):
     g = gateway.Gateway(store, token="t" * 40)
     server = gateway.make_http_server(g, "127.0.0.1", 0)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_our_gateway_passes_the_gateway_checks(running):

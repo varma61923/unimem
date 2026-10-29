@@ -198,7 +198,8 @@ def test_a_withdrawing_store_reports_the_harm_as_handled(started, tmp_path):
     root, _ = started
     cfg = retrieval_io.config_path(root)
     os.makedirs(os.path.dirname(cfg), exist_ok=True)
-    json.dump({"harm_policy": "withdraw"}, open(cfg, "w"))
+    with open(cfg, "w") as target:
+        json.dump({"harm_policy": "withdraw"}, target)
     _finished(root)
     out, record = _package(root, tmp_path)
     assert record["harmful"]["withdrawn_automatically"]
@@ -209,7 +210,8 @@ def _edit_json(out, fn):
     path = os.path.join(out, "proof.json")
     data = json.loads(Path(path).read_text(encoding='utf-8'))
     fn(data)
-    json.dump(data, open(path, "w", encoding="utf-8"), indent=2, sort_keys=True)
+    with open(path, "w", encoding="utf-8") as target:
+        json.dump(data, target, indent=2, sort_keys=True)
 
 
 @pytest.fixture
@@ -227,21 +229,25 @@ def _failed(out, key=KEY):
 def test_flipping_one_outcome_in_the_raw_data_is_caught_twice(package):
     out, _ = package
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     for r in rows[1:]:
         if r[0] == "hurts" and r[2] == "injected" and r[3] == "false":
             r[3] = "true"
             break
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(rows)
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(rows)
     assert {"data digest", "recomputed estimates"} <= _failed(out)
 
 
 def test_dropping_the_inconvenient_rows_is_caught(package):
     out, _ = package
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     kept = [rows[0]] + [r for r in rows[1:] if not (r[0] == "hurts" and r[3] == "false")]
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(kept)
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(kept)
     assert "data digest" in _failed(out)
 
 
@@ -296,9 +302,11 @@ def test_changing_the_digest_to_match_edited_data_breaks_the_signature(package):
     out, _ = package
     from unimem import raw_export
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     rows[3][3] = "true" if rows[3][3] == "false" else "false"
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(rows)
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(rows)
     text = Path(path).read_text(encoding='utf-8')
     new_digest = raw_export.digest_of(proof.rows_from_csv(text))
     _edit_json(out, lambda d: d["evidence"].update(digest=new_digest))

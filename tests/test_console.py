@@ -111,7 +111,8 @@ def test_in_a_real_browser_hostile_ids_are_text_and_the_token_leaves_the_address
             data=json.dumps({"occasion_id": hostile, "agent_id": "a-1", "items": [{"id": hostile, "text": "x"}]}).encode(),
             headers={"Authorization": "Bearer " + "t" * 40, "Content-Type": "application/json",
                      "Host": f"127.0.0.1:{port}"})
-        urllib.request.urlopen(req).read()
+        with urllib.request.urlopen(req) as response:
+            response.read()
         with sync_api.sync_playwright() as p:
             browser = p.chromium.launch(executable_path=exe)
             page = browser.new_page()
