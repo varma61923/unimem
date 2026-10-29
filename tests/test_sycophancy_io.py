@@ -38,8 +38,11 @@ def traffic(root, identity, clock, *, n=400, helpful=False, prefix="personal"):
         actual = io.expose(root, identity, occasion, query_id="q"+str(i%2), context=CONTEXT)
         arm = actual["design"]["arm"]["injected"]
         assert bool(actual["memories"]) is arm
-        holdout_io.record_outcome(root, occasion, arm if helpful else i%3 != 0,
-            secondary_metrics={"accuracy": arm if helpful else i%3 != 1, "agreement": arm})
+        # Fixed potential outcomes make this an integration test of the gate.
+        # Statistical power and neutral effects have separate seeded tests.
+        outcome = arm if helpful else not arm
+        holdout_io.record_outcome(root, occasion, outcome,
+            secondary_metrics={"accuracy": outcome, "agreement": arm})
         clock.tick(1)
 
 
@@ -50,6 +53,9 @@ def test_flattering_audit_changes_actual_gate_and_factual_admission(tmp_path, cl
     traffic(root, identity, clock)
     report = io.report(root, identity, context=CONTEXT, apply=True)
     assert report["decision_ready"] and report["flattering"]
+    assert report["metrics"]["outcome"]["interval"][1] < 0
+    assert report["metrics"]["accuracy"]["interval"][1] < 0
+    assert report["metrics"]["agreement"]["interval"][0] > 0
     assert not report["accuracy_nonnegative"]
     assert not memory_authority.permits(root, source, action_class="factual:science")
     rates, _, _ = causal_gate.plan_rates(root, .1)
