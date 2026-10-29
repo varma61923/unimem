@@ -3,6 +3,7 @@
 Unknown history (a new branch, a force push, a shallow clone) always means
 `code=true`, so a skip can only happen when the diff is known to be docs-only.
 """
+
 from __future__ import annotations
 
 import re
@@ -18,10 +19,14 @@ def changed_files(base: str, head: str) -> list[str] | None:
         return None
     try:
         subprocess.run(["git", "cat-file", "-e", base + "^{commit}"], check=True, capture_output=True)
-        out = subprocess.run(["git", "diff", "--name-only", base, head], check=True, capture_output=True, text=True)
+        # Report both sides of moves: a source deletion must still run code gates
+        # when the destination is documentation. NULs preserve literal filenames.
+        out = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", "-z", base, head], check=True, capture_output=True, text=True
+        )
     except (OSError, subprocess.CalledProcessError):
         return None
-    return [line for line in out.stdout.splitlines() if line]
+    return [name for name in out.stdout.split("\0") if name]
 
 
 def code_changed(files: list[str] | None) -> bool:

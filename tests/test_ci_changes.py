@@ -1,9 +1,52 @@
 """CI path filter: only a diff known to touch nothing but documentation skips heavy jobs."""
+
 import subprocess
+from pathlib import Path
 
 import yaml
 
 from scripts import ci_changes
+
+
+def test_code_moved_into_docs_still_runs_code_gates(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init", "-q"], check=True)
+    source = Path("unimem/example.py")
+    source.parent.mkdir()
+    source.write_text("def example():\n    return 42\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "source"], check=True
+    )
+    base = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    Path("docs").mkdir()
+    subprocess.run(["git", "mv", str(source), "docs/example.md"], check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "move"], check=True
+    )
+    changed = ci_changes.changed_files(base, "HEAD")
+    assert changed is not None and "unimem/example.py" in changed
+    assert ci_changes.code_changed(changed)
+
+
+def test_codeql_actions_share_one_immutable_revision():
+    jobs = yaml.safe_load(Path(".github/workflows/security.yml").read_text())["jobs"]
+    actions = [
+        step["uses"]
+        for job in jobs.values()
+        for step in job.get("steps", [])
+        if step.get("uses", "").startswith("github/codeql-action/")
+    ]
+    assert len(actions) >= 2
+    revisions = {action.split("@", 1)[1] for action in actions}
+    assert len(revisions) == 1, "CodeQL init and analyze cannot exchange state across versions"
+    assert all(len(revision) == 40 and all(c in "0123456789abcdef" for c in revision) for revision in revisions)
+
+
+def test_dependabot_groups_codeql_action_updates():
+    updates = yaml.safe_load(Path(".github/dependabot.yml").read_text())["updates"]
+    actions = next(update for update in updates if update["package-ecosystem"] == "github-actions")
+    assert any("github/codeql-action/*" in group.get("patterns", []) for group in actions.get("groups", {}).values())
 
 
 def test_classification_is_conservative():
