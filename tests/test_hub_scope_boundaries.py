@@ -2,6 +2,7 @@
 
 import pytest
 
+pytest.importorskip("hub")
 from hub import scopes
 
 
