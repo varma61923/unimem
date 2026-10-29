@@ -310,13 +310,7 @@ def append(root: str, name: str, record: dict[str, Any], *, durable: bool = True
             raise ValueError("serialized journal record exceeds 1 MiB")
         if (state.stamp[-1] if state.stamp else 0) + len(encoded) + 1 > 64 * MAX_BYTES:
             raise ValueError("journal exceeds 64 MiB; rotate it")
-        _jsonl.append_row(path, signed)
-        if durable:
-            fd = os.open(path, os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0))
-            try:
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+        _jsonl.append_row(path, signed, fsync=durable, nofollow=True)
         state.signed.append(signed)
         state.tip, state.stamp, state.pins = digest(signed), _stamp(path), _pins(root)
         state.weight += frontmatter._retained_size(signed, set()) + 64
