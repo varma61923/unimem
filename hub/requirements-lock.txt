@@ -16,7 +16,7 @@
 # packages from the same original authors, not a typosquat) and
 # `starlette>=0.27`. Neither is pinned anywhere in hub/requirements.txt, so
 # an unconstrained install resolves whatever `mcp` currently allows -- on
-# the day this file was generated, `httpx2==2.16.0` and `starlette==1.9.0`,
+# the day this file was generated, `httpx2==2.16.0` and `starlette==1.10.0`,
 # neither of which existed when this Hub was first built against `mcp`'s
 # streamable-HTTP transport. A future, wider-ranging `mcp` release could
 # just as easily resolve something that quietly changes behavior this
@@ -52,7 +52,7 @@
 # committing -- a lock file that pins an untested combination is worse than
 # no lock file, because it looks authoritative.
 
-alembic==1.20.0
+alembic==1.20.1
 annotated-types==0.8.0
 anyio==4.15.1
 argon2-cffi==25.1.0
@@ -60,7 +60,7 @@ argon2-cffi-bindings==26.1.0
 asyncpg==0.32.0
 attrs==26.1.0
 # Remove compromised emSign certificate roots (GHSA-6q48-6c7w-9gw2).
-certifi==2026.10.19
+certifi==2026.10.23
 cffi==2.1.1
 click==8.5.0
 cryptography==50.0.2
@@ -79,7 +79,7 @@ mcp==2.3.0
 mcp-types==2.3.0
 numpy==2.5.4
 opentelemetry-api==1.45.1
-pycparser==3.11
+pycparser==3.12
 pydantic==2.14.1
 pydantic_core==2.50.1
 PyJWT==2.15.1
@@ -88,8 +88,8 @@ PyYAML==6.0.3
 referencing==0.37.0
 rpds-py==2026.9.1
 SQLAlchemy==2.0.55
-sse-starlette==3.5.0
-starlette==1.9.0
+sse-starlette==3.5.1
+starlette==1.10.0
 truststore==0.10.5
 typing-inspection==0.4.4
 typing_extensions==4.16.0

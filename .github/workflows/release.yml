@@ -64,11 +64,11 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
       - name: Cache checksum-verified OpenAPI Generator
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/openapi-generator-cli-7.26.0.jar
           key: openapi-generator-7.26.0-1760050094997b9cc790cc1350be095f15da8c08a996b184d3eadc4ccda5e35e
@@ -121,7 +121,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
