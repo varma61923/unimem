@@ -116,6 +116,7 @@ select = ["E", "F", "W", "I"]
 "benchmarks/**" = ["E501"]
 
 [tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "unit: isolated contract without an externally provisioned service",
     "integration: native driver, SDK or service contract (optional services must be explicitly enabled)",

@@ -39,8 +39,9 @@ logger = logging.getLogger(__name__)
 _KEY_PREFIX = "unimem_live_"
 _PREFIX_LEN = len(_KEY_PREFIX) + 4
 
+_hasher: PasswordHasher | None
 if _has_argon2 and PasswordHasher is not None:
-    _hasher: PasswordHasher | None = PasswordHasher()
+    _hasher = PasswordHasher()
     _DUMMY_HASH = _hasher.hash(secrets.token_urlsafe(32))
 else:
     _hasher = None
@@ -170,7 +171,7 @@ async def revoke_api_key(session: AsyncSession, key_id: str) -> None:
 def _scopes_of(raw: object) -> tuple[str, ...] | None:
     if raw is None:
         return None
-    return tuple(raw)
+    return tuple(raw) if scopes_module._valid_grants(raw) else ()
 
 
 @dataclass(frozen=True)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -718,7 +719,7 @@ class TestFetchingTheCorpus:
         assert commons_cmd.run_fetch(args) == 0
 
         written = [json.loads(x) for x in
-                   open(args.out, encoding="utf-8").read().splitlines() if x.strip()]
+                   Path(args.out).read_text(encoding='utf-8').splitlines() if x.strip()]
         assert [r["title"] for r in written] == ["a", "b"]
         assert commons_cmd._load_corpus(args.out) == written
 

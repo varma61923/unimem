@@ -4,6 +4,7 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -37,11 +38,11 @@ def test_stale_browser_decisions_do_not_mutate_or_sign(root, acting, action, fie
     fm, body = frontmatter.read(path)
     body += "\nAdditional evidence not reviewed by the operator.\n"
     frontmatter.write(path, fm, body)
-    before = open(path, encoding="utf-8").read()
+    before = Path(path).read_text(encoding='utf-8')
     status, payload = call(acting, "POST", f"/v1/lesson/{action}",
                            {"slug": "lesson_good", "expected_revision": revision, **fields})
     assert status == 409 and payload["error"]["code"] == "stale_review"
-    assert open(path, encoding="utf-8").read() == before
+    assert Path(path).read_text(encoding='utf-8') == before
     assert not os.path.exists(os.path.join(paths.memory_dir(root), "lesson_admissions.db"))
 
 

@@ -10,6 +10,11 @@ from collections import defaultdict, deque
 
 def audit(graph: dict) -> dict:
     nodes = {node["id"]: node for node in graph["nodes"]}
+    integrity = []
+    if not nodes:
+        integrity.append("Graph extraction contains no nodes")
+    if len(nodes) != len(graph["nodes"]):
+        integrity.append("Graph extraction contains duplicate node identifiers")
     adjacency = defaultdict(set)
     missing = []
     for edge in graph.get("links", graph.get("edges", [])):
@@ -34,6 +39,8 @@ def audit(graph: dict) -> dict:
             "unimem/hook_bridge.py",  # Absolute script entry point in generated native manifests.
         )
     }
+    if nodes and not roots:
+        integrity.append("Graph extraction contains no recognized runtime entry points")
     reachable, queue = set(roots), deque(roots)
     while queue:
         for target in adjacency[queue.popleft()]:
@@ -43,12 +50,11 @@ def audit(graph: dict) -> dict:
     candidates = [
         {"id": identity, "file": node.get("source_file"), "label": node.get("label")}
         for identity, node in nodes.items()
-        if identity not in reachable
-        and node.get("_callable")
-        and node.get("source_file", "").startswith("unimem/")
+        if identity not in reachable and node.get("_callable") and node.get("source_file", "").startswith("unimem/")
     ]
     return {
         "nodes": len(nodes),
+        "integrity_violations": integrity,
         "missing_endpoints": missing,
         "possible_unreachable": candidates,
         "limitations": [
@@ -70,11 +76,12 @@ def main():
         result = audit(json.load(stream))
     violations = []
     if args.source_root:
-        result["python_modules"] = sum(
-            name.endswith(".py")
-            for _, _, names in os.walk(os.path.join(args.source_root, "unimem"))
-            for name in names
-        )
+        source = os.path.join(args.source_root, "unimem")
+        if not os.path.isdir(source):
+            violations.append("Source root does not contain the unimem package")
+        result["python_modules"] = sum(name.endswith(".py") for _, _, names in os.walk(source) for name in names)
+        if not result["python_modules"] and os.path.isdir(source):
+            violations.append("Source package contains no Python modules")
         if args.max_modules is not None and result["python_modules"] > args.max_modules:
             violations.append("Python module surface exceeds the reviewed budget")
     if args.max_unreachable is not None and len(result["possible_unreachable"]) > args.max_unreachable:
@@ -82,11 +89,15 @@ def main():
     result["policy_violations"] = violations
     with open(args.output, "w", encoding="utf-8") as stream:
         json.dump(result, stream, indent=2)
-    print(f"modules={result.get('python_modules', '?')} unreachable={len(result['possible_unreachable'])} "
-          f"missing_endpoints={len(result['missing_endpoints'])}")
+    print(
+        f"modules={result.get('python_modules', '?')} unreachable={len(result['possible_unreachable'])} "
+        f"missing_endpoints={len(result['missing_endpoints'])}"
+    )
     for violation in violations:
         print("policy violation: " + violation)
-    return bool(result["missing_endpoints"] or violations)
+    for violation in result["integrity_violations"]:
+        print("integrity violation: " + violation)
+    return bool(result["missing_endpoints"] or result["integrity_violations"] or violations)
 
 
 if __name__ == "__main__":

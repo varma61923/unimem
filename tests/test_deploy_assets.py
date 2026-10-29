@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -32,7 +33,7 @@ def test_the_burn_rate_alerts_use_the_objectives_they_name():
 
 def test_every_metric_the_alerts_use_is_one_the_hub_exports():
     import re
-    source = open(os.path.join(ROOT, "hub", "observability.py"), encoding="utf-8").read()
+    source = Path(os.path.join(ROOT, 'hub', 'observability.py')).read_text(encoding='utf-8')
     with open(os.path.join(CHART, "files", "slo-alerts.yaml"), encoding="utf-8") as fh:
         used = set(re.findall(r"unimem_hub_[a-z_]+", fh.read()))
     exported = set(re.findall(r"unimem_hub_[a-z_]+", source))
@@ -42,7 +43,7 @@ def test_every_metric_the_alerts_use_is_one_the_hub_exports():
 
 
 def test_terraform_state_and_variable_files_are_ignored():
-    gi = open(os.path.join(ROOT, "deploy", "terraform", ".gitignore"), encoding="utf-8").read()
+    gi = Path(os.path.join(ROOT, 'deploy', 'terraform', '.gitignore')).read_text(encoding='utf-8')
     assert "*.tfstate" in gi and "*.tfvars" in gi and ".terraform/" in gi
 
 

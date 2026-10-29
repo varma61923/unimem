@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -53,7 +54,7 @@ def test_demo_data_is_reproducible(tmp_path):
     a, b = str(tmp_path / "a"), str(tmp_path / "b")
     for root in (a, b):
         functions.seed_demo(root, KITS["sales"], seed=3, occasions=300)
-    assert open(holdout_io.holdout_log_path(a)).read().count("\n") == open(holdout_io.holdout_log_path(b)).read().count("\n")
+    assert Path(holdout_io.holdout_log_path(a)).read_text().count("\n") == Path(holdout_io.holdout_log_path(b)).read_text().count("\n")
     assert {s: (e.n_injected, e.rate_injected) for s, e in _effects(a).items()} == \
            {s: (e.n_injected, e.rate_injected) for s, e in _effects(b).items()}
 
@@ -137,7 +138,7 @@ def test_init_with_each_function_stamps_its_agent_type_and_carries_the_kit(tmp_p
         assert main(["init", "--function", key, "--dest", root]) == 0
         assert paths.store_agent_type(root) == kit.agent_type
         assert functions.store_kit(root) == kit
-        index = open(paths.index_path(root), encoding="utf-8").read()
+        index = Path(paths.index_path(root)).read_text(encoding='utf-8')
         assert kit.domains[0].replace("-", " ").title() in index
 
 

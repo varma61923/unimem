@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -62,7 +63,7 @@ def test_a_quarantined_lesson_is_never_assigned_an_arm(server, store):
     for i in range(10):
         call(server, "retrieve", task="password reset email never arrived", occasion_id=f"occ-{i}")
     log = os.path.join(paths.memory_dir(store), "holdout_log.jsonl")
-    assert not os.path.exists(log) or not [json.loads(x) for x in open(log, encoding="utf-8")]
+    assert not os.path.exists(log) or not [json.loads(x) for x in Path(log).read_text(encoding='utf-8').splitlines(keepends=True)]
 
 
 def test_a_clean_lesson_carries_the_notice_and_is_unchanged(server, store):

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import frontmatter
 
 
@@ -23,7 +24,7 @@ def test_contended_lock_times_out_closes_fd_and_preserves_owner(tmp_path, monkey
     path = str(tmp_path / "lesson.md")
     ready, release = multiprocessing.Event(), multiprocessing.Event()
     owner = multiprocessing.Process(target=_hold_lock, args=(path, ready, release))
-    owner.start()
+    intentional_fork(owner.start)
     try:
         assert ready.wait(5)
         inode = os.stat(path + ".lock").st_ino

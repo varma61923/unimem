@@ -13,6 +13,8 @@ Verifies:
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import benchmarks.judges.beam as beam_mod
@@ -132,8 +134,8 @@ class TestGenericJudge:
 
 class TestLongMemEvalJudge:
     def test_header_references(self):
-        assert "9e0b455f4ef0e2ab8f2e582289761153549043fc" in open(longmemeval_mod.__file__).read()
-        assert "evaluate_qa.py" in open(longmemeval_mod.__file__).read()
+        assert "9e0b455f4ef0e2ab8f2e582289761153549043fc" in Path(longmemeval_mod.__file__).read_text()
+        assert "evaluate_qa.py" in Path(longmemeval_mod.__file__).read_text()
 
     def test_prompt_templates_verbatim(self):
         # Verify single session template
@@ -215,7 +217,7 @@ class TestLoCoMoJudge:
         assert locomo_mod.PRIMARY_SCORING_URL.endswith("task_eval/evaluation.py")
 
     def test_header_references(self):
-        content = open(locomo_mod.__file__).read()
+        content = Path(locomo_mod.__file__).read_text()
         assert "2402.17753" in content
         assert "fc49c88243ccccc6950495edfc5cd30af4b72107" in content
 
@@ -285,7 +287,7 @@ class TestLoCoMoJudge:
 
 class TestBEAMJudge:
     def test_header_references(self):
-        content = open(beam_mod.__file__).read()
+        content = Path(beam_mod.__file__).read_text()
         assert "b2da22eac88bb0874c64665f13457eb99835774a" in content
         assert "compute_metrics.py" in content
         assert "prompts.py" in content

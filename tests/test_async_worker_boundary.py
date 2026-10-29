@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.async_workers import BoundedWorkers, WorkerCapacityError
 
 
@@ -93,7 +94,7 @@ def test_preloaded_worker_pool_recovers_after_fork() -> None:
         child.close()
 
     process = context.Process(target=run_child)
-    process.start()
+    intentional_fork(process.start)
     child.close()
     try:
         assert parent.poll(5), "child reused parent thread state and stalled"

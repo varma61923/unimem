@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -53,11 +54,11 @@ def test_a_replaced_or_truncated_log_is_reread_from_scratch(root):
     _assign(root, 0, 10)
     holdout_io.read_log(root)
     path = holdout_io.holdout_log_path(root)
-    lines = open(path, encoding="utf-8").read().splitlines(keepends=True)
-    open(path, "w", encoding="utf-8").write("".join(lines[:4]))
+    lines = Path(path).read_text(encoding='utf-8').splitlines(keepends=True)
+    Path(path).write_text(''.join(lines[:4]), encoding='utf-8')
     assert holdout_io.read_log(root) == _full_read(root) and len(holdout_io.read_log(root)[0]) == 4
     tmp = path + ".new"
-    open(tmp, "w", encoding="utf-8").write("".join(lines[4:9]))
+    Path(tmp).write_text(''.join(lines[4:9]), encoding='utf-8')
     os.replace(tmp, path)
     assert holdout_io.read_log(root) == _full_read(root)
 
@@ -66,7 +67,7 @@ def test_a_same_length_rewrite_of_the_last_line_is_noticed(root):
     _assign(root, 0, 5)
     holdout_io.read_log(root)
     path = holdout_io.holdout_log_path(root)
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding='utf-8')
     head, last = text[:-1].rsplit("\n", 1)
     new = head + "\n" + last.replace('"revision": "r"', '"revision": "s"') + "\n"
     assert len(new) == len(text) and new != text

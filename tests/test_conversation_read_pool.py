@@ -5,6 +5,7 @@ import threading
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.conversation import Options, Store, recall, unicode_index
 from unimem.conversation.pool import PoolBusy, ReadPool
 
@@ -169,7 +170,7 @@ def test_service_pool_and_response_cache_do_not_inherit_locked_parent_state(tmp_
         recall(store, "Orion launch", options=Options(embedder="none", rerank=None))
     READ_POOL._condition.acquire()
     search._RECALL_LOCK.acquire()
-    child = os.fork()
+    child = intentional_fork(os.fork)
     if child == 0:
         try:
             import signal

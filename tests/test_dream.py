@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 import yaml
@@ -32,9 +33,7 @@ def test_without_a_model_it_reports_and_writes_no_lessons(store, capsys):
     assert main(["dream", "--dest", str(store)]) == 0
     out = capsys.readouterr().out
     assert "1 signal(s)" in out and "report only" in out
-    report = open(os.path.join(paths.memory_dir(str(store)), "dream",
-                               next(iter(os.listdir(os.path.join(paths.memory_dir(str(store)), "dream"))))),
-                  encoding="utf-8").read()
+    report = Path(os.path.join(paths.memory_dir(str(store)), 'dream', next(iter(os.listdir(os.path.join(paths.memory_dir(str(store)), 'dream')))))).read_text(encoding='utf-8')
     assert "Failure signals (1)" in report and "No model configured" in report
     assert _statuses(store) == {}
 

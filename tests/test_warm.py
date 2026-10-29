@@ -6,6 +6,7 @@ import stat
 import tempfile
 import textwrap
 import time
+from pathlib import Path
 
 import pytest
 
@@ -212,8 +213,8 @@ class TestTheWorkerAnswersExactlyAsTheSubprocessWould:
         _, out_b = _shellout.run_script(b, QUERY, ["--", "second"], "hint", capture=True)
         assert "index=index-a" in out_a and os.path.join(a, "memory", "lessons") in out_a
         assert "index=index-b" in out_b and os.path.join(b, "memory", "lessons") in out_b
-        assert open(os.path.join(a, "memory", "alpha_telemetry.jsonl")).read() == "first\n"
-        assert open(os.path.join(b, "memory", "alpha_telemetry.jsonl")).read() == "second\n"
+        assert Path(os.path.join(a, 'memory', 'alpha_telemetry.jsonl')).read_text() == "first\n"
+        assert Path(os.path.join(b, 'memory', 'alpha_telemetry.jsonl')).read_text() == "second\n"
 
 
 class TestTheIndexBuilderIsServedToo:
@@ -227,7 +228,7 @@ class TestTheIndexBuilderIsServedToo:
             results.append((rc, out.replace(root, "<root>"), capfd.readouterr().err))
             if rc == 0:
                 index = os.path.join(root, "memory", "attention", "index.npz")
-                assert open(index).read() == "built" + ("-forced" if argv else "")
+                assert Path(index).read_text() == "built" + ("-forced" if argv else "")
         assert results[0] == results[1]
         assert os.listdir(os.path.join(env, "unimem")), "the worker path was not taken"
 

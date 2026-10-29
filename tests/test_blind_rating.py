@@ -39,7 +39,8 @@ def test_the_sheet_says_nothing_about_where_an_item_came_from(dirs, tmp_path):
         assert leak not in sheet
     key = json.loads((out / "key.json").read_text())
     assert sorted(key.values()) == ["drafts"] * 8 + ["handwritten"] * 8
-    rows = list(csv.DictReader(open(out / "sheet.csv", newline="")))
+    with open(out / "sheet.csv", newline="") as source:
+        rows = list(csv.DictReader(source))
     assert [r["item_id"] for r in rows] == sorted(r["item_id"] for r in rows) and len(rows) == 16
     assert len({key[r["item_id"]] for r in rows[:6]}) == 2 or len({key[r["item_id"]] for r in rows[:8]}) == 2
 

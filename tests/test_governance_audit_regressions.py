@@ -8,9 +8,11 @@ import multiprocessing
 import os
 from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import _jsonl, causal_policy, conformal_gate, holdout_io, promotion, safety
 from unimem import frontier_protocol as fp
 
@@ -32,7 +34,7 @@ def test_rotation_checks_actual_serialized_row_size(tmp_path, monkeypatch):
     root = str(tmp_path)
     name = "rotation.jsonl"
     fp.append(root, name, {"kind": "original"})
-    original = open(fp.filename(root, name), "rb").read()
+    original = Path(fp.filename(root, name)).read_bytes()
     payload = {str(i): 0 for i in range(200)}
     # Choose a limit between compact canonical bytes and the actual on-disk
     # encoding, including the signature and chain metadata.
@@ -42,7 +44,7 @@ def test_rotation_checks_actual_serialized_row_size(tmp_path, monkeypatch):
     monkeypatch.setattr(fp, "MAX_BYTES", maximum)
     with pytest.raises(ValueError, match="serialized journal record"):
         fp.rotate(root, name, [payload])
-    assert open(fp.filename(root, name), "rb").read() == original
+    assert Path(fp.filename(root, name)).read_bytes() == original
 
 
 @pytest.mark.parametrize("payload", [b'{"x":\xff}\n', b'{"x":NaN}\n', b'{"x":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}\n'])
@@ -100,7 +102,7 @@ def test_child_cannot_inherit_parent_jsonl_lock_ownership(tmp_path):
     process = context.Process(target=_fork_lock_probe, args=(path, child))
     try:
         with _jsonl.locked(path):
-            process.start()
+            intentional_fork(process.start)
             assert parent.poll(10) and parent.recv() == "ready"
             assert not parent.poll(.1), "child bypassed the parent's file lock"
         assert parent.poll(10) and parent.recv() == "acquired"

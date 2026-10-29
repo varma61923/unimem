@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -46,7 +47,7 @@ class TestCodeIngestion:
         from unimem import paths
         for fname in os.listdir(paths.lessons_dir(store)):
             if fname.endswith(".md"):
-                content = open(os.path.join(paths.lessons_dir(store), fname)).read()
+                content = Path(os.path.join(paths.lessons_dir(store), fname)).read_text()
                 assert "sk-ant-api03-" not in content, f"Secret found in {fname}"
 
     def test_ingest_invalid_python_does_not_crash(self, store, tmp_path):

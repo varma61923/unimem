@@ -53,23 +53,36 @@ def _percentiles(values: list[float]) -> dict:
 class Gateway:
     def __init__(self, root: str):
         self.port, self.token = _free_port(), secrets.token_urlsafe(24)
-        self.process = subprocess.Popen(
-            [sys.executable, "-m", "unimem.cli", "gateway", "--dest", root, "--host", "127.0.0.1",
-             "--port", str(self.port), "--token", self.token],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise RuntimeError("gateway exited: " + self.process.stderr.read().decode(errors="replace")[-500:])
-            try:
-                if self.call("GET", "/v1/health/live")[0] == 200:
-                    return
-            except OSError:
-                time.sleep(0.2)
-        raise RuntimeError("gateway did not become ready")
+        # A pipe that nobody drains can block the serving process once its log
+        # buffer fills. Keep diagnostics off the request path and bound reads.
+        self._stderr = tempfile.TemporaryFile()
+        try:
+            self.process = subprocess.Popen(
+                [sys.executable, "-m", "unimem.cli", "gateway", "--dest", root, "--host", "127.0.0.1",
+                 "--port", str(self.port), "--token", self.token],
+                stdout=subprocess.DEVNULL, stderr=self._stderr)
+        except BaseException:
+            self._stderr.close()
+            raise
+        try:
+            deadline = time.monotonic() + 60
+            while (remaining := deadline - time.monotonic()) > 0:
+                if self.process.poll() is not None:
+                    end = self._stderr.seek(0, os.SEEK_END)
+                    self._stderr.seek(max(0, end - 500))
+                    raise RuntimeError("gateway exited: " + self._stderr.read(500).decode(errors="replace"))
+                try:
+                    if self.call("GET", "/v1/health/live", timeout=min(remaining, 1.0))[0] == 200:
+                        return
+                except OSError:
+                    time.sleep(0.2)
+            raise RuntimeError("gateway did not become ready")
+        except BaseException:
+            self.close()
+            raise
 
-    def call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
-        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=300)
+    def call(self, method: str, path: str, body: dict | None = None, *, timeout: float = 300) -> tuple[int, dict]:
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
         try:
             connection.request(method, path, json.dumps(body) if body is not None else None,
                                {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
@@ -79,18 +92,31 @@ class Gateway:
             connection.close()
 
     def close(self) -> None:
-        self.process.terminate()
         try:
-            self.process.wait(10)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(10)
+        finally:
+            self._stderr.close()
 
 
 def run(args) -> dict:
+    cases = _load_cases(args)
+    if not any(questions for _space, _sessions, _now, questions in cases):
+        raise ValueError("no benchmark questions selected")
+    if args.root:
+        return _measure(args, cases, args.root)
+    with tempfile.TemporaryDirectory(prefix="unimem-deployed-") as root:
+        return _measure(args, cases, root)
+
+
+def _measure(args, cases, root: str) -> dict:
     from unimem.conversation import embed
 
-    cases = _load_cases(args)
-    root = args.root or tempfile.mkdtemp(prefix="unimem-deployed-")
     # Vectors can only be prepared at write time when this host has an embedder.
     cache_vectors = bool(args.cache_vectors and embed.configured())
     gateway = Gateway(root)

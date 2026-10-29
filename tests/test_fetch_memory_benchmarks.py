@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import io
 import os
+from pathlib import Path
 
 import pytest
 
@@ -34,7 +35,7 @@ def test_a_matching_download_is_installed_and_reused(tmp_path, monkeypatch):
                         ("https://example.invalid/locomo10.json", hashlib.sha256(body).hexdigest()))
     seen: list = []
     path = fetcher.fetch("locomo10.json", str(tmp_path), opener=_serve(body, seen))
-    assert open(path, "rb").read() == body and len(seen) == 1
+    assert Path(path).read_bytes() == body and len(seen) == 1
     fetcher.fetch("locomo10.json", str(tmp_path), opener=_serve(b"never fetched", seen))
     assert len(seen) == 1
 

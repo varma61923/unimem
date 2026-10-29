@@ -180,7 +180,7 @@ def load(choice) -> tuple[TextReranker | None, str]:
         raise ValueError(str(exc)) from None
 
 
-def check_options(depth: int, blend: float) -> None:
+def check_options(depth: object, blend: object) -> None:
     if isinstance(depth, bool) or not isinstance(depth, int) or not 1 <= depth <= MAX_DEPTH:
         raise ValueError(f"rerank_depth must be an integer in 1..{MAX_DEPTH}")
     if isinstance(blend, bool) or not isinstance(blend, (int, float)) or not 0.0 <= float(blend) <= 1.0:

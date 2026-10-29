@@ -2,6 +2,7 @@ import csv
 import json
 import os
 import random
+from pathlib import Path
 
 import pytest
 
@@ -143,7 +144,7 @@ def test_a_signed_package_verifies_in_every_respect(started, tmp_path):
     assert {c.status for c in checks.values()} == {proof.PASS}, [str(c) for c in checks.values()]
     assert set(checks) >= {"data digest", "recomputed estimates", "recomputed value ledger",
                            "ledger chain", "pre-registration", "issuer signature"}
-    report = open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    report = Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert report.index("## Result") < report.index("## What each memory did")
     assert "still being delivered" in report and "What this does not show" in report
     assert "SYNTHETIC" not in report
@@ -153,7 +154,7 @@ def test_the_report_leads_with_validity_before_effects(started, tmp_path):
     root, _ = started
     _finished(root)
     out, _ = _package(root, tmp_path)
-    report = open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    report = Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert report.index("Can this be trusted?") < report.index("| Memory | Verdict")
 
 
@@ -162,7 +163,7 @@ def test_an_interim_package_says_so(started, tmp_path):
     _run_fleet(root, 120)
     out, record = _package(root, tmp_path)
     assert not record["final"]
-    assert "Interim" in open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    assert "Interim" in Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert all(c.status != proof.FAIL for c in proof.verify(out, key=KEY))
 
 
@@ -172,7 +173,7 @@ def test_a_compromised_run_states_no_figure_and_the_refusal_itself_verifies(star
     out, record = _package(root, tmp_path)
     assert record["integrity"]["verdict"] == "COMPROMISED" and not record["value"]["readable"]
     assert record["ledger"] == [] and record["value"]["money"] is None
-    assert "No figure is stated" in open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    assert "No figure is stated" in Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert proof.verified(proof.verify(out, key=KEY))
 
 
@@ -183,7 +184,7 @@ def test_an_unsigned_package_verifies_but_says_who_issued_it_is_not_established(
     assert record["signature"] is None
     checks = _verify(out, key=None)
     assert checks["issuer signature"].status == proof.UNSIGNED and proof.verified(list(checks.values()))
-    assert "Not signed" in open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    assert "Not signed" in Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
 
 
 def test_a_signed_package_without_the_key_skips_the_signature_check_and_says_so(started, tmp_path):
@@ -197,18 +198,20 @@ def test_a_withdrawing_store_reports_the_harm_as_handled(started, tmp_path):
     root, _ = started
     cfg = retrieval_io.config_path(root)
     os.makedirs(os.path.dirname(cfg), exist_ok=True)
-    json.dump({"harm_policy": "withdraw"}, open(cfg, "w"))
+    with open(cfg, "w") as target:
+        json.dump({"harm_policy": "withdraw"}, target)
     _finished(root)
     out, record = _package(root, tmp_path)
     assert record["harmful"]["withdrawn_automatically"]
-    assert "no longer delivered" in open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    assert "no longer delivered" in Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
 
 
 def _edit_json(out, fn):
     path = os.path.join(out, "proof.json")
-    data = json.load(open(path, encoding="utf-8"))
+    data = json.loads(Path(path).read_text(encoding='utf-8'))
     fn(data)
-    json.dump(data, open(path, "w", encoding="utf-8"), indent=2, sort_keys=True)
+    with open(path, "w", encoding="utf-8") as target:
+        json.dump(data, target, indent=2, sort_keys=True)
 
 
 @pytest.fixture
@@ -226,21 +229,25 @@ def _failed(out, key=KEY):
 def test_flipping_one_outcome_in_the_raw_data_is_caught_twice(package):
     out, _ = package
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     for r in rows[1:]:
         if r[0] == "hurts" and r[2] == "injected" and r[3] == "false":
             r[3] = "true"
             break
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(rows)
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(rows)
     assert {"data digest", "recomputed estimates"} <= _failed(out)
 
 
 def test_dropping_the_inconvenient_rows_is_caught(package):
     out, _ = package
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     kept = [rows[0]] + [r for r in rows[1:] if not (r[0] == "hurts" and r[3] == "false")]
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(kept)
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(kept)
     assert "data digest" in _failed(out)
 
 
@@ -295,10 +302,12 @@ def test_changing_the_digest_to_match_edited_data_breaks_the_signature(package):
     out, _ = package
     from unimem import raw_export
     path = os.path.join(out, "assignments.csv")
-    rows = list(csv.reader(open(path, encoding="utf-8")))
+    with open(path, encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
     rows[3][3] = "true" if rows[3][3] == "false" else "false"
-    csv.writer(open(path, "w", encoding="utf-8", newline=""), lineterminator="\n").writerows(rows)
-    text = open(path, encoding="utf-8").read()
+    with open(path, "w", encoding="utf-8", newline="") as target:
+        csv.writer(target, lineterminator="\n").writerows(rows)
+    text = Path(path).read_text(encoding='utf-8')
     new_digest = raw_export.digest_of(proof.rows_from_csv(text))
     _edit_json(out, lambda d: d["evidence"].update(digest=new_digest))
     failed = _failed(out)
@@ -321,7 +330,7 @@ def test_a_demo_proof_is_labelled_synthetic_everywhere_and_still_verifies(tmp_pa
     verdicts = {m["lesson_slug"]: m["verdict"] for m in record["memories"]}
     assert verdicts == {"demo-helpful-memory": "HELPS", "demo-harmful-memory": "HURTS",
                         "demo-neutral-memory": "NO_MEASURABLE_EFFECT"}
-    assert "SYNTHETIC DEMO DATA" in open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    assert "SYNTHETIC DEMO DATA" in Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert "SYNTHETIC DEMO DATA" in proof.render_status(proof.status(root))
     assert proof.verified(proof.verify(out, key=KEY))
 
@@ -352,7 +361,7 @@ def test_verifying_something_that_is_not_a_package_is_an_error_not_a_pass(tmp_pa
 
 def test_a_malformed_csv_fails_recomputation_rather_than_crashing(package):
     out, _ = package
-    open(os.path.join(out, "assignments.csv"), "w", encoding="utf-8").write("not,the,columns\n1,2,3\n")
+    Path(os.path.join(out, 'assignments.csv')).write_text('not,the,columns\n1,2,3\n', encoding='utf-8')
     assert {"data digest", "recomputation"} <= _failed(out)
 
 
@@ -418,7 +427,7 @@ def test_the_report_says_what_stopping_the_harmful_memory_gives_back(started, tm
     rec = record["harmful"]["recoverable"]
     assert rec["memories"] == ["hurts"] and rec["occasions"] > 0 and rec["ci_95"][0] < rec["occasions"] < rec["ci_95"][1]
     assert rec["money"] == pytest.approx(rec["occasions"] * 12.0)
-    text = open(os.path.join(out, "report.md"), encoding="utf-8").read()
+    text = Path(os.path.join(out, 'report.md')).read_text(encoding='utf-8')
     assert "That is what stopping them gives back" in text and "not billed" in text
 
 

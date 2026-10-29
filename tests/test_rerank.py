@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -235,9 +236,10 @@ def test_a_store_mid_experiment_does_not_gain_a_reranker_on_upgrade(tmp_path, no
     assert main(["init", "--dest", root]) == 0
     retrieval_io.configure(root, floor=0.05)
     config_file = retrieval_io.config_path(root)
-    raw = json.load(open(config_file))
+    raw = json.loads(Path(config_file).read_text())
     raw.pop("rerank")
-    json.dump(raw, open(config_file, "w"))
+    with open(config_file, "w") as target:
+        json.dump(raw, target)
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
         fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
                              "salt": "s", "scorer": "idf-v2", "floor": 0.05}) + "\n")

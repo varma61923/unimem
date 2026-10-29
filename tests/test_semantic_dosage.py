@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -72,7 +73,7 @@ def test_a_core_lesson_is_admitted_first(store, capsys):
 def test_only_what_is_injected_is_given_an_arm(store, capsys):
     assert main(["query", "refund", "--experiment", "--occasion-id", "o1",
                  "--holdout-rate", "0.5", "--dest", store]) == 0
-    logged = {json.loads(line)["lesson"] for line in open(holdout_log_path(store), encoding="utf-8")}
+    logged = {json.loads(line)["lesson"] for line in Path(holdout_log_path(store)).read_text(encoding='utf-8').splitlines(keepends=True)}
     assert logged == {f"l{i:02d}" for i in range(10)}
 
 
@@ -84,7 +85,7 @@ def test_a_wider_budget_admits_more(store, capsys):
 
 
 def _labels(root):
-    return [json.loads(line).get("scorer") for line in open(holdout_log_path(root), encoding="utf-8")]
+    return [json.loads(line).get("scorer") for line in Path(holdout_log_path(root)).read_text(encoding='utf-8').splitlines(keepends=True)]
 
 
 def test_a_new_experiment_records_the_budgeted_treatment(store, capsys):

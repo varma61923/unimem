@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -98,7 +99,7 @@ def test_trace_writer_redacts_nested_metadata_before_persistence(tmp_path, monke
                      solution="Retry", tags=["ghp_" + "a" * 36],
                      extra={"extensions": {"password": "short", "contact": "alice@example.com"}})
     assert path is not None
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding='utf-8')
     assert "192.0.2.9" not in text and "alice@example.com" not in text
     assert "short" not in text and "a" * 36 not in text
 

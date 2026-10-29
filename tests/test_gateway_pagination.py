@@ -2,6 +2,7 @@
 import io
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -80,8 +81,8 @@ def test_active_index_cache_invalidates_on_write(root):
                  "The customer received the email", "--importance", "4", "--importance-rationale", "r",
                  "--dest", root]) == 0
     path = os.path.join(paths.lessons_dir(root), "lesson_cache_me.md")
-    text = open(path, encoding="utf-8").read()
-    open(path, "w", encoding="utf-8").write(text[: text.index("\n## Rule")] + "\n## Rule\nCheck the list.\n")
+    text = Path(path).read_text(encoding='utf-8')
+    Path(path).write_text(text[:text.index('\n## Rule')] + '\n## Rule\nCheck the list.\n', encoding='utf-8')
     assert main(["lesson", "approve", "lesson_cache_me", "--rationale", "t", "--dest", root]) == 0
     holdout_io.configure(root, rate=0.5, salt="cache-inv")
     gw = gateway.Gateway(root, token=TOKEN)

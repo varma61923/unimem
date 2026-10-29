@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -34,7 +35,7 @@ def test_exact_seeded_sampling_preserves_entire_history_and_excludes_labels(tmp_
 
 def test_unresolvable_annotations_are_retained_as_misses_instead_of_excluded(tmp_path):
     data = _dataset(tmp_path / "dataset.json", count=1)
-    payload = json.loads(open(data).read())
+    payload = json.loads(Path(data).read_text())
     payload[0]["qa"][0]["evidence"] = ["D1:1", "D1:2 D4:3", "D:11:26"]
     with open(data, "w") as handle:
         json.dump(payload, handle)

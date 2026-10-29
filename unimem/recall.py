@@ -23,6 +23,7 @@ diversity and packing, per call or in the same file, globally or per agent:
 `adaptive_budget` sizes the budget by the question's shape and grows it while
 retrieved evidence stays weak. Both are off unless asked for; every result
 says what ran in ``explain``, with a lexical completeness grade."""
+
 from __future__ import annotations
 
 import json
@@ -30,6 +31,7 @@ import math
 import os
 import re
 import statistics
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -77,9 +79,16 @@ class Item:
     provenance: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        result = {"channel": self.channel, "id": self.id, "text": self.text, "score": round(self.score, 4),
-                "fused": round(self.fused, 5), "at": self.at, "tokens": tokens(self.text),
-                "truncated": self.truncated}
+        result = {
+            "channel": self.channel,
+            "id": self.id,
+            "text": self.text,
+            "score": round(self.score, 4),
+            "fused": round(self.fused, 5),
+            "at": self.at,
+            "tokens": tokens(self.text),
+            "truncated": self.truncated,
+        }
         if self.provenance:
             result["provenance"] = self.provenance
         return result
@@ -138,18 +147,30 @@ class Result:
         out = []
         for channel in CHANNELS:
             if channel in blocks:
-                out.append(f"## {titles[channel]}\n" + "\n".join(f"- {t}" if channel != "conversations" else t
-                                                                 for t in blocks[channel]))
+                out.append(
+                    f"## {titles[channel]}\n"
+                    + "\n".join(f"- {t}" if channel != "conversations" else t for t in blocks[channel])
+                )
         return "\n\n".join(out)
 
     def to_dict(self) -> dict:
-        return {"question": self.question, "as_of": self.as_of, "budget": self.budget, "tokens": self.tokens,
-                "items": [i.to_dict() for i in self.items], "considered": self.considered,
-                "errors": self.errors, "assessment": self.assessment.to_dict(), "context": self.context,
-                "fact_scorer": self.fact_scorer, "explain": self.explain}
+        return {
+            "question": self.question,
+            "as_of": self.as_of,
+            "budget": self.budget,
+            "tokens": self.tokens,
+            "items": [i.to_dict() for i in self.items],
+            "considered": self.considered,
+            "errors": self.errors,
+            "assessment": self.assessment.to_dict(),
+            "context": self.context,
+            "fact_scorer": self.fact_scorer,
+            "explain": self.explain,
+        }
 
 
 # --- budgets ---------------------------------------------------------------------------
+
 
 def budget_config(root: str) -> dict:
     path = os.path.join(paths.memory_dir(root), "budgets.json")
@@ -163,8 +184,9 @@ def budget_config(root: str) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def resolve_budget(root: str, agent: str | None, budget: int | None,
-                   weights: dict[str, float] | None) -> tuple[int, dict[str, float]]:
+def resolve_budget(
+    root: str, agent: str | None, budget: int | None, weights: dict[str, float] | None
+) -> tuple[int, dict[str, float]]:
     cfg = budget_config(root)
     spec = ((cfg.get("agents") or {}).get(agent) or {}) if agent else {}
     total = budget or spec.get("budget") or cfg.get("default") or DEFAULT_BUDGET
@@ -182,8 +204,13 @@ def retrieval_settings(root: str, agent: str | None = None) -> dict:
 
     cfg = budget_config(root)
     spec = ((cfg.get("agents") or {}).get(agent) or {}) if agent else {}
-    out = {"reranker": None, "depth": reranking.DEFAULT_DEPTH, "blend": reranking.DEFAULT_BLEND,
-           "adaptive_budget": False, "max_budget": None}
+    out = {
+        "reranker": None,
+        "depth": reranking.DEFAULT_DEPTH,
+        "blend": reranking.DEFAULT_BLEND,
+        "adaptive_budget": False,
+        "max_budget": None,
+    }
     for layer in (cfg, spec):
         if not isinstance(layer, dict):
             continue
@@ -195,8 +222,9 @@ def retrieval_settings(root: str, agent: str | None = None) -> dict:
         out.update({key: layer[key] for key in ("adaptive_budget", "max_budget") if key in layer})
     if not isinstance(out["adaptive_budget"], bool):
         raise ValueError("budgets.json: adaptive_budget must be true or false")
-    if out["max_budget"] is not None and (isinstance(out["max_budget"], bool)
-                                          or not isinstance(out["max_budget"], int)):
+    if out["max_budget"] is not None and (
+        isinstance(out["max_budget"], bool) or not isinstance(out["max_budget"], int)
+    ):
         raise ValueError("budgets.json: max_budget must be an integer")
     if out["reranker"] is not None and not isinstance(out["reranker"], str):
         raise ValueError("budgets.json: rerank.reranker must be a reranker name")
@@ -205,6 +233,7 @@ def retrieval_settings(root: str, agent: str | None = None) -> dict:
 
 
 # --- channels --------------------------------------------------------------------------
+
 
 def _rule(body: str) -> str:
     m = re.search(r"^## Rule\s*\n(.*?)(?=^## |\Z)", body, re.S | re.M)
@@ -225,8 +254,9 @@ def _lessons(root: str, question: str, as_of: str | None, k: int, scope: str = "
     if not active:
         return []
     config = retrieval_io.load_config(root)
-    ranked = retrieval.rank_lessons(question, active, top_k=k, floor=config.floor, scorer=config.scorer,
-                                    term_cache=term_cache)
+    ranked = retrieval.rank_lessons(
+        question, active, top_k=k, floor=config.floor, scorer=config.scorer, term_cache=term_cache
+    )
     # The label a lexical retrieve logs with its holdout rows (harm-budget scale).
     label = retrieval_io.rerank_label(config.eligibility_label_for(fused=False), retrieval_io.RERANK_NONE)
     out = []
@@ -243,11 +273,12 @@ def _lessons(root: str, question: str, as_of: str | None, k: int, scope: str = "
             text += f" Rule: {rule}"
         scopes = fm.get("scopes") or []
         traces = fm.get("source_traces") or []
-        provenance = {
+        provenance: dict[str, object] = {
             "kind": "lesson",
             "scopes": [value for value in scopes if isinstance(value, str)] if isinstance(scopes, list) else [],
-            "source_traces": ([value for value in traces if isinstance(value, str)][:256]
-                              if isinstance(traces, list) else []),
+            "source_traces": (
+                [value for value in traces if isinstance(value, str)][:256] if isinstance(traces, list) else []
+            ),
             "admission": "verified" if fm.get(lesson_admission.RECEIPT_FIELD) else "legacy_compatible",
             "revision": lesson_admission.digest_of(fm, body),
         }
@@ -301,8 +332,13 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
     # for stores and configurations that do not have an indexed projection.
     from unimem import fact_store, fact_vector_projection
 
-    if model and not model_path and not as_of and fact_store.enabled(root) \
-            and fact_vector_projection._backend(root) == "lance":
+    if (
+        model
+        and not model_path
+        and not as_of
+        and fact_store.enabled(root)
+        and fact_vector_projection._backend(root) == "lance"
+    ):
         watermark = fact_vector_projection._watermark(model, "lance")
         moment = datetime.now(timezone.utc)
         with fact_store.transaction(root) as current:
@@ -312,26 +348,39 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                 indexed = row is not None
             except (TypeError, ValueError):
                 cursor, indexed = 0, False
-            pending_ids = list(dict.fromkeys(row[0] for row in current.connection.execute(
-                "SELECT fact_id FROM events WHERE seq>? ORDER BY seq", (cursor,)
-            ))) if indexed else []
+            pending_ids = (
+                list(
+                    dict.fromkeys(
+                        row[0]
+                        for row in current.connection.execute(
+                            "SELECT fact_id FROM events WHERE seq>? ORDER BY seq", (cursor,)
+                        )
+                    )
+                )
+                if indexed
+                else []
+            )
             pending_facts = []
             for identity in pending_ids:
                 fact = current.get(identity)
-                if fact is not None and not fact.forgotten and fact.status == "active" \
-                        and (not scope or not fact.scopes or scope in fact.scopes) \
-                        and hierarchical._valid_at(fact, moment) and not hierarchical._is_expired(fact, moment):
+                if (
+                    fact is not None
+                    and not fact.forgotten
+                    and fact.status == "active"
+                    and (not scope or not fact.scopes or scope in fact.scopes)
+                    and hierarchical._valid_at(fact, moment)
+                    and not hierarchical._is_expired(fact, moment)
+                ):
                     pending_facts.append(fact)
         if indexed:
             try:
-                candidates = fact_vector_projection.search(root, question, model=model,
-                                                           limit=max(200, min(1000, k * 16)))
+                candidates = fact_vector_projection.search(
+                    root, question, model=model, limit=max(200, min(1000, k * 16))
+                )
                 # A stale projection can omit newly added or revised facts. Score
                 # just that bounded outbox tail exactly instead of rescanning the
                 # full canonical store, then merge it with indexed candidates.
-                pending_scores = fact_embeddings.scores(
-                    question, pending_facts, model=model, root=root
-                ) or {}
+                pending_scores = fact_embeddings.scores(question, pending_facts, model=model, root=root) or {}
                 candidate_scores = dict(candidates)
                 candidate_scores.update(pending_scores)
                 from unimem import memory_authority
@@ -342,11 +391,17 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                     ranked = []
                     for identity, cosine in candidate_scores.items():
                         fact = current.get(identity)
-                        if fact is None or fact.forgotten or fact.status != "active" \
-                                or scope and fact.scopes and scope not in fact.scopes \
-                                or not hierarchical._valid_at(fact, moment) \
-                                or hierarchical._is_expired(fact, moment) \
-                                or memory_authority.lineage_blocked(root, fact.id):
+                        if (
+                            fact is None
+                            or fact.forgotten
+                            or fact.status != "active"
+                            or scope
+                            and fact.scopes
+                            and scope not in fact.scopes
+                            or not hierarchical._valid_at(fact, moment)
+                            or hierarchical._is_expired(fact, moment)
+                            or memory_authority.lineage_blocked(root, fact.id)
+                        ):
                             continue
                         if fact.evidence_bound and not resolver.assess(fact.id).eligible:
                             continue
@@ -356,11 +411,22 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                 # Optional/index failures retain the established exact fallback.
                 pass
 
-    facts = hierarchical.list_facts(root, scope=scope, as_of=as_of)  # validity, forgetting and TTL applied
+    facts: list[hierarchical.AtomicFact] = []
+
+    def eligible_facts() -> Iterator[hierarchical.AtomicFact]:
+        nonlocal facts
+        # Delay the full validity/forgetting/TTL scan until the optional scorer
+        # has resolved a usable model and successfully encoded the query.
+        facts = hierarchical.list_facts(root, scope=scope, as_of=as_of)
+        yield from facts
+
     try:
-        scores = fact_embeddings.scores(
-            question, facts, model_path=model_path or None, model=model or None, root=root
-        ) or {}
+        scores = (
+            fact_embeddings.scores(
+                question, eligible_facts(), model_path=model_path or None, model=model or None, root=root
+            )
+            or {}
+        )
     except (ImportError, RuntimeError, ValueError, OSError):
         # A cache-only optional dense default must never suppress fact recall.
         scores = {}
@@ -395,7 +461,12 @@ def _function_words() -> frozenset:
 
 
 def _facts(
-    root: str, question: str, as_of: str | None, k: int, evidence_budget: int = 0, scope: str = "",
+    root: str,
+    question: str,
+    as_of: str | None,
+    k: int,
+    evidence_budget: int = 0,
+    scope: str = "",
     fact_scorer: str = "overlap-v1",
 ) -> list[Item]:
     from unimem import fact_index, hierarchical
@@ -412,25 +483,35 @@ def _facts(
         if score <= 0:
             continue
         current = resolver.facts.get(fact.id)
-        if current is None or current.to_dict() != fact.to_dict() \
-                or not resolver._fact_live(current) \
-                or scope and current.scopes and scope not in current.scopes:
+        if (
+            current is None
+            or current.to_dict() != fact.to_dict()
+            or not resolver._fact_live(current)
+            or scope
+            and current.scopes
+            and scope not in current.scopes
+        ):
             continue
         matched = fact_index.matched_terms(question, fact.statement, fact_scorer)
         if fact.id not in dense and matched and not set(matched) - _function_words():
             continue  # overlap on "the"/"is" alone is not relevance, and would inject unrelated facts
-        provenance = {"search": {"scorer": fact_scorer, "matched_terms": matched}}
+        search: dict[str, object] = {"scorer": fact_scorer, "matched_terms": matched}
+        provenance: dict[str, object] = {"search": search}
         if fact.id in dense:
-            provenance["search"]["dense_cosine"] = round(dense[fact.id][1], 4)
+            search["dense_cosine"] = round(dense[fact.id][1], 4)
         text = fact.statement
         if fact.evidence_bound:
             # Re-check the fresh snapshot before assembling injection, including
             # a write or revocation that landed after initial candidate ranking.
             if current is None or current.revision != fact.revision or not resolver.assess(fact.id).eligible:
                 continue
-            provenance.update({"evidence": [receipt.to_dict() for receipt in fact.evidence],
-                               "assessment": resolver.assess(fact.id).to_dict(),
-                               "claim_revision": fact.evidence_revision})
+            provenance.update(
+                {
+                    "evidence": [receipt.to_dict() for receipt in fact.evidence],
+                    "assessment": resolver.assess(fact.id).to_dict(),
+                    "claim_revision": fact.evidence_revision,
+                }
+            )
             if remaining > 1:
                 from unimem.evidence_context import _explain_snapshot
 
@@ -441,8 +522,7 @@ def _facts(
                 if proof.context:
                     text += "\n" + proof.context
                     remaining -= tokens(text) - tokens(fact.statement)
-        output.append(Item("facts", f"fact:{fact.id}", text, score, fact.valid_from or "",
-                           provenance=provenance))
+        output.append(Item("facts", f"fact:{fact.id}", text, score, fact.valid_from or "", provenance=provenance))
     current_facts.ensure_current()
     return output
 
@@ -450,8 +530,7 @@ def _facts(
 def _graph(root: str, question: str, as_of: str | None, k: int) -> list[Item]:
     from unimem import graph
 
-    if not os.path.exists(os.path.join(paths.memory_dir(root), "graph")) and \
-            not graph.load_nodes(root):
+    if not os.path.exists(os.path.join(paths.memory_dir(root), "graph")) and not graph.load_nodes(root):
         return []
     starts = [e for e in graph.extract_entities_from_text(root, question) if not e.startswith("lesson:")]
     if not starts:
@@ -470,24 +549,34 @@ def _graph(root: str, question: str, as_of: str | None, k: int) -> list[Item]:
     return sorted(out, key=lambda i: -i.score)[:k]
 
 
-def _conversations(root: str, question: str, as_of: str | None, budget: int, spaces: list[str] | None,
-                   embedder: str) -> list[Item]:
+def _conversations(
+    root: str, question: str, as_of: str | None, budget: int, spaces: list[str] | None, embedder: str
+) -> list[Item]:
     from unimem import conversation
 
     names = spaces if spaces is not None else conversation.spaces(root)
     out: list[Item] = []
     for space in names:
         with conversation.Store(root, space, create=False) as store:
-            opts = conversation.Options(budget=max(100, budget), until=as_of,
-                                        embedder=None if embedder in ("", "none") else embedder)
+            opts = conversation.Options(
+                budget=max(100, budget), until=as_of, embedder=None if embedder in ("", "none") else embedder
+            )
             result = conversation.recall(store, question, now=as_of, options=opts)
         if result.context.strip():
-            out.append(Item("conversations", f"space:{space}", f"[{space}]\n{result.context}",
-                            1.0 / (1 + len(out)), provenance={"coverage": result.explain.get("coverage", {})}))
+            out.append(
+                Item(
+                    "conversations",
+                    f"space:{space}",
+                    f"[{space}]\n{result.context}",
+                    1.0 / (1 + len(out)),
+                    provenance={"coverage": result.explain.get("coverage", {})},
+                )
+            )
     return out
 
 
 # --- fusion, diversity, packing -----------------------------------------------------------
+
 
 def fuse(rankings: dict[str, list[Item]], weights: dict[str, float]) -> list[Item]:
     """Weighted reciprocal-rank fusion across channels."""
@@ -537,7 +626,7 @@ def truncate(text: str, max_tokens: int) -> str:
     cut = text[:limit]
     sentences = _SENTENCE.split(cut)
     if len(sentences) > 1:
-        kept = cut[:len(cut) - len(sentences[-1])].rstrip()
+        kept = cut[: len(cut) - len(sentences[-1])].rstrip()
         if len(kept) >= limit * 0.5:
             return kept + " ..."
     return cut.rsplit(" ", 1)[0].rstrip() + " ..."
@@ -563,8 +652,16 @@ def pack(items: list[Item], budget: int) -> list[Item]:
             chosen.append(item)
             used += need
         elif room >= max(20, min(int(need * MIN_CUT_FRACTION), budget // 4)):
-            cut = Item(item.channel, item.id, truncate(item.text, room), item.score, item.at, item.fused, True,
-                       provenance=item.provenance)
+            cut = Item(
+                item.channel,
+                item.id,
+                truncate(item.text, room),
+                item.score,
+                item.at,
+                item.fused,
+                True,
+                provenance=item.provenance,
+            )
             chosen.append(cut)
             used += tokens(cut.text)
         seen.add(item.id)
@@ -601,8 +698,9 @@ def _assess_retrieval(
     strongest = min(1.0, max(0.0, max((float(item.score) for item in items), default=0.0)))
     channels = tuple(sorted({item.channel for item in items}))
     if evidence.abstain:
-        return RetrievalAssessment(reason=evidence.reason, channels=channels,
-                                   matched_query_terms=matched, query_terms=evidence.query_terms)
+        return RetrievalAssessment(
+            reason=evidence.reason, channels=channels, matched_query_terms=matched, query_terms=evidence.query_terms
+        )
     diversity = min(1.0, len(channels) / 3.0)
     confidence_raw = 0.55 * strongest + 0.30 * coverage + 0.15 * diversity
     confidence = round(min(1.0, confidence_raw * (0.8 if errors else 1.0)), 4)
@@ -634,8 +732,9 @@ def rerank_fused(question: str, fused: list[Item], reranker, *, depth: int, blen
     from unimem import reranking
 
     keys = [str(n) for n in range(len(fused))]
-    order, report = reranking.stage(question, keys, {k: item.text for k, item in zip(keys, fused)}, reranker,
-                                    depth=depth, blend=blend)
+    order, report = reranking.stage(
+        question, keys, {k: item.text for k, item in zip(keys, fused)}, reranker, depth=depth, blend=blend
+    )
     values = [item.fused for item in fused]
     reordered = [fused[int(k)] for k in order]
     for item, value in zip(reordered, values):
@@ -672,12 +771,27 @@ def _fits(items: list[Item], budget: int) -> bool:
     return sum(tokens(i.text) for i in items) <= budget
 
 
-def recall(root: str, question: str, *, budget: int | None = None, agent: str | None = None,
-           channels: tuple[str, ...] = CHANNELS, as_of: str | None = None, weights: dict[str, float] | None = None,
-           spaces: list[str] | None = None, embedder: str = "auto", per_channel: int = 12,
-           evidence_budget: int = 0, scope: str = "", fact_scorer: str = "overlap-v1",
-           reranker: str | None = None, rerank_depth: int | None = None, rerank_blend: float | None = None,
-           adaptive_budget: bool | None = None, max_budget: int | None = None) -> Result:
+def recall(
+    root: str,
+    question: str,
+    *,
+    budget: int | None = None,
+    agent: str | None = None,
+    channels: tuple[str, ...] = CHANNELS,
+    as_of: str | None = None,
+    weights: dict[str, float] | None = None,
+    spaces: list[str] | None = None,
+    embedder: str = "auto",
+    per_channel: int = 12,
+    evidence_budget: int = 0,
+    scope: str = "",
+    fact_scorer: str = "overlap-v1",
+    reranker: str | None = None,
+    rerank_depth: int | None = None,
+    rerank_blend: float | None = None,
+    adaptive_budget: bool | None = None,
+    max_budget: int | None = None,
+) -> Result:
     """Recall across channels; opt into bounded fact source quotes.
 
     Nonempty ``scope`` restricts lessons/facts to that scope or public memory.
@@ -726,8 +840,14 @@ def recall(root: str, question: str, *, budget: int | None = None, agent: str | 
         cap = max(total, min(200_000, ADAPTIVE_CAP if ceiling is None else ceiling))
         requested = total
         total, shape = budget_for(question, total, cap)
-        decision = {"requested": requested, "shaped": total, "effective": total, "reason": shape, "cap": cap,
-                    "grown": []}
+        decision = {
+            "requested": requested,
+            "shaped": total,
+            "effective": total,
+            "reason": shape,
+            "cap": cap,
+            "grown": [],
+        }
         if total > requested:  # a wider page needs a deeper pool to fill it from
             per_channel = min(MAX_PER_CHANNEL, max(per_channel, math.ceil(per_channel * total / requested)))
     result = Result(question, as_of, total, fact_scorer=fact_scorer)
@@ -748,8 +868,11 @@ def recall(root: str, question: str, *, budget: int | None = None, agent: str | 
                     elif channel == "graph":
                         found = _graph(root, question, as_of, per_channel) if not scope else []
                     else:
-                        found = (_conversations(root, question, as_of, int(total * 0.6), spaces, embedder)
-                                 if not scope or spaces is not None else [])
+                        found = (
+                            _conversations(root, question, as_of, int(total * 0.6), spaces, embedder)
+                            if not scope or spaces is not None
+                            else []
+                        )
             except Exception as exc:  # noqa: BLE001 - one broken channel does not sink the others
                 result.errors[channel] = f"{type(exc).__name__}: {exc}"
                 continue
@@ -781,11 +904,22 @@ def recall(root: str, question: str, *, budget: int | None = None, agent: str | 
                 context = holdout_io.context_label(agent or "")
             except ValueError:
                 context = ""
-            candidates = [item for item in candidates if item.channel != "lessons" or conformal_gate.admit(
-                gate, conformal_gate.score(float(item.provenance.get("relevance", 0))), context=context,
-                scorer=item.provenance.get("scorer"), hazard=bool(item.provenance.get("hazard")))]
-            result.explain["harm_budget"] = {**conformal_gate.summary(gate, context),
-                                             "scope": "lessons channel; other channels are not randomized injections"}
+            candidates = [
+                item
+                for item in candidates
+                if item.channel != "lessons"
+                or conformal_gate.admit(
+                    gate,
+                    conformal_gate.score(float(item.provenance.get("relevance", 0))),
+                    context=context,
+                    scorer=item.provenance.get("scorer"),
+                    hazard=bool(item.provenance.get("hazard")),
+                )
+            ]
+            result.explain["harm_budget"] = {
+                **conformal_gate.summary(gate, context),
+                "scope": "lessons channel; other channels are not randomized injections",
+            }
         result.items = pack(candidates, total)
         result.assessment = _assess_retrieval(question, result.items, result.errors)
         if decision is not None:

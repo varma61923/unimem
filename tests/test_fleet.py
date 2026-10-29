@@ -1,6 +1,7 @@
 import json
 import os
 import random
+from pathlib import Path
 
 import pytest
 
@@ -64,7 +65,7 @@ def test_adopt_refuses_a_lead_with_no_experiment_and_a_robot_that_already_has_da
 def test_merging_robots_gives_the_pooled_sample_and_leaves_the_sources_alone(tmp_path):
     lead = _lead(tmp_path)
     robots = [_robot(tmp_path, f"r{n}", lead, 200) for n in range(3)]
-    before = [open(holdout_io.holdout_log_path(r), "rb").read() for r in robots]
+    before = [Path(holdout_io.holdout_log_path(r)).read_bytes() for r in robots]
     dest = str(tmp_path / "merged")
     totals = fleet.merge(robots, dest)
     assert totals["assignments"] == 600 and totals["outcomes"] == 600 and totals["duplicates"] == 0
@@ -72,7 +73,7 @@ def test_merging_robots_gives_the_pooled_sample_and_leaves_the_sources_alone(tmp
     assert len({r.occasion_id for r in rows}) == 600
     assert effects["grip-tuning"].n_injected + effects["grip-tuning"].n_withheld == 600
     assert effects["grip-tuning"].verdict == experiment.VERDICT_HELPS
-    assert [open(holdout_io.holdout_log_path(r), "rb").read() for r in robots] == before
+    assert [Path(holdout_io.holdout_log_path(r)).read_bytes() for r in robots] == before
     assert integrity.audit(rows).verdict == integrity.VERDICT_SOUND
     assert holdout_io.load_config(dest).salt == "fleet-salt" and gateway.load_config(dest).env == "real"
 
@@ -171,13 +172,13 @@ def test_events_and_the_registered_proof_travel_with_the_merge(tmp_path):
     for root, who in ((a, "robot-a"), (b, "robot-b")):
         with open(os.path.join(root, "memory", gateway.EVENTS_NAME), "w", encoding="utf-8") as fh:
             fh.write(json.dumps({"at": "2026-10-01T00:00:00.000+00:00", "kind": "recall", "agent_id": who}) + "\n")
-    open(os.path.join(a, "memory", "proof.json"), "w").write(json.dumps({"schema": 1, "label": "fleet"}))
+    Path(os.path.join(a, 'memory', 'proof.json')).write_text(json.dumps({'schema': 1, 'label': 'fleet'}))
     dest = str(tmp_path / "m")
     assert fleet.merge([a, b], dest)["events"] == 2
     g = gateway.Gateway(dest, token="t" * 30)
     agents = {x["agent_id"] for x in json.loads(g.handle("GET", "/v1/agents", {"Authorization": "Bearer " + "t" * 30}).body)["agents"]}
     assert agents == {"robot-a", "robot-b"}
-    assert json.load(open(os.path.join(dest, "memory", "proof.json")))["label"] == "fleet"
+    assert json.loads(Path(os.path.join(dest, 'memory', 'proof.json')).read_text())["label"] == "fleet"
 
 
 def test_the_cli_runs_adopt_check_merge(tmp_path, capsys):

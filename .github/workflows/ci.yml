@@ -554,6 +554,8 @@ jobs:
           mypy --strict --follow-imports=silent --ignore-missing-imports \
             unimem/async_workers.py unimem/mcp_transport.py \
             unimem/commons_integrity.py unimem/frameworks.py \
+            unimem/litellm_wrapper.py \
+            hub/scopes.py \
             unimem/conversation/async_store.py unimem/conversation/validation.py \
             unimem/semantic.py unimem/vector_store.py unimem/provider_config.py hub/migrate.py \
             unimem/distill.py unimem/distillation_worker.py unimem/draft_quality.py \
@@ -593,6 +595,11 @@ jobs:
             benchmarks/memory_contracts.py benchmarks/vector_search.py \
             benchmarks/fact_search.py benchmarks/fact_retrieval.py benchmarks/fact_mutation.py \
             benchmarks/conversation_retrieval.py benchmarks/robot_memory.py unimem/pack_demos.py
+
+      - name: Types for aggregate recall and origin authority
+        run: |
+          mypy --follow-imports=silent --ignore-missing-imports \
+            unimem/recall.py unimem/memory_authority.py unimem/reranking.py hub/auth.py
 
       - name: mypy (known findings, informational only)
         continue-on-error: true

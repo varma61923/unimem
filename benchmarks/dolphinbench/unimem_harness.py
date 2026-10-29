@@ -33,6 +33,7 @@ import os
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 DEFAULT_OPTIONS = {
     "provider": "openai",             # openai | azure | anthropic
@@ -271,7 +272,7 @@ class BenchmarkHarness:
 
         safe = {k: v for k, v in self.options.items() if k not in ("api_key_env",)}
         return {"harness": "unimem", "unimem_version": unimem.__version__,
-                "harness_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+                "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                 "options": safe, "memory": "unimem conversation memory (SQLite, FTS5 BM25 + dense "
                                            "embeddings + cross-encoder rerank; read-only at test time)"}
 
@@ -400,11 +401,11 @@ class BenchmarkHarness:
                 embedder.db.close()
             stats = store.stats()
             _seal(store.db)
-        digests = {os.path.basename(p): hashlib.sha256(open(p, "rb").read()).hexdigest() for p in self._files(persona)}
+        digests = {os.path.basename(p): hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in self._files(persona)}
         return {"persona": persona, "files": digests, "turns": stats.get("turns"), "units": stats.get("units")}
 
     def verify_checkpoint(self, persona, checkpoint):
-        current = {os.path.basename(p): hashlib.sha256(open(p, "rb").read()).hexdigest()
+        current = {os.path.basename(p): hashlib.sha256(Path(p).read_bytes()).hexdigest()
                    for p in self._files(persona)}
         if current != checkpoint.get("files"):
             raise HarnessError(f"{persona}: stored memory differs from its checkpoint")

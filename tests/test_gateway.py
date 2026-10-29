@@ -7,6 +7,7 @@ import stat
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -214,7 +215,8 @@ def _seed_harm(root, n=300):
 def test_a_memory_measured_to_hurt_is_withdrawn_through_the_gateway(root):
     _start_experiment(root)
     os.makedirs(os.path.dirname(retrieval_io.config_path(root)), exist_ok=True)
-    json.dump({"harm_policy": "withdraw"}, open(retrieval_io.config_path(root), "w"))
+    with open(retrieval_io.config_path(root), "w") as target:
+        json.dump({"harm_policy": "withdraw"}, target)
     _seed_harm(root)
     g = gateway.Gateway(root, token=TOKEN)
     r = recall(g, "live-1", [{"id": "harm", "text": "retry 3x"}, {"id": "ok", "text": "check key"}])[1]
@@ -298,10 +300,8 @@ def _store_with_lesson(root):
                  "The customer received the email", "--importance", "4", "--importance-rationale", "blocks login",
                  "--dest", root]) == 0
     path = os.path.join(paths.lessons_dir(root), "lesson_check_suppression.md")
-    text = open(path, encoding="utf-8").read()
-    open(path, "w", encoding="utf-8").write(text[: text.index("\n## Rule")] + "\n## Rule\nCheck the email "
-        "suppression list before re-sending.\n\n## Why\nA bounce suppresses the address.\n\n## How to apply\n"
-        "Look it up, remove it, resend.\n\n## Counter-examples\nThe link expired.\n")
+    text = Path(path).read_text(encoding='utf-8')
+    Path(path).write_text(text[:text.index('\n## Rule')] + '\n## Rule\nCheck the email suppression list before re-sending.\n\n## Why\nA bounce suppresses the address.\n\n## How to apply\nLook it up, remove it, resend.\n\n## Counter-examples\nThe link expired.\n', encoding='utf-8')
     assert main(["lesson", "approve", "lesson_check_suppression", "--rationale", "t", "--dest", root]) == 0
 
 

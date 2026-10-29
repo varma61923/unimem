@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -249,7 +250,7 @@ def test_an_unknown_setting_is_refused_on_write_and_ignored_on_read(tmp_path):
         retrieval_io.configure(root, harm_policy="delete")
     retrieval_io.configure(root, max_lessons=3)
     path = retrieval_io.config_path(root)
-    raw = json.loads(open(path, encoding="utf-8").read())
+    raw = json.loads(Path(path).read_text(encoding='utf-8'))
     raw["harm_policy"] = ["withdraw"]
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(raw, fh)

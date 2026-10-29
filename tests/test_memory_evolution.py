@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -336,7 +337,7 @@ def test_installer_bootstraps_git_and_isolated_skill(tmp_path):
                     "commit", "--allow-empty", "-qm", "Add release review"], check=True)
     result = onboarding.install(str(tmp_path / "store"), "agent-a", repo=str(repo))
     assert result["traces_imported"] == 1
-    assert "MemoryClient" in open(result["skill_path"]).read()
+    assert "MemoryClient" in Path(result['skill_path']).read_text()
 
 
 def test_memfs_signed_snapshot_and_shared_attachment_detect_drift(tmp_path, monkeypatch):

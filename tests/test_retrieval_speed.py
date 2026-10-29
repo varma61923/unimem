@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import random
+from pathlib import Path
 
 import pytest
 
@@ -155,7 +156,7 @@ def test_a_cache_file_rewritten_by_another_process_is_reread(tmp_path):
     root = _store(tmp_path)
     lesson_cache.load_active_with_terms(root)
     cpath = lesson_cache.cache_path(root)
-    raw = json.load(open(cpath, encoding="utf-8"))
+    raw = json.loads(Path(cpath).read_text(encoding='utf-8'))
     some = next(iter(raw["entries"]))
     raw["entries"][some]["terms"] = "not-a-list"
     tmp = cpath + ".other"
@@ -178,7 +179,7 @@ def test_a_cache_file_another_process_left_incomplete_is_rewritten(tmp_path):
     root = _store(tmp_path)
     lesson_cache.load_active_with_terms(root)
     cpath = lesson_cache.cache_path(root)
-    raw = json.load(open(cpath, encoding="utf-8"))
+    raw = json.loads(Path(cpath).read_text(encoding='utf-8'))
     dropped = next(iter(raw["entries"]))
     del raw["entries"][dropped]
     tmp = cpath + ".other"
@@ -186,4 +187,4 @@ def test_a_cache_file_another_process_left_incomplete_is_rewritten(tmp_path):
         json.dump(raw, fh)
     os.replace(tmp, cpath)
     lesson_cache.load_active_with_terms(root)
-    assert dropped in json.load(open(cpath, encoding="utf-8"))["entries"]
+    assert dropped in json.loads(Path(cpath).read_text(encoding='utf-8'))["entries"]

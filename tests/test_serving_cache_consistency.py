@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -39,7 +40,7 @@ def write_lesson(root, slug="lesson_scoped", *, scope="container:alpha", descrip
 
 def replace_preserving_stamp(path, before, after, *, replacement=False):
     st = os.stat(path)
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding='utf-8')
     assert len(before) == len(after) and before in text
     changed = text.replace(before, after)
     destination = path + ".new" if replacement else path
@@ -101,14 +102,14 @@ def test_public_listing_keeps_three_fields_and_old_binary_schema_rebuilds(tmp_pa
     assert lesson_cache.listing(str(tmp_path)) == ((path, os.stat(path).st_mtime_ns, os.stat(path).st_size),)
     retrieval.rank_lessons("payment", rows, term_cache=terms)
     file = corpus_bin.bin_path(os.path.join(str(tmp_path), "memory", ".cache"), retrieval.SCORER_ADAPTIVE)
-    data = bytearray(open(file, "rb").read())
+    data = bytearray(Path(file).read_bytes())
     data[4] = 2
     with open(file, "wb") as fh:
         fh.write(data)
     assert corpus_bin.load(os.path.dirname(file), retrieval.SCORER_ADAPTIVE, rows, terms.fingerprint) is None
     retrieval._INDEX_CACHE.clear()
     assert retrieval.rank_lessons("payment", rows, term_cache=terms)
-    assert open(file, "rb").read()[4] == 3
+    assert Path(file).read_bytes()[4] == 3
 
 
 def test_body_cache_caps_bytes_and_retains_one_generation_per_path(tmp_path, monkeypatch):
@@ -261,7 +262,7 @@ def test_scoped_index_reuses_ram_without_overwriting_the_full_disk_index(tmp_pat
     rows, terms = lesson_cache.load_active_with_terms(str(tmp_path))
     retrieval.rank_lessons("payment", rows, term_cache=terms)
     path = corpus_bin.bin_path(os.path.join(str(tmp_path), "memory", ".cache"), retrieval.SCORER_ADAPTIVE)
-    full_index = open(path, "rb").read()
+    full_index = Path(path).read_bytes()
     original = retrieval._build_index
     builds = []
 
@@ -278,7 +279,7 @@ def test_scoped_index_reuses_ram_without_overwriting_the_full_disk_index(tmp_pat
         }).encode())
         assert [item["id"] for item in json.loads(response.body)["deliver"]] == ["lesson_alpha"]
     assert builds == [1]
-    assert open(path, "rb").read() == full_index
+    assert Path(path).read_bytes() == full_index
 
 
 def test_source_change_between_scoped_ranking_and_body_read_is_withheld(tmp_path, monkeypatch):

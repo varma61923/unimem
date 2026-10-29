@@ -1,4 +1,5 @@
 """The optional local default is cache-only, with lexical retrieval as its fallback."""
+
 from __future__ import annotations
 
 import sys
@@ -36,9 +37,15 @@ def test_conversation_cache_miss_keeps_lexical_recall_and_never_downloads(tmp_pa
     monkeypatch.setattr("unimem.embeddings._OnnxText", CacheMiss)
     with Store(str(tmp_path), "project") as store:
         store.add("session", [{"speaker": "user", "text": "The release codename is Kestrel."}])
-        result = recall(store, "What is the release codename?", options=Options(
-            embedder="auto", rerank=None, summaries=False,
-        ))
+        result = recall(
+            store,
+            "What is the release codename?",
+            options=Options(
+                embedder="auto",
+                rerank=None,
+                summaries=False,
+            ),
+        )
 
     assert "Kestrel" in result.context
     assert result.explain["dense_fallback"] == "EmbeddingError"
@@ -48,12 +55,13 @@ def test_conversation_cache_miss_keeps_lexical_recall_and_never_downloads(tmp_pa
 def test_fact_search_keeps_lexical_results_without_fastembed(tmp_path, monkeypatch):
     root = str(tmp_path)
     monkeypatch.setattr(fact_embeddings.importlib.util, "find_spec", lambda _name: None)
-    fact, _ = hierarchical.add_fact(
-        root, "Kubernetes deployment checks reconcile migration manifests before release."
-    )
+    fact, _ = hierarchical.add_fact(root, "Kubernetes deployment checks reconcile migration manifests before release.")
 
     rows = search_recipes.search(
-        root, "Kubernetes deployment checks", reranker="none", limit=5,
+        root,
+        "Kubernetes deployment checks",
+        reranker="none",
+        limit=5,
     )
 
     result = next(row for row in rows if row["id"] == fact.id)
@@ -69,6 +77,41 @@ def test_fact_default_provider_is_local_cache_only(monkeypatch):
 
     assert adapter is not None
     assert adapter.provider.local_files_only is True
+
+
+def test_unavailable_fact_embedder_does_not_enumerate_the_corpus(tmp_path, monkeypatch):
+    from unimem import recall as aggregate
+
+    monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", DEFAULT_TAG)
+    monkeypatch.setattr(fact_embeddings.importlib.util, "find_spec", lambda _name: None)
+
+    def unexpected_scan(*_args, **_kwargs):
+        raise AssertionError("unavailable dense retrieval enumerated the entire fact corpus")
+
+    monkeypatch.setattr(hierarchical, "list_facts", unexpected_scan)
+    assert aggregate._dense_facts(str(tmp_path), "launch codename", None, 10, "") == {}
+
+
+def test_unavailable_or_uncached_embedder_does_not_consume_fact_iterators(monkeypatch):
+    import pytest
+
+    def expensive_facts():
+        raise AssertionError("an unavailable embedder consumed facts")
+        yield
+
+    monkeypatch.setattr(fact_embeddings, "_resolve", lambda *_args: (None, None))
+    assert fact_embeddings.scores("launch", expensive_facts()) is None
+    assert fact_embeddings.similar("launch", expensive_facts()) is None
+
+    class CacheMiss:
+        def encode(self, *_args, **_kwargs):
+            raise FileNotFoundError("model weights are absent")
+
+    monkeypatch.setattr(fact_embeddings, "_resolve", lambda *_args: (CacheMiss(), "uncached"))
+    with pytest.raises(FileNotFoundError):
+        fact_embeddings.scores("launch", expensive_facts())
+    with pytest.raises(FileNotFoundError):
+        fact_embeddings.similar("launch", expensive_facts())
 
 
 def test_fact_embedding_disable_setting_does_not_load_the_default(monkeypatch):
@@ -119,18 +162,24 @@ def test_auto_rerank_uses_only_a_cached_cross_encoder(tmp_path, monkeypatch):
     monkeypatch.setattr(rerank_arm, "_USE_WORKER", False)
     monkeypatch.setattr(search, "_embedder", lambda _store, _choice: FakeEmbedder())
     monkeypatch.setattr(
-        embed, "search_many",
+        embed,
+        "search_many",
         lambda store, _embedder, vectors, _pool, **_kwargs: [
-            [(store.db.execute("SELECT id FROM units ORDER BY id LIMIT 1").fetchone()[0], 1.0)]
-            for _ in vectors
+            [(store.db.execute("SELECT id FROM units ORDER BY id LIMIT 1").fetchone()[0], 1.0)] for _ in vectors
         ],
     )
 
     with Store(str(tmp_path), "project") as store:
         store.add("session", [{"speaker": "user", "text": "The release codename is Kestrel."}])
-        result = recall(store, "What is the release codename?", options=Options(
-            embedder="auto", rerank="auto", summaries=False,
-        ))
+        result = recall(
+            store,
+            "What is the release codename?",
+            options=Options(
+                embedder="auto",
+                rerank="auto",
+                summaries=False,
+            ),
+        )
 
     assert "Kestrel" in result.context
     assert result.explain["rerank_fallback"]

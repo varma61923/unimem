@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -76,7 +77,7 @@ def test_operator_only_immutable_enrollment_binds_configuration(tmp_path):
     from unimem import frontier_protocol as fp
 
     filename = fp.filename(root, relations.CONFIG)
-    value = json.loads(open(filename).read())
+    value = json.loads(Path(filename).read_text())
     value["configuration"]["record"]["subjects"]["agent:evil"] = {"type": "user", "id": "operator"}
     with open(filename, "w") as stream:
         json.dump(value, stream)

@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -232,7 +233,7 @@ def prepare_chunk_set(args) -> tuple[list, dict]:
 
     if os.path.isfile(manifest_path) and os.path.isfile(chunks_path):
         try:
-            manifest = json.load(open(manifest_path, encoding="utf-8"))
+            manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
         except (ValueError, OSError):
             manifest = None
         if (manifest and manifest.get("fingerprint") == fingerprint
@@ -309,7 +310,7 @@ def sample_cases(cases, limit, seed):
 
 
 def locomo_cases(path: str):
-    for conv in json.load(open(path)):
+    for conv in json.loads(Path(path).read_text()):
         c = conv["conversation"]
         sessions = []
         n = 1
@@ -502,7 +503,7 @@ def answer_in_any(context: str, question: dict) -> bool | None:
 
 
 def longmemeval_cases(path: str, limit: int, seed: int):
-    data = json.load(open(path))
+    data = json.loads(Path(path).read_text())
     if limit and limit < len(data):
         by_type = defaultdict(list)
         for q in data:
@@ -547,8 +548,8 @@ def dolphin_cases(path: str, personas: str = "", limit: int = 0):
     names = [p for p in (personas.split(",") if personas else ("alex", "morgan", "riley")) if p]
     for persona in names:
         base = os.path.join(path, "registry", "personas", persona)
-        history = yaml.safe_load(open(os.path.join(base, "life_sim.yaml"), encoding="utf-8"))["sessions"]
-        facts = {f["id"]: f for f in yaml.safe_load(open(os.path.join(base, "facts.yaml"), encoding="utf-8"))["facts"]}
+        history = yaml.safe_load((Path(base) / "life_sim.yaml").read_text(encoding="utf-8"))["sessions"]
+        facts = {f["id"]: f for f in yaml.safe_load((Path(base) / "facts.yaml").read_text(encoding="utf-8"))["facts"]}
         by_day: dict[str, list] = defaultdict(list)
         for s in history:
             day = str(s["narrative_date"])[:10]
@@ -560,7 +561,7 @@ def dolphin_cases(path: str, personas: str = "", limit: int = 0):
         files = sorted(glob.glob(os.path.join(path, "tests", persona, "[0-9]*.yaml")))
         questions, now = [], None
         for f in files[:limit or None]:
-            t = yaml.safe_load(open(f, encoding="utf-8"))
+            t = yaml.safe_load(Path(f).read_text(encoding="utf-8"))
             now = str(t["narrative_anchor_date"])
             evidence = {str(sid) for fid in t["load_bearing_facts"] for sid in facts[fid]["source_session_ids"]}
             n = len(t["load_bearing_facts"])

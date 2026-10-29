@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from unimem import memory_guard as mg
@@ -207,7 +209,7 @@ def _captured(root: str) -> str:
     import os
 
     return "\n".join(
-        os.path.basename(p) + "\n" + open(p, encoding="utf-8").read()
+        os.path.basename(p) + "\n" + Path(p).read_text(encoding='utf-8')
         for p in glob.glob(os.path.join(root, "memory", "traces", "*.md"))
     )
 

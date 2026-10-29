@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -418,7 +419,7 @@ def test_trace_outcome_credentials_are_redacted_before_origin_binding(tmp_path):
     secret = "review_dummy_secret_credential_123456789"
     filename = trace_io.write_new(str(tmp_path), title="review", context="context", solution="solution", tags=[],
                                   outcome={"resolved": False, "api_key": secret})
-    assert secret not in open(filename).read()
+    assert secret not in Path(filename).read_text()
     assert secret not in (tmp_path / "memory" / "origins.jsonl").read_text()
 
 

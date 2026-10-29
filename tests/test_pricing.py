@@ -1,6 +1,7 @@
 import json
 import os
 import random
+from pathlib import Path
 
 import pytest
 
@@ -87,7 +88,7 @@ def test_a_verified_signed_final_package_is_billed_a_share_of_proven_value(tmp_p
     kinds = [line.kind for line in inv.lines]
     assert kinds == ["platform", "value"] and not inv.refused
     value = next(line for line in inv.lines if line.kind == "value")
-    record = json.load(open(os.path.join(pkg, "proof.json")))
+    record = json.loads(Path(os.path.join(pkg, 'proof.json')).read_text())
     assert value.amount == pytest.approx(round(record["value"]["money"] * 0.2, 2))
     assert value.evidence["ledger_root"] == record["ledger_root"] and "proof verify" in value.evidence["verify"]
     assert inv.total == pytest.approx(600 + value.amount)
@@ -143,8 +144,8 @@ def test_synthetic_unsigned_interim_and_tampered_packages_are_refused(tmp_path):
     import shutil
     shutil.copytree(signed, tampered)
     csv_path = os.path.join(tampered, "assignments.csv")
-    text = open(csv_path).read().replace(",true,", ",false,", 40)
-    open(csv_path, "w").write(text)
+    text = Path(csv_path).read_text().replace(",true,", ",false,", 40)
+    Path(csv_path).write_text(text)
     interim_root = _store(tmp_path, "interim")
     _grow(interim_root, 0, 40)
     interim = _package(interim_root, tmp_path, "interim-pkg")
@@ -172,7 +173,7 @@ def test_interim_runs_bill_only_when_the_schedule_says_so(tmp_path):
     root = _store(tmp_path)
     _grow(root, 0, 300)
     pkg = _package(root, tmp_path, "interim")
-    record = json.load(open(os.path.join(pkg, "proof.json")))
+    record = json.loads(Path(os.path.join(pkg, 'proof.json')).read_text())
     if record["final"]:
         pytest.skip("this sample already reached a final verdict")
     lenient = pricing.PriceSchedule.from_dict({**TERMS, "bill_interim": True})
