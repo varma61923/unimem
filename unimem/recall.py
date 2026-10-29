@@ -31,6 +31,7 @@ import math
 import os
 import re
 import statistics
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -272,7 +273,7 @@ def _lessons(root: str, question: str, as_of: str | None, k: int, scope: str = "
             text += f" Rule: {rule}"
         scopes = fm.get("scopes") or []
         traces = fm.get("source_traces") or []
-        provenance = {
+        provenance: dict[str, object] = {
             "kind": "lesson",
             "scopes": [value for value in scopes if isinstance(value, str)] if isinstance(scopes, list) else [],
             "source_traces": (
@@ -410,9 +411,9 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                 # Optional/index failures retain the established exact fallback.
                 pass
 
-    facts = []
+    facts: list[hierarchical.AtomicFact] = []
 
-    def candidates():
+    def eligible_facts() -> Iterator[hierarchical.AtomicFact]:
         nonlocal facts
         # Delay the full validity/forgetting/TTL scan until the optional scorer
         # has resolved a usable model and successfully encoded the query.
@@ -422,7 +423,7 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
     try:
         scores = (
             fact_embeddings.scores(
-                question, candidates(), model_path=model_path or None, model=model or None, root=root
+                question, eligible_facts(), model_path=model_path or None, model=model or None, root=root
             )
             or {}
         )
@@ -494,9 +495,10 @@ def _facts(
         matched = fact_index.matched_terms(question, fact.statement, fact_scorer)
         if fact.id not in dense and matched and not set(matched) - _function_words():
             continue  # overlap on "the"/"is" alone is not relevance, and would inject unrelated facts
-        provenance = {"search": {"scorer": fact_scorer, "matched_terms": matched}}
+        search: dict[str, object] = {"scorer": fact_scorer, "matched_terms": matched}
+        provenance: dict[str, object] = {"search": search}
         if fact.id in dense:
-            provenance["search"]["dense_cosine"] = round(dense[fact.id][1], 4)
+            search["dense_cosine"] = round(dense[fact.id][1], 4)
         text = fact.statement
         if fact.evidence_bound:
             # Re-check the fresh snapshot before assembling injection, including

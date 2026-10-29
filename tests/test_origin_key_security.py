@@ -13,6 +13,19 @@ import pytest
 from unimem import memory_authority
 
 
+def test_missing_bound_capability_cannot_change_forgetting_authority(tmp_path, monkeypatch):
+    from unimem import capabilities, capability_io
+
+    token = capabilities.CURRENT.set({"principal": "missing"})
+    monkeypatch.setattr(capability_io, "current", lambda root: None)
+    try:
+        with pytest.raises(PermissionError, match="forgetting authority"):
+            memory_authority.record_forgetting(str(tmp_path), "record", forgotten=True)
+    finally:
+        capabilities.CURRENT.reset(token)
+    assert not (tmp_path / "memory" / "forgetting.jsonl").exists()
+
+
 @pytest.mark.parametrize(
     "algorithm,filename",
     [

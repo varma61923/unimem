@@ -189,6 +189,7 @@ def verify(root: str, receipt: dict, record: dict | None = None) -> bool:
     # that exact legacy omission; adding a parent still invalidates its signature.
     if (
         not matches
+        and record is not None
         and isinstance(expected, dict)
         and record_class(expected) == "trace"
         and not expected.get("source_traces")
@@ -382,7 +383,7 @@ def record_forgetting(root: str, record_id: str, *, forgotten: bool):
         from unimem import capability_io
 
         delegated = capability_io.current(root)
-        if delegated["operation"] != ("forget" if forgotten else "write"):
+        if delegated is None or delegated["operation"] != ("forget" if forgotten else "write"):
             raise PermissionError("UniMem capability cannot change canonical forgetting authority")
     if forgotten:
         from unimem import incident, safety
@@ -401,18 +402,19 @@ def provenance(root: str, record_id: str) -> dict:
     for row in _jsonl.read_rows(os.path.join(paths.memory_dir(root), "origins.jsonl")):
         if verify(root, row):
             receipts[row["record"].get("id")] = row
-    pending, visited, result, missing = [record_id], set(), [], []
+    missing: list[str] = []
+    pending, visited, result = [record_id], set(), []
     while pending:
         item = pending.pop()
         if item in visited:
             continue
         visited.add(item)
-        row = receipts.get(item)
-        if row is None:
+        receipt = receipts.get(item)
+        if receipt is None:
             missing.append(item)
             continue
-        result.append(row)
-        pending.extend(source_ids(row["record"]))
+        result.append(receipt)
+        pending.extend(source_ids(receipt["record"]))
     return {
         "id": record_id,
         "receipts": result,

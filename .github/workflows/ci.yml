@@ -596,6 +596,11 @@ jobs:
             benchmarks/fact_search.py benchmarks/fact_retrieval.py benchmarks/fact_mutation.py \
             benchmarks/conversation_retrieval.py benchmarks/robot_memory.py unimem/pack_demos.py
 
+      - name: Types for aggregate recall and origin authority
+        run: |
+          mypy --follow-imports=silent --ignore-missing-imports \
+            unimem/recall.py unimem/memory_authority.py unimem/reranking.py hub/auth.py
+
       - name: mypy (known findings, informational only)
         continue-on-error: true
         run: mypy unimem/ hub/ --ignore-missing-imports
