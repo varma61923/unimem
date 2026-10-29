@@ -554,6 +554,7 @@ jobs:
           mypy --strict --follow-imports=silent --ignore-missing-imports \
             unimem/async_workers.py unimem/mcp_transport.py \
             unimem/commons_integrity.py unimem/frameworks.py \
+            unimem/litellm_wrapper.py \
             unimem/conversation/async_store.py unimem/conversation/validation.py \
             unimem/semantic.py unimem/vector_store.py unimem/provider_config.py hub/migrate.py \
             unimem/distill.py unimem/distillation_worker.py unimem/draft_quality.py \
