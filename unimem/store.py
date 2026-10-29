@@ -4,6 +4,7 @@ Indexes never decide authority or validity: reads resolve and verify the current
 canonical revision before returning it. Existing fact and trace formats remain
 compatible; adapters can index those through rebuild(records).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -11,6 +12,7 @@ import json
 import os
 import sqlite3
 import uuid
+from contextlib import closing
 from datetime import datetime, timezone
 from typing import Protocol
 
@@ -40,18 +42,23 @@ class FilesStore:
 
         record = {k: v for k, v in record.items() if k != "origin"}
         clean, _ = memory_guard.sanitize_metadata(record, pii=memory_guard.privacy_redaction_enabled())
-        row = {**clean, "text": clean["text"].strip(), "revision": uuid.uuid4().hex,
-               "recorded_at": datetime.now(timezone.utc).isoformat(), "record_kind": "markdown-store"}
+        row = {
+            **clean,
+            "text": clean["text"].strip(),
+            "revision": uuid.uuid4().hex,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "record_kind": "markdown-store",
+        }
         receipt = memory_authority.bind(self.root, row, sources=row.get("source_traces", []))
-        filename = os.path.join(self.directory, row["revision"]+".md")
+        filename = os.path.join(self.directory, row["revision"] + ".md")
         paths.enforce_boundary(self.root, filename)
         with _jsonl.locked(self.directory):
             fm = {k: v for k, v in row.items() if k != "text"}
-            frontmatter.write(filename, {**fm, "origin": receipt}, row["text"]+"\n")
+            frontmatter.write(filename, {**fm, "origin": receipt}, row["text"] + "\n")
         return {**row, "origin": receipt}
 
     def all(self) -> list[dict]:
-        latest = {}
+        latest: dict[str, tuple[tuple[str, str], dict]] = {}
         if not os.path.isdir(self.directory):
             return []
         for filename in sorted(os.listdir(self.directory)):
@@ -68,8 +75,11 @@ class FilesStore:
         live = []
         for _stamp, row in latest.values():
             record = {k: v for k, v in row.items() if k != "origin"}
-            if (ttl.trace_is_live(row) and memory_control.matches(row.get("scopes", []), self.context)
-                    and memory_authority.permits_record(self.root, row.get("origin", {}), record)):
+            if (
+                ttl.trace_is_live(row)
+                and memory_control.matches(row.get("scopes", []), self.context)
+                and memory_authority.permits_record(self.root, row.get("origin", {}), record)
+            ):
                 live.append(row)
         return live
 
@@ -84,26 +94,45 @@ class SQLiteStore(FilesStore):
     def __init__(self, root: str, *, context: list[str] | None = None):
         super().__init__(root, context=context)
         scope = hashlib.sha256(json.dumps(self.context).encode()).hexdigest()[:16]
-        self.index = os.path.join(paths.memory_dir(root), "records-"+scope+".sqlite3")
+        self.index = os.path.join(paths.memory_dir(root), "records-" + scope + ".sqlite3")
         paths.enforce_boundary(root, self.index)
 
     def rebuild(self) -> int:
         records = self.all()
         paths.safe_prepare_output_path(self.index)
-        with _jsonl.locked(self.index), sqlite3.connect(self.index) as db:
-            db.execute("CREATE TABLE IF NOT EXISTS records "
-                       "(id TEXT PRIMARY KEY, digest TEXT NOT NULL, text TEXT NOT NULL)")
+        with _jsonl.locked(self.index), closing(sqlite3.connect(self.index)) as db, db:
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS records (id TEXT PRIMARY KEY, digest TEXT NOT NULL, text TEXT NOT NULL)"
+            )
             db.execute("DELETE FROM records")
-            db.executemany("INSERT INTO records VALUES (?,?,?)", [
-                (r["id"], hashlib.sha256(json.dumps(r, sort_keys=True).encode()).hexdigest(), r["text"])
-                for r in records])
+            db.executemany(
+                "INSERT INTO records VALUES (?,?,?)",
+                [
+                    (r["id"], hashlib.sha256(json.dumps(r, sort_keys=True).encode()).hexdigest(), r["text"])
+                    for r in records
+                ],
+            )
         return len(records)
 
     def search(self, query: str, *, limit: int = 10) -> list[dict]:
+        if not isinstance(query, str):
+            raise ValueError("query must be text")
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 0:
+            raise ValueError("limit must be a nonnegative integer")
+        if limit == 0:
+            return []
         if not os.path.isfile(self.index):
             self.rebuild()
-        with sqlite3.connect(self.index) as db:
-            ids = [row[0] for row in db.execute("SELECT id FROM records WHERE text LIKE ? LIMIT ?",
-                                               ("%"+query+"%", limit))]
+        with closing(sqlite3.connect(self.index)) as db:
+            # Match literal Unicode substrings before limiting candidates. LIKE
+            # treats %/_ as patterns and only folds ASCII case by default.
+            db.create_function("unimem_casefold", 1, str.casefold, deterministic=True)
+            ids = [
+                row[0]
+                for row in db.execute(
+                    "SELECT id FROM records WHERE instr(unimem_casefold(text), ?) > 0 LIMIT ?",
+                    (query.casefold(), limit),
+                )
+            ]
         live = {r["id"]: r for r in self.all()}
         return [live[i] for i in ids if i in live and query.casefold() in live[i]["text"].casefold()]
