@@ -170,7 +170,7 @@ async def revoke_api_key(session: AsyncSession, key_id: str) -> None:
 def _scopes_of(raw: object) -> tuple[str, ...] | None:
     if raw is None:
         return None
-    return tuple(raw)
+    return tuple(raw) if scopes_module._valid_grants(raw) else ()
 
 
 @dataclass(frozen=True)
