@@ -18,6 +18,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 MEMORIES = (
     ("verify-owner", "Verify the account owner before any password reset.", 0.20),
@@ -27,7 +28,7 @@ MEMORIES = (
 BASE_SUCCESS = 0.55
 
 
-def add_parser(subparsers: argparse._SubParsersAction) -> None:
+def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = subparsers.add_parser(
         "demo",
         help="A 30-second offline tour of the memory loop: remember, measure, govern.",
@@ -52,7 +53,7 @@ def _cli(*argv: str) -> str:
     return out.getvalue()
 
 
-def _remember(root: str) -> dict:
+def _remember(root: str) -> dict[str, Any]:
     today = datetime.now(timezone.utc).date()
     switch = today - timedelta(days=120)
     _cli("fact", "add", "Refunds are issued through the v1 refunds endpoint.", "--category", "tool_rule",
@@ -65,12 +66,12 @@ def _remember(root: str) -> dict:
 
     def top(*extra: str) -> str:
         items = json.loads(_cli("recall", question, "--channel", "facts", "--json", *extra, "--dest", root))["items"]
-        return items[0]["text"] if items else ""
+        return str(items[0]["text"]) if items else ""
 
     return {"question": question, "today": top(), "as_of": as_of, "then": top("--as-of", as_of)}
 
 
-def _measure(root: str, occasions: int, seed: int) -> dict:
+def _measure(root: str, occasions: int, seed: int) -> dict[str, Any]:
     from unimem import holdout_io
     from unimem.measure import CausalMemory
 
@@ -87,7 +88,7 @@ def _measure(root: str, occasions: int, seed: int) -> dict:
     report = json.loads(_cli("experiment", "--json", "--dest", root))
     rows = []
     for key, _, effect in MEMORIES:
-        found = next((e for e in report["effects"] if e["lesson_slug"] == key), {})
+        found: dict[str, Any] = next((e for e in report["effects"] if e["lesson_slug"] == key), {})
         rows.append({
             "memory": key, "planted": effect, "verdict": found.get("verdict", "UNDERPOWERED"),
             "effect": found.get("effect"), "ci": [found.get("ci_low"), found.get("ci_high")],
@@ -96,7 +97,7 @@ def _measure(root: str, occasions: int, seed: int) -> dict:
     return {"occasions": occasions, "integrity": report["integrity"]["verdict"], "memories": rows}
 
 
-def _govern(root: str) -> dict:
+def _govern(root: str) -> dict[str, Any]:
     from unimem import retrieval_io
     from unimem.measure import CausalMemory
 
@@ -113,7 +114,7 @@ def _pct(value: float | None) -> str:
     return "   n/a" if value is None else f"{value * 100:+5.0f}%"
 
 
-def _print(result: dict) -> None:
+def _print(result: dict[str, Any]) -> None:
     r, m, g = result["remember"], result["measure"], result["govern"]
     print(f"UniMem demo  ·  offline, no LLM, no API key  ·  {result['seconds']:.1f}s\n")
     print("1/3 REMEMBER  facts that know when they were true")
@@ -151,8 +152,8 @@ def run(args: argparse.Namespace) -> int:
     started = time.monotonic()
     try:
         _cli("init", "--dest", root)
-        result = {"remember": _remember(root), "measure": _measure(root, args.occasions, args.seed),
-                  "govern": _govern(root)}
+        result: dict[str, Any] = {"remember": _remember(root), "measure": _measure(root, args.occasions, args.seed),
+                                  "govern": _govern(root)}
     finally:
         if not args.keep:
             shutil.rmtree(root, ignore_errors=True)
