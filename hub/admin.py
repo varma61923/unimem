@@ -69,7 +69,7 @@ from starlette.responses import HTMLResponse, Response
 
 from hub import audit as audit_module
 from hub import auth, crud, events, manage, plans, rbac, retention, scopes
-from hub.abuse import RateLimiter, make_named_limiter, rate_limit_key
+from hub.abuse import RateLimiterBackend, make_named_limiter, rate_limit_key
 from hub.config import HubConfig
 from hub.db import session_scope
 from hub.models import (
@@ -114,7 +114,9 @@ def _limit(value: object) -> str:
     return "unlimited" if value == plans.UNLIMITED else _num(value)
 
 
-_CSS = THEME_CSS + """
+_CSS = (
+    THEME_CSS
+    + """
 *{box-sizing:border-box}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
   clip:rect(0,0,0,0);white-space:nowrap;border:0}
@@ -222,6 +224,7 @@ form.stack input:focus-visible,form.stack textarea:focus-visible{
 header.bar nav a{display:inline-flex;align-items:center;min-height:44px}
 form.stack input:not([type=hidden]),form.act input[type=text],.live-toggle{min-height:44px}
 """
+)
 
 
 def auto_refresh_script(seconds: int) -> str:
@@ -316,8 +319,10 @@ def content_security_policy(*scripts: str) -> str:
 
 def html_headers(*scripts: str, referrer: str = "same-origin") -> dict[str, str]:
     return {
-        "Cache-Control": "no-store, private", "Referrer-Policy": referrer,
-        "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
+        "Cache-Control": "no-store, private",
+        "Referrer-Policy": referrer,
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
         "Content-Security-Policy": content_security_policy(*scripts),
         "Cross-Origin-Opener-Policy": "same-origin",
         "Cross-Origin-Resource-Policy": "same-origin",
@@ -359,7 +364,10 @@ def require_uuid_params(handler):
     async def guarded(request: Request) -> Response:
         if malformed_id_param(request):
             return Response("not found", status_code=404)
-        return await handler(request)
+        try:
+            return await handler(request)
+        finally:
+            await request.close()
 
     guarded.__name__ = getattr(handler, "__name__", "guarded")
     guarded.__doc__ = handler.__doc__
@@ -372,7 +380,10 @@ def refuse_cross_origin(handler):
             return Response("cross-origin request refused", status_code=403)
         if malformed_id_param(request):
             return Response("not found", status_code=404)
-        return await handler(request)
+        try:
+            return await handler(request)
+        finally:
+            await request.close()
 
     guarded.__name__ = getattr(handler, "__name__", "guarded")
     guarded.__doc__ = handler.__doc__
@@ -383,15 +394,15 @@ def _page(title: str, body: str, *, auto_refresh_seconds: int = 0) -> HTMLRespon
     badge = live_badge(auto_refresh_seconds)
     refresh_script = auto_refresh_script(auto_refresh_seconds) if auto_refresh_seconds else ""
     return HTMLResponse(
-        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{h(title)} · UniMem Hub</title>{THEME_SCRIPT}<style>{_CSS}</style></head><body>"
-        "<header class=\"bar\"><div class=\"in\"><b>UniMem Hub</b>"
-        "<span class=\"ro\">operator console</span>"
+        '<header class="bar"><div class="in"><b>UniMem Hub</b>'
+        '<span class="ro">operator console</span>'
         f"{badge}"
-        f"<nav><a href=\"{ADMIN_PATH}\">Overview</a>"
-        f"<a href=\"{ADMIN_PATH}/kb\">Knowledge Base</a>"
-        "<a href=\"/metrics\">Metrics</a></nav></div></header>"
+        f'<nav><a href="{ADMIN_PATH}">Overview</a>'
+        f'<a href="{ADMIN_PATH}/kb">Knowledge Base</a>'
+        '<a href="/metrics">Metrics</a></nav></div></header>'
         f"<main>{body}</main>{refresh_script}{_FORM_GUARD_SCRIPT}</body></html>",
         headers=html_headers(THEME_SCRIPT, refresh_script, _FORM_GUARD_SCRIPT),
     )
@@ -407,20 +418,19 @@ def _cmd(what: str, command: str) -> str:
 
 
 def _flash_sig(admin_token: str, message: str) -> str:
-    return hmac.new(
-        admin_token.encode(), b"flash\0" + message.encode(), "sha256").hexdigest()[:32]
+    return hmac.new(admin_token.encode(), b"flash\0" + message.encode(), "sha256").hexdigest()[:32]
 
 
 def _csrf_token(admin_token: str, action: str, target: str) -> str:
     import hashlib
-    return hmac.new(
-        admin_token.encode("utf-8"), f"{action}:{target}".encode("utf-8"), hashlib.sha256
-    ).hexdigest()
+
+    return hmac.new(admin_token.encode("utf-8"), f"{action}:{target}".encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _csrf_ok(admin_token: str, action: str, target: str, presented: str) -> bool:
-    return hmac.compare_digest(_csrf_token(admin_token, action, target).encode(),
-                               (presented or "").encode("utf-8", "replace"))
+    return hmac.compare_digest(
+        _csrf_token(admin_token, action, target).encode(), (presented or "").encode("utf-8", "replace")
+    )
 
 
 def _same_site(request: Request) -> bool:
@@ -444,7 +454,7 @@ def _authorized(request: Request, token: str) -> bool:
     import binascii
 
     try:
-        decoded = base64.b64decode(header[len("basic "):].strip(), validate=True).decode("utf-8")
+        decoded = base64.b64decode(header[len("basic ") :].strip(), validate=True).decode("utf-8")
     except (binascii.Error, ValueError, UnicodeDecodeError):
         return False
     _, _, presented = decoded.partition(":")
@@ -452,41 +462,39 @@ def _authorized(request: Request, token: str) -> bool:
 
 
 async def _overview(session) -> dict:
-    orgs = (await session.execute(
-        select(Organization).order_by(Organization.name).limit(_MAX_ROWS)
-    )).scalars().all()
+    orgs = (await session.execute(select(Organization).order_by(Organization.name).limit(_MAX_ROWS))).scalars().all()
     total_orgs = int(await session.scalar(select(func.count()).select_from(Organization)) or 0)
 
-    traces_by_org = dict(
-        (await session.execute(
-            select(Trace.org_id, func.count()).group_by(Trace.org_id)
-        )).all()
-    )
+    traces_by_org = dict((await session.execute(select(Trace.org_id, func.count()).group_by(Trace.org_id))).all())
     quarantined_by_org = dict(
-        (await session.execute(
-            select(Trace.org_id, func.count()).where(Trace.quarantined.is_(True)).group_by(Trace.org_id)
-        )).all()
+        (
+            await session.execute(
+                select(Trace.org_id, func.count()).where(Trace.quarantined.is_(True)).group_by(Trace.org_id)
+            )
+        ).all()
     )
     keys_by_org = dict(
-        (await session.execute(
-            select(ApiKey.org_id, func.count())
-            .where(ApiKey.revoked_at.is_(None))
-            .group_by(ApiKey.org_id)
-        )).all()
+        (
+            await session.execute(
+                select(ApiKey.org_id, func.count()).where(ApiKey.revoked_at.is_(None)).group_by(ApiKey.org_id)
+            )
+        ).all()
     )
 
     rows = []
     for org in orgs:
-        rows.append({
-            "id": org.id,
-            "name": org.name,
-            "plan": org.plan,
-            "created_at": org.created_at,
-            "traces": int(traces_by_org.get(org.id, 0)),
-            "quarantined": int(quarantined_by_org.get(org.id, 0)),
-            "active_keys": int(keys_by_org.get(org.id, 0)),
-            "max_traces": plans.get(org.plan).max_traces,
-        })
+        rows.append(
+            {
+                "id": org.id,
+                "name": org.name,
+                "plan": org.plan,
+                "created_at": org.created_at,
+                "traces": int(traces_by_org.get(org.id, 0)),
+                "quarantined": int(quarantined_by_org.get(org.id, 0)),
+                "active_keys": int(keys_by_org.get(org.id, 0)),
+                "max_traces": plans.get(org.plan).max_traces,
+            }
+        )
 
     return {
         "orgs": rows,
@@ -508,114 +516,175 @@ async def _org_detail(session, org_id: str) -> dict | None:
     agents = await crud.agents_under_management(session, org_id)
     health = await crud.search_health(session, org_id)
 
-    keys = (await session.execute(
-        select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at.desc())
-    )).scalars().all()
+    keys = (
+        (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at.desc())))
+        .scalars()
+        .all()
+    )
 
-    quarantined = (await session.execute(
-        select(Trace)
-        .where(Trace.org_id == org_id, Trace.quarantined.is_(True))
-        .order_by(Trace.created_at.desc())
-        .limit(_MAX_ROWS)
-    )).scalars().all()
+    quarantined = (
+        (
+            await session.execute(
+                select(Trace)
+                .where(Trace.org_id == org_id, Trace.quarantined.is_(True))
+                .order_by(Trace.created_at.desc())
+                .limit(_MAX_ROWS)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
-    audit = (await session.execute(
-        select(AuditLogEntry)
-        .where(AuditLogEntry.org_id == org_id)
-        .order_by(AuditLogEntry.created_at.desc())
-        .limit(_AUDIT_ROWS)
-    )).scalars().all()
+    audit = (
+        (
+            await session.execute(
+                select(AuditLogEntry)
+                .where(AuditLogEntry.org_id == org_id)
+                .order_by(AuditLogEntry.created_at.desc())
+                .limit(_AUDIT_ROWS)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     policies = await retention.policies_for(session, org_id)
     holds = await retention.active_holds(session, org_id)
 
-    users = (await session.execute(
-        select(User).where(User.org_id == org_id).order_by(User.created_at)
-    )).scalars().all()
+    users = (await session.execute(select(User).where(User.org_id == org_id).order_by(User.created_at))).scalars().all()
 
     return {
-        "org": org, "entitlements": ent, "agents": agents, "health": health,
-        "keys": keys, "quarantined": quarantined, "audit": audit,
-        "policies": policies, "holds": holds, "users": users,
+        "org": org,
+        "entitlements": ent,
+        "agents": agents,
+        "health": health,
+        "keys": keys,
+        "quarantined": quarantined,
+        "audit": audit,
+        "policies": policies,
+        "holds": holds,
+        "users": users,
     }
 
 
 async def _kb_data(session) -> dict:
-    corpus = int(await session.scalar(
-        select(func.count()).select_from(Trace).where(*crud.commons_visible())
-    ) or 0)
-    hits = int(await session.scalar(
-        select(func.coalesce(func.sum(Trace.commons_hits), 0))
-        .select_from(Trace).where(*crud.commons_visible())
-    ) or 0)
-    consuming = int(await session.scalar(
-        select(func.count(func.distinct(UsageCounter.org_id)))
-        .where(UsageCounter.metric == crud.METRIC_COMMONS_QUERIES)
-    ) or 0)
+    corpus = int(await session.scalar(select(func.count()).select_from(Trace).where(*crud.commons_visible())) or 0)
+    hits = int(
+        await session.scalar(
+            select(func.coalesce(func.sum(Trace.commons_hits), 0)).select_from(Trace).where(*crud.commons_visible())
+        )
+        or 0
+    )
+    consuming = int(
+        await session.scalar(
+            select(func.count(func.distinct(UsageCounter.org_id))).where(
+                UsageCounter.metric == crud.METRIC_COMMONS_QUERIES
+            )
+        )
+        or 0
+    )
 
-    rows = (await session.execute(
-        select(KnowledgeBaseSubmission)
-        .where(KnowledgeBaseSubmission.status == "pending")
-        .order_by(KnowledgeBaseSubmission.created_at)
-        .limit(_MAX_ROWS)
-    )).scalars().all()
-    pending = [{
-        "id": s.id, "org_id": s.org_id, "title": s.title,
-        "context_text": s.context_text, "solution_text": s.solution_text,
-        "tags": list(s.tags or []), "agent_type": s.agent_type,
-        "rationale": s.rationale, "created_at": _iso(s.created_at),
-    } for s in rows]
-    pending_total = int(await session.scalar(
-        select(func.count()).select_from(KnowledgeBaseSubmission)
-        .where(KnowledgeBaseSubmission.status == "pending")
-    ) or 0)
+    rows = (
+        (
+            await session.execute(
+                select(KnowledgeBaseSubmission)
+                .where(KnowledgeBaseSubmission.status == "pending")
+                .order_by(KnowledgeBaseSubmission.created_at)
+                .limit(_MAX_ROWS)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    pending = [
+        {
+            "id": s.id,
+            "org_id": s.org_id,
+            "title": s.title,
+            "context_text": s.context_text,
+            "solution_text": s.solution_text,
+            "tags": list(s.tags or []),
+            "agent_type": s.agent_type,
+            "rationale": s.rationale,
+            "created_at": _iso(s.created_at),
+        }
+        for s in rows
+    ]
+    pending_total = int(
+        await session.scalar(
+            select(func.count()).select_from(KnowledgeBaseSubmission).where(KnowledgeBaseSubmission.status == "pending")
+        )
+        or 0
+    )
 
-    retracted_rows = (await session.execute(
-        select(Trace)
-        .where(Trace.commons_source == "seed", Trace.commons_retracted_at.isnot(None))
-        .order_by(Trace.commons_retracted_at.desc())
-        .limit(_MAX_ROWS)
-    )).scalars().all()
-    retracted = [{
-        "id": t.id, "title": t.title,
-        "reason": t.commons_retraction_reason, "at": t.commons_retracted_at,
-    } for t in retracted_rows]
-    retracted_total = int(await session.scalar(
-        select(func.count()).select_from(Trace)
-        .where(Trace.commons_source == "seed", Trace.commons_retracted_at.isnot(None))
-    ) or 0)
+    retracted_rows = (
+        (
+            await session.execute(
+                select(Trace)
+                .where(Trace.commons_source == "seed", Trace.commons_retracted_at.isnot(None))
+                .order_by(Trace.commons_retracted_at.desc())
+                .limit(_MAX_ROWS)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    retracted = [
+        {
+            "id": t.id,
+            "title": t.title,
+            "reason": t.commons_retraction_reason,
+            "at": t.commons_retracted_at,
+        }
+        for t in retracted_rows
+    ]
+    retracted_total = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Trace)
+            .where(Trace.commons_source == "seed", Trace.commons_retracted_at.isnot(None))
+        )
+        or 0
+    )
 
     result = {
-        "corpus": corpus, "hits": hits, "consuming_orgs": consuming,
-        "pending": pending, "pending_total": pending_total,
-        "retracted": retracted, "retracted_total": retracted_total,
+        "corpus": corpus,
+        "hits": hits,
+        "consuming_orgs": consuming,
+        "pending": pending,
+        "pending_total": pending_total,
+        "retracted": retracted,
+        "retracted_total": retracted_total,
     }
     queue, queue_total = await crud.kb_review_queue_and_total(session, limit=_MAX_ROWS)
     return {**result, "queue": queue, "queue_total": queue_total}
 
 
 def _render_overview(data: dict, admin_token: str, flash: str = "", fresh_key: str = "") -> str:
-    tiles = "".join([
-        _tile("organizations", _num(data.get("total_orgs", len(data["orgs"])))),
-        _tile("traces", _num(data["total_traces"])),
-        _tile("quarantined", _num(data["total_quarantined"]),
-              "warn" if data["total_quarantined"] else ""),
-        _tile("active keys", _num(data["total_keys"])),
-        _tile("votes", _num(data["total_votes"])),
-    ])
+    tiles = "".join(
+        [
+            _tile("organizations", _num(data.get("total_orgs", len(data["orgs"])))),
+            _tile("traces", _num(data["total_traces"])),
+            _tile("quarantined", _num(data["total_quarantined"]), "warn" if data["total_quarantined"] else ""),
+            _tile("active keys", _num(data["total_keys"])),
+            _tile("votes", _num(data["total_votes"])),
+        ]
+    )
 
     if data["orgs"]:
         body = []
         for r in data["orgs"]:
             cap = r["max_traces"]
             near_cap = cap != plans.UNLIMITED and cap > 0 and r["traces"] >= cap * 0.8
-            usage = f'{_num(r["traces"])} / {_limit(cap)}'
+            usage = f"{_num(r['traces'])} / {_limit(cap)}"
             if near_cap:
                 usage += ' <span class="pill warn">near cap</span>'
-            quar = (f'<span class="pill warn">{_num(r["quarantined"])}</span>'
-                    if r["quarantined"] else '<span class="pill mute">0</span>')
-            keys = (_num(r["active_keys"]) if r["active_keys"]
-                    else '<span class="pill bad">none</span>')
+            quar = (
+                f'<span class="pill warn">{_num(r["quarantined"])}</span>'
+                if r["quarantined"]
+                else '<span class="pill mute">0</span>'
+            )
+            keys = _num(r["active_keys"]) if r["active_keys"] else '<span class="pill bad">none</span>'
             body.append(
                 f'<tr><td><a href="{ADMIN_PATH}/org/{h(r["id"])}">{h(r["name"])}</a><br>'
                 f'<span class="m" style="color:var(--muted)">{h(r["id"])}</span></td>'
@@ -625,29 +694,33 @@ def _render_overview(data: dict, admin_token: str, flash: str = "", fresh_key: s
             )
         table = (
             '<div class="scroll"><table><thead><tr><th>Organization</th><th>Plan</th>'
-            '<th>Traces</th><th>Quarantined</th><th>Active keys</th><th>Created</th>'
-            f'</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+            "<th>Traces</th><th>Quarantined</th><th>Active keys</th><th>Created</th>"
+            f"</tr></thead><tbody>{''.join(body)}</tbody></table></div>"
         )
     else:
-        table = ('<p class="empty">No organizations yet. Create one with '
-                 '<code>python -m hub.manage create-org "Acme"</code>.</p>')
+        table = (
+            '<p class="empty">No organizations yet. Create one with '
+            '<code>python -m hub.manage create-org "Acme"</code>.</p>'
+        )
 
     if data.get("truncated"):
-        table += (f'<p class="empty">Showing the first {_MAX_ROWS} organizations by name, of '
-                  f'{_num(data["total_orgs"])}. Use <code>python -m hub.manage list-orgs</code> '
-                  f'for the full list.</p>')
+        table += (
+            f'<p class="empty">Showing the first {_MAX_ROWS} organizations by name, of '
+            f"{_num(data['total_orgs'])}. Use <code>python -m hub.manage list-orgs</code> "
+            f"for the full list.</p>"
+        )
 
     flash_html = f'<div class="flash">{h(flash)}</div>' if flash else ""
     fresh_key_html = ""
     if fresh_key:
         fresh_key_html = (
             '<div class="flash" style="border-color:var(--warn)">'
-            '<b>New encryption key -- shown once, not stored anywhere</b><br>'
+            "<b>New encryption key -- shown once, not stored anywhere</b><br>"
             f'<code style="user-select:all">{h(fresh_key)}</code>'
             '<p class="empty" style="margin-top:.4rem">Set as <code>HUB_ENCRYPTION_KEY</code> in '
             "this deployment's secret store. Rotating: move the current value into "
-            '<code>HUB_ENCRYPTION_KEY_PREVIOUS</code> first, so values already encrypted under '
-            'it still decrypt.</p></div>'
+            "<code>HUB_ENCRYPTION_KEY_PREVIOUS</code> first, so values already encrypted under "
+            "it still decrypt.</p></div>"
         )
     create_form = (
         f'<form method="post" action="{ADMIN_PATH}/create-org" class="act" '
@@ -666,31 +739,31 @@ def _render_overview(data: dict, admin_token: str, flash: str = "", fresh_key: s
         f'value="{h(_csrf_token(admin_token, "generate_encryption_key", "new"))}">'
         '<button type="submit" class="btn">Generate a new encryption key</button></form>'
         '<p class="empty" style="margin-top:.4rem">A deployment-wide utility, not tied to any '
-        'organization or row in this database -- generating one changes nothing until you set '
-        'it as <code>HUB_ENCRYPTION_KEY</code> yourself.</p>'
+        "organization or row in this database -- generating one changes nothing until you set "
+        "it as <code>HUB_ENCRYPTION_KEY</code> yourself.</p>"
     )
 
     return (
-        f'<section><h1>Overview</h1>'
+        f"<section><h1>Overview</h1>"
         f'<p class="sub">Every organization on this Hub, and what it is using.</p>{flash_html}'
-        f'{fresh_key_html}</section>'
+        f"{fresh_key_html}</section>"
         f'<section><div class="tiles">{tiles}</div></section>'
-        f'<section><h2>Organizations</h2>{table}{create_form}</section>'
-        f'<section><h2>Encryption key</h2>{generate_key_form}</section>'
-        '<section><h2>Operator commands</h2>'
+        f"<section><h2>Organizations</h2>{table}{create_form}</section>"
+        f"<section><h2>Encryption key</h2>{generate_key_form}</section>"
+        "<section><h2>Operator commands</h2>"
         '<div class="note">The line this console draws is <b>reversibility</b>: every '
-        'mutating action reachable from a button here (creating an org, changing a plan, '
-        'issuing/rotating a key, a legal hold, a retention policy, purging a specific trace '
-        'or organization) can be undone or is itself the undo of a mistake, and the '
-        'irreversible ones (purge-org, purge-trace, purge-subject-traces, retention-apply) '
-        'require retyping the exact id/name being destroyed on top of the same CSRF token '
-        'every action here needs. What is NOT here: anything with no organization or row to '
-        'scope it to, or that this Hub has no way to make more confirmable than a terminal '
-        'already is. See <b>hub/admin.py</b> for the full reasoning.</div>'
+        "mutating action reachable from a button here (creating an org, changing a plan, "
+        "issuing/rotating a key, a legal hold, a retention policy, purging a specific trace "
+        "or organization) can be undone or is itself the undo of a mistake, and the "
+        "irreversible ones (purge-org, purge-trace, purge-subject-traces, retention-apply) "
+        "require retyping the exact id/name being destroyed on top of the same CSRF token "
+        "every action here needs. What is NOT here: anything with no organization or row to "
+        "scope it to, or that this Hub has no way to make more confirmable than a terminal "
+        "already is. See <b>hub/admin.py</b> for the full reasoning.</div>"
         '<div class="cmds" style="margin-top:1rem">'
         + _cmd("Fleet-wide counts", "python -m hub.manage stats")
         + _cmd("Revenue by plan", "python -m hub.manage revenue")
-        + '</div></section>'
+        + "</div></section>"
     )
 
 
@@ -704,24 +777,26 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
     miss_tone = "" if miss is None else ("bad" if miss >= 0.5 else "warn" if miss >= 0.25 else "")
 
     agent_count = agents.get("active", 0)
-    agent_txt = f'{_num(agent_count)}{"+" if agents.get("is_floor") else ""}'
+    agent_txt = f"{_num(agent_count)}{'+' if agents.get('is_floor') else ''}"
 
-    tiles = "".join([
-        _tile("plan", f'<span class="pill mute">{h(ent.get("plan"))}</span>'),
-        _tile("traces", f'{_num(tr.get("used"))} / {_limit(tr.get("limit"))}'),
-        _tile("agents (30d)", agent_txt),
-        _tile("kb queries", f'{_num(q.get("used"))} / {_limit(q.get("allowance"))}'),
-        _tile("searches", _num(health.get("searches", 0))),
-        _tile("miss rate", miss_txt, miss_tone),
-    ])
+    tiles = "".join(
+        [
+            _tile("plan", f'<span class="pill mute">{h(ent.get("plan"))}</span>'),
+            _tile("traces", f"{_num(tr.get('used'))} / {_limit(tr.get('limit'))}"),
+            _tile("agents (30d)", agent_txt),
+            _tile("kb queries", f"{_num(q.get('used'))} / {_limit(q.get('allowance'))}"),
+            _tile("searches", _num(health.get("searches", 0))),
+            _tile("miss rate", miss_txt, miss_tone),
+        ]
+    )
 
     floor_note = ""
     if agents.get("is_floor"):
         floor_note = (
             '<div class="note" style="margin-top:1rem">The agent count is a '
-            '<b>floor</b>, not a total: this org has traces whose client sent no '
-            '<code>agent_id</code>, and an unknown number of real agents hides behind '
-            'the single sentinel they collapse into.</div>'
+            "<b>floor</b>, not a total: this org has traces whose client sent no "
+            "<code>agent_id</code>, and an unknown number of real agents hides behind "
+            "the single sentinel they collapse into.</div>"
         )
 
     plan_options = "".join(
@@ -739,7 +814,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
     )
 
     if d["keys"]:
-        rows = []
+        row_parts = []
         for k in d["keys"]:
             if k.revoked_at is not None:
                 state = '<span class="pill bad">revoked</span>'
@@ -767,17 +842,19 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
                     f'value="{h(_csrf_token(admin_token, "revoke_key", str(k.id)))}">'
                     '<button type="submit" class="btn">Revoke</button></form>'
                 )
-            rows.append(
+            row_parts.append(
                 f'<tr><td class="m">{h(k.key_prefix)}…</td><td>{state}</td>'
                 f'<td class="n">{_iso(k.created_at)}</td>'
                 f'<td class="n">{_iso(k.expires_at)}</td>'
                 f'<td class="n">{_iso(k.last_used_at)}</td>'
                 f'<td class="m" style="color:var(--muted)">{h(k.id)}</td>'
-                f'<td>{key_actions}</td></tr>'
+                f"<td>{key_actions}</td></tr>"
             )
-        keys_tbl = ('<div class="scroll"><table><thead><tr><th>Prefix</th><th>State</th>'
-                    '<th>Created</th><th>Expires</th><th>Last used</th><th>Key id</th>'
-                    f'<th>Action</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+        keys_tbl = (
+            '<div class="scroll"><table><thead><tr><th>Prefix</th><th>State</th>'
+            "<th>Created</th><th>Expires</th><th>Last used</th><th>Key id</th>"
+            f"<th>Action</th></tr></thead><tbody>{''.join(row_parts)}</tbody></table></div>"
+        )
     else:
         keys_tbl = '<p class="empty">No keys issued — this org cannot reach the Hub yet.</p>'
     fresh_key_html = ""
@@ -789,7 +866,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         )
     key_scope_options = "".join(
         f'<label><input type="checkbox" name="scopes" value="{h(s)}"'
-        f'{" checked" if s != scopes.SCOPE_SCIM else ""}> {h(s)}</label> '
+        f"{' checked' if s != scopes.SCOPE_SCIM else ''}> {h(s)}</label> "
         for s in scopes.ALL_SCOPES
     )
     issue_key_form = (
@@ -799,7 +876,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         f'<input type="hidden" name="csrf" '
         f'value="{h(_csrf_token(admin_token, "issue_key", org.id))}">'
         f'<fieldset style="border:0;padding:0;display:contents"><legend class="sr-only">Scopes'
-        f'</legend>{key_scope_options}</fieldset>'
+        f"</legend>{key_scope_options}</fieldset>"
         '<label class="sr-only" for="issue-key-expires">Expires in N days</label>'
         f'<input type="number" id="issue-key-expires" name="expires_days" min="1" max="{auth.MAX_KEY_EXPIRY_DAYS}" '
         'placeholder="expires in N days (blank = never)">'
@@ -811,7 +888,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
 
     if d["quarantined"]:
         rows = "".join(
-            f'<tr><td>{h(t.title)}</td><td>{h(t.quarantine_reason)}</td>'
+            f"<tr><td>{h(t.title)}</td><td>{h(t.quarantine_reason)}</td>"
             f'<td class="n">{_iso(t.created_at)}</td>'
             f'<td class="m" style="color:var(--muted)">{h(t.id)}</td>'
             f'<td><form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/quarantine/release" '
@@ -822,9 +899,11 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
             '<button type="submit" class="btn">Release</button></form></td></tr>'
             for t in d["quarantined"]
         )
-        quar_tbl = ('<div class="scroll"><table><thead><tr><th>Title</th><th>Why</th>'
-                    '<th>Captured</th><th>Trace id</th><th>Action</th></tr></thead>'
-                    f'<tbody>{rows}</tbody></table></div>')
+        quar_tbl = (
+            '<div class="scroll"><table><thead><tr><th>Title</th><th>Why</th>'
+            "<th>Captured</th><th>Trace id</th><th>Action</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
     else:
         quar_tbl = '<p class="empty">Nothing quarantined.</p>'
 
@@ -846,14 +925,14 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         '<div><button type="submit" class="btn">Amend trace</button></div></form>'
         '<p class="empty" style="margin-top:.4rem">Creates a new trace that supersedes this '
         "one, carrying forward any field left blank -- the original is kept, not overwritten, "
-        'so nothing is lost even if this is the wrong trace id.</p>'
+        "so nothing is lost even if this is the wrong trace id.</p>"
     )
 
     holds = d.get("holds") or []
     if holds:
         rows = "".join(
-            f'<tr><td>{h(hold.object_type or "everything")}'
-            f'{("/" + h(hold.target_id)) if hold.target_id else ""}</td>'
+            f"<tr><td>{h(hold.object_type or 'everything')}"
+            f"{('/' + h(hold.target_id)) if hold.target_id else ''}</td>"
             f'<td>{h(hold.reason)}</td><td class="n">{_iso(hold.placed_at)}</td>'
             f'<td class="m">{h(hold.placed_by)}</td>'
             f'<td><form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/legal-hold/release" '
@@ -867,14 +946,14 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
             '<button type="submit" class="btn">Release</button></form></td></tr>'
             for hold in holds
         )
-        holds_tbl = ('<div class="scroll"><table><thead><tr><th>Scope</th><th>Reason</th>'
-                     '<th>Placed</th><th>By</th><th>Action</th></tr></thead>'
-                     f'<tbody>{rows}</tbody></table></div>')
+        holds_tbl = (
+            '<div class="scroll"><table><thead><tr><th>Scope</th><th>Reason</th>'
+            "<th>Placed</th><th>By</th><th>Action</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
     else:
         holds_tbl = '<p class="empty">No legal holds in force.</p>'
-    hold_object_options = "".join(
-        f'<option value="{h(name)}">{h(name)}</option>' for name in retention.KINDS
-    )
+    hold_object_options = "".join(f'<option value="{h(name)}">{h(name)}</option>' for name in retention.KINDS)
     holds_form = (
         f'<form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/legal-hold/place" '
         'class="act" style="margin-top:.75rem">'
@@ -883,7 +962,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         f'value="{h(_csrf_token(admin_token, "place_hold", org.id))}">'
         '<label class="sr-only" for="hold-object-type">Object type (optional)</label>'
         f'<select id="hold-object-type" name="object_type"><option value="">everything</option>'
-        f'{hold_object_options}</select> '
+        f"{hold_object_options}</select> "
         '<label class="sr-only" for="hold-target-id">Specific id (optional)</label>'
         '<input type="text" id="hold-target-id" name="target_id" placeholder="specific id (optional)"> '
         '<label class="sr-only" for="hold-reason">Reason</label>'
@@ -895,7 +974,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
     policies = d.get("policies") or []
     if policies:
         rows = "".join(
-            f'<tr><td>{h(p.object_type)}</td><td>{h(p.status)}</td>'
+            f"<tr><td>{h(p.object_type)}</td><td>{h(p.status)}</td>"
             f'<td class="n">{_num(p.max_age_days)}d</td><td>{h(p.note or "—")}</td>'
             f'<td><form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/retention/clear" '
             'class="act">'
@@ -907,14 +986,14 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
             '<button type="submit" class="btn">Clear</button></form></td></tr>'
             for p in policies
         )
-        policies_tbl = ('<div class="scroll"><table><thead><tr><th>Object type</th><th>Status</th>'
-                        '<th>Keep for</th><th>Note</th><th>Action</th></tr></thead>'
-                        f'<tbody>{rows}</tbody></table></div>')
+        policies_tbl = (
+            '<div class="scroll"><table><thead><tr><th>Object type</th><th>Status</th>'
+            "<th>Keep for</th><th>Note</th><th>Action</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
     else:
         policies_tbl = '<p class="empty">No retention policy: nothing expires on its own.</p>'
-    policy_object_options = "".join(
-        f'<option value="{h(name)}">{h(name)}</option>' for name in retention.KINDS
-    )
+    policy_object_options = "".join(f'<option value="{h(name)}">{h(name)}</option>' for name in retention.KINDS)
     policy_form = (
         f'<form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/retention/set" '
         'class="act" style="margin-top:.75rem">'
@@ -927,10 +1006,10 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         '<input type="text" id="policy-status" name="status" placeholder="status (blank = any)"> '
         '<label class="sr-only" for="policy-days">Keep for N days</label>'
         '<input type="number" id="policy-days" name="days" min="1" placeholder="keep for N days" '
-        'required> '
+        "required> "
         '<button type="submit" class="btn">Set policy</button></form>'
         '<p class="empty" style="margin-top:.4rem">Setting a policy only changes what a plan '
-        'WOULD delete.</p>'
+        "WOULD delete.</p>"
     )
     preview = d.get("retention_preview")
     if preview:
@@ -946,14 +1025,14 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
                 '<input type="text" id="retention-confirm" name="confirm_digest" '
                 'placeholder="paste the digest above to confirm" required style="width:20rem">'
                 '<button type="submit" class="btn warn">Permanently delete these rows</button>'
-                '</form>'
+                "</form>"
             )
         else:
             apply_form = ""
         retention_preview_html = (
             '<div class="flash" style="border-color:var(--warn)">'
             f'<pre style="white-space:pre-wrap;margin:0">{h(preview["render"])}</pre>'
-            f'{apply_form}</div>'
+            f"{apply_form}</div>"
         )
     else:
         retention_preview_html = (
@@ -966,7 +1045,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
     users = d.get("users") or []
     role_options = "".join(f'<option value="{h(r)}">{h(r)}</option>' for r in rbac.ROLES)
     if users:
-        rows = []
+        row_parts = []
         for u in users:
             sso = f"{h(u.issuer)} / {h(u.external_subject)}" if u.external_subject else "not linked"
             state = "disabled" if u.disabled_at is not None else "active"
@@ -979,8 +1058,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
                 f'<label class="sr-only" for="role-{h(u.id)}">Role for {h(u.email)}</label>'
                 f'<select id="role-{h(u.id)}" name="role">'
                 + "".join(
-                    f'<option value="{h(r)}"{" selected" if r == u.role else ""}>{h(r)}</option>'
-                    for r in rbac.ROLES
+                    f'<option value="{h(r)}"{" selected" if r == u.role else ""}>{h(r)}</option>' for r in rbac.ROLES
                 )
                 + '</select> <button type="submit" class="btn">Set</button></form>'
             )
@@ -1017,14 +1095,16 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
                     'placeholder="subject" style="width:8rem">'
                     '<button type="submit" class="btn">Link</button></form>'
                 )
-            rows.append(
-                f'<tr><td>{h(u.email)}</td><td>{role_form}</td><td>{sso}<br>{sso_form}</td>'
-                f'<td>{state}<br>{toggle_form}</td>'
+            row_parts.append(
+                f"<tr><td>{h(u.email)}</td><td>{role_form}</td><td>{sso}<br>{sso_form}</td>"
+                f"<td>{state}<br>{toggle_form}</td>"
                 f'<td class="n">{_iso(u.created_at)}</td></tr>'
             )
-        users_tbl = ('<div class="scroll"><table><thead><tr><th>Email</th><th>Role</th>'
-                    '<th>SSO identity</th><th>State</th><th>Created</th></tr></thead>'
-                    f'<tbody>{"".join(rows)}</tbody></table></div>')
+        users_tbl = (
+            '<div class="scroll"><table><thead><tr><th>Email</th><th>Role</th>'
+            "<th>SSO identity</th><th>State</th><th>Created</th></tr></thead>"
+            f"<tbody>{''.join(row_parts)}</tbody></table></div>"
+        )
     else:
         users_tbl = '<p class="empty">No individual users yet -- only the org\'s shared API key(s).</p>'
     create_user_form = (
@@ -1045,22 +1125,21 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         results = search.get("results") or []
         if results:
             rows = "".join(
-                f'<tr><td>{h(r["title"])}</td>'
-                f'<td>{"quarantined" if r["quarantined"] else "active"}</td>'
+                f"<tr><td>{h(r['title'])}</td>"
+                f"<td>{'quarantined' if r['quarantined'] else 'active'}</td>"
                 f'<td class="n">{h(str(r["created_at"])[:16])}</td>'
                 f'<td class="m" style="color:var(--muted)">{h(r["id"])}</td></tr>'
                 for r in results
             )
             subject_results_html = (
                 f'<p class="sub">{_num(len(results))} trace(s) tagged with '
-                f'{h(search["subject_id"])!r}.</p>'
+                f"{h(search['subject_id'])!r}.</p>"
                 '<div class="scroll"><table><thead><tr><th>Title</th><th>State</th>'
-                f'<th>Captured</th><th>Trace id</th></tr></thead><tbody>{rows}</tbody></table></div>'
+                f"<th>Captured</th><th>Trace id</th></tr></thead><tbody>{rows}</tbody></table></div>"
             )
         else:
             subject_results_html = (
-                f'<p class="empty">No traces in this org are tagged with '
-                f'{h(search["subject_id"])!r}.</p>'
+                f'<p class="empty">No traces in this org are tagged with {h(search["subject_id"])!r}.</p>'
             )
     else:
         subject_results_html = ""
@@ -1069,7 +1148,7 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         '<label class="sr-only" for="find-subject-id">Subject id</label>'
         '<input type="text" id="find-subject-id" name="subject_id" placeholder="subject id" required>'
         '<button type="submit" class="btn">Find traces</button></form>'
-        f'{subject_results_html}'
+        f"{subject_results_html}"
     )
     tag_subject_form = (
         f'<form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/tag-subjects" class="act" '
@@ -1096,12 +1175,12 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         '<input type="text" id="purge-subject-id" name="subject_id" placeholder="subject id" '
         'required style="width:20rem">'
         '<label class="sr-only" for="purge-subject-confirm">Retype the subject id to confirm'
-        '</label>'
+        "</label>"
         '<input type="text" id="purge-subject-confirm" name="confirm_subject_id" '
         'placeholder="retype the subject id to confirm" required style="width:20rem">'
         '<button type="submit" class="btn warn">Permanently erase these traces</button></form>'
         '<p class="empty" style="margin-top:.4rem">Irreversible: deletes every trace tagged with '
-        'this subject id, plus each one\'s full amendment chain.</p>'
+        "this subject id, plus each one's full amendment chain.</p>"
     )
 
     danger_zone = (
@@ -1118,59 +1197,61 @@ def _render_org(d: dict, admin_token: str, flash: str = "", fresh_key: str = "")
         'placeholder="retype the trace id to confirm" required style="width:20rem">'
         '<button type="submit" class="btn warn">Permanently delete this trace</button></form>'
         '<p class="empty" style="margin:.4rem 0 1rem">Deletes one trace and its full amendment '
-        'chain.</p>'
+        "chain.</p>"
         f'<form method="post" action="{ADMIN_PATH}/org/{h(org.id)}/purge" class="act">'
         f'<input type="hidden" name="org_id" value="{h(org.id)}">'
         f'<input type="hidden" name="csrf" '
         f'value="{h(_csrf_token(admin_token, "purge_org", org.id))}">'
         '<label class="sr-only" for="purge-org-confirm">Retype the organization name to confirm'
-        '</label>'
+        "</label>"
         f'<input type="text" id="purge-org-confirm" name="confirm_name" '
         f'placeholder="retype {h(org.name)!r} to confirm" required style="width:20rem">'
         '<button type="submit" class="btn warn">Permanently delete this organization</button>'
-        '</form>'
+        "</form>"
         '<p class="empty" style="margin-top:.4rem">Deletes this organization and everything '
-        'scoped to it -- api keys, traces, votes. Cancels its Stripe subscription first, if it '
-        'has one.</p>'
+        "scoped to it -- api keys, traces, votes. Cancels its Stripe subscription first, if it "
+        "has one.</p>"
     )
 
     if d["audit"]:
         rows = "".join(
             f'<tr><td class="n">{_iso(a.created_at)}</td><td class="m">{h(a.actor)}</td>'
             f'<td>{h(a.action)}</td><td class="m" style="color:var(--muted)">'
-            f'{h(a.target_type)}{":" if a.target_type else ""}{h(a.target_id)}</td>'
-            f'<td>{h(a.summary)}</td></tr>'
+            f"{h(a.target_type)}{':' if a.target_type else ''}{h(a.target_id)}</td>"
+            f"<td>{h(a.summary)}</td></tr>"
             for a in d["audit"]
         )
-        audit_tbl = ('<div class="scroll"><table><thead><tr><th>When</th><th>Actor</th>'
-                     f'<th>Action</th><th>Target</th><th>Summary</th></tr></thead>'
-                     f'<tbody>{rows}</tbody></table></div>')
+        audit_tbl = (
+            '<div class="scroll"><table><thead><tr><th>When</th><th>Actor</th>'
+            f"<th>Action</th><th>Target</th><th>Summary</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
     else:
         audit_tbl = '<p class="empty">No audited actions for this org yet.</p>'
 
     return (
-        f'<section><h1>{h(org.name)}</h1>'
+        f"<section><h1>{h(org.name)}</h1>"
         f'<p class="sub m">{h(org.id)} · created {_iso(org.created_at)} · '
-        f'billing period {h(ent.get("period"))}</p>{flash_html}</section>'
+        f"billing period {h(ent.get('period'))}</p>{flash_html}</section>"
         f'<section><div class="tiles">{tiles}</div>{floor_note}{plan_form}</section>'
-        f'<section><h2>API keys</h2>{fresh_key_html}{keys_tbl}{issue_key_form}</section>'
-        f'<section><h2>Users</h2>{users_tbl}{create_user_form}</section>'
-        f'<section><h2>Quarantined traces</h2>{quar_tbl}</section>'
-        f'<section><h2>Amend a trace</h2>{amend_form}</section>'
-        f'<section><h2>Legal holds</h2>{holds_tbl}{holds_form}</section>'
-        f'<section><h2>Retention policy</h2>{policies_tbl}{policy_form}{retention_preview_html}</section>'
-        f'<section><h2>Subject rights</h2>{find_subject_form}{tag_subject_form}{purge_subject_form}</section>'
-        f'<section><h2>Recent audited actions</h2>{audit_tbl}</section>'
-        '<section><h2>Danger zone</h2>'
+        f"<section><h2>API keys</h2>{fresh_key_html}{keys_tbl}{issue_key_form}</section>"
+        f"<section><h2>Users</h2>{users_tbl}{create_user_form}</section>"
+        f"<section><h2>Quarantined traces</h2>{quar_tbl}</section>"
+        f"<section><h2>Amend a trace</h2>{amend_form}</section>"
+        f"<section><h2>Legal holds</h2>{holds_tbl}{holds_form}</section>"
+        f"<section><h2>Retention policy</h2>{policies_tbl}{policy_form}{retention_preview_html}</section>"
+        f"<section><h2>Subject rights</h2>{find_subject_form}{tag_subject_form}{purge_subject_form}</section>"
+        f"<section><h2>Recent audited actions</h2>{audit_tbl}</section>"
+        "<section><h2>Danger zone</h2>"
         '<div class="note">Nothing above this line can lose data permanently. Everything '
-        'below is irreversible -- retyping the exact id/name is required, in addition to the '
-        'same CSRF token every other action here needs, so a wrong click cannot reach it.'
-        '</div>'
+        "below is irreversible -- retyping the exact id/name is required, in addition to the "
+        "same CSRF token every other action here needs, so a wrong click cannot reach it."
+        "</div>"
         f'<div style="margin-top:1rem">{danger_zone}</div></section>'
         '<section><h2>Operator commands for this org</h2><div class="cmds">'
         + _cmd("Is it working?", f"python -m hub.manage outcomes {org.id}")
         + _cmd("Start a holdout", f"python -m hub.manage start-experiment {org.id} 0.2")
-        + '</div></section>'
+        + "</div></section>"
     )
 
 
@@ -1181,28 +1262,30 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
     queue_total = data.get("queue_total", len(queue))
     retracted_total = data.get("retracted_total", len(retracted))
 
-    tiles = "".join([
-        _tile("published entries", _num(corpus)),
-        _tile("answers delivered", _num(hits)),
-        _tile("orgs consulting", _num(data["consuming_orgs"])),
-        _tile("awaiting review", _num(pending_total), "warn" if pending_total else ""),
-        _tile("needs attention", _num(queue_total), "warn" if queue_total else ""),
-        _tile("retracted", _num(retracted_total)),
-    ])
+    tiles = "".join(
+        [
+            _tile("published entries", _num(corpus)),
+            _tile("answers delivered", _num(hits)),
+            _tile("orgs consulting", _num(data["consuming_orgs"])),
+            _tile("awaiting review", _num(pending_total), "warn" if pending_total else ""),
+            _tile("needs attention", _num(queue_total), "warn" if queue_total else ""),
+            _tile("retracted", _num(retracted_total)),
+        ]
+    )
 
     exchange = (
         '<div class="note">'
-        '<b>Orgs never exchange anything with each other.</b> A fleet\'s own traces '
-        'stay private to that fleet — there is no tool on this Hub that shows one '
-        'org another org\'s data, and the query filter that makes it true lives in '
-        'one place (<code>commons_visible()</code>) rather than in each read path. '
-        'This page is the only exchange that exists, and it has exactly two '
-        'directions: an org <b>consults</b> the Knowledge Base by sending a signature '
-        '(never its text), and an org <b>proposes</b> an entry that sits invisible to '
-        'everyone until you accept it here. An accepted proposal is published under '
-        'the operator\'s own org, not the submitter\'s — so what other orgs read is '
-        'operator-curated substrate knowledge, never a customer\'s record.'
-        '</div>'
+        "<b>Orgs never exchange anything with each other.</b> A fleet's own traces "
+        "stay private to that fleet — there is no tool on this Hub that shows one "
+        "org another org's data, and the query filter that makes it true lives in "
+        "one place (<code>commons_visible()</code>) rather than in each read path. "
+        "This page is the only exchange that exists, and it has exactly two "
+        "directions: an org <b>consults</b> the Knowledge Base by sending a signature "
+        "(never its text), and an org <b>proposes</b> an entry that sits invisible to "
+        "everyone until you accept it here. An accepted proposal is published under "
+        "the operator's own org, not the submitter's — so what other orgs read is "
+        "operator-curated substrate knowledge, never a customer's record."
+        "</div>"
     )
 
     if pending:
@@ -1220,8 +1303,10 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
                     f'<button type="submit" class="btn ok">Accept &amp; publish</button></form>'
                 )
             else:
-                accept = ('<span class="disabled" title="Set HUB_OPERATOR_ORG_ID to publish '
-                          'from here">Accept needs HUB_OPERATOR_ORG_ID</span>')
+                accept = (
+                    '<span class="disabled" title="Set HUB_OPERATOR_ORG_ID to publish '
+                    'from here">Accept needs HUB_OPERATOR_ORG_ID</span>'
+                )
             reject = (
                 f'<form method="post" action="{ADMIN_PATH}/kb/review" class="act">'
                 f'<input type="hidden" name="submission_id" value="{h(sid)}">'
@@ -1237,31 +1322,34 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
             cards.append(
                 f'<article class="card"><h3>{h(s.get("title"))}</h3>'
                 f'<p class="meta">proposed {h(s.get("created_at"))} · '
-                f'agent_type {h(s.get("agent_type") or "—")} · '
+                f"agent_type {h(s.get('agent_type') or '—')} · "
                 f'from org <span class="m">{h(s.get("org_id"))}</span></p>'
                 f'<div class="field"><span class="lbl">Why this is substrate, not our business logic</span>'
-                f'<p>{h(s.get("rationale") or "— no rationale given —")}</p></div>'
+                f"<p>{h(s.get('rationale') or '— no rationale given —')}</p></div>"
                 f'<div class="field"><span class="lbl">When it applies</span>'
-                f'<p>{h(s.get("context_text"))}</p></div>'
+                f"<p>{h(s.get('context_text'))}</p></div>"
                 f'<div class="field"><span class="lbl">What to do</span>'
-                f'<p>{h(s.get("solution_text"))}</p></div>'
+                f"<p>{h(s.get('solution_text'))}</p></div>"
                 f'<div class="tags">{tags}</div>'
                 f'<div class="acts">{accept}{reject}</div></article>'
             )
         pending_html = f'<div class="cards">{"".join(cards)}</div>'
         if pending_total > len(pending):
-            pending_html += (f'<p class="empty">Showing the {len(pending)} oldest, of '
-                             f'{_num(pending_total)} total awaiting review.</p>')
+            pending_html += (
+                f'<p class="empty">Showing the {len(pending)} oldest, of '
+                f"{_num(pending_total)} total awaiting review.</p>"
+            )
     else:
-        pending_html = ('<p class="empty">No proposals waiting. Orgs propose entries with '
-                        '<code>unimem commons submit</code>.</p>')
+        pending_html = (
+            '<p class="empty">No proposals waiting. Orgs propose entries with <code>unimem commons submit</code>.</p>'
+        )
 
     if queue:
         rows = []
         for e in queue:
             tid = e.get("id")
             rows.append(
-                f'<tr><td>{h(e.get("title"))}</td>'
+                f"<tr><td>{h(e.get('title'))}</td>"
                 f'<td><span class="pill warn">{h(e.get("why"))}</span></td>'
                 f'<td class="n">{_num(e.get("commons_hits", 0))}</td>'
                 f'<td><form method="post" action="{ADMIN_PATH}/kb/retract" class="act">'
@@ -1273,12 +1361,16 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
                 f'placeholder="reason">'
                 f'<button type="submit" class="btn warn">Retract</button></form></td></tr>'
             )
-        queue_html = ('<div class="scroll"><table><thead><tr><th>Entry</th>'
-                      '<th>Why it is listed</th><th>Answers given</th><th>Action</th>'
-                      f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>')
+        queue_html = (
+            '<div class="scroll"><table><thead><tr><th>Entry</th>'
+            "<th>Why it is listed</th><th>Answers given</th><th>Action</th>"
+            f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
+        )
         if queue_total > len(queue):
-            queue_html += (f'<p class="empty">Showing the first {len(queue)} entries, worst first, '
-                           f'of {_num(queue_total)} total.</p>')
+            queue_html += (
+                f'<p class="empty">Showing the first {len(queue)} entries, worst first, '
+                f"of {_num(queue_total)} total.</p>"
+            )
     else:
         queue_html = '<p class="empty">Nothing published needs a decision right now.</p>'
 
@@ -1287,7 +1379,7 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
         for e in retracted:
             tid = e["id"]
             rows.append(
-                f'<tr><td>{h(e["title"])}</td><td>{h(e["reason"] or "—")}</td>'
+                f"<tr><td>{h(e['title'])}</td><td>{h(e['reason'] or '—')}</td>"
                 f'<td class="n">{_iso(e["at"])}</td>'
                 f'<td><form method="post" action="{ADMIN_PATH}/kb/restore" class="act">'
                 f'<input type="hidden" name="trace_id" value="{h(tid)}">'
@@ -1295,35 +1387,39 @@ def _render_kb(data: dict, admin_token: str, operator_org_id: str, flash: str = 
                 f'value="{h(_csrf_token(admin_token, "restore", str(tid)))}">'
                 f'<button type="submit" class="btn">Restore</button></form></td></tr>'
             )
-        retracted_html = ('<div class="scroll"><table><thead><tr><th>Entry</th><th>Reason</th>'
-                          '<th>Withdrawn</th><th>Action</th></tr></thead>'
-                          f'<tbody>{"".join(rows)}</tbody></table></div>')
+        retracted_html = (
+            '<div class="scroll"><table><thead><tr><th>Entry</th><th>Reason</th>'
+            "<th>Withdrawn</th><th>Action</th></tr></thead>"
+            f"<tbody>{''.join(rows)}</tbody></table></div>"
+        )
         if retracted_total > len(retracted):
-            retracted_html += (f'<p class="empty">Showing the {len(retracted)} most recently '
-                               f'withdrawn, of {_num(retracted_total)} total.</p>')
+            retracted_html += (
+                f'<p class="empty">Showing the {len(retracted)} most recently '
+                f"withdrawn, of {_num(retracted_total)} total.</p>"
+            )
     else:
         retracted_html = '<p class="empty">Nothing is currently withdrawn.</p>'
 
     flash_html = f'<div class="flash">{h(flash)}</div>' if flash else ""
 
     return (
-        '<section><h1>Knowledge Base</h1>'
+        "<section><h1>Knowledge Base</h1>"
         '<p class="sub">The shared substrate every org may consult — and the review '
-        'queue that decides what goes into it.</p></section>'
-        f'{flash_html}'
+        "queue that decides what goes into it.</p></section>"
+        f"{flash_html}"
         f'<section><div class="tiles">{tiles}</div>{exchange}</section>'
-        f'<section><h2>Proposals awaiting a decision</h2>'
+        f"<section><h2>Proposals awaiting a decision</h2>"
         '<p class="sub" style="margin-bottom:1rem">Accepting publishes the entry under the '
-        'operator org and permanently raises the proposing org\'s query allowance. '
-        'Declining awards nothing — that silence is the adverse-selection defence.</p>'
-        f'{pending_html}</section>'
-        f'<section><h2>Published entries needing attention</h2>{queue_html}</section>'
-        f'<section><h2>Withdrawn entries</h2>{retracted_html}</section>'
+        "operator org and permanently raises the proposing org's query allowance. "
+        "Declining awards nothing — that silence is the adverse-selection defence.</p>"
+        f"{pending_html}</section>"
+        f"<section><h2>Published entries needing attention</h2>{queue_html}</section>"
+        f"<section><h2>Withdrawn entries</h2>{retracted_html}</section>"
         '<section><h2>Operator commands</h2><div class="cmds">'
         + _cmd("Bulk-load curated content", "python -m hub.manage commons-seed entries.jsonl <operator_org_id>")
         + _cmd("Content quality", "python -m hub.manage kb-stats")
         + _cmd("Review queue (CLI)", "python -m hub.manage kb-review 50")
-        + '</div></section>'
+        + "</div></section>"
     )
 
 
@@ -1331,7 +1427,7 @@ def add_admin_routes(
     app,
     session_factory: async_sessionmaker,
     admin_token: str,
-    rate_limiter: RateLimiter | None = None,
+    rate_limiter: RateLimiterBackend | None = None,
     trusted_proxy_hops: int = 0,
     commons_enabled: bool = True,
     operator_org_id: str = "",
@@ -1348,9 +1444,9 @@ def add_admin_routes(
         allowed, retry_after = await limiter.check(client_key)
         if not allowed:
             import math
+
             seconds = str(max(1, math.ceil(retry_after)))
-            return Response("too many requests", status_code=429,
-                            headers={"Retry-After": seconds})
+            return Response("too many requests", status_code=429, headers={"Retry-After": seconds})
         if not _authorized(request, admin_token):
             return _unauthorized()
         return None
@@ -1359,7 +1455,8 @@ def add_admin_routes(
         async with session_scope(session_factory) as session:
             data = await _overview(session)
         return _page(
-            "Overview", _render_overview(data, admin_token, flash=flash, fresh_key=fresh_key),
+            "Overview",
+            _render_overview(data, admin_token, flash=flash, fresh_key=fresh_key),
             auto_refresh_seconds=0 if fresh_key else 20,
         )
 
@@ -1390,9 +1487,12 @@ def add_admin_routes(
             logger.info("admin: unresolvable org id in URL", extra={"org_id_len": len(org_id)})
             data = None
         if data is None:
-            return _page("Not found", '<section><h1>No such organization</h1>'
-                                      f'<p class="sub">Nothing on this Hub has that id. '
-                                      f'<a href="{ADMIN_PATH}">Back to the overview</a>.</p></section>')
+            return _page(
+                "Not found",
+                "<section><h1>No such organization</h1>"
+                f'<p class="sub">Nothing on this Hub has that id. '
+                f'<a href="{ADMIN_PATH}">Back to the overview</a>.</p></section>',
+            )
         flash = _flash(request)
         subject_id = request.query_params.get("subject_id", "")[:200]
         if subject_id:
@@ -1403,17 +1503,20 @@ def add_admin_routes(
             async with session_scope(session_factory) as session:
                 plan = await retention.plan(session, org_id)
             data["retention_preview"] = {
-                "render": plan.render(), "digest": plan.digest, "n_doomed": plan.n_doomed,
+                "render": plan.render(),
+                "digest": plan.digest,
+                "n_doomed": plan.n_doomed,
             }
         return _page(
-            data["org"].name, _render_org(data, admin_token, flash=flash),
+            data["org"].name,
+            _render_org(data, admin_token, flash=flash),
             auto_refresh_seconds=25,
         )
 
     _COMMONS_OFF = (
         '<section><h1>Knowledge Base</h1><p class="sub">This deployment runs with '
-        '<code>HUB_COMMONS_ENABLED=false</code>, so the Knowledge Base tools do not '
-        'exist on this server at all — there is nothing to review.</p></section>'
+        "<code>HUB_COMMONS_ENABLED=false</code>, so the Knowledge Base tools do not "
+        "exist on this server at all — there is nothing to review.</p></section>"
     )
 
     async def kb(request: Request) -> Response:
@@ -1426,7 +1529,8 @@ def add_admin_routes(
         async with session_scope(session_factory) as session:
             data = await _kb_data(session)
         return _page(
-            "Knowledge Base", _render_kb(data, admin_token, operator_org_id, flash=flash),
+            "Knowledge Base",
+            _render_kb(data, admin_token, operator_org_id, flash=flash),
             auto_refresh_seconds=15,
         )
 
@@ -1438,7 +1542,8 @@ def add_admin_routes(
             return None, None, _page("Knowledge Base", _COMMONS_OFF)
         if not _same_site(request):
             return None, None, Response("cross-site request refused", status_code=403)
-        form = await request.form()
+        async with request.form() as parsed_form:
+            form = parsed_form
         target = str(form.get(target_field, ""))
         action = action_of(form) if callable(action_of) else str(action_of)
         if not target or not _csrf_ok(admin_token, action, target, str(form.get("csrf", ""))):
@@ -1447,20 +1552,26 @@ def add_admin_routes(
 
     def _back(path: str, message: str) -> Response:
         from urllib.parse import quote
-        return Response(status_code=303, headers={
-            "Location": f"{path}?done={quote(message)}&sig={_flash_sig(admin_token, message)}"})
+
+        return Response(
+            status_code=303,
+            headers={"Location": f"{path}?done={quote(message)}&sig={_flash_sig(admin_token, message)}"},
+        )
 
     def _flash(request: Request) -> str:
         message = request.query_params.get("done", "")[:500]
         signature = request.query_params.get("sig", "")
-        if message and hmac.compare_digest(_flash_sig(admin_token, message).encode(),
-                                            signature.encode("utf-8", "replace")):
+        if message and hmac.compare_digest(
+            _flash_sig(admin_token, message).encode(), signature.encode("utf-8", "replace")
+        ):
             return message
         return ""
 
     async def kb_review(request: Request) -> Response:
         form, submission_id, denied = await _moderate(
-            request, "submission_id", action_of=lambda f: str(f.get("decision", "")),
+            request,
+            "submission_id",
+            action_of=lambda f: str(f.get("decision", "")),
             require_commons=True,
         )
         if denied is not None:
@@ -1477,34 +1588,40 @@ def add_admin_routes(
             )
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, submission_id, decision,
+                session,
+                submission_id,
+                decision,
                 operator_org_id=operator_org_id,
                 reviewer=_ADMIN_ACTOR,
                 rejection_reason=str(form.get("reason", ""))[:200],
             )
         if result is None:
             return _back(f"{ADMIN_PATH}/kb", "That submission was already decided, or no longer exists.")
-        return _back(f"{ADMIN_PATH}/kb", "Published to the Knowledge Base." if decision == "approve"
-                     else "Proposal declined. No entry, no credit.")
+        return _back(
+            f"{ADMIN_PATH}/kb",
+            "Published to the Knowledge Base." if decision == "approve" else "Proposal declined. No entry, no credit.",
+        )
 
     async def kb_retract(request: Request) -> Response:
-        form, trace_id, denied = await _moderate(
-            request, "trace_id", action_of="retract", require_commons=True)
+        form, trace_id, denied = await _moderate(request, "trace_id", action_of="retract", require_commons=True)
         if denied is not None:
             return denied
         async with session_scope(session_factory) as session:
             result = await crud.retract_kb_entry(
-                session, trace_id, reason=str(form.get("reason", ""))[:200],
+                session,
+                trace_id,
+                reason=str(form.get("reason", ""))[:200],
                 actor=_ADMIN_ACTOR,
             )
         if result is None:
             return _back(f"{ADMIN_PATH}/kb", "That entry is not a published Knowledge Base entry.")
-        return _back(f"{ADMIN_PATH}/kb", "Withdrawn. It stops being served immediately; the row and "
-                     "its history are kept, and Restore puts it back.")
+        return _back(
+            f"{ADMIN_PATH}/kb",
+            "Withdrawn. It stops being served immediately; the row and its history are kept, and Restore puts it back.",
+        )
 
     async def kb_restore(request: Request) -> Response:
-        _form, trace_id, denied = await _moderate(
-            request, "trace_id", action_of="restore", require_commons=True)
+        _form, trace_id, denied = await _moderate(request, "trace_id", action_of="restore", require_commons=True)
         if denied is not None:
             return denied
         async with session_scope(session_factory) as session:
@@ -1513,10 +1630,8 @@ def add_admin_routes(
             return _back(f"{ADMIN_PATH}/kb", "That entry is not currently withdrawn.")
         return _back(f"{ADMIN_PATH}/kb", "Restored. It is being served again.")
 
-
     async def quarantine_release(request: Request) -> Response:
-        _form, trace_id, denied = await _moderate(
-            request, "trace_id", action_of="release_quarantine")
+        _form, trace_id, denied = await _moderate(request, "trace_id", action_of="release_quarantine")
         if denied is not None:
             return denied
         async with session_scope(session_factory) as session:
@@ -1526,12 +1641,15 @@ def add_admin_routes(
             org_id = trace.org_id
             previous_reason = trace.quarantine_reason
             await session.execute(
-                update(Trace).where(Trace.id == trace_id)
-                .values(quarantined=False, quarantine_reason="")
+                update(Trace).where(Trace.id == trace_id).values(quarantined=False, quarantine_reason="")
             )
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="release_quarantine",
-                org_id=org_id, target_type="trace", target_id=trace_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="release_quarantine",
+                org_id=org_id,
+                target_type="trace",
+                target_id=trace_id,
                 summary=f"was={previous_reason[:100]}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Released from quarantine.")
@@ -1546,15 +1664,23 @@ def add_admin_routes(
         async with session_scope(session_factory) as session:
             try:
                 hold = await retention.place_hold(
-                    session, org_id, reason=reason, placed_by=_ADMIN_ACTOR,
-                    object_type=object_type, target_id=target_id,
+                    session,
+                    org_id,
+                    reason=reason,
+                    placed_by=_ADMIN_ACTOR,
+                    object_type=object_type,
+                    target_id=target_id,
                 )
             except retention.RetentionError as exc:
                 return _back(f"{ADMIN_PATH}/org/{org_id}", f"Could not place hold: {exc}")
             await session.flush()
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="retention.place_hold",
-                org_id=org_id, target_type="legal_hold", target_id=hold.id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="retention.place_hold",
+                org_id=org_id,
+                target_type="legal_hold",
+                target_id=hold.id,
                 summary=f"{object_type or 'everything'}: {reason[:200]}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Legal hold placed.")
@@ -1571,8 +1697,12 @@ def add_admin_routes(
                 return _back(ADMIN_PATH, f"Could not release hold: {exc}")
             org_id = hold.org_id
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="retention.release_hold",
-                org_id=org_id, target_type="legal_hold", target_id=hold_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="retention.release_hold",
+                org_id=org_id,
+                target_type="legal_hold",
+                target_id=hold_id,
                 summary=reason or "released",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Legal hold released.")
@@ -1593,17 +1723,24 @@ def add_admin_routes(
             except retention.RetentionError as exc:
                 return _back(f"{ADMIN_PATH}/org/{org_id}", f"Could not set policy: {exc}")
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="retention.set_policy",
-                org_id=org_id, target_type="retention_policy",
-                target_id=f"{object_type}/{status}", summary=f"keep {max_age_days}d",
+                session,
+                actor=_ADMIN_ACTOR,
+                action="retention.set_policy",
+                org_id=org_id,
+                target_type="retention_policy",
+                target_id=f"{object_type}/{status}",
+                summary=f"keep {max_age_days}d",
             )
-        return _back(f"{ADMIN_PATH}/org/{org_id}",
-                     f"{object_type} [{status}]: keep {max_age_days} days. Nothing is deleted "
-                     "until a plan is applied from the CLI.")
+        return _back(
+            f"{ADMIN_PATH}/org/{org_id}",
+            f"{object_type} [{status}]: keep {max_age_days} days. Nothing is deleted "
+            "until a plan is applied from the CLI.",
+        )
 
     async def retention_clear(request: Request) -> Response:
         form, _target, denied = await _moderate(
-            request, "target", action_of=lambda f: f"clear_retention:{f.get('org_id', '')}")
+            request, "target", action_of=lambda f: f"clear_retention:{f.get('org_id', '')}"
+        )
         if denied is not None:
             return denied
         org_id = str(form.get("org_id", ""))
@@ -1617,9 +1754,13 @@ def add_admin_routes(
             if not removed:
                 return _back(f"{ADMIN_PATH}/org/{org_id}", "No matching policy to clear.")
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="retention.clear_policy",
-                org_id=org_id, target_type="retention_policy",
-                target_id=f"{object_type}/{status}", summary="removed",
+                session,
+                actor=_ADMIN_ACTOR,
+                action="retention.clear_policy",
+                org_id=org_id,
+                target_type="retention_policy",
+                target_id=f"{object_type}/{status}",
+                summary="removed",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Retention policy cleared.")
 
@@ -1631,15 +1772,18 @@ def add_admin_routes(
         if not name:
             return _back(ADMIN_PATH, "Organization name is required.")
         async with session_scope(session_factory) as session:
-            existing = (
-                await session.execute(select(Organization.id).where(Organization.name == name))
-            ).scalars().all()
+            existing = (await session.execute(select(Organization.id).where(Organization.name == name))).scalars().all()
             org = Organization(name=name)
             session.add(org)
             await session.flush()
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="create_org",
-                org_id=org.id, target_type="org", target_id=org.id, summary=f"name={name!r}",
+                session,
+                actor=_ADMIN_ACTOR,
+                action="create_org",
+                org_id=org.id,
+                target_type="org",
+                target_id=org.id,
+                summary=f"name={name!r}",
             )
             org_id = org.id
         if existing:
@@ -1662,12 +1806,15 @@ def add_admin_routes(
                 return _back(ADMIN_PATH, "No such organization.")
             was, org.plan = org.plan, key
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="set_plan",
-                org_id=org_id, target_type="org", target_id=org_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="set_plan",
+                org_id=org_id,
+                target_type="org",
+                target_id=org_id,
                 summary=f"{was!r} -> {key!r}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", f"Plan changed: {was} → {key}.")
-
 
     async def users_create(request: Request) -> Response:
         form, org_id, denied = await _moderate(request, "org_id", action_of="create_user")
@@ -1693,8 +1840,13 @@ def add_admin_routes(
                 await session.rollback()
                 return _back(f"{ADMIN_PATH}/org/{org_id}", f"{email!r} already exists in this org.")
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="create_user",
-                org_id=org_id, target_type="user", target_id=user.id, summary=f"email={email} role={role}",
+                session,
+                actor=_ADMIN_ACTOR,
+                action="create_user",
+                org_id=org_id,
+                target_type="user",
+                target_id=user.id,
+                summary=f"email={email} role={role}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "User added.")
 
@@ -1714,14 +1866,25 @@ def add_admin_routes(
             org_id, previous = user.org_id, user.role
             user.role = role
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="set_user_role",
-                org_id=org_id, target_type="user", target_id=user_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="set_user_role",
+                org_id=org_id,
+                target_type="user",
+                target_id=user_id,
                 summary=f"{previous} -> {role}",
             )
             if role in rbac.PRIVILEGED_ROLES:
-                await events.emit(session, org_id, "user.privileged_role_granted", {
-                    "user_id": user_id, "role": role, "actor": _ADMIN_ACTOR,
-                })
+                await events.emit(
+                    session,
+                    org_id,
+                    "user.privileged_role_granted",
+                    {
+                        "user_id": user_id,
+                        "role": role,
+                        "actor": _ADMIN_ACTOR,
+                    },
+                )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Role updated.")
 
     async def _toggle_user(request: Request, *, disable: bool) -> Response:
@@ -1736,8 +1899,12 @@ def add_admin_routes(
             org_id = user.org_id
             user.disabled_at = datetime.now(timezone.utc) if disable else None
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action=action,
-                org_id=org_id, target_type="user", target_id=user_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action=action,
+                org_id=org_id,
+                target_type="user",
+                target_id=user_id,
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "User disabled." if disable else "User enabled.")
 
@@ -1771,8 +1938,12 @@ def add_admin_routes(
                     "That issuer/subject is already linked to a different user.",
                 )
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="link_sso",
-                org_id=org_id, target_type="user", target_id=user_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="link_sso",
+                org_id=org_id,
+                target_type="user",
+                target_id=user_id,
                 summary=f"{issuer}/{external_subject}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "SSO identity linked.")
@@ -1790,8 +1961,13 @@ def add_admin_routes(
             user.issuer = ""
             user.external_subject = ""
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="unlink_sso",
-                org_id=org_id, target_type="user", target_id=user_id, summary=f"was {previous}",
+                session,
+                actor=_ADMIN_ACTOR,
+                action="unlink_sso",
+                org_id=org_id,
+                target_type="user",
+                target_id=user_id,
+                summary=f"was {previous}",
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "SSO identity unlinked.")
 
@@ -1803,25 +1979,26 @@ def add_admin_routes(
         subject_ids = [s.strip() for s in str(form.get("subject_ids", "")).split(",") if s.strip()]
         async with session_scope(session_factory) as session:
             try:
-                result = await crud.tag_trace_subjects(
-                    session, org_id, trace_id, subject_ids, actor=_ADMIN_ACTOR)
+                result = await crud.tag_trace_subjects(session, org_id, trace_id, subject_ids, actor=_ADMIN_ACTOR)
             except ValueError as exc:
                 return _back(f"{ADMIN_PATH}/org/{org_id}", str(exc))
         if result is None:
             return _back(f"{ADMIN_PATH}/org/{org_id}", "No such trace in this org.")
-        return _back(
-            f"{ADMIN_PATH}/org/{org_id}", f"Tagged with {len(result['subject_ids'])} subject id(s).")
-
+        return _back(f"{ADMIN_PATH}/org/{org_id}", f"Tagged with {len(result['subject_ids'])} subject id(s).")
 
     async def _org_view(org_id: str, admin_token: str, *, flash: str = "", fresh_key: str = "") -> Response:
         async with session_scope(session_factory) as session:
             data = await _org_detail(session, org_id)
         if data is None:
-            return _page("Not found", '<section><h1>No such organization</h1>'
-                                      f'<p class="sub">Nothing on this Hub has that id. '
-                                      f'<a href="{ADMIN_PATH}">Back to the overview</a>.</p></section>')
+            return _page(
+                "Not found",
+                "<section><h1>No such organization</h1>"
+                f'<p class="sub">Nothing on this Hub has that id. '
+                f'<a href="{ADMIN_PATH}">Back to the overview</a>.</p></section>',
+            )
         return _page(
-            data["org"].name, _render_org(data, admin_token, flash=flash, fresh_key=fresh_key),
+            data["org"].name,
+            _render_org(data, admin_token, flash=flash, fresh_key=fresh_key),
             auto_refresh_seconds=0 if fresh_key else 25,
         )
 
@@ -1842,9 +2019,14 @@ def add_admin_routes(
             except ValueError:
                 expires_days = 0
             if not 1 <= expires_days <= auth.MAX_KEY_EXPIRY_DAYS:
-                return await _org_view(org_id, admin_token, flash=(
-                    f"Expiry must be a whole number of days from 1 to {auth.MAX_KEY_EXPIRY_DAYS}, "
-                    "or blank for a key that never expires."))
+                return await _org_view(
+                    org_id,
+                    admin_token,
+                    flash=(
+                        f"Expiry must be a whole number of days from 1 to {auth.MAX_KEY_EXPIRY_DAYS}, "
+                        "or blank for a key that never expires."
+                    ),
+                )
         try:
             issued = await _issue_key_with_audit(org_id, expires_days, chosen_scopes)
         except ValueError as exc:  # ScopeError included: an unknown scope name
@@ -1853,11 +2035,14 @@ def add_admin_routes(
 
     async def _issue_key_with_audit(org_id: str, expires_days: int | None, chosen_scopes: list):
         async with session_scope(session_factory) as session:
-            issued = await auth.issue_api_key(
-                session, org_id, expires_days=expires_days, scopes=chosen_scopes)
+            issued = await auth.issue_api_key(session, org_id, expires_days=expires_days, scopes=chosen_scopes)
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="issue_key",
-                org_id=org_id, target_type="api_key", target_id=issued.key_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="issue_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id=issued.key_id,
                 summary=f"prefix={issued.key_prefix} scopes={','.join(issued.scopes)}",
             )
         return issued
@@ -1875,8 +2060,12 @@ def add_admin_routes(
             async with session_scope(session_factory) as session:
                 issued = await auth.rotate_api_key(session, key_id)
                 await audit_module.record(
-                    session, actor=_ADMIN_ACTOR, action="rotate_key",
-                    org_id=org_id, target_type="api_key", target_id=issued.key_id,
+                    session,
+                    actor=_ADMIN_ACTOR,
+                    action="rotate_key",
+                    org_id=org_id,
+                    target_type="api_key",
+                    target_id=issued.key_id,
                     summary=f"replaces={key_id}",
                 )
         except ValueError as exc:
@@ -1894,8 +2083,12 @@ def add_admin_routes(
             org_id = key.org_id
             await auth.revoke_api_key(session, key_id)
             await audit_module.record(
-                session, actor=_ADMIN_ACTOR, action="revoke_key",
-                org_id=org_id, target_type="api_key", target_id=key_id,
+                session,
+                actor=_ADMIN_ACTOR,
+                action="revoke_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id=key_id,
             )
         return _back(f"{ADMIN_PATH}/org/{org_id}", "Key revoked.")
 
@@ -1936,7 +2129,7 @@ def add_admin_routes(
             config=config,
             actor=_ADMIN_ACTOR,
         )
-        if not result:
+        if not isinstance(result, dict):
             return _back(f"{ADMIN_PATH}/org/{org_id}", "No such trace in this org.")
         return _back(f"{ADMIN_PATH}/org/{org_id}", f"Amended trace {trace_id} -> new trace {result['id']}.")
 
@@ -1978,8 +2171,7 @@ def add_admin_routes(
         if not subject_id or confirm != subject_id:
             return _back(f"{ADMIN_PATH}/org/{org_id}", "Subject id confirmation did not match.")
         async with session_scope(session_factory) as session:
-            result = await crud.purge_traces_by_subject(
-                session, org_id, subject_id, actor=_ADMIN_ACTOR)
+            result = await crud.purge_traces_by_subject(session, org_id, subject_id, actor=_ADMIN_ACTOR)
         return _back(
             f"{ADMIN_PATH}/org/{org_id}",
             f"Permanently deleted {result.get('purged', 0)} trace(s).",
@@ -1988,7 +2180,9 @@ def add_admin_routes(
     app.add_route(ADMIN_PATH, overview, methods=["GET"])
     app.add_route(f"{ADMIN_PATH}/create-org", create_org, methods=["POST"])
     app.add_route(
-        f"{ADMIN_PATH}/generate-encryption-key", generate_encryption_key_route, methods=["POST"],
+        f"{ADMIN_PATH}/generate-encryption-key",
+        generate_encryption_key_route,
+        methods=["POST"],
     )
     app.add_route(f"{ADMIN_PATH}/org/{{org_id}}", org_detail, methods=["GET"])
     app.add_route(f"{ADMIN_PATH}/org/{{org_id}}/quarantine/release", quarantine_release, methods=["POST"])
@@ -2012,7 +2206,8 @@ def add_admin_routes(
     app.add_route(f"{ADMIN_PATH}/org/{{org_id}}/purge-trace", purge_trace_route, methods=["POST"])
     app.add_route(f"{ADMIN_PATH}/org/{{org_id}}/purge", purge_org_route, methods=["POST"])
     app.add_route(
-        f"{ADMIN_PATH}/org/{{org_id}}/purge-subject-traces", purge_subject_traces_route,
+        f"{ADMIN_PATH}/org/{{org_id}}/purge-subject-traces",
+        purge_subject_traces_route,
         methods=["POST"],
     )
     app.add_route(f"{ADMIN_PATH}/kb", kb, methods=["GET"])
