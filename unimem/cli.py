@@ -51,6 +51,7 @@ _COMMAND_GROUPS = {
     'erasure': 'nextwave',
     'tier': 'nextwave',
     'providers': 'platform',
+    'demo': 'platform',
     'codegraph': 'platform',
     'migrate': 'platform',
     'connect': 'platform',

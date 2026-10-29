@@ -638,6 +638,42 @@ def jobs_run_purge(args, root) -> int:
     return 0
 
 
+# demo operations
+def demo_add_parser(subparsers):
+    p = subparsers.add_parser(
+        "demo",
+        help="A 30-second offline tour of the memory loop: remember, measure, govern.",
+    )
+    p.add_argument("--occasions", type=int, default=1000,
+                   help="Simulated tasks to run through the holdout (default 1000, minimum 100).")
+    p.add_argument("--seed", type=int, default=7, help="Seed for the simulated agent's outcomes.")
+    p.add_argument("--keep", metavar="DIR", default=None,
+                   help="Write the demo store to DIR (must not exist) and keep it for inspection.")
+    p.add_argument("--json", action="store_true", help="Print the result as JSON.")
+    p.set_defaults(func=demo_run)
+
+
+def demo_run(args):
+    import json
+    import os
+    import sys
+
+    from unimem import pack_demos
+
+    if args.occasions < 100 or args.occasions > 100_000:
+        print("[unimem] error: --occasions must be between 100 and 100000", file=sys.stderr)
+        return 2
+    if args.keep and os.path.exists(args.keep):
+        print(f"[unimem] error: {args.keep} already exists; choose a new directory", file=sys.stderr)
+        return 2
+    result = pack_demos.tour(args.occasions, args.seed, args.keep)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        pack_demos.print_tour(result)
+    return 0
+
+
 COMMANDS = {
     "providers": providers_add_parser,
     "codegraph": codegraph_add_parser,
@@ -647,4 +683,5 @@ COMMANDS = {
     "viz": viz_add_parser,
     "gateway": gateway_add_parser,
     "jobs": jobs_add_parser,
+    "demo": demo_add_parser,
 }
