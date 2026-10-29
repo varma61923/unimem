@@ -259,16 +259,33 @@ def main() -> int:
                     help="Exit 1 if the largest corpus's median total exceeds this.")
     args = ap.parse_args()
 
-    sizes = tuple(int(s) for s in args.sizes.split(",") if s.strip())
+    try:
+        sizes = tuple(int(s) for s in args.sizes.split(",") if s.strip())
+    except ValueError:
+        ap.error("sizes must be comma-separated positive integers")
+    if not sizes or any(size < 1 for size in sizes):
+        ap.error("sizes must contain positive corpus counts")
+    if args.runs < 1 or args.top_k < 1:
+        ap.error("runs and top-k must be positive")
+    for option in ("max_alpha", "max_total_ms"):
+        value = getattr(args, option)
+        if value is not None and not math.isfinite(value):
+            ap.error(f"{option.replace('_', '-')} must be finite")
+    if args.max_alpha is not None and len(set(sizes)) < 2:
+        ap.error("a scaling gate requires at least two distinct corpus sizes")
     report = compute(sizes=sizes, runs=args.runs, top_k=args.top_k,
                      use_cache=not args.no_cache)
     print(json.dumps(report, indent=2) if args.json else render_markdown(report))
 
     failed = False
-    if args.max_alpha is not None and (report["alpha_total"] or 0) > args.max_alpha:
-        print(f"FAIL: total alpha {report['alpha_total']:.2f} exceeds "
-              f"{args.max_alpha}", file=sys.stderr)
-        failed = True
+    if args.max_alpha is not None:
+        alpha = report["alpha_total"]
+        if alpha is None or not math.isfinite(alpha):
+            print("FAIL: total alpha could not be estimated from positive measurements", file=sys.stderr)
+            failed = True
+        elif alpha > args.max_alpha:
+            print(f"FAIL: total alpha {alpha:.2f} exceeds {args.max_alpha}", file=sys.stderr)
+            failed = True
     if args.max_total_ms is not None:
         worst = max(p["total_ms"] for p in report["points"])
         if worst > args.max_total_ms:
