@@ -83,7 +83,7 @@ async def config() -> HubConfig:
     return HubConfig(database_url=TEST_DATABASE_URL, rate_limit_per_minute=1_000_000, rate_limit_burst=1_000_000)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _schema():
     await _skip_if_no_db()
     engine = make_engine(HubConfig(database_url=TEST_DATABASE_URL))
