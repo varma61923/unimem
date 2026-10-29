@@ -30,7 +30,7 @@ _LOADED = False
 
 def _shape(name: str) -> str:
     """"Kaelen Voss" -> "Xx Xx", "requests.get" -> "x.x", "ERR_42" -> "X_d"."""
-    out = []
+    out: list[str] = []
     for ch in name:
         kind = "X" if ch.isupper() else "x" if ch.islower() else "d" if ch.isdigit() else ch
         if not out or out[-1] != kind:
@@ -77,7 +77,29 @@ def features(name: str, context: str) -> list[str]:
 
 class Model:
     def __init__(self, labels: list[str], weights: dict[str, list[float]], bias: list[float], meta: dict):
-        self.labels, self.weights, self.bias, self.meta = labels, weights, bias, meta
+        if (not isinstance(labels, list) or not labels
+                or not all(isinstance(label, str) and label for label in labels)
+                or len(set(labels)) != len(labels)):
+            raise ValueError("typing model labels must be nonempty, unique strings")
+
+        def vector(value: object) -> bool:
+            if not isinstance(value, list) or len(value) != len(labels):
+                return False
+            try:
+                return all(not isinstance(item, bool) and isinstance(item, (int, float))
+                           and math.isfinite(item) for item in value)
+            except OverflowError:
+                return False
+
+        if not vector(bias) or not isinstance(weights, dict) or not all(
+            isinstance(feature, str) and vector(row) for feature, row in weights.items()
+        ):
+            raise ValueError("typing model vectors must match labels and contain finite numbers")
+        if not isinstance(meta, dict):
+            raise ValueError("typing model metadata must be an object")
+        self.labels = list(labels)
+        self.weights = {feature: list(row) for feature, row in weights.items()}
+        self.bias, self.meta = list(bias), dict(meta)
 
     def probabilities(self, name: str, context: str) -> dict[str, float]:
         scores = list(self.bias)
@@ -86,6 +108,8 @@ class Model:
             if row is not None:
                 for i, w in enumerate(row):
                     scores[i] += w
+        if not all(math.isfinite(score) for score in scores):
+            raise ValueError("typing model scores must be finite")
         top = max(scores)
         exps = [math.exp(s - top) for s in scores]
         total = sum(exps)
@@ -97,11 +121,14 @@ class Model:
                 "meta": self.meta}
 
     @classmethod
-    def from_dict(cls, data: dict) -> Model:
-        if data.get("format") != 1:
+    def from_dict(cls, data: object) -> Model:
+        if not isinstance(data, dict) or type(data.get("format")) is not int or data.get("format") != 1:
             raise ValueError("unsupported typing model format")
-        return cls(list(data["labels"]), {k: list(v) for k, v in data["weights"].items()},
-                   list(data["bias"]), dict(data.get("meta") or {}))
+        labels, weights, bias = data.get("labels"), data.get("weights"), data.get("bias")
+        if not isinstance(labels, list) or not isinstance(weights, dict) or not isinstance(bias, list):
+            raise ValueError("typing model requires label and bias arrays and a weight object")
+        meta = data.get("meta")
+        return cls(labels, weights, bias, {} if meta is None else meta)
 
 
 def train(rows: list[tuple[str, str, str]], *, epochs: int = 30, rate: float = 0.3, l2: float = 1e-4,
@@ -109,6 +136,8 @@ def train(rows: list[tuple[str, str, str]], *, epochs: int = 30, rate: float = 0
     """Softmax regression with Adagrad over (name, context, label) rows."""
     import random
 
+    if not rows:
+        raise ValueError("typing model training rows must not be empty")
     labels = sorted({label for _n, _c, label in rows})
     index = {label: i for i, label in enumerate(labels)}
     counts: dict[str, int] = {}
