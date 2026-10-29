@@ -90,6 +90,12 @@ def _key(root: str, *, create: bool = False, algorithm: str = "hmac-sha256", dur
     except FileNotFoundError:
         return None
     if len(key) != 32:
+        if create:
+            # Another first signer may have reserved the exclusive file but
+            # not flushed its bytes yet. Wait for its creation lock and retry
+            # once without creating or repairing an invalid existing key.
+            with _jsonl.locked(filename):
+                return _key(root, algorithm=algorithm)
         raise ValueError("invalid origin key")
     return key
 

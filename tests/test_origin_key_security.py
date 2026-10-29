@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -79,3 +81,53 @@ def test_key_open_cannot_follow_a_symlink_swapped_after_validation(tmp_path, mon
     with pytest.raises((OSError, ValueError)):
         memory_authority._key(str(tmp_path))
     assert swapped
+
+
+def test_concurrent_first_signers_wait_for_key_initialization(tmp_path, monkeypatch):
+    root = str(tmp_path)
+    reserved = threading.Event()
+    empty_read = threading.Event()
+    finish = threading.Event()
+    token_bytes = memory_authority.secrets.token_bytes
+    fdopen = os.fdopen
+
+    def reserve_then_write(size):
+        reserved.set()
+        assert finish.wait(5)
+        return token_bytes(size)
+
+    class ObserveRead:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+
+        def fileno(self):
+            return self.stream.fileno()
+
+        def read(self, size):
+            value = self.stream.read(size)
+            if not value:
+                empty_read.set()
+            return value
+
+    def observe(fd, mode, *args, **kwargs):
+        stream = fdopen(fd, mode, *args, **kwargs)
+        return ObserveRead(stream) if mode == "rb" else stream
+
+    monkeypatch.setattr(memory_authority.secrets, "token_bytes", reserve_then_write)
+    monkeypatch.setattr(os, "fdopen", observe)
+    with ThreadPoolExecutor(2) as workers:
+        creator = workers.submit(memory_authority._key, root, create=True)
+        try:
+            assert reserved.wait(5)
+            follower = workers.submit(memory_authority._key, root, create=True)
+            assert empty_read.wait(5)
+        finally:
+            finish.set()
+        assert creator.result(timeout=5) == follower.result(timeout=5)
