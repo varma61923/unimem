@@ -2,7 +2,6 @@
 
 import builtins
 import io
-from pathlib import Path
 
 import pytest
 
@@ -33,8 +32,6 @@ def test_message_input_files_close_on_success_and_parse_failure(tmp_path, monkey
         return open_input
 
     monkeypatch.setattr(builtins, "open", track(builtins.open))
-    monkeypatch.setattr(io, "open", track(io.open))
-    monkeypatch.setattr(Path, "open", track(Path.open))
     if expected is ValueError:
         with pytest.raises(ValueError):
             conversation_cmd._read_messages(str(source))

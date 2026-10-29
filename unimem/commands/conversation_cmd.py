@@ -7,7 +7,6 @@ import json
 import os
 import sys
 import tempfile
-from pathlib import Path
 
 from unimem import paths
 
@@ -217,7 +216,11 @@ def _store(args, create: bool = True):
 
 
 def _read_messages(path: str) -> list[dict]:
-    raw = sys.stdin.read() if path == "-" else Path(path).read_text(encoding="utf-8")
+    if path == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
     raw = raw.strip()
     if not raw:
         return []
