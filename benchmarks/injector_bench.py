@@ -16,6 +16,7 @@ import os
 import platform
 import tempfile
 import time
+from pathlib import Path
 
 from unimem import embeddings, holdout_io
 from unimem.hook_kit import HookKit
@@ -197,7 +198,7 @@ def measure(*, fixture_path: str, model="bge-small", repetitions=5) -> dict:
     ordered_samples = sorted(samples)
     implementation_paths = ("unimem/hook_kit.py", "unimem/native_hooks.py")
     implementation_sha256 = {
-        path: hashlib.sha256(open(os.path.join(os.path.dirname(__file__), "..", path), "rb").read()).hexdigest()
+        path: hashlib.sha256((Path(__file__).parent.parent / path).read_bytes()).hexdigest()
         for path in implementation_paths
     }
     provider_package = "unimem" if str(model).startswith("fastembed:") else "sentence-transformers"
@@ -210,7 +211,7 @@ def measure(*, fixture_path: str, model="bge-small", repetitions=5) -> dict:
         "model": model,
         "public_aggregate_only": True,
         "fixture_sha256": hashlib.sha256(raw).hexdigest(),
-        "source_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "implementation_sha256": implementation_sha256,
         "provider_package": provider_package,
         "provider_version": provider_version,
@@ -317,7 +318,7 @@ def measure_transport(*, repetitions=50) -> dict:
         "delivery_rate": 1 - len(withheld) / len(samples),
         "passed": p95 < 50 and not withheld and any(row["delivered"] for row in warmup),
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-        "source_sha256": hashlib.sha256(open(__file__, "rb").read()).hexdigest(),
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "measurement": "fresh isolated Python process through warm broker, stdout and acknowledgement; fixed directive; no semantic model",
         "limitations": ["Transport-only fixture does not measure semantic relevance or cold broker/model startup."],
     }

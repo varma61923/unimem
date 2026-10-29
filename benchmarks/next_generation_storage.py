@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 from unimem import fact_store
 from unimem import hierarchical as h
@@ -98,7 +99,7 @@ def main() -> int:
         "trials": args.trials, "legacy": [], "sqlite": [],
     }
     result['source_files_sha256'] = {
-        name: hashlib.sha256(open(name, 'rb').read()).hexdigest()
+        name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
         for name in ('unimem/hierarchical.py', 'unimem/configuration.py', 'unimem/fact_store.py',
                      'unimem/entity_store.py', 'unimem/sqlite_pool.py',
                      'unimem/memory_record.py', 'unimem/fact_index.py',

@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -205,7 +206,7 @@ async def run_lance(*, n: int, dim: int, queries: int, top_k: int, clusters: int
                             "recall_at_k": statistics.mean(recalls), "recall_min": min(recalls)}]
         repository = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         report["source_files_sha256"] = {
-            name: hashlib.sha256(open(os.path.join(repository, name), "rb").read()).hexdigest()
+            name: hashlib.sha256(Path(os.path.join(repository, name)).read_bytes()).hexdigest()
             for name in ("benchmarks/vector_scale_bench.py", "unimem/vector_lance.py",
                          "unimem/vector_store.py", "unimem/async_workers.py")}
         report["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository,
