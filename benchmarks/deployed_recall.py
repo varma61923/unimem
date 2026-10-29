@@ -105,10 +105,18 @@ class Gateway:
 
 
 def run(args) -> dict:
+    cases = _load_cases(args)
+    if not any(questions for _space, _sessions, _now, questions in cases):
+        raise ValueError("no benchmark questions selected")
+    if args.root:
+        return _measure(args, cases, args.root)
+    with tempfile.TemporaryDirectory(prefix="unimem-deployed-") as root:
+        return _measure(args, cases, root)
+
+
+def _measure(args, cases, root: str) -> dict:
     from unimem.conversation import embed
 
-    cases = _load_cases(args)
-    root = args.root or tempfile.mkdtemp(prefix="unimem-deployed-")
     # Vectors can only be prepared at write time when this host has an embedder.
     cache_vectors = bool(args.cache_vectors and embed.configured())
     gateway = Gateway(root)
