@@ -4,6 +4,7 @@ Selection alone cannot identify a treatment effect. Each explored memory is
 independently randomised into delivery/control; missing outcomes invalidate an
 estimate. These experimental estimates are never accepted as billing proof.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -15,8 +16,15 @@ from collections.abc import Callable, Sequence
 from unimem import _jsonl, paths
 
 
-def explore(eligible: Sequence[str], ranked: Sequence[str], *, slots: int, seed: int,
-            treatment_probability: float = 0.5, delivery_policy: dict | None = None) -> list[dict]:
+def explore(
+    eligible: Sequence[str],
+    ranked: Sequence[str],
+    *,
+    slots: int,
+    seed: int,
+    treatment_probability: float = 0.5,
+    delivery_policy: dict | None = None,
+) -> list[dict]:
     if not isinstance(slots, int) or isinstance(slots, bool) or slots < 0:
         raise ValueError("slots must be a nonnegative integer")
     if not math.isfinite(treatment_probability) or not 0 < treatment_probability < 1:
@@ -30,8 +38,14 @@ def explore(eligible: Sequence[str], ranked: Sequence[str], *, slots: int, seed:
         probability = policy.get("probabilities", {}).get(mid, policy.get("default_probability", treatment_probability))
         if not isinstance(probability, (int, float)) or not math.isfinite(probability) or not 0 < probability < 1:
             raise ValueError("delivery policy requires finite full-support probabilities")
-        rows.append({"memory_id": mid, "selection_probability": k / len(pool),
-                     "treatment_probability": probability, "delivered": rng.random() < probability})
+        rows.append(
+            {
+                "memory_id": mid,
+                "selection_probability": k / len(pool),
+                "treatment_probability": probability,
+                "delivered": rng.random() < probability,
+            }
+        )
     return rows
 
 
@@ -42,8 +56,7 @@ def snipw(rows: Sequence[dict]) -> dict:
             raise ValueError("delivery arm must be boolean")
         if row.get("outcome") is None:
             return {"identified": False, "reason": "missing outcomes", "effect": None}
-        pi, p, outcome = (float(row[key]) for key in
-                          ("selection_probability", "treatment_probability", "outcome"))
+        pi, p, outcome = (float(row[key]) for key in ("selection_probability", "treatment_probability", "outcome"))
         if not all(math.isfinite(v) for v in (pi, p, outcome)) or not 0 < pi <= 1 or not 0 < p < 1:
             raise ValueError("invalid propensities or outcome")
         if not 0 <= outcome <= 1:
@@ -59,13 +72,20 @@ def snipw(rows: Sequence[dict]) -> dict:
     for arm, values in arms.items():
         largest = max(w for w, _ in values)
         arms[arm] = [(math.exp(w - largest), y) for w, y in values]
-    means = {arm: math.fsum(w * y for w, y in values) / math.fsum(w for w, _ in values)
-             for arm, values in arms.items()}
-    ess = {str(arm): math.fsum(w for w, _ in values) ** 2 / math.fsum(w * w for w, _ in values)
-           for arm, values in arms.items()}
-    return {"identified": True, "effect": means[True] - means[False],
-            "treated": means[True], "control": means[False], "effective_sample_size": ess,
-            "billing_eligible": False, "rows": len(rows)}
+    means = {arm: math.fsum(w * y for w, y in values) / math.fsum(w for w, _ in values) for arm, values in arms.items()}
+    ess = {
+        str(arm): math.fsum(w for w, _ in values) ** 2 / math.fsum(w * w for w, _ in values)
+        for arm, values in arms.items()
+    }
+    return {
+        "identified": True,
+        "effect": means[True] - means[False],
+        "treated": means[True],
+        "control": means[False],
+        "effective_sample_size": ess,
+        "billing_eligible": False,
+        "rows": len(rows),
+    }
 
 
 def record(root: str, occasion_id: str, assignments: list[dict], outcome: float | None = None) -> None:
@@ -89,14 +109,21 @@ def record(root: str, occasion_id: str, assignments: list[dict], outcome: float 
             if key in prior:
                 before = prior[key]
                 if {k: v for k, v in before.items() if k != "outcome"} != {
-                        k: v for k, v in row.items() if k != "outcome"}:
+                    k: v for k, v in row.items() if k != "outcome"
+                }:
                     raise ValueError("occasion assignment is immutable")
                 if outcome is not None:
                     if before["outcome"] is not None and before["outcome"] != outcome:
                         raise ValueError("recorded outcome is immutable")
                     if before["outcome"] is None:
-                        pending.append({"event": "outcome", "occasion_id": occasion_id,
-                                        "memory_id": row["memory_id"], "outcome": outcome})
+                        pending.append(
+                            {
+                                "event": "outcome",
+                                "occasion_id": occasion_id,
+                                "memory_id": row["memory_id"],
+                                "outcome": outcome,
+                            }
+                        )
             else:
                 pending.append(row)
         for row in pending:
@@ -104,8 +131,11 @@ def record(root: str, occasion_id: str, assignments: list[dict], outcome: float 
 
 
 def record_outcome(root: str, occasion_id: str, outcome: float) -> bool:
-    assignments = [{k: v for k, v in row.items() if k not in ("occasion_id", "outcome")}
-                   for row in read(root) if row["occasion_id"] == occasion_id]
+    assignments = [
+        {k: v for k, v in row.items() if k not in ("occasion_id", "outcome")}
+        for row in read(root)
+        if row["occasion_id"] == occasion_id
+    ]
     if not assignments:
         return False
     record(root, occasion_id, assignments, outcome)
@@ -115,7 +145,7 @@ def record_outcome(root: str, occasion_id: str, outcome: float) -> bool:
 def read(root: str) -> list[dict]:
     """Project immutable assignment and eventual outcome events."""
     path = os.path.join(paths.memory_dir(root), "exploration.jsonl")
-    rows = {}
+    rows: dict[tuple[str, str], dict] = {}
     for row in _jsonl.read_rows(path):
         key = (row["occasion_id"], row["memory_id"])
         if row.get("event") == "outcome":
@@ -127,8 +157,9 @@ def read(root: str) -> list[dict]:
     return list(rows.values())
 
 
-def ablation_probe(memory: Sequence[str], answer: Callable[[Sequence[str]], float], *,
-                   seed: int, probes: int = 8) -> list[dict]:
+def ablation_probe(
+    memory: Sequence[str], answer: Callable[[Sequence[str]], float], *, seed: int, probes: int = 8
+) -> list[dict]:
     """Offline deletion-and-reanswer credits, paired with their raw baseline.
 
     The evaluator must score externally; these local probes are sensitivity
@@ -139,8 +170,15 @@ def ablation_probe(memory: Sequence[str], answer: Callable[[Sequence[str]], floa
     results = []
     for idx in rng.sample(range(len(memory)), min(max(0, probes), len(memory))):
         score = float(answer([text for i, text in enumerate(memory) if i != idx]))
-        results.append({"index": idx, "credit": full - score, "full": full, "ablated": score,
-                        "memory_digest": hashlib.sha256(memory[idx].encode()).hexdigest()})
+        results.append(
+            {
+                "index": idx,
+                "credit": full - score,
+                "full": full,
+                "ablated": score,
+                "memory_digest": hashlib.sha256(memory[idx].encode()).hexdigest(),
+            }
+        )
     return results
 
 
@@ -170,5 +208,4 @@ def utility_priors(root: str, *, minimum_rows: int = 30) -> dict[str, float]:
 def reward_dataset(root: str) -> list[dict]:
     """Optional learned policies train on observed randomised outcomes, not votes."""
     rows = read(root)
-    return [{**row, "reward": row["outcome"], "billing_eligible": False}
-            for row in rows if row["outcome"] is not None]
+    return [{**row, "reward": row["outcome"], "billing_eligible": False} for row in rows if row["outcome"] is not None]
