@@ -23,7 +23,7 @@ MAX_OUTPUT_CHARS = 200_000
 # console can show their help and copyable command shape, but must not block the
 # gateway thread or replace the process serving the UI. Store setup/install are
 # safe because the runner pins their destination to the authenticated store.
-_TERMINAL_ONLY = frozenset({"daemon", "gateway", "serve", "watch", "evolve", "up", "setup", "providers"})
+_TERMINAL_ONLY = frozenset({"daemon", "gateway", "serve", "watch", "evolve", "up", "setup", "providers", "demo"})
 
 _GROUPS: dict[str, tuple[str, ...]] = {
     "Capture": ("capture", "import", "trace", "ingest", "source"),
@@ -43,7 +43,7 @@ _GROUPS: dict[str, tuple[str, ...]] = {
     "Govern": ("policy", "assurance", "compression", "allocate", "lineage", "log", "incident",
                "promote", "safety", "frontier", "skill", "team", "stream", "erasure", "sentinel", "person"),
     "Operate": ("account", "commons", "release", "sync", "migrate", "connect", "providers", "market", "tier", "pack"),
-    "Setup": ("init", "install", "setup", "up", "integration"),
+    "Setup": ("init", "install", "setup", "up", "integration", "demo"),
     "Runtime": tuple(sorted(_TERMINAL_ONLY)),
 }
 
@@ -54,6 +54,7 @@ _DESCRIPTIONS = {
     "team": "Measure UniMem writer contributions, nested holdouts and team incident tags.",
     "skill": "Induce, screen, measure and publish UniMem skills with signed causal evidence.",
     "help": "Find commands by topic, category and common-operation shortcuts.",
+    "demo": "Run a 30-second offline tour of the memory loop: remember, measure, govern.",
     "setup": "Guide runtime initialization, document ingestion or competitor-data migration.",
     "providers": "Discover LLM, embedding, vector and reranking providers and validate strict configurations.",
     "up": "Initialize a runtime with local, team or server settings and native agent hooks.",

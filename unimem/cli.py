@@ -30,6 +30,7 @@ _COMMANDS = (
     "migrate", "pack",
     "codegraph", "market", "allocate", "integration", "providers", "help", "setup", "lineage", "log", "incident",
     "promote", "safety", "frontier", "skill", "team", "stream", "erasure", "tier", "sentinel", "person",
+    "demo",
 )
 
 ALIASES = {
