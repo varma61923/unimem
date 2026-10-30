@@ -155,3 +155,32 @@ def test_local_cooldown_does_not_close_half_open_circuit(monkeypatch):
         breaker.call(unavailable, transient=lambda _error: True)
     with pytest.raises(CircuitOpenError):
         breaker.call(lambda: "unexpectedly healthy", transient=lambda _error: True)
+
+
+def test_provider_cooldown_is_catchable_as_llm_unavailable(monkeypatch):
+    # Regression: after one 429, the next call raised a bare Overloaded that
+    # escaped every `except LLMUnavailable` degradation path.
+    from unimem.overload import Overloaded, OverloadPolicy
+
+    now = [0.0]
+    policy = OverloadPolicy(clock=lambda: now[0])
+    monkeypatch.setattr(llm._OVERLOADS, "get_or_load", lambda _key, _loader: policy)
+    monkeypatch.setenv("UNIMEM_LLM_CIRCUIT_BREAKER", "0")
+
+    class RateLimited(Exception):
+        code = 429
+        headers = {"Retry-After": "5"}
+
+    def limited(*_args):
+        raise RateLimited
+
+    cfg = llm.Config("anthropic", "m", "k")
+    with pytest.raises(RateLimited):
+        llm._provider_call(cfg, "q", limited)
+    with pytest.raises(llm.LLMUnavailable) as failure:
+        llm._provider_call(cfg, "q", lambda *_args: pytest.fail("cooldown must not dispatch"))
+    assert isinstance(failure.value, Overloaded)
+    assert failure.value.code == "provider_cooldown"
+    assert failure.value.retry_after == 5
+    now[0] = 6
+    assert llm._provider_call(cfg, "q", lambda *_args: ("ok", {})) == ("ok", {})

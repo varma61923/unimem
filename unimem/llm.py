@@ -10,6 +10,7 @@ from unimem import llm_cache as llm_cache_mod
 from unimem.circuit_breaker import CircuitBreaker, CircuitOpenError
 from unimem.configuration import getenv as _configuration_getenv
 from unimem.exceptions import InfrastructureError
+from unimem.overload import Overloaded
 from unimem.retry import call_with_retries, is_retryable
 from unimem.runtime_cache import RuntimeCache
 from unimem.secrets_provider import env_secret
@@ -78,7 +79,13 @@ def _provider_call(cfg: Config, prompt: str, caller) -> tuple[str, dict]:
     overload = _OVERLOADS.get_or_load(key, OverloadPolicy)
     # A local admission refusal says nothing about provider health and must
     # neither reset a circuit nor consume its single recovery probe.
-    overload.admit()
+    try:
+        overload.admit()
+    except Overloaded as exc:
+        # Surface the cooldown as LLMUnavailable too: callers degrade (template
+        # scaffold, skip enrichment) on LLMUnavailable, and a bare Overloaded
+        # escaped every one of those handlers after a single 429.
+        raise LLMOverloaded(exc.retry_after) from None
 
     def dispatch():
         try:
@@ -99,6 +106,12 @@ def _provider_call(cfg: Config, prompt: str, caller) -> tuple[str, dict]:
 
 
 class LLMUnavailable(InfrastructureError): ...
+
+
+class LLMOverloaded(LLMUnavailable, Overloaded):
+    """A provider cooldown: catchable as both ``LLMUnavailable`` and ``Overloaded``."""
+
+    code = Overloaded.code
 
 
 class LLMDraftRejected(ValueError): ...
