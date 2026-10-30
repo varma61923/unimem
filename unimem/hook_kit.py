@@ -188,6 +188,18 @@ class HookKit:
             if not isinstance(text, str) or injection_guard.injection_labels({"text": text}):
                 continue
             trigger = record.payload.get("trigger", {})
+            priority = record.payload.get("priority", 0)
+            # Payloads are extensible JSON, so selector-specific fields require
+            # their own boundary checks. One malformed record must not deny
+            # delivery of all other valid records in this request.
+            if (
+                not isinstance(trigger, dict)
+                or any(not isinstance(trigger.get(key, ""), str) for key in ("event", "tool", "error", "path"))
+                or type(priority) not in (int, float)
+                or not -1e100 <= priority <= 1e100
+            ):
+                telemetry.count("unimem_hook_invalid_selection_metadata")
+                continue
             if trigger.get("event") and trigger["event"] != event:
                 continue
             if trigger.get("tool") and trigger["tool"] != payload.get("tool_name"):

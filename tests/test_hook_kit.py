@@ -254,3 +254,43 @@ def test_optional_embedding_failure_preserves_capture_and_critical_context(tmp_p
     assert result["injected"] == ["rule"]
     with kit.journal.connect() as db:
         assert db.execute("SELECT COUNT(*) FROM captures").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {"trigger": None},
+        {"trigger": []},
+        {"trigger": {"error": []}},
+        {"trigger": {"event": 7}},
+        {"priority": "high"},
+        {"priority": True},
+        {"priority": {}},
+        {"priority": 10**200},
+    ],
+)
+def test_malformed_selector_cannot_suppress_valid_directives(tmp_path, metadata):
+    kit = HookKit(str(tmp_path), "agent", embedder="none")
+    kit.journal.put(MemoryRecord("bad", "directive", 1, {"text": "Malformed rule", **metadata}, scope=kit.scope))
+    kit.journal.put(MemoryRecord("good", "directive", 1, {"text": "Validate every input."}, scope=kit.scope))
+    result = kit.handle("SessionStart", {"session_id": "s"}, deadline_ms=1000)
+    assert result["injected"] == ["good"]
+    assert "Validate every input" in result["context"]
+
+
+def test_provider_failure_retains_directives_and_emits_safe_telemetry(tmp_path, monkeypatch):
+    from unimem import telemetry
+
+    def unavailable(_):
+        raise RuntimeError("sensitive provider content")
+
+    counters = []
+    monkeypatch.setattr("unimem.hook_kit.kg_similarity.embedder", unavailable)
+    monkeypatch.setattr(telemetry, "count", lambda name, **labels: counters.append((name, labels)))
+    kit = HookKit(str(tmp_path), "agent", embedder="none")
+    kit.journal.put(MemoryRecord("candidate", "lesson", 1, {"text": "run pytest"}, scope=kit.scope))
+    kit.journal.put(MemoryRecord("good", "directive", 1, {"text": "Validate every input."}, scope=kit.scope))
+    result = kit.handle("UserPromptSubmit", {"session_id": "s", "prompt": "pytest"}, deadline_ms=1000)
+    assert result["injected"] == ["good"]
+    assert ("unimem_hook_provider_failures", {"error_type": "RuntimeError"}) in counters
+    assert "sensitive provider content" not in str(counters)
