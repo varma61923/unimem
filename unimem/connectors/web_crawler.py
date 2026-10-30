@@ -226,11 +226,6 @@ def _convert(text: str, closers: _Closers, start: int, end: int, *, outer: bool)
     return out
 
 
-def _strip_tags(fragment: str) -> str:
-    closers = _Closers(fragment.translate(_ASCII_LOWER))
-    return "".join(_convert(fragment, closers, 0, len(fragment), outer=False))
-
-
 def _html_to_markdown_text(html_text: str) -> str:
     closers = _Closers(html_text.translate(_ASCII_LOWER))
     text = _html.unescape("".join(_convert(html_text, closers, 0, len(html_text), outer=True)))
