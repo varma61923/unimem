@@ -12,7 +12,7 @@ import shlex
 import sys
 import time
 
-from unimem import injection_guard, kg_similarity, memory_guard, paths
+from unimem import injection_guard, kg_similarity, memory_guard, paths, telemetry
 from unimem._lexical import STOPWORDS as LEXICAL_STOPWORDS
 from unimem.configuration import getenv as _configuration_getenv
 from unimem.context_template import render_context as render_context
@@ -277,7 +277,8 @@ class HookKit:
                                 shadows.append(record.id)
                             else:
                                 selected.append((record, text))
-            except Exception:  # noqa: BLE001 - optional model/provider failures must not stop an agent
+            except Exception as exc:  # noqa: BLE001 - optional provider failure must not stop an agent
+                telemetry.count("unimem_hook_provider_failures", error_type=type(exc).__name__)
                 selected, shadows = [], []
         if not remaining():
             return {**empty, "timed_out": True}

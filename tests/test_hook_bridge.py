@@ -143,7 +143,7 @@ def test_equals_options_and_legacy_python_flag_preserve_delivery(tmp_path):
     ]
     with peer(tmp_path, handler):
         result = subprocess.run(
-            equal_form,
+            functional_command(equal_form),
             input='{"session_id":"s","prompt":"code"}',
             text=True,
             capture_output=True,
