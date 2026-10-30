@@ -336,8 +336,12 @@ def test_the_dense_relevance_gate_defaults_to_the_calibrated_value_and_can_be_ov
 
     def inject(session):
         kit = HookKit(root, "agent-x", scope={"repo": "r"}, embedder=HalfRelevant())
+        # Test cosine calibration independently of the production 50 ms deadline.
+        # Shared CI runners can exceed that deadline before selection completes.
         return kit.handle(
-            "UserPromptSubmit", {"session_id": session, "prompt": "check pytest before changing parser boundaries"}
+            "UserPromptSubmit",
+            {"session_id": session, "prompt": "check pytest before changing parser boundaries"},
+            deadline_ms=1000,
         )
 
     monkeypatch.delenv("UNIMEM_HOOK_MIN_COSINE", raising=False)
