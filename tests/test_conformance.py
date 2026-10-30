@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import pytest
@@ -172,3 +173,43 @@ def test_the_runner_never_hands_the_command_to_a_shell(tmp_path):
 def test_a_gateway_url_that_is_not_http_is_refused():
     results = conformance.check_gateway("file:///etc/passwd", "x")
     assert len(results) == 1 and not results[0].ok
+
+
+def test_gateway_redirect_does_not_forward_bearer_token():
+    received = []
+
+    class Sink(BaseHTTPRequestHandler):
+        def do_GET(self):
+            received.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args):
+            pass
+
+    sink = HTTPServer(("127.0.0.1", 0), Sink)
+
+    class Redirect(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{sink.server_port}/")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    source = HTTPServer(("127.0.0.1", 0), Redirect)
+    threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in (source, sink)]
+    for thread in threads:
+        thread.start()
+    try:
+        status, _ = conformance._call(f"http://127.0.0.1:{source.server_port}", "GET", "/", "test-token")
+        assert status == 302
+        assert received == []
+    finally:
+        for server in (source, sink):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join(timeout=2)

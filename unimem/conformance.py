@@ -325,6 +325,13 @@ def check_store(root: str) -> list[Result]:
     return out
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Conformance checks must inspect the configured endpoint itself and must
+        # never send its bearer token to a redirect destination.
+        return None
+
+
 def _call(base: str, method: str, path: str, token: str | None, body: dict | None = None) -> tuple[int, dict]:
     if urllib.parse.urlsplit(base).scheme not in ("http", "https"):
         return 0, {"error": "the gateway URL must be http or https"}
@@ -334,7 +341,7 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(base.rstrip("/") + path, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=10) as resp:  # nosec B310 - scheme checked above
+        with urllib.request.build_opener(_NoRedirect).open(request, timeout=10) as resp:  # nosec B310
             return resp.status, json.loads(resp.read() or b"{}")
     except urllib.error.HTTPError as exc:
         with exc:
