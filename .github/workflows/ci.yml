@@ -141,6 +141,8 @@ jobs:
           --cov=unimem --cov-report=xml --cov-fail-under=80
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        # Preserve coverage evidence when tests fail after producing the report.
+        if: always() && hashFiles('coverage.xml') != ''
         with:
           name: coverage-${{ github.sha }}
           path: coverage.xml
