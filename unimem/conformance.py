@@ -342,13 +342,20 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
     request = urllib.request.Request(base.rstrip("/") + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.build_opener(_NoRedirect).open(request, timeout=10) as resp:  # nosec B310
-            return resp.status, json.loads(resp.read() or b"{}")
+            try:
+                result = json.loads(resp.read() or b"{}")
+            except ValueError:
+                return 0, {"error": "gateway returned invalid JSON"}
+            if not isinstance(result, dict):
+                return 0, {"error": "gateway response must be a JSON object"}
+            return resp.status, result
     except urllib.error.HTTPError as exc:
         with exc:
             try:
-                return exc.code, json.loads(exc.read() or b"{}")
+                result = json.loads(exc.read() or b"{}")
             except ValueError:
                 return exc.code, {}
+            return exc.code, result if isinstance(result, dict) else {}
     except (urllib.error.URLError, OSError) as exc:
         return 0, {"error": str(exc)}
 

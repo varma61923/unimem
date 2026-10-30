@@ -213,3 +213,26 @@ def test_gateway_redirect_does_not_forward_bearer_token():
             server.server_close()
         for thread in threads:
             thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("body", [b"not-json", b"[]", b'"string"', b"\xff"])
+def test_gateway_invalid_json_response_is_reported(body):
+    class InvalidResponse(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), InvalidResponse)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        results = conformance.check_gateway(f"http://127.0.0.1:{server.server_port}", "token")
+        assert len(results) == 1 and not results[0].ok
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
