@@ -4,7 +4,7 @@ UniMem stores and governs agent memory, so we treat security reports as a priori
 
 ## Reporting a vulnerability
 
-Email **Pavan.Mudunuri@unimem.org** with the subject `SECURITY: <short summary>`. Please do not open a public issue for an unfixed vulnerability.
+Email **hello@unimem.org** with the subject `SECURITY: <short summary>`. Please do not open a public issue for an unfixed vulnerability.
 
 Include what you can: the affected component (local core, gateway, MCP server, Hub, SDK, robotics bridge), version or commit, reproduction steps, and the impact you observed. Do not include real secrets or personal data; synthetic examples are enough.
 
