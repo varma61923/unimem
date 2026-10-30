@@ -39,9 +39,9 @@ class TestPreflightDiagnosis:
             import sys
             import types
 
-            stub = types.ModuleType("httpx")
+            stub = types.ModuleType("httpx2")
             stub.post = _post
-            monkeypatch.setitem(sys.modules, "httpx", stub)
+            monkeypatch.setitem(sys.modules, "httpx2", stub)
 
         return install
 
@@ -97,9 +97,9 @@ class TestRejectsBadCredentials:
             import sys
             import types
 
-            stub = types.ModuleType("httpx")
+            stub = types.ModuleType("httpx2")
             stub.post = _post
-            monkeypatch.setitem(sys.modules, "httpx", stub)
+            monkeypatch.setitem(sys.modules, "httpx2", stub)
 
         return install
 
