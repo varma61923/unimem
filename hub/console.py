@@ -1844,6 +1844,16 @@ def add_console_routes(
         raw_key = str(form.get("api_key") or "")
         async with session_scope(session_factory) as session:
             authenticated = await auth.verify_api_key(session, raw_key)
+        if authenticated is not None and scopes.satisfies(authenticated.scopes, scopes.SCOPE_READ):
+            from hub import delegation
+
+            try:
+                # An enrolled delegate is narrowed by its capability on REST and
+                # MCP; the console cannot verify one, so it must not sign in.
+                if await delegation.requires_capability(authenticated, config, session_factory):
+                    authenticated = None
+            except PermissionError:
+                authenticated = None
         if authenticated is None or not scopes.satisfies(authenticated.scopes, scopes.SCOPE_READ):
             logger.info("console sign-in rejected")
             return _page(
@@ -2010,6 +2020,10 @@ def add_console_routes(
         if claims is None:
             return _redirect_to_signin()
         org_id = str(claims["org"])
+        # Minting a 14-day unauthenticated link is an admin act, like revoking
+        # one; a read-only key could otherwise publish the org's proof report.
+        if not _is_admin(claims):
+            return await _proof_view(request, org_id, False)
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
             generation = int(org.share_generation) if org is not None else 0
