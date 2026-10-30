@@ -233,7 +233,9 @@ def _post_json(url: str, headers: dict, payload: dict, *, timeout: float | None 
     opener = urllib.request.build_opener(NoRedirect)
 
     def read_bounded(response) -> str:
-        raw = response.read(8 * 1024 * 1024 + 1)
+        from unimem.retry import read_within
+
+        raw = read_within(response, 8 * 1024 * 1024, timeout or _TIMEOUT_SECONDS)
         if len(raw) > 8 * 1024 * 1024:
             raise LLMUnavailable("provider response exceeds 8 MiB")
         return raw.decode("utf-8")

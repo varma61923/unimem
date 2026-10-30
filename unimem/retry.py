@@ -94,3 +94,29 @@ def call_with_retries(
                 return None, exc
             sleep(retry_after_seconds(hint, attempt))
     return None, error
+
+
+def read_within(response, limit: int, seconds: float) -> bytes:
+    """Read at most ``limit + 1`` body bytes, failing once *seconds* elapse in total.
+
+    urllib's ``timeout`` bounds each socket read, not the whole body: a server
+    trickling one byte just inside the timeout can hold a call open almost
+    forever. This adds a total deadline (overshoot is at most one per-read
+    timeout). Callers keep their own ``len(data) > limit`` check. The raised
+    ``TimeoutError`` is an ``OSError``, so idempotent callers retry it.
+    """
+    read = getattr(response, "read1", None)
+    if read is None:
+        # Not an http.client response (a wrapper or test double): keep the
+        # historical single bounded read, whose stream semantics are unknown.
+        return response.read(limit + 1)
+    deadline = time.monotonic() + seconds
+    body = bytearray()
+    while len(body) <= limit:
+        if time.monotonic() > deadline:
+            raise TimeoutError(f"response body not received within {seconds:g}s")
+        chunk = read(min(65536, limit + 1 - len(body)))
+        if not chunk:
+            break
+        body += chunk
+    return bytes(body)

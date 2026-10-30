@@ -13,6 +13,7 @@ import urllib.request
 
 from unimem import _jsonl, additive_extract, hierarchical, memory_authority, paths, trace_io
 from unimem.connectors import knowledge
+from unimem.retry import read_within
 from unimem.secrets_provider import env_secret
 
 STREAMS = ("gmail-mailbox", "drive-changes", "github-repo")
@@ -37,7 +38,7 @@ def _request(origin: str, token: str, fetch=None):
                 url, headers={"Authorization": "Bearer " + token, "Accept": "application/json"}
             )
             with opener.open(request, timeout=30) as response:
-                raw = response.read(8 * 1024 * 1024 + 1).decode("utf-8")
+                raw = read_within(response, 8 * 1024 * 1024, 30).decode("utf-8")
         if not isinstance(raw, str) or len(raw.encode()) > 8 * 1024 * 1024:
             raise ValueError("stream response exceeds 8 MiB")
         value = json.loads(raw)

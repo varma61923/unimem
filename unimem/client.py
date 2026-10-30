@@ -9,6 +9,7 @@ from typing import overload
 
 from unimem import additive_extract, memory_control
 from unimem.configuration import configured
+from unimem.retry import read_within
 
 
 class MemoryClient:
@@ -55,7 +56,7 @@ class MemoryClient:
                 return None  # A gateway redirect must never forward the bearer key.
 
         with urllib.request.build_opener(NoRedirect()).open(req, timeout=60) as response:
-            data = response.read(8 * 1024 * 1024 + 1)
+            data = read_within(response, 8 * 1024 * 1024, 60)
             if len(data) > 8 * 1024 * 1024:
                 raise ValueError("gateway response exceeds 8 MiB")
             result = json.loads(data)
