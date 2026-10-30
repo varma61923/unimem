@@ -1939,7 +1939,7 @@ class TestSubjectTaggingCLI:
             assert command in manage.__doc__
 
 
-def test_default_cli_factory_does_not_retain_connections(config, monkeypatch):
+async def test_default_cli_factory_does_not_retain_connections(config, monkeypatch):
     from sqlalchemy.pool import NullPool
 
     monkeypatch.setenv("HUB_DATABASE_URL", config.database_url)
