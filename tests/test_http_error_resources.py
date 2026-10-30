@@ -51,9 +51,28 @@ def test_conformance_closes_error_responses_for_valid_and_invalid_json(monkeypat
     def fail(*args, **kwargs):
         raise error
 
-    monkeypatch.setattr(conformance.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(conformance.urllib.request, "build_opener", lambda *args: SimpleNamespace(open=fail))
     assert conformance._call("http://localhost", "GET", "/", None) == (400, expected)
     assert body.closed
+
+
+def test_conformance_bounds_and_closes_large_error_responses(monkeypatch):
+    reads = []
+
+    class Body(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    body = Body(b"x" * (conformance.MAX_GATEWAY_RESPONSE_BYTES + 2))
+    error = urllib.error.HTTPError("http://localhost", 400, "refused", {}, body)
+
+    def fail(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(conformance.urllib.request, "build_opener", lambda *args: SimpleNamespace(open=fail))
+    assert conformance._call("http://localhost", "GET", "/", None) == (400, {})
+    assert reads == [conformance.MAX_GATEWAY_RESPONSE_BYTES + 1] and body.closed
 
 
 def test_model_refusals_are_bounded_and_closed_before_retry(monkeypatch):
