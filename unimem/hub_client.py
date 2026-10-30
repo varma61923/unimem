@@ -17,6 +17,7 @@ import random
 import re
 import socket
 import sys
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, TypeVar, cast
 
@@ -235,6 +236,18 @@ async def _open_session(hub_url: str, api_key: str, timeout_seconds: float):
         event_hooks={"response": [probe.record]},
     )
     return streamable_http_client(hub_url, http_client=http_client), ClientSession, http_client, probe
+
+
+def _never_sent(exc: BaseException) -> bool:
+    """True when the failure provably preceded the request reaching the Hub."""
+    for cause in _iter_causes(exc):
+        if isinstance(cause, (ConnectionRefusedError, socket.gaierror)):
+            return True
+        # httpx/httpx2 ConnectError and ConnectTimeout fail before any byte of
+        # the request is written; matched by name to avoid a hard import.
+        if type(cause).__name__ in ("ConnectError", "ConnectTimeout"):
+            return True
+    return False
 
 
 def _iter_causes(exc: BaseException, _seen: set[int] | None = None):
@@ -529,7 +542,8 @@ class HubSession:
                 else:
                     transport_attempts += 1
                     delay = _backoff_delay(transport_attempts, exc, retry_after)
-                    budget_left = retry_transport and transport_attempts < self._max_attempts
+                    replayable = retry_transport or _never_sent(exc)
+                    budget_left = replayable and transport_attempts < self._max_attempts
                 if not budget_left or not _is_retryable(exc, status):
                     break
                 await asyncio.sleep(delay)
@@ -572,7 +586,8 @@ class HubSession:
 
     async def delete_trace(self, trace_id: str) -> dict:
         """Soft-delete or retract a memory trace from the Hub."""
-        return await self.call("delete_trace", {"id": trace_id})
+        # A replayed delete answers "not_found"; see module-level delete_trace.
+        return await self.call("delete_trace", {"id": trace_id}, retry_transport=False)
 
     async def _trace_batches(
         self, name: str, field: str, items: Iterable[Any], *, retry_transport: bool = True
@@ -694,11 +709,19 @@ async def _call_tool(
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     session: "HubSession | _LazyHubSession | None" = None,
+    *,
+    retry_transport: bool = True,
 ) -> dict:
+    """Call one Hub tool with bounded, jittered retries.
+
+    ``retry_transport=False`` is for writes without an idempotency contract: a
+    read timeout or reset may arrive after the Hub committed the write, so only
+    failures that prove the request never left (DNS, TCP refusal) are replayed.
+    """
     if session is not None:
         if isinstance(session, _LazyHubSession):
             session = await session.get()
-        return await session.call(name, arguments)
+        return await session.call(name, arguments, retry_transport=retry_transport)
 
     last_exc: Exception | None = None
     attempts = 0
@@ -713,7 +736,7 @@ async def _call_tool(
             if not _is_retryable(exc):
                 raise
             last_exc = exc
-            if attempt >= max_attempts:
+            if attempt >= max_attempts or not (retry_transport or _never_sent(exc)):
                 break
             await asyncio.sleep(_backoff_delay(attempt, exc))
         except Exception as exc:  # noqa: BLE001 - transport errors aren't one exception type
@@ -723,7 +746,7 @@ async def _call_tool(
                 raise classified from exc
             if isinstance(classified, HubRateLimited):
                 raise classified from exc
-            if attempt >= max_attempts or not _is_retryable(exc):
+            if attempt >= max_attempts or not _is_retryable(exc) or not (retry_transport or _never_sent(exc)):
                 break
             await asyncio.sleep(_backoff_delay(attempt, exc))
 
@@ -1171,8 +1194,10 @@ async def submit_kb_entry(
         "agent_type": agent_type,
         "rationale": rationale,
     }
-    if idempotency_key is not None:
-        arguments["idempotency_key"] = idempotency_key
+    # The Hub dedupes on (org, idempotency_key). Without a key, a retry after
+    # a read timeout that followed a committed insert created a duplicate
+    # submission; a per-call key makes the transport retries safe.
+    arguments["idempotency_key"] = idempotency_key or f"kb:{uuid.uuid4().hex}"
     response = await _call_tool(hub_url, api_key, "submit_kb_entry", arguments)
     if response.get("error"):
         raise HubConnectionError(f"submit_kb_entry failed: {response['error']}: {response.get('detail', '')}")
@@ -1233,7 +1258,9 @@ async def record_occasion_outcome(hub_url: str, api_key: str, occasion_id: str, 
 
 
 async def delete_trace(hub_url: str, api_key: str, trace_id: str) -> bool:
-    response = await _call_tool(hub_url, api_key, "delete_trace", {"id": trace_id})
+    # No transport replay: replaying an already-applied delete answers
+    # "not_found", which would misreport a successful delete as a missing trace.
+    response = await _call_tool(hub_url, api_key, "delete_trace", {"id": trace_id}, retry_transport=False)
     if response.get("error") == "not_found":
         return False
     if response.get("error"):
