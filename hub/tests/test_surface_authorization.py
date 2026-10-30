@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.applications import Starlette
 
-from hub import auth, crud, delegation, otlp, rbac, rest
+from hub import auth, console, crud, delegation, otlp, rbac, rest
 from hub.abuse import make_rate_limiter
 from hub.auth import AuthenticatedKey, AuthenticatedUser
 from hub.config import HubConfig
@@ -180,3 +182,58 @@ async def test_requires_capability_is_false_without_a_capability_directory():
     key = AuthenticatedKey(org_id="org-1", key_prefix="unimem_live_abcd", scopes=("read",))
     assert await delegation.requires_capability(key, _CONFIG, object()) is False
     assert await delegation.requires_capability(key, None, object()) is False
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        False,
+        True,
+        PermissionError("revoked enrollment"),
+        OSError("offline metadata"),
+        ValueError("corrupt metadata"),
+        RuntimeError("maintenance bound"),
+        SQLAlchemyError("unavailable outbox"),
+    ],
+)
+@pytest.mark.parametrize(
+    "method,path", [("GET", "/app/signout"), ("POST", "/app/keys/00000000-0000-0000-0000-000000000001/revoke")]
+)
+async def test_console_session_rechecks_delegate_enrollment(monkeypatch, failure, method, path):
+    """A cookie issued before enrollment must not bypass later narrowing."""
+    key = AuthenticatedKey("org-1", "unimem_live_abcd", ("read", "admin"), key_id="key-1")
+    checks = []
+
+    class Session:
+        async def get(self, *args, **kwargs):
+            return None
+
+        async def execute(self, statement):
+            return SimpleNamespace(first=lambda: (key.key_id, list(key.scopes), "Test", "free"))
+
+    @asynccontextmanager
+    async def session_scope(*args, **kwargs):
+        yield Session()
+
+    async def requires_capability(authenticated, config, factory):
+        checks.append(authenticated)
+        if isinstance(failure, Exception):
+            raise failure
+        return failure
+
+    monkeypatch.setattr(console, "session_scope", session_scope)
+    monkeypatch.setattr(delegation, "requires_capability", requires_capability)
+    app = Starlette()
+    console.add_console_routes(app, object(), console_secret="test-secret", config=_CONFIG)
+    cookie = console.issue_session("test-secret", key.org_id, key.key_prefix, key.key_id)
+    async with _client(app) as client:
+        client.cookies.set(console.SESSION_COOKIE, cookie)
+        response = await client.request(method, path)
+    if failure is False:
+        assert response.status_code == (200 if method == "GET" else 303), response.text
+        if method == "POST":
+            assert response.headers["location"] == "/app/keys"
+    else:
+        assert response.status_code == 303, response.text
+        assert response.headers["location"] == "/app/signin"
+    assert checks == [key]

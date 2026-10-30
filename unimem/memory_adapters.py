@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -400,7 +401,8 @@ class VendorReadAdapter:
 
         A non-streaming read loads the whole body before any size check, so a
         hostile or broken vendor could exhaust memory. httpx clients stream and
-        abort past the limit; duck-typed injected clients keep the plain path.
+        abort past the limit or a total 10s deadline (plus at most one socket
+        read timeout); duck-typed injected clients keep the plain path.
         """
         import json
 
@@ -411,6 +413,7 @@ class VendorReadAdapter:
             if len(response.content) > limit:
                 raise ValueError("vendor memory response exceeds 1 MiB")
             return response.json()
+        deadline = time.monotonic() + 10.0
         with stream("POST", self.endpoint, json=payload, headers=self._headers, timeout=10) as response:
             response.raise_for_status()
             declared = response.headers.get("content-length")
@@ -418,9 +421,13 @@ class VendorReadAdapter:
                 raise ValueError("vendor memory response exceeds 1 MiB")
             body = bytearray()
             for chunk in response.iter_bytes():
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("vendor memory response exceeded its total deadline")
                 body += chunk
                 if len(body) > limit:
                     raise ValueError("vendor memory response exceeds 1 MiB")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("vendor memory response exceeded its total deadline")
         return json.loads(bytes(body))
 
     def search(self, query: str, **kwargs: Any) -> list[Item]:

@@ -142,6 +142,9 @@ An HTTP client must sign each protocol request, including handshake messages.
 OTLP trace ingest runs the same gate and supports no delegated operation, so an
 enrolled delegate's key is refused there; the customer console cannot verify a
 capability and refuses an enrolled delegate's key at sign-in.
+Existing console sessions recheck enrollment on every authenticated read and
+mutation. Enrolling a key therefore also blocks cookies issued before enrollment;
+unavailable or invalid delegation metadata fails closed.
 
 A Hub `user:<uuid>` principal on REST is also bound by its role's capabilities,
 as on MCP: reads need `view`, trace contribution and record put need `curate`,
