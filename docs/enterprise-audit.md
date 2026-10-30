@@ -51,3 +51,25 @@ retry/compression changes require per-interface compatibility and threat analysi
 Optional engines, public SDK exports and unsupported write capabilities are retained.
 Codex Security Cloud previously denied workspace access; local scanners and CI results
 must not be presented as a successful Cloud scan.
+
+## Implemented increments
+
+- Phase 1: execution/ownership inventory and reviewed removal decisions.
+- Phase 2: functional hook tests use explicit scheduling headroom; native response
+  deadlines remain 50 ms. Optional provider failure telemetry exports only error type.
+- Phase 3: candidate vectors load in one indexed join, preserving misses, duplicate
+  requests and caller order. Missing embeddings persist in one atomic transaction;
+  non-finite vectors fail before any writes. Single-vector callers retain their API.
+- Phase 4: malformed trigger objects/values and nonnumeric or excessive priorities
+  are skipped per record. Priorities are finite numbers within +/-1e100. A malformed
+  record cannot suppress an otherwise valid directive. No raw record data is logged.
+- Phase 5: regression tests cover unsafe selectors, safe provider degradation,
+  cache model/content isolation, large batches, atomic rejection and SQL query count.
+  CI uploads a generated coverage report even if tests fail, retaining diagnostics.
+
+Focused gates: 53 hook tests after phase 2; 46 journal/hook tests after phase 3;
+132 hook/journal/envelope tests after phase 4; 42 journal/service/graph tests after
+phase 5, all with warnings promoted to errors. Full lint/format pass. Mypy baseline
+passes 632 files; its notes about untyped test bodies are not proof of strict typing.
+Full-suite coverage, packaging, dependency audits and final remote CI are pending
+at the time of this commit. Never infer a completed remote result from these gates.

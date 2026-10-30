@@ -317,3 +317,26 @@ def test_vector_batch_rejects_nonfinite_values_before_any_write(tmp_path):
     with pytest.raises(ValueError):
         journal.cache_vectors([("good", "first", [1.0]), ("bad", "second", [float("nan")])], "model")
     assert journal.vector("good", "model", "first") is None
+
+
+def test_vector_lookup_uses_one_select_for_candidate_batch(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    journal = Journal(str(tmp_path))
+    record = MemoryRecord("first", "fact", 1, {"text": "first"})
+    journal.cache_vector("first", "model", "first", [1.0])
+    statements = []
+    original = journal.connect
+
+    @contextmanager
+    def traced(**kwargs):
+        with original(**kwargs) as db:
+            db.set_trace_callback(statements.append)
+            try:
+                yield db
+            finally:
+                db.set_trace_callback(None)
+
+    monkeypatch.setattr(journal, "connect", traced)
+    assert journal.vectors([(record, "first")] * 200, "model") == [[1.0]] * 200
+    assert len([sql for sql in statements if sql.startswith("SELECT")]) == 1
