@@ -11,6 +11,23 @@ from hub import smoke  # noqa: E402
 from unimem import hub_client  # noqa: E402
 
 
+def test_smoke_preflight_uses_declared_httpx2_transport(monkeypatch):
+    calls = []
+
+    class Response:
+        status_code = 200
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr(httpx2, "post", post)
+    assert smoke._preflight("http://127.0.0.1:8420/mcp", "test-token") is None
+    assert calls[0][0] == "http://127.0.0.1:8420/mcp"
+    assert calls[0][1]["headers"]["Authorization"] == "Bearer test-token"
+    assert calls[0][1]["timeout"] == 15.0
+
+
 @pytest.mark.asyncio
 async def test_sync_transport_uses_sdk_native_client(monkeypatch):
     seen = []

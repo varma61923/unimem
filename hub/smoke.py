@@ -74,7 +74,7 @@ async def _session(url: str, api_key: str):
 
 
 def _preflight(url: str, api_key: str) -> str | None:
-    import httpx
+    import httpx2
 
     payload = {
         "jsonrpc": "2.0",
@@ -87,7 +87,7 @@ def _preflight(url: str, api_key: str) -> str | None:
         },
     }
     try:
-        response = httpx.post(
+        response = httpx2.post(
             url,
             json=payload,
             timeout=15.0,
