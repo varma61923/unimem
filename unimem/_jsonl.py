@@ -133,15 +133,30 @@ def append_row(path: str, row: dict[str, Any], *, fsync: bool = False, nofollow:
         flags |= getattr(os, "O_NOFOLLOW", 0)
     fd = os.open(path, flags, 0o600)
     try:
-        # os.write may write fewer bytes than asked (a signal, a nearly full
-        # disk, some network filesystems). A dropped tail leaves a truncated
-        # line that read_rows silently skips, so keep writing until done.
-        view = memoryview(data)
-        while view:
-            written = os.write(fd, view)
-            if written <= 0:
-                raise OSError(f"could not append to {path}: write made no progress")
-            view = view[written:]
+        start = os.fstat(fd).st_size
+        done = 0
+        try:
+            # os.write may write fewer bytes than asked (a signal, a nearly full
+            # disk, some network filesystems). A dropped tail leaves a truncated
+            # line that read_rows silently skips, so keep writing until done.
+            view = memoryview(data)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise OSError(f"could not append to {path}: write made no progress")
+                done += written
+                view = view[written:]
+        except BaseException:
+            # A failure after a partial write leaves an unterminated fragment;
+            # the next successful append would be glued onto it and lost (and a
+            # fail-closed signed journal would be bricked). Roll the fragment
+            # back, but only when the file grew by exactly our bytes: if another
+            # appender interleaved, truncating would destroy its row instead.
+            if done:
+                with contextlib.suppress(OSError):
+                    if os.fstat(fd).st_size == start + done:
+                        os.ftruncate(fd, start)
+            raise
         if fsync:
             os.fsync(fd)
     finally:
