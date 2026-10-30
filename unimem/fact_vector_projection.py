@@ -148,8 +148,9 @@ def search(root: str, query: str, *, model="bge-small", limit=200, allowed_ids=N
         pending = {
             row[0]
             for row in canonical.connection.execute(
-                "SELECT DISTINCT fact_id FROM events WHERE seq>? AND fact_id IN (SELECT value FROM json_each(?))",
-                (cursor, json.dumps(identities)),
+                "SELECT candidate.value FROM json_each(?) AS candidate "
+                "WHERE EXISTS (SELECT 1 FROM events e WHERE e.fact_id=candidate.value AND e.seq>?)",
+                (json.dumps(identities), cursor),
             )
         }
     return [(identity, score) for identity, score in hits if identity not in pending]

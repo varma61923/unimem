@@ -141,6 +141,11 @@ def _connect(path: str, *, create: bool = False) -> _Connection:
                 connection.execute("DROP TABLE legacy_counts")
             _upgrade_near_projection(connection)
             connection.commit()
+        if not create:
+            # Add this projection-supporting index to existing stores on first
+            # open. Keeping it out of _SCHEMA avoids maintaining it row by row
+            # while migrate() bulk-imports the authoritative event ledger.
+            connection.execute("CREATE INDEX IF NOT EXISTS event_fact_seq ON events(fact_id,seq)")
     except BaseException:
         connection.rollback()
         connection.close()
