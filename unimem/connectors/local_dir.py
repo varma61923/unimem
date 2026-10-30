@@ -1,4 +1,5 @@
 """Local-directory connector: re-ingest the Markdown files that changed since the last sync."""
+
 from __future__ import annotations
 
 import os
@@ -20,8 +21,13 @@ from unimem.ingest import IngestionResult, _read_text, _walk_files
 
 
 def _file_stamp(st: os.stat_result) -> dict[str, int]:
-    return {"mtime_ns": st.st_mtime_ns, "size": st.st_size, "ctime_ns": st.st_ctime_ns,
-            "dev": st.st_dev, "inode": st.st_ino}
+    return {
+        "mtime_ns": st.st_mtime_ns,
+        "size": st.st_size,
+        "ctime_ns": st.st_ctime_ns,
+        "dev": st.st_dev,
+        "inode": st.st_ino,
+    }
 
 
 def _scan_markdown_files(source_dir: str) -> dict[str, dict[str, int]]:
@@ -70,8 +76,9 @@ class LocalDirConnector(Connector):
         result = IngestionResult(source_path=src or "", source_type="local_dir")
         if not src or not os.path.isdir(src):
             result.errors.append("local_dir: source directory not found: %r" % (src,))
-            return SyncResult(connector=self.name, result=result, new_state_token=state_token or "",
-                              run_id=rid, dry_run=dry_run)
+            return SyncResult(
+                connector=self.name, result=result, new_state_token=state_token or "", run_id=rid, dry_run=dry_run
+            )
 
         key = scoped_key(self._key_for(src), active_scope)
         previous = resolve_cursor(root, key, state_token, scope=active_scope).get("files", {})
@@ -88,8 +95,14 @@ class LocalDirConnector(Connector):
         except OSError as exc:
             result.errors.append("local_dir: incomplete source scan: %s" % exc)
             cursor = {"files": previous, "scope": active_scope, "connector_key": key}
-            return SyncResult(connector=self.name, result=result, new_state_token=encode_state_token(cursor),
-                              run_id=rid, dry_run=dry_run, pending=max(1, len(previous)))
+            return SyncResult(
+                connector=self.name,
+                result=result,
+                new_state_token=encode_state_token(cursor),
+                run_id=rid,
+                dry_run=dry_run,
+                pending=max(1, len(previous)),
+            )
         changed = _changed_files(previous, current)
         processed = changed[:limit]
         deleted = [rel for rel in previous if rel not in current]
@@ -115,14 +128,26 @@ class LocalDirConnector(Connector):
         if not dry_run:
             base = os.path.abspath(src)
             for rel, file_chunks in per_file:
-                if record_chunks(root, file_chunks,
-                                 source_id=f"local_dir:{os.path.join(base, rel)}",
-                                 scope=active_scope, run_id=rid, connector=self.name, result=result):
+                if record_chunks(
+                    root,
+                    file_chunks,
+                    source_id=f"local_dir:{os.path.join(base, rel)}",
+                    scope=active_scope,
+                    run_id=rid,
+                    connector=self.name,
+                    result=result,
+                ):
                     new_files[rel] = current[rel]
             for rel in deleted:
-                if record_chunks(root, [],
-                                 source_id=f"local_dir:{os.path.join(base, rel)}",
-                                 scope=active_scope, run_id=rid, connector=self.name, result=result):
+                if record_chunks(
+                    root,
+                    [],
+                    source_id=f"local_dir:{os.path.join(base, rel)}",
+                    scope=active_scope,
+                    run_id=rid,
+                    connector=self.name,
+                    result=result,
+                ):
                     new_files.pop(rel, None)
         else:
             new_files = {rel: stamp for rel, stamp in previous.items() if rel in current}
@@ -134,7 +159,12 @@ class LocalDirConnector(Connector):
                 save_connector_state(root, key, new_token, new_cursor)
             except OSError as exc:
                 result.errors.append("state persist error: %s" % exc)
-        return SyncResult(connector=self.name, chunks=chunks, result=result,
-                          new_state_token=new_token, run_id=rid, dry_run=dry_run,
-                          pending=len(_changed_files(new_files, current))
-                          + sum(rel not in current for rel in new_files))
+        return SyncResult(
+            connector=self.name,
+            chunks=chunks,
+            result=result,
+            new_state_token=new_token,
+            run_id=rid,
+            dry_run=dry_run,
+            pending=len(_changed_files(new_files, current)) + sum(rel not in current for rel in new_files),
+        )

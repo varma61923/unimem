@@ -1,4 +1,5 @@
 """Persisted incremental lifecycle oracle, safety and honest measurement bounds."""
+
 from __future__ import annotations
 
 import json
@@ -19,9 +20,19 @@ def clear_indexes():
     fact_index.clear_cache()
 
 
-@pytest.mark.parametrize("field,value", [("facts", 19), ("facts", 25001), ("facts", True),
-                                         ("facts", 20.5), ("trials", 0), ("trials", 21),
-                                         ("trials", True), ("trials", 1.5)])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("facts", 19),
+        ("facts", 25001),
+        ("facts", True),
+        ("facts", 20.5),
+        ("trials", 0),
+        ("trials", 21),
+        ("trials", True),
+        ("trials", 1.5),
+    ],
+)
 def test_measurement_limits_reject_ambiguous_or_unbounded_work(field, value):
     parameters = {"facts": 20, "trials": 1, field: value}
     with pytest.raises(ValueError):
@@ -50,7 +61,8 @@ def test_paired_real_lifecycles_match_complete_oracle_without_a_speed_gate():
         assert math.isfinite(sample["mutation_and_search_ms"])
         assert sample["mutation_and_search_ms"] >= 0
         assert sample["mutation_and_search_ms"] == pytest.approx(
-            sample["canonical_mutation_ms"] + sample["next_selective_search_ms"])
+            sample["canonical_mutation_ms"] + sample["next_selective_search_ms"]
+        )
     candidate = {sample["phase"]: sample for sample in samples if sample["variant"] == "incremental"}
     assert candidate["add"]["constructed_record_objects"] == 1
     assert candidate["statement-update"]["constructed_record_objects"] == 2
@@ -58,7 +70,10 @@ def test_paired_real_lifecycles_match_complete_oracle_without_a_speed_gate():
     assert candidate["erase-source"]["removed_records"] == 1
     assert candidate["erase-source"]["constructed_record_objects"] == 0
     assert candidate["temporal-correction"]["constructed_record_objects"] == 2
-    assert candidate["external-replacement"]["constructed_record_objects"] == candidate["external-replacement"]["records_after"]
+    assert (
+        candidate["external-replacement"]["constructed_record_objects"]
+        == candidate["external-replacement"]["records_after"]
+    )
     assert candidate["restart"]["constructed_record_objects"] == candidate["restart"]["records_after"]
     assert candidate["rejected-transaction"]["constructed_record_objects"] == 0
     assert candidate["no-op"]["constructed_record_objects"] == 0
@@ -100,7 +115,7 @@ def test_original_fixture_is_repeatable_and_proofs_start_trusted(tmp_path):
 def test_same_size_external_change_with_unchanged_revision_requires_reconciliation(tmp_path):
     root = str(tmp_path)
     fact_mutation.seed(root, 20)
-    for phase in fact_mutation.PHASES[:fact_mutation.PHASES.index("external-replacement")]:
+    for phase in fact_mutation.PHASES[: fact_mutation.PHASES.index("external-replacement")]:
         fact_mutation.mutate(root, phase)
     before = fact_index.snapshot_facts(root)
     original = before["external"]
@@ -135,7 +150,7 @@ def test_complete_result_checksum_covers_metadata_scores_and_order(tmp_path):
     original = fact_mutation.rows_checksum(rows)
     changed = [(replace(rows[0][0], source_traces=["additional-evidence"]), rows[0][1]), *rows[1:]]
     assert fact_mutation.rows_checksum(changed) != original
-    assert fact_mutation.rows_checksum([(rows[0][0], rows[0][1] + .001), *rows[1:]]) != original
+    assert fact_mutation.rows_checksum([(rows[0][0], rows[0][1] + 0.001), *rows[1:]]) != original
     assert fact_mutation.rows_checksum(list(reversed(rows))) != original
 
 

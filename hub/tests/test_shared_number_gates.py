@@ -77,16 +77,9 @@ class TestEveryTraceWriteIsAccountedFor:
             ("commons_overlap", "hit_counts_toward_quality_signal"),
         ):
             fn = next(
-                n for n in ast.walk(tree)
-                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                and n.name == fn_name
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == fn_name
             )
-            names = {
-                n.func.attr
-                for n in ast.walk(fn)
-                if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-            }
-            assert expected_call in names, (
-                f"{fn_name} writes a shared counter but no longer calls "
-                f"{expected_call}"
-            )
+            names = {n.func.attr for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+            assert expected_call in names, f"{fn_name} writes a shared counter but no longer calls {expected_call}"

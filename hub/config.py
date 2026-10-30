@@ -39,9 +39,7 @@ def _env_bool(name: str, default: bool) -> bool:
         return True
     if value in {"0", "false", "no", "off"}:
         return False
-    raise ValueError(
-        f"{name} must be a boolean (true/false, yes/no, on/off, or 1/0), got {raw!r}"
-    )
+    raise ValueError(f"{name} must be a boolean (true/false, yes/no, on/off, or 1/0), got {raw!r}")
 
 
 def _market_referees(path: str) -> tuple[tuple[str, str, str], ...]:
@@ -219,9 +217,7 @@ class HubConfig:
 
     def __post_init__(self) -> None:
         if self.rate_limit_backend not in ("memory", "postgres"):
-            raise ValueError(
-                f"HUB_RATE_LIMIT_BACKEND must be 'memory' or 'postgres', got {self.rate_limit_backend!r}"
-            )
+            raise ValueError(f"HUB_RATE_LIMIT_BACKEND must be 'memory' or 'postgres', got {self.rate_limit_backend!r}")
         if self.commons_signing_key and len(self.commons_signing_key.encode("utf-8")) < 32:
             raise ValueError("HUB_COMMONS_SIGNING_KEY must contain at least 32 bytes")
         if not self.commons_signing_key_id or len(self.commons_signing_key_id) > 128:
@@ -245,9 +241,7 @@ class HubConfig:
             try:
                 jwks = json.loads(self.oidc_jwks)
             except ValueError as exc:
-                raise RuntimeError(
-                    f"HUB_OIDC_JWKS is not valid JSON: {exc}"
-                ) from None
+                raise RuntimeError(f"HUB_OIDC_JWKS is not valid JSON: {exc}") from None
         if jwks is None and not self.oidc_jwks_uri:
             raise RuntimeError(
                 "HUB_OIDC_ISSUER and HUB_OIDC_AUDIENCE are set, so SSO is "
@@ -256,8 +250,10 @@ class HubConfig:
                 "in a state where no token could ever verify."
             )
         return IdentityProvider(
-            issuer=self.oidc_issuer, audience=self.oidc_audience,
-            jwks=jwks, jwks_uri=self.oidc_jwks_uri,
+            issuer=self.oidc_issuer,
+            audience=self.oidc_audience,
+            jwks=jwks,
+            jwks_uri=self.oidc_jwks_uri,
         )
 
     def validate_transport_safety(self) -> None:
@@ -327,8 +323,7 @@ class HubConfig:
             rest_api_enabled=_env_bool("HUB_REST_API_ENABLED", False),
             otlp_ingest_enabled=_env_bool("HUB_OTLP_INGEST_ENABLED", False),
             connectors_enabled=_env_bool("HUB_CONNECTORS_ENABLED", False),
-            connector_sweep_interval_seconds=_env_int_in_range(
-                "HUB_CONNECTOR_SWEEP_INTERVAL_SECONDS", 300, 10, 86_400),
+            connector_sweep_interval_seconds=_env_int_in_range("HUB_CONNECTOR_SWEEP_INTERVAL_SECONDS", 300, 10, 86_400),
             commons_export_enabled=_env_bool("HUB_COMMONS_EXPORT_ENABLED", False),
             commons_signing_key=env_secret("HUB_COMMONS_SIGNING_KEY"),
             commons_signing_key_id=_configuration_getenv("HUB_COMMONS_SIGNING_KEY_ID", "default"),
@@ -350,21 +345,17 @@ class HubConfig:
             db_pool_size=_env_int_in_range("HUB_DB_POOL_SIZE", 10, 1, 1000),
             db_max_overflow=_env_int_in_range("HUB_DB_MAX_OVERFLOW", 5, 0, 1000),
             db_pool_timeout=_env_int_in_range("HUB_DB_POOL_TIMEOUT", 30, 1, 3600),
-            db_statement_timeout_ms=_env_int_in_range(
-                "HUB_DB_STATEMENT_TIMEOUT_MS", 30_000, 0, 3_600_000),
-            request_timeout_seconds=_env_int_in_range(
-                "HUB_REQUEST_TIMEOUT_SECONDS", 60, 0, 3600),
-            max_concurrent_requests=_env_int_in_range(
-                "HUB_MAX_CONCURRENT_REQUESTS", 512, 0, 100_000),
+            db_statement_timeout_ms=_env_int_in_range("HUB_DB_STATEMENT_TIMEOUT_MS", 30_000, 0, 3_600_000),
+            request_timeout_seconds=_env_int_in_range("HUB_REQUEST_TIMEOUT_SECONDS", 60, 0, 3600),
+            max_concurrent_requests=_env_int_in_range("HUB_MAX_CONCURRENT_REQUESTS", 512, 0, 100_000),
             db_pool_recycle=_env_int_in_range("HUB_DB_POOL_RECYCLE", 1800, -1, 86_400),
             graceful_shutdown_seconds=_env_int_in_range("HUB_GRACEFUL_SHUTDOWN_SECONDS", 30, 0, 3600),
             alert_scheduler_enabled=_env_bool("HUB_ALERT_SCHEDULER_ENABLED", False),
-            alert_scheduler_interval_seconds=_env_int_in_range(
-                "HUB_ALERT_SCHEDULER_INTERVAL_SECONDS", 300, 10, 86_400),
+            alert_scheduler_interval_seconds=_env_int_in_range("HUB_ALERT_SCHEDULER_INTERVAL_SECONDS", 300, 10, 86_400),
             webhook_scheduler_enabled=_env_bool("HUB_WEBHOOK_SCHEDULER_ENABLED", False),
             webhook_scheduler_interval_seconds=_env_int_in_range(
-                "HUB_WEBHOOK_SCHEDULER_INTERVAL_SECONDS", 30, 5, 86_400),
-            webhook_scheduler_batch_size=_env_int_in_range(
-                "HUB_WEBHOOK_SCHEDULER_BATCH_SIZE", 100, 1, 10_000),
+                "HUB_WEBHOOK_SCHEDULER_INTERVAL_SECONDS", 30, 5, 86_400
+            ),
+            webhook_scheduler_batch_size=_env_int_in_range("HUB_WEBHOOK_SCHEDULER_BATCH_SIZE", 100, 1, 10_000),
             log_level=_configuration_getenv("HUB_LOG_LEVEL", "INFO"),
         )

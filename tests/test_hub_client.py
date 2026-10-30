@@ -36,11 +36,22 @@ def test_iter_active_lesson_paths_skips_template_and_non_active(store):
     ldir = paths.lessons_dir(str(store))
 
     fm_active = {
-        "name": "lesson_a", "description": "d", "tags": [], "agent_type": "code",
-        "domain": "testing", "importance": 3, "importance_rationale": "r",
-        "importance_history": [], "applies_when": "when", "do_not_apply_when": "never",
-        "uses": 0, "last_hit": "NEVER", "source_traces": [], "source_episodes": [],
-        "hub_trace_id": None, "status": "active",
+        "name": "lesson_a",
+        "description": "d",
+        "tags": [],
+        "agent_type": "code",
+        "domain": "testing",
+        "importance": 3,
+        "importance_rationale": "r",
+        "importance_history": [],
+        "applies_when": "when",
+        "do_not_apply_when": "never",
+        "uses": 0,
+        "last_hit": "NEVER",
+        "source_traces": [],
+        "source_episodes": [],
+        "hub_trace_id": None,
+        "status": "active",
     }
     frontmatter.write(os.path.join(ldir, "lesson_a.md"), fm_active, "## Rule\nx\n")
 
@@ -85,23 +96,29 @@ class TestIsRetryable:
 
 
 class TestHubUrlSchemeGuard:
-    @pytest.mark.parametrize("bad_url", [
-        "file:///etc/passwd",
-        "ftp://example.com/mcp",
-        "javascript://alert(1)",
-        "not-a-url-at-all",
-        "",
-    ])
+    @pytest.mark.parametrize(
+        "bad_url",
+        [
+            "file:///etc/passwd",
+            "ftp://example.com/mcp",
+            "javascript://alert(1)",
+            "not-a-url-at-all",
+            "",
+        ],
+    )
     def test_non_http_schemes_are_rejected_immediately(self, bad_url):
         with pytest.raises(hub_client.HubConnectionError, match="scheme must be http or https"):
             hub_client._validate_hub_url(bad_url)
 
-    @pytest.mark.parametrize("good_url", [
-        "https://hub.example.com/mcp",
-        "http://localhost:8420/mcp",
-        "http://127.0.0.1:8420/mcp",
-        "http://[::1]:8420/mcp",
-    ])
+    @pytest.mark.parametrize(
+        "good_url",
+        [
+            "https://hub.example.com/mcp",
+            "http://localhost:8420/mcp",
+            "http://127.0.0.1:8420/mcp",
+            "http://[::1]:8420/mcp",
+        ],
+    )
     def test_https_and_loopback_http_pass(self, good_url):
         hub_client._validate_hub_url(good_url)
 
@@ -109,19 +126,22 @@ class TestHubUrlSchemeGuard:
         with pytest.raises(hub_client.HubConnectionError, match="plaintext http"):
             hub_client._validate_hub_url("http://hub.example.com/mcp")
 
-    @pytest.mark.parametrize("metadata_url", [
-        "https://169.254.169.254/latest/meta-data/",
-        "https://169.254.170.2/v2/credentials/",
-        "https://[fd00:ec2::254]/latest/meta-data/",
-        "https://[fe80::1]/",
-        "https://2852039166/",
-        "https://0xa9fea9fe/",
-        "https://0251.0376.0251.0376/",
-        "https://169.254.43518/",
-        "https://169.254.169.254./",
-        "https://[::ffff:169.254.169.254]/",
-        "https://[::ffff:a9fe:a9fe]/",
-    ])
+    @pytest.mark.parametrize(
+        "metadata_url",
+        [
+            "https://169.254.169.254/latest/meta-data/",
+            "https://169.254.170.2/v2/credentials/",
+            "https://[fd00:ec2::254]/latest/meta-data/",
+            "https://[fe80::1]/",
+            "https://2852039166/",
+            "https://0xa9fea9fe/",
+            "https://0251.0376.0251.0376/",
+            "https://169.254.43518/",
+            "https://169.254.169.254./",
+            "https://[::ffff:169.254.169.254]/",
+            "https://[::ffff:a9fe:a9fe]/",
+        ],
+    )
     def test_link_local_and_cloud_metadata_addresses_are_rejected(self, metadata_url):
         with pytest.raises(hub_client.HubConnectionError, match="link-local|cloud-metadata"):
             hub_client._validate_hub_url(metadata_url)
@@ -130,13 +150,16 @@ class TestHubUrlSchemeGuard:
         with pytest.raises(hub_client.HubConnectionError, match="plaintext http"):
             hub_client._validate_hub_url("http://169.254.169.254/latest/meta-data/")
 
-    @pytest.mark.parametrize("private_url", [
-        "https://10.0.0.5/mcp",
-        "https://192.168.1.50/mcp",
-        "https://172.16.0.1/mcp",
-        "https://hub.example.com./mcp",
-        "https://abc/mcp",
-    ])
+    @pytest.mark.parametrize(
+        "private_url",
+        [
+            "https://10.0.0.5/mcp",
+            "https://192.168.1.50/mcp",
+            "https://172.16.0.1/mcp",
+            "https://hub.example.com./mcp",
+            "https://abc/mcp",
+        ],
+    )
     def test_ordinary_private_network_addresses_still_pass(self, private_url):
         hub_client._validate_hub_url(private_url)
 
@@ -160,11 +183,22 @@ class TestHubUrlSchemeGuard:
 
 def _write_active_lesson(ldir, name, description, applies_when, rule, tags=None, extra=None):
     fm = {
-        "name": name, "description": description, "tags": tags or [], "agent_type": "code",
-        "domain": "testing", "importance": 3, "importance_rationale": "r",
-        "importance_history": [], "applies_when": applies_when, "do_not_apply_when": "never",
-        "uses": 0, "last_hit": "NEVER", "source_traces": [], "source_episodes": [],
-        "hub_trace_id": None, "status": "active",
+        "name": name,
+        "description": description,
+        "tags": tags or [],
+        "agent_type": "code",
+        "domain": "testing",
+        "importance": 3,
+        "importance_rationale": "r",
+        "importance_history": [],
+        "applies_when": applies_when,
+        "do_not_apply_when": "never",
+        "uses": 0,
+        "last_hit": "NEVER",
+        "source_traces": [],
+        "source_episodes": [],
+        "hub_trace_id": None,
+        "status": "active",
     }
     if extra:
         fm.update(extra)
@@ -201,7 +235,11 @@ class TestPushPropagatesEdits:
         ldir = paths.lessons_dir(str(store))
         fingerprint = hub_client._push_fingerprint("desc", "when", "do the thing", [])
         _write_active_lesson(
-            ldir, "lesson_a", "desc", "when", "do the thing",
+            ldir,
+            "lesson_a",
+            "desc",
+            "when",
+            "do the thing",
             extra={"hub_trace_id": "trace-1", "hub_pushed_fingerprint": fingerprint},
         )
 
@@ -220,7 +258,11 @@ class TestPushPropagatesEdits:
         ldir = paths.lessons_dir(str(store))
         stale_fingerprint = hub_client._push_fingerprint("old desc", "when", "old rule", [])
         _write_active_lesson(
-            ldir, "lesson_a", "new desc", "when", "new rule",
+            ldir,
+            "lesson_a",
+            "new desc",
+            "when",
+            "new rule",
             extra={"hub_trace_id": "trace-1", "hub_pushed_fingerprint": stale_fingerprint},
         )
 
@@ -243,9 +285,7 @@ class TestPushPropagatesEdits:
         assert fm["hub_trace_id"] == "trace-2"
         assert fm["hub_pushed_fingerprint"] != stale_fingerprint
 
-    def test_never_pushed_lesson_with_no_stored_fingerprint_but_a_hub_id_still_amends(
-        self, store, monkeypatch
-    ):
+    def test_never_pushed_lesson_with_no_stored_fingerprint_but_a_hub_id_still_amends(self, store, monkeypatch):
         import asyncio
 
         ldir = paths.lessons_dir(str(store))
@@ -265,7 +305,11 @@ class TestPushPropagatesEdits:
         ldir = paths.lessons_dir(str(store))
         stale_fingerprint = hub_client._push_fingerprint("old desc", "when", "old rule", [])
         _write_active_lesson(
-            ldir, "lesson_a", "new desc", "when", "new rule",
+            ldir,
+            "lesson_a",
+            "new desc",
+            "when",
+            "new rule",
             extra={"hub_trace_id": "trace-1", "hub_pushed_fingerprint": stale_fingerprint},
         )
 
@@ -288,15 +332,11 @@ class TestPushPropagatesEdits:
     def test_two_genuinely_different_edits_get_different_idempotency_keys(self):
         fp1 = hub_client._push_fingerprint("desc v1", "when", "rule v1", [])
         fp2 = hub_client._push_fingerprint("desc v2", "when", "rule v2", [])
-        assert hub_client._amend_idempotency_key("lesson_a", fp1) != hub_client._amend_idempotency_key(
-            "lesson_a", fp2
-        )
+        assert hub_client._amend_idempotency_key("lesson_a", fp1) != hub_client._amend_idempotency_key("lesson_a", fp2)
 
     def test_the_same_edit_retried_gets_the_same_idempotency_key(self):
         fp = hub_client._push_fingerprint("desc", "when", "rule", ["a", "b"])
-        assert hub_client._amend_idempotency_key("lesson_a", fp) == hub_client._amend_idempotency_key(
-            "lesson_a", fp
-        )
+        assert hub_client._amend_idempotency_key("lesson_a", fp) == hub_client._amend_idempotency_key("lesson_a", fp)
 
     def test_a_malformed_lesson_file_does_not_abort_the_others(self, store, monkeypatch):
         import asyncio
@@ -371,8 +411,7 @@ class TestPushPropagatesEdits:
 
         assert results[0].hub_trace_id == "trace-1"
         assert hub_client._write_hub_push_fields in dispatched, (
-            "the frontmatter write-back must be dispatched via asyncio.to_thread, "
-            "not called directly on the event loop"
+            "the frontmatter write-back must be dispatched via asyncio.to_thread, not called directly on the event loop"
         )
 
     def test_pushes_run_concurrently_but_bounded(self, store, monkeypatch):
@@ -406,8 +445,17 @@ class TestPushPropagatesEdits:
 
 
 def _write_captured_trace(
-    tdir, filename, trace_id, title, context, solution,
-    agent_type="code", agent_id="", tags=None, outcome=None, extra=None,
+    tdir,
+    filename,
+    trace_id,
+    title,
+    context,
+    solution,
+    agent_type="code",
+    agent_id="",
+    tags=None,
+    outcome=None,
+    extra=None,
 ):
     from unimem import templates
 
@@ -425,7 +473,12 @@ class TestPushCapturedTraces:
 
         tdir = paths.traces_dir(str(store))
         _write_captured_trace(
-            tdir, "t1.md", "occasion-1", "title", "ctx", "sol",
+            tdir,
+            "t1.md",
+            "occasion-1",
+            "title",
+            "ctx",
+            "sol",
             outcome={"resolved": True, "tokens_used": 500},
         )
 
@@ -452,7 +505,12 @@ class TestPushCapturedTraces:
 
         tdir = paths.traces_dir(str(store))
         _write_captured_trace(
-            tdir, "t1.md", "occasion-1", "title", "ctx", "sol",
+            tdir,
+            "t1.md",
+            "occasion-1",
+            "title",
+            "ctx",
+            "sol",
             extra={"profile": "code-review"},
         )
 
@@ -576,7 +634,13 @@ class TestPushCapturedTraces:
         tdir = paths.traces_dir(str(store))
         fingerprint = hub_client._trace_push_fingerprint("title", "ctx", "sol", [], {"resolved": True})
         _write_captured_trace(
-            tdir, "t1.md", "occasion-1", "title", "ctx", "sol", outcome={"resolved": True},
+            tdir,
+            "t1.md",
+            "occasion-1",
+            "title",
+            "ctx",
+            "sol",
+            outcome={"resolved": True},
             extra={"hub_trace_id": "hub-trace-1", "hub_pushed_fingerprint": fingerprint},
         )
 
@@ -595,7 +659,13 @@ class TestPushCapturedTraces:
         tdir = paths.traces_dir(str(store))
         stale_fingerprint = hub_client._trace_push_fingerprint("title", "ctx", "sol", [], {})
         _write_captured_trace(
-            tdir, "t1.md", "occasion-1", "title", "ctx", "sol", outcome={"resolved": True},
+            tdir,
+            "t1.md",
+            "occasion-1",
+            "title",
+            "ctx",
+            "sol",
+            outcome={"resolved": True},
             extra={"hub_trace_id": "hub-trace-1", "hub_pushed_fingerprint": stale_fingerprint},
         )
 
@@ -623,7 +693,13 @@ class TestPushCapturedTraces:
         tdir = paths.traces_dir(str(store))
         stale_fingerprint = hub_client._trace_push_fingerprint("title", "ctx", "sol", [], {})
         _write_captured_trace(
-            tdir, "t1.md", "occasion-1", "title", "ctx", "sol", outcome={"resolved": True},
+            tdir,
+            "t1.md",
+            "occasion-1",
+            "title",
+            "ctx",
+            "sol",
+            outcome={"resolved": True},
             extra={"hub_trace_id": "hub-trace-1", "hub_pushed_fingerprint": stale_fingerprint},
         )
 
@@ -671,7 +747,13 @@ class TestPushCapturedTraces:
 
         tdir = paths.traces_dir(str(store))
         _write_captured_trace(
-            tdir, "good.md", "occasion-good", "good title", "ctx", "sol", outcome={"resolved": True},
+            tdir,
+            "good.md",
+            "occasion-good",
+            "good title",
+            "ctx",
+            "sol",
+            outcome={"resolved": True},
         )
         with open(os.path.join(tdir, "bad.md"), "w") as fh:
             fh.write("---\ntitle: [unclosed list\n---\nbroken\n")
@@ -694,10 +776,18 @@ class TestPullPaginatesAllResults:
         import asyncio
 
         pages = [
-            {"traces": [{"id": f"t{i}", "title": f"trace {i}"} for i in range(50)],
-             "limit": 50, "offset": 0, "has_more": True},
-            {"traces": [{"id": f"t{i}", "title": f"trace {i}"} for i in range(50, 75)],
-             "limit": 50, "offset": 50, "has_more": False},
+            {
+                "traces": [{"id": f"t{i}", "title": f"trace {i}"} for i in range(50)],
+                "limit": 50,
+                "offset": 0,
+                "has_more": True,
+            },
+            {
+                "traces": [{"id": f"t{i}", "title": f"trace {i}"} for i in range(50, 75)],
+                "limit": 50,
+                "offset": 50,
+                "has_more": False,
+            },
         ]
         calls = []
 
@@ -706,9 +796,7 @@ class TestPullPaginatesAllResults:
             return pages[len(calls) - 1]
 
         monkeypatch.setattr(hub_client, "_call_tool", fake_call_tool)
-        result = asyncio.run(
-            hub_client.pull_search_results("http://localhost:8420/mcp", "key", str(store))
-        )
+        result = asyncio.run(hub_client.pull_search_results("http://localhost:8420/mcp", "key", str(store)))
 
         assert calls == [0, 50]
         assert result.n_found == 75
@@ -721,14 +809,14 @@ class TestPullPaginatesAllResults:
             offset = arguments["offset"]
             return {
                 "traces": [{"id": f"t{offset + i}", "title": f"trace {offset + i}"} for i in range(50)],
-                "limit": 50, "offset": offset, "has_more": True,
+                "limit": 50,
+                "offset": offset,
+                "has_more": True,
             }
 
         monkeypatch.setattr(hub_client, "_call_tool", fake_call_tool)
         result = asyncio.run(
-            hub_client.pull_search_results(
-                "http://localhost:8420/mcp", "key", str(store), max_results=120
-            )
+            hub_client.pull_search_results("http://localhost:8420/mcp", "key", str(store), max_results=120)
         )
         assert result.n_found == 120
 
@@ -738,8 +826,14 @@ class TestPullSurfacesTermsTheHubDidNotSearchOn:
         import asyncio
 
         async def fake_call_tool(hub_url, api_key, name, arguments, **kw):
-            return {"traces": [], "limit": 50, "offset": 0, "has_more": False,
-                    "terms": ["retri", "timeout"], "terms_ignored": ["retri", "timeout"]}
+            return {
+                "traces": [],
+                "limit": 50,
+                "offset": 0,
+                "has_more": False,
+                "terms": ["retri", "timeout"],
+                "terms_ignored": ["retri", "timeout"],
+            }
 
         monkeypatch.setattr(hub_client, "_call_tool", fake_call_tool)
         result = asyncio.run(
@@ -752,12 +846,37 @@ class TestPullSurfacesTermsTheHubDidNotSearchOn:
         import asyncio
 
         async def fake_call_tool(hub_url, api_key, name, arguments, **kw):
-            return {"traces": [{"id": "t1", "title": "trace one"}],
-                    "limit": 50, "offset": 0, "has_more": False}
+            return {"traces": [{"id": "t1", "title": "trace one"}], "limit": 50, "offset": 0, "has_more": False}
 
         monkeypatch.setattr(hub_client, "_call_tool", fake_call_tool)
-        result = asyncio.run(
-            hub_client.pull_search_results("http://localhost:8420/mcp", "key", str(store))
-        )
+        result = asyncio.run(hub_client.pull_search_results("http://localhost:8420/mcp", "key", str(store)))
         assert result.ignored_terms == []
         assert result.n_found == 1
+
+
+@pytest.mark.parametrize("captured", [False, True])
+@pytest.mark.parametrize("amend", [False, True])
+@pytest.mark.parametrize("identity", [None, "", 123, "x" * 257])
+def test_malformed_remote_ids_never_stamp_a_success(store, monkeypatch, captured, amend, identity):
+    import asyncio
+
+    extra = {"hub_trace_id": "old-id", "hub_pushed_fingerprint": "old-fingerprint"} if amend else {}
+    if captured:
+        directory = paths.traces_dir(str(store))
+        _write_captured_trace(directory, "t.md", "local-t", "title", "context", "solution", extra=extra)
+        filename = os.path.join(directory, "t.md")
+        push = hub_client.push_captured_traces
+    else:
+        directory = paths.lessons_dir(str(store))
+        _write_active_lesson(directory, "lesson_a", "description", "when", "rule", extra=extra)
+        filename = os.path.join(directory, "lesson_a.md")
+        push = hub_client.push_active_lessons
+    before = frontmatter.read(filename)[0]
+
+    async def reply(*args, **kwargs):
+        return {"id": identity, "quarantined": False}
+
+    monkeypatch.setattr(hub_client, "_call_tool", reply)
+    results = asyncio.run(push("http://localhost:8420/mcp", "key", str(store)))
+    assert len(results) == 1 and results[0].error
+    assert frontmatter.read(filename)[0] == before

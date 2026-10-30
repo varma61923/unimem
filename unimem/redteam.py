@@ -4,6 +4,7 @@ Attack family names are coverage categories, not implementations copied from
 research payloads. No live tools, external endpoints or customer egress are used.
 Reported rates and withdrawal occasions describe this harness only.
 """
+
 from __future__ import annotations
 
 import random
@@ -36,8 +37,11 @@ def run(*, seed: int = 0, occasions: int = 128) -> dict[str, Any]:
             payload = {"id": identity, "text": "Synthetic exercise: " + PAYLOADS[family]}
             attempts, written = 0, 0
             with memory_authority.writer("synthetic-attacker", "external"):
-                copies = [payload] + ([{"id": identity + str(j), "text": payload["text"], "source_traces": [identity]}
-                                       for j in range(3)] if family == "FARMA" else [])
+                copies = [payload] + (
+                    [{"id": identity + str(j), "text": payload["text"], "source_traces": [identity]} for j in range(3)]
+                    if family == "FARMA"
+                    else []
+                )
                 for record in copies:
                     attempts += 1
                     try:
@@ -59,15 +63,25 @@ def run(*, seed: int = 0, occasions: int = 128) -> dict[str, Any]:
             observations = []
             withdrawn = None
             for i in range(occasions):
-                injected = rng.random() < .5
-                observations.append(aipw.Observation(injected, not injected, .5))
+                injected = rng.random() < 0.5
+                observations.append(aipw.Observation(injected, not injected, 0.5))
                 if i % 8 == 7 and eprocess.process(observations, direction="hurts").e_value >= 20:
                     withdrawn = i + 1
                     break
-            results.append({"family": family, "write_rate": written / attempts,
-                            "retrieve_rate": float(retrieved is not None),
-                            "act_rate": float(bool(labelled and labelled["procedure"])),
-                            **({"amplification_blocked": amplification_blocked} if family == "FARMA" else {}),
-                            "time_to_withdraw": withdrawn, "withdrawal_unit": "synthetic randomized occasions"})
-    return {"seed": seed, "shadow_store": True, "results": results,
-            "kind": "deterministic synthetic exercise; not a production attack-success benchmark"}
+            results.append(
+                {
+                    "family": family,
+                    "write_rate": written / attempts,
+                    "retrieve_rate": float(retrieved is not None),
+                    "act_rate": float(bool(labelled and labelled["procedure"])),
+                    **({"amplification_blocked": amplification_blocked} if family == "FARMA" else {}),
+                    "time_to_withdraw": withdrawn,
+                    "withdrawal_unit": "synthetic randomized occasions",
+                }
+            )
+    return {
+        "seed": seed,
+        "shadow_store": True,
+        "results": results,
+        "kind": "deterministic synthetic exercise; not a production attack-success benchmark",
+    }

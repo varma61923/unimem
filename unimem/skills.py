@@ -43,25 +43,16 @@ def validate_skill_frontmatter(fm: object, path: str = "<skill>") -> list[str]:
     if not isinstance(name, str) or not name.strip():
         errors.append(f"{path}: missing required field 'name'")
     elif not NAME_RE.match(name.strip()) or len(name.strip()) > NAME_MAX_LEN:
-        errors.append(
-            f"{path}: 'name' must match {NAME_RE.pattern} "
-            f"(max {NAME_MAX_LEN} chars), got {name!r}"
-        )
+        errors.append(f"{path}: 'name' must match {NAME_RE.pattern} (max {NAME_MAX_LEN} chars), got {name!r}")
     desc = fm.get("description")
     if not isinstance(desc, str) or not desc.strip():
         errors.append(f"{path}: missing required field 'description'")
     if "when_to_use" in fm and fm["when_to_use"] is not None:
         if not isinstance(fm["when_to_use"], str):
-            errors.append(
-                f"{path}: 'when_to_use' must be a string, "
-                f"got {type(fm['when_to_use']).__name__}"
-            )
+            errors.append(f"{path}: 'when_to_use' must be a string, got {type(fm['when_to_use']).__name__}")
     if "user_invocable" in fm and fm["user_invocable"] is not None:
         if not isinstance(fm["user_invocable"], bool):
-            errors.append(
-                f"{path}: 'user_invocable' must be a boolean, "
-                f"got {type(fm['user_invocable']).__name__}"
-            )
+            errors.append(f"{path}: 'user_invocable' must be a boolean, got {type(fm['user_invocable']).__name__}")
     return errors
 
 
@@ -154,15 +145,17 @@ def _bundled_skills() -> list[Skill]:
         )
         if not NAME_RE.match(pack.name):
             continue
-        out.append(Skill(
-            name=pack.name,
-            description=description,
-            when_to_use="",
-            user_invocable=False,
-            source=SOURCE_BUNDLED,
-            path=os.path.abspath(pack_path) if pack_path else "",
-            body="",
-        ))
+        out.append(
+            Skill(
+                name=pack.name,
+                description=description,
+                when_to_use="",
+                user_invocable=False,
+                source=SOURCE_BUNDLED,
+                path=os.path.abspath(pack_path) if pack_path else "",
+                body="",
+            )
+        )
     out.sort(key=lambda s: s.name)
     return out
 
@@ -185,8 +178,11 @@ def discover(
     if os.path.isfile(os.path.join(paths.memory_dir(root), "unimem-skill-exports.jsonl")):
         from unimem import skill_io
 
-        project = [replace(s, governed_root=root, governed_context=tuple(context)) for s in project
-                   if skill_io.visible_published(root, s.path, context=context)]
+        project = [
+            replace(s, governed_root=root, governed_context=tuple(context))
+            for s in project
+            if skill_io.visible_published(root, s.path, context=context)
+        ]
         user = [s for s in user if skill_io.visible_published(root, s.path, context=context)]
 
     ordered: list[Skill] = []

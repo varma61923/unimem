@@ -15,8 +15,26 @@ pytestmark = pytest.mark.skipif(shutil.which("openssl") is None, reason="needs t
 @pytest.fixture
 def tls_server(tmp_path):
     cert, key = str(tmp_path / "c.pem"), str(tmp_path / "k.pem")
-    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert,  # nosec
-                    "-days", "1", "-subj", "/CN=localhost"], check=True, capture_output=True)
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",
+            "-keyout",
+            key,
+            "-out",
+            cert,  # nosec
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
     g = gateway.Gateway(str(tmp_path / "store"), token="t" * 40)
     server = gateway.make_http_server(g, "127.0.0.1", 0, tls=(cert, key), request_timeout=2.0)
     threading.Thread(target=server.serve_forever, daemon=True).start()

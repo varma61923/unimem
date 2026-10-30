@@ -18,12 +18,15 @@ KEY = "test-deployment-signing-key"
 URL = "https://example.invalid/hooks/unimem"
 
 
-@pytest.mark.parametrize(("url", "label"), [
-    ("https://user:pass@example.com:8443/token?key=secret#fragment", "https://example.com:8443/[redacted]"),
-    ("https://[2001:4860:4860::8888]/token", "https://[2001:4860:4860::8888]/[redacted]"),
-    ("https://host:bad/token", "[redacted webhook destination]"),
-    ("not-a-url", "[redacted webhook destination]"),
-])
+@pytest.mark.parametrize(
+    ("url", "label"),
+    [
+        ("https://user:pass@example.com:8443/token?key=secret#fragment", "https://example.com:8443/[redacted]"),
+        ("https://[2001:4860:4860::8888]/token", "https://[2001:4860:4860::8888]/[redacted]"),
+        ("https://host:bad/token", "[redacted webhook destination]"),
+        ("not-a-url", "[redacted webhook destination]"),
+    ],
+)
 def test_destination_label_never_includes_bearer_components(url, label):
     assert events.destination_label(url) == label
 
@@ -35,6 +38,7 @@ async def _fake_public_resolve(hostname: str) -> list:
 def _fake_resolve_to(ip: str):
     async def resolve(hostname: str) -> list:
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 0))]
+
     return resolve
 
 
@@ -76,9 +80,10 @@ class Recorder:
 @pytest.mark.asyncio
 class TestPayloadWhitelist:
     async def test_a_declared_field_is_accepted(self):
-        assert events.check_payload(
-            "trace.created", {"trace_id": "t1", "agent_type": "support"}
-        ) == {"trace_id": "t1", "agent_type": "support"}
+        assert events.check_payload("trace.created", {"trace_id": "t1", "agent_type": "support"}) == {
+            "trace_id": "t1",
+            "agent_type": "support",
+        }
 
     async def test_trace_content_is_refused_by_name(self, session_factory, org):
         with pytest.raises(events.EventError) as exc:
@@ -113,8 +118,16 @@ class TestPayloadWhitelist:
 
     async def test_no_event_type_declares_a_content_field(self):
         forbidden = {
-            "context_text", "solution_text", "body", "text", "content",
-            "input", "output", "prompt", "completion", "title",
+            "context_text",
+            "solution_text",
+            "body",
+            "text",
+            "content",
+            "input",
+            "output",
+            "prompt",
+            "completion",
+            "title",
         }
         for name, spec in events.EVENT_TYPES.items():
             assert not (set(spec.fields) & forbidden), name
@@ -124,20 +137,17 @@ class TestSigning:
     def test_a_signature_verifies(self):
         body = '{"a":1}'
         header = events.signature_header("s3cret", int(NOW.timestamp()), body)
-        assert events.verify_signature(
-            "s3cret", header, body, now=int(NOW.timestamp()))
+        assert events.verify_signature("s3cret", header, body, now=int(NOW.timestamp()))
 
     def test_a_tampered_body_fails(self):
         body = '{"a":1}'
         header = events.signature_header("s3cret", int(NOW.timestamp()), body)
-        assert not events.verify_signature(
-            "s3cret", header, '{"a":2}', now=int(NOW.timestamp()))
+        assert not events.verify_signature("s3cret", header, '{"a":2}', now=int(NOW.timestamp()))
 
     def test_a_wrong_secret_fails(self):
         body = '{"a":1}'
         header = events.signature_header("s3cret", int(NOW.timestamp()), body)
-        assert not events.verify_signature(
-            "other", header, body, now=int(NOW.timestamp()))
+        assert not events.verify_signature("other", header, body, now=int(NOW.timestamp()))
 
     def test_an_old_delivery_is_rejected_as_a_replay(self):
         body = '{"a":1}'
@@ -151,8 +161,7 @@ class TestSigning:
         stamp = int(NOW.timestamp())
         header = events.signature_header("s3cret", stamp, body)
         forged = header.replace(f"t={stamp}", f"t={stamp + 600}")
-        assert not events.verify_signature(
-            "s3cret", forged, body, now=stamp + 600)
+        assert not events.verify_signature("s3cret", forged, body, now=stamp + 600)
 
     def test_a_non_ascii_signature_is_false_not_a_crash(self):
         stamp = int(NOW.timestamp())
@@ -196,14 +205,12 @@ class TestEndpoints:
     async def test_plaintext_http_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(events.EventError, match="https"):
-                await events.add_endpoint(
-                    session, org, "http://example.invalid/hook", signing_key=KEY)
+                await events.add_endpoint(session, org, "http://example.invalid/hook", signing_key=KEY)
 
     async def test_an_unknown_subscribed_event_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(events.EventError, match="unknown event type"):
-                await events.add_endpoint(
-                    session, org, URL, events=["trace.exploded"], signing_key=KEY)
+                await events.add_endpoint(session, org, URL, events=["trace.exploded"], signing_key=KEY)
 
     async def test_subscribing_to_nothing_means_everything(self, session_factory, org):
         async with session_scope(session_factory) as session:
@@ -220,13 +227,11 @@ class TestEndpoints:
 
     async def test_rotating_changes_the_secret(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
-            rotated = await events.rotate_secret(
-                session, endpoint["id"], signing_key=KEY)
+            rotated = await events.rotate_secret(session, endpoint["id"], signing_key=KEY)
         assert rotated != endpoint["secret"]
         body = "{}"
         header = events.signature_header(rotated, int(NOW.timestamp()), body)
-        assert not events.verify_signature(
-            endpoint["secret"], header, body, now=int(NOW.timestamp()))
+        assert not events.verify_signature(endpoint["secret"], header, body, now=int(NOW.timestamp()))
 
 
 @pytest.mark.asyncio
@@ -236,33 +241,24 @@ class TestAtRestEncryption:
             endpoint, _ = await events.add_endpoint(session, org, URL, signing_key=KEY)
         assert endpoint.url == URL
 
-    async def test_a_configured_cipher_stores_ciphertext_not_the_url(
-        self, session_factory, org
-    ):
+    async def test_a_configured_cipher_stores_ciphertext_not_the_url(self, session_factory, org):
         cipher = EnvelopeCipher.from_config(generate_key(), "")
         async with session_scope(session_factory) as session:
-            endpoint, _ = await events.add_endpoint(
-                session, org, URL, signing_key=KEY, cipher=cipher)
+            endpoint, _ = await events.add_endpoint(session, org, URL, signing_key=KEY, cipher=cipher)
         async with session_scope(session_factory) as session:
             row = await session.get(WebhookEndpoint, endpoint.id)
         assert row.url != URL
         assert URL not in row.url
         assert cipher.decrypt(row.url) == URL
 
-    async def test_ssrf_validation_still_runs_on_the_plaintext_url(
-        self, session_factory, org, monkeypatch
-    ):
-        monkeypatch.setattr(
-            events, "_default_resolve", _fake_resolve_to("127.0.0.1"))
+    async def test_ssrf_validation_still_runs_on_the_plaintext_url(self, session_factory, org, monkeypatch):
+        monkeypatch.setattr(events, "_default_resolve", _fake_resolve_to("127.0.0.1"))
         cipher = EnvelopeCipher.from_config(generate_key(), "")
         async with session_scope(session_factory) as session:
             with pytest.raises(events.EventError, match="private"):
-                await events.add_endpoint(
-                    session, org, URL, signing_key=KEY, cipher=cipher)
+                await events.add_endpoint(session, org, URL, signing_key=KEY, cipher=cipher)
 
-    async def test_delivery_decrypts_the_url_before_transporting(
-        self, session_factory, org
-    ):
+    async def test_delivery_decrypts_the_url_before_transporting(self, session_factory, org):
         cipher = EnvelopeCipher.from_config(generate_key(), "")
         async with session_scope(session_factory) as session:
             await events.add_endpoint(session, org, URL, signing_key=KEY, cipher=cipher)
@@ -270,14 +266,11 @@ class TestAtRestEncryption:
 
         transport = Recorder()
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW, cipher=cipher)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW, cipher=cipher)
         assert result.delivered == 1
         assert transport.calls[0][0] == URL
 
-    async def test_delivery_with_the_wrong_cipher_fails_closed(
-        self, session_factory, org
-    ):
+    async def test_delivery_with_the_wrong_cipher_fails_closed(self, session_factory, org):
         cipher = EnvelopeCipher.from_config(generate_key(), "")
         async with session_scope(session_factory) as session:
             await events.add_endpoint(session, org, URL, signing_key=KEY, cipher=cipher)
@@ -286,8 +279,7 @@ class TestAtRestEncryption:
         wrong_cipher = EnvelopeCipher.from_config(generate_key(), "")
         transport = Recorder()
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW, cipher=wrong_cipher)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW, cipher=wrong_cipher)
         assert result.delivered == 0
         assert result.retrying == 1
         assert transport.calls == []
@@ -295,23 +287,25 @@ class TestAtRestEncryption:
 
 @pytest.mark.asyncio
 class TestSsrfProtection:
-    @pytest.mark.parametrize("ip", [
-        "127.0.0.1",
-        "10.0.0.5",
-        "172.16.0.1",
-        "192.168.1.1",
-        "169.254.169.254",
-        "224.0.0.1",
-        "0.0.0.0",
-        "::1",
-        "::ffff:127.0.0.1",
-        "100.100.100.200",
-        "100.64.0.1",
-    ])
+    @pytest.mark.parametrize(
+        "ip",
+        [
+            "127.0.0.1",
+            "10.0.0.5",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "224.0.0.1",
+            "0.0.0.0",
+            "::1",
+            "::ffff:127.0.0.1",
+            "100.100.100.200",
+            "100.64.0.1",
+        ],
+    )
     async def test_a_private_or_internal_target_is_rejected(self, ip):
         with pytest.raises(events.EventError, match="private"):
-            await events._reject_private_target(
-                URL, resolve=_fake_resolve_to(ip))
+            await events._reject_private_target(URL, resolve=_fake_resolve_to(ip))
 
     async def test_a_genuinely_public_target_is_accepted(self):
         await events._reject_private_target(URL, resolve=_fake_resolve_to("8.8.8.8"))
@@ -320,6 +314,7 @@ class TestSsrfProtection:
     async def test_an_unresolvable_host_is_refused_not_silently_allowed(self):
         async def resolve(hostname):
             raise socket.gaierror("nodename nor servname provided")
+
         with pytest.raises(events.EventError, match="could not resolve"):
             await events._reject_private_target(URL, resolve=resolve)
 
@@ -327,20 +322,14 @@ class TestSsrfProtection:
         with pytest.raises(events.EventError, match="resolvable host"):
             await events._reject_private_target("https:///no-host-here")
 
-    async def test_add_endpoint_refuses_a_url_resolving_to_a_private_address(
-        self, session_factory, org, monkeypatch
-    ):
-        monkeypatch.setattr(
-            events, "_default_resolve", _fake_resolve_to("127.0.0.1"))
+    async def test_add_endpoint_refuses_a_url_resolving_to_a_private_address(self, session_factory, org, monkeypatch):
+        monkeypatch.setattr(events, "_default_resolve", _fake_resolve_to("127.0.0.1"))
         async with session_scope(session_factory) as session:
             with pytest.raises(events.EventError, match="private"):
                 await events.add_endpoint(session, org, URL, signing_key=KEY)
 
-    async def test_add_endpoint_accepts_a_url_resolving_publicly(
-        self, session_factory, org, monkeypatch
-    ):
-        monkeypatch.setattr(
-            events, "_default_resolve", _fake_resolve_to("8.8.8.8"))
+    async def test_add_endpoint_accepts_a_url_resolving_publicly(self, session_factory, org, monkeypatch):
+        monkeypatch.setattr(events, "_default_resolve", _fake_resolve_to("8.8.8.8"))
         async with session_scope(session_factory) as session:
             endpoint, _ = await events.add_endpoint(session, org, URL, signing_key=KEY)
         assert endpoint.url == URL
@@ -362,26 +351,21 @@ class TestSsrfProtection:
 
         transport = events.http_transport()
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         assert result.delivered == 0
         assert result.retrying == 1
 
 
 @pytest.mark.asyncio
 class TestEmitting:
-    async def test_an_org_with_no_endpoints_queues_nothing_and_does_not_raise(
-        self, session_factory, org
-    ):
+    async def test_an_org_with_no_endpoints_queues_nothing_and_does_not_raise(self, session_factory, org):
         async with session_scope(session_factory) as session:
-            queued = await events.emit(
-                session, org, "trace.created", {"trace_id": "t1"})
+            queued = await events.emit(session, org, "trace.created", {"trace_id": "t1"})
         assert queued == []
 
     async def test_emitting_queues_one_delivery(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
-            await events.emit(
-                session, endpoint["org"], "trace.created", {"trace_id": "t1"})
+            await events.emit(session, endpoint["org"], "trace.created", {"trace_id": "t1"})
         async with session_scope(session_factory) as session:
             rows = list((await session.execute(select(WebhookDelivery))).scalars())
         assert len(rows) == 1
@@ -391,28 +375,22 @@ class TestEmitting:
 
     async def test_an_unsubscribed_event_is_not_queued(self, session_factory, org):
         async with session_scope(session_factory) as session:
-            await events.add_endpoint(
-                session, org, URL, events=["trace.quarantined"], signing_key=KEY)
+            await events.add_endpoint(session, org, URL, events=["trace.quarantined"], signing_key=KEY)
         async with session_scope(session_factory) as session:
             await events.emit(session, org, "trace.created", {"trace_id": "t1"})
         async with session_scope(session_factory) as session:
-            assert await session.scalar(
-                select(func.count()).select_from(WebhookDelivery)) == 0
+            assert await session.scalar(select(func.count()).select_from(WebhookDelivery)) == 0
 
     async def test_a_disabled_endpoint_is_not_queued_to(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
             row = await session.get(WebhookEndpoint, endpoint["id"])
             row.enabled = False
         async with session_scope(session_factory) as session:
-            await events.emit(
-                session, endpoint["org"], "trace.created", {"trace_id": "t1"})
+            await events.emit(session, endpoint["org"], "trace.created", {"trace_id": "t1"})
         async with session_scope(session_factory) as session:
-            assert await session.scalar(
-                select(func.count()).select_from(WebhookDelivery)) == 0
+            assert await session.scalar(select(func.count()).select_from(WebhookDelivery)) == 0
 
-    async def test_another_orgs_endpoint_never_receives_this_orgs_events(
-        self, session_factory, endpoint
-    ):
+    async def test_another_orgs_endpoint_never_receives_this_orgs_events(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
             other = Organization(name="someone else")
             session.add(other)
@@ -421,21 +399,19 @@ class TestEmitting:
         async with session_scope(session_factory) as session:
             await events.emit(session, other_id, "trace.created", {"trace_id": "t1"})
         async with session_scope(session_factory) as session:
-            assert await session.scalar(
-                select(func.count()).select_from(WebhookDelivery)) == 0
+            assert await session.scalar(select(func.count()).select_from(WebhookDelivery)) == 0
 
-    async def test_a_bad_payload_raises_before_anything_is_queued(
-        self, session_factory, endpoint
-    ):
+    async def test_a_bad_payload_raises_before_anything_is_queued(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
             with pytest.raises(events.EventError):
                 await events.emit(
-                    session, endpoint["org"], "trace.created",
+                    session,
+                    endpoint["org"],
+                    "trace.created",
                     {"context_text": "secret"},
                 )
         async with session_scope(session_factory) as session:
-            assert await session.scalar(
-                select(func.count()).select_from(WebhookDelivery)) == 0
+            assert await session.scalar(select(func.count()).select_from(WebhookDelivery)) == 0
 
 
 @pytest.mark.asyncio
@@ -443,28 +419,24 @@ class TestDelivery:
     async def _queue(self, session_factory, org, n=1):
         async with session_scope(session_factory) as session:
             for i in range(n):
-                await events.emit(
-                    session, org, "trace.created", {"trace_id": f"t{i}"}, now=NOW)
+                await events.emit(session, org, "trace.created", {"trace_id": f"t{i}"}, now=NOW)
 
-    async def test_a_delivery_is_signed_with_the_endpoints_secret(
-        self, session_factory, endpoint
-    ):
+    async def test_a_delivery_is_signed_with_the_endpoints_secret(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         transport = Recorder()
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         assert result.delivered == 1
         url, body, headers = transport.calls[0]
         assert url == URL
         assert events.verify_signature(
-            endpoint["secret"], headers["X-UniMem-Signature"], body,
+            endpoint["secret"],
+            headers["X-UniMem-Signature"],
+            body,
             now=int(NOW.timestamp()),
         )
 
-    async def test_the_envelope_carries_a_stable_idempotency_key(
-        self, session_factory, endpoint
-    ):
+    async def test_the_envelope_carries_a_stable_idempotency_key(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         first = Recorder(fail_times=1)
         async with session_scope(session_factory) as session:
@@ -486,48 +458,40 @@ class TestDelivery:
         async with session_scope(session_factory) as session:
             await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         body = json.loads(transport.calls[0][1])
-        assert set(body) == {
-            "event_id", "type", "org_id", "created_at", "attempt", "data"}
+        assert set(body) == {"event_id", "type", "org_id", "created_at", "attempt", "data"}
         assert set(body["data"]) <= set(events.EVENT_TYPES["trace.created"].fields)
 
-    async def test_a_failure_is_retried_later_not_immediately(
-        self, session_factory, endpoint
-    ):
+    async def test_a_failure_is_retried_later_not_immediately(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         transport = Recorder(fail_times=5)
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         assert result.retrying == 1 and result.delivered == 0
 
         async with session_scope(session_factory) as session:
-            again = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW)
+            again = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         assert again.attempted == 0
 
-    async def test_the_error_is_recorded_for_the_operator(
-        self, session_factory, endpoint
-    ):
+    async def test_the_error_is_recorded_for_the_operator(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         async with session_scope(session_factory) as session:
             await events.deliver_pending(
-                session, Recorder(fail_times=1, error="host unreachable https://user:secret@hooks.example/?token=private"),
-                signing_key=KEY, now=NOW,
+                session,
+                Recorder(fail_times=1, error="host unreachable https://user:secret@hooks.example/?token=private"),
+                signing_key=KEY,
+                now=NOW,
             )
         async with session_scope(session_factory) as session:
             row = (await session.execute(select(WebhookDelivery))).scalar_one()
         assert row.last_error == "RuntimeError"
 
-    async def test_it_gives_up_loudly_rather_than_retrying_forever(
-        self, session_factory, endpoint
-    ):
+    async def test_it_gives_up_loudly_rather_than_retrying_forever(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         transport = Recorder(fail_times=99)
         moment = NOW
         for _ in range(events.MAX_ATTEMPTS):
             async with session_scope(session_factory) as session:
-                await events.deliver_pending(
-                    session, transport, signing_key=KEY, now=moment)
+                await events.deliver_pending(session, transport, signing_key=KEY, now=moment)
             moment += timedelta(days=1)
 
         async with session_scope(session_factory) as session:
@@ -537,17 +501,14 @@ class TestDelivery:
         assert row.attempts == events.MAX_ATTEMPTS
         assert len(failed) == 1
 
-    async def test_a_success_after_a_failure_clears_the_error(
-        self, session_factory, endpoint
-    ):
+    async def test_a_success_after_a_failure_clears_the_error(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         transport = Recorder(fail_times=1)
         async with session_scope(session_factory) as session:
             await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         later = NOW + timedelta(hours=1)
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=later)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=later)
         assert result.delivered == 1
         async with session_scope(session_factory) as session:
             row = (await session.execute(select(WebhookDelivery))).scalar_one()
@@ -555,57 +516,45 @@ class TestDelivery:
         assert row.last_error == ""
         assert row.delivered_at is not None
 
-    async def test_an_endpoint_deleted_after_queueing_is_given_up_with_a_reason(
-        self, session_factory, endpoint
-    ):
+    async def test_an_endpoint_deleted_after_queueing_is_given_up_with_a_reason(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         async with session_scope(session_factory) as session:
             row = await session.get(WebhookEndpoint, endpoint["id"])
             row.enabled = False
         transport = Recorder()
         async with session_scope(session_factory) as session:
-            result = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW)
+            result = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         assert result.gave_up == 1
         assert transport.calls == []
         async with session_scope(session_factory) as session:
             delivery = (await session.execute(select(WebhookDelivery))).scalar_one()
         assert "disabled" in delivery.last_error
 
-    async def test_a_delivered_event_is_not_delivered_again(
-        self, session_factory, endpoint
-    ):
+    async def test_a_delivered_event_is_not_delivered_again(self, session_factory, endpoint):
         await self._queue(session_factory, endpoint["org"])
         transport = Recorder()
         async with session_scope(session_factory) as session:
             await events.deliver_pending(session, transport, signing_key=KEY, now=NOW)
         async with session_scope(session_factory) as session:
-            again = await events.deliver_pending(
-                session, transport, signing_key=KEY, now=NOW + timedelta(days=1))
+            again = await events.deliver_pending(session, transport, signing_key=KEY, now=NOW + timedelta(days=1))
         assert again.attempted == 0
         assert len(transport.calls) == 1
 
-    async def test_concurrent_sweeps_never_deliver_the_same_event_twice(
-        self, session_factory, endpoint
-    ):
+    async def test_concurrent_sweeps_never_deliver_the_same_event_twice(self, session_factory, endpoint):
         # Two replicas sweeping at once: the first holds its rows in an open
         # transaction while the second sweeps, exactly as overlapping
         # scheduler ticks do in production.
         await self._queue(session_factory, endpoint["org"], n=3)
         first, second = Recorder(), Recorder()
         async with session_scope(session_factory) as first_session:
-            first_result = await events.deliver_pending(
-                first_session, first, signing_key=KEY, now=NOW)
+            first_result = await events.deliver_pending(first_session, first, signing_key=KEY, now=NOW)
             async with session_scope(session_factory) as second_session:
-                second_result = await events.deliver_pending(
-                    second_session, second, signing_key=KEY, now=NOW)
+                second_result = await events.deliver_pending(second_session, second, signing_key=KEY, now=NOW)
         assert first_result.delivered == 3
         assert second_result.attempted == 0
         assert second.calls == []
 
-    async def test_a_hanging_receiver_does_not_hold_up_another_tenants_deliveries(
-        self, session_factory, endpoint
-    ):
+    async def test_a_hanging_receiver_does_not_hold_up_another_tenants_deliveries(self, session_factory, endpoint):
         import asyncio
 
         healthy_url = "https://healthy.invalid/hooks"
@@ -637,20 +586,18 @@ class TestDelivery:
         assert len(hung_calls) == 1
         assert (result.attempted, result.delivered, result.retrying, result.deferred) == (2, 1, 1, 2)
 
-    async def test_a_failing_endpoints_queue_waits_for_one_retry_in_order(
-        self, session_factory, endpoint
-    ):
+    async def test_a_failing_endpoints_queue_waits_for_one_retry_in_order(self, session_factory, endpoint):
         async with session_scope(session_factory) as session:
             for i in range(3):
-                await events.emit(session, endpoint["org"], "trace.created", {"trace_id": f"t{i}"},
-                                  now=NOW - timedelta(seconds=3 - i))
+                await events.emit(
+                    session, endpoint["org"], "trace.created", {"trace_id": f"t{i}"}, now=NOW - timedelta(seconds=3 - i)
+                )
         failing = Recorder(fail_times=1)
         async with session_scope(session_factory) as session:
             result = await events.deliver_pending(session, failing, signing_key=KEY, now=NOW)
         assert len(failing.calls) == 1 and result.deferred == 2
         async with session_scope(session_factory) as session:
-            rows = (await session.execute(
-                select(WebhookDelivery).order_by(WebhookDelivery.created_at))).scalars().all()
+            rows = (await session.execute(select(WebhookDelivery).order_by(WebhookDelivery.created_at))).scalars().all()
         assert [r.attempts for r in rows] == [1, 0, 0]
         assert len({r.next_attempt_at for r in rows}) == 1 and rows[0].next_attempt_at > NOW
 
@@ -666,8 +613,7 @@ class TestDelivery:
         async with session_scope(session_factory) as session:
             assert await events.pending_count(session, endpoint["org"]) == 3
         async with session_scope(session_factory) as session:
-            await events.deliver_pending(
-                session, Recorder(), signing_key=KEY, now=NOW)
+            await events.deliver_pending(session, Recorder(), signing_key=KEY, now=NOW)
         async with session_scope(session_factory) as session:
             assert await events.pending_count(session, endpoint["org"]) == 0
 
@@ -679,7 +625,9 @@ class TestEmittedFromRealPaths:
 
         async with session_scope(session_factory) as session:
             await retention.place_hold(
-                session, endpoint["org"], reason="Ohio subpoena 2026-44",
+                session,
+                endpoint["org"],
+                reason="Ohio subpoena 2026-44",
                 placed_by="ops",
             )
         async with session_scope(session_factory) as session:
@@ -687,9 +635,7 @@ class TestEmittedFromRealPaths:
         assert row.event_type == "legal_hold.placed"
         assert "Ohio" not in json.dumps(row.payload)
 
-    async def test_a_purge_announces_counts_and_the_plan_digest(
-        self, session_factory, endpoint
-    ):
+    async def test_a_purge_announces_counts_and_the_plan_digest(self, session_factory, endpoint):
         from hub import retention
 
         async with session_scope(session_factory) as session:
@@ -698,9 +644,12 @@ class TestEmittedFromRealPaths:
             plan = await retention.plan(session, endpoint["org"])
             await retention.apply(session, endpoint["org"], plan.digest)
         async with session_scope(session_factory) as session:
-            rows = list((await session.execute(
-                select(WebhookDelivery).where(
-                    WebhookDelivery.event_type == "retention.purged")
-            )).scalars())
+            rows = list(
+                (
+                    await session.execute(
+                        select(WebhookDelivery).where(WebhookDelivery.event_type == "retention.purged")
+                    )
+                ).scalars()
+            )
         assert len(rows) == 1
         assert set(rows[0].payload) == {"plan", "n_deleted", "n_held"}

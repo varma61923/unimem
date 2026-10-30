@@ -1,4 +1,5 @@
 """Nested application data cannot leak credentials through logs or metrics."""
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,15 @@ def formatted(extra: dict[str, Any]) -> str:
 
 
 def test_nested_extras_and_named_short_credentials_are_redacted() -> None:
-    wire = formatted({"payload": {"password": "tiny", "authorization": "Bearer arbitrary123",
-                                  "items": [{"api_key": "not-a-recognized-provider-key"},
-                                            "https://user:secret@service.example/path"]}})
+    wire = formatted(
+        {
+            "payload": {
+                "password": "tiny",
+                "authorization": "Bearer arbitrary123",
+                "items": [{"api_key": "not-a-recognized-provider-key"}, "https://user:secret@service.example/path"],
+            }
+        }
+    )
     parsed = json.loads(wire)
     assert parsed["payload"]["password"].startswith("[REDACTED")
     assert "tiny" not in wire and "arbitrary123" not in wire

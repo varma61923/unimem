@@ -2,6 +2,7 @@
 batch of new messages turns them into self-contained, dated statements, linked to
 what is already known so a newer statement of the same thing replaces the older.
 Optional: recall works without it, and nothing here runs unless asked."""
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,9 @@ KNOWN = 30
 _FUTURE_ASSERTION = re.compile(
     r"\b(?:plans?|planning|scheduled|intends?|promises?)\s+to\b|"
     r"\bwill\s+(?:not\s+)?(?:be|have|work|join|move|live|start|leave|relocate|study|marry|buy|"
-    r"become|take|end|begin|return|travel|attend|prefer|drive|avoid|use|visit|change)\b", re.I)
+    r"become|take|end|begin|return|travel|attend|prefer|drive|avoid|use|visit|change)\b",
+    re.I,
+)
 
 PROMPT = """You extract memories from a conversation so an assistant can answer questions
 about it months later. Extract every memorable fact from the NEW MESSAGES: who people
@@ -85,14 +88,21 @@ def extract(store: Store, sessions: list[str] | None = None, *, complete=None) -
             if not batch:
                 break
             expected_sources = {t.id: t.evidence_hash() for t in batch}
-            observed = (batch[0].at or batch[-1].at)
+            observed = batch[0].at or batch[-1].at
             relevant = store.recall_facts(" ".join(t.text[:256] for t in batch), limit=KNOWN)
-            known = "\n".join(f"- [{f['owner']}:{f['slot'] or '-'}] {f['statement']}"
-                              for f in relevant[-KNOWN:]) or "(none)"
+            known = (
+                "\n".join(f"- [{f['owner']}:{f['slot'] or '-'}] {f['statement']}" for f in relevant[-KNOWN:])
+                or "(none)"
+            )
             messages = "\n".join(f"[message_id={t.id}] {t.speaker}: {t.annotated()}" for t in batch)
-            text, _usage = complete(PROMPT.format(
-                observed=observed.date().isoformat() if observed else "unknown",
-                kinds=", ".join(FACT_KINDS), known=known, messages=messages))
+            text, _usage = complete(
+                PROMPT.format(
+                    observed=observed.date().isoformat() if observed else "unknown",
+                    kinds=", ".join(FACT_KINDS),
+                    known=known,
+                    messages=messages,
+                )
+            )
             calls += 1
             memories = []
             by_id = {t.id: t for t in batch}
@@ -107,15 +117,23 @@ def extract(store: Store, sessions: list[str] | None = None, *, complete=None) -
                     refused += 1
                     continue
                 source_ids = m.get("source_turn_ids", [t.id for t in batch])
-                if not isinstance(source_ids, list) or not source_ids \
-                        or any(not isinstance(tid, int) or isinstance(tid, bool) or tid not in by_id
-                               for tid in source_ids):
+                if (
+                    not isinstance(source_ids, list)
+                    or not source_ids
+                    or any(not isinstance(tid, int) or isinstance(tid, bool) or tid not in by_id for tid in source_ids)
+                ):
                     raise ConversationError("extracted memory cites a message outside its batch")
-                observed_at = max((by_id[tid].at for tid in source_ids if by_id[tid].at), default=None)
-                memories.append({**m, "source_turn_ids": source_ids,
-                                 "owner": m.get("owner") or default_owner,
-                                 "at": observed_at.isoformat(timespec="minutes") if observed_at else None})
-            added += store.add_memories(session, memories, source="model", extracted_through=batch[-1].idx,
-                                        expected_sources=expected_sources)
+                observed_at = max((at for tid in source_ids if (at := by_id[tid].at) is not None), default=None)
+                memories.append(
+                    {
+                        **m,
+                        "source_turn_ids": source_ids,
+                        "owner": m.get("owner") or default_owner,
+                        "at": observed_at.isoformat(timespec="minutes") if observed_at else None,
+                    }
+                )
+            added += store.add_memories(
+                session, memories, source="model", extracted_through=batch[-1].idx, expected_sources=expected_sources
+            )
             done = batch[-1].idx
     return {"space": store.space, "memories": added, "calls": calls, "refused": refused}

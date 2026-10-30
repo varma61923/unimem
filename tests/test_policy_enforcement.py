@@ -1,4 +1,5 @@
 """Finite permissions govern canonical bytes and ranking inputs, not only reports."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -23,8 +24,9 @@ def activate(root, policy):
 def test_canonical_fact_write_and_read_and_scope_tampering(tmp_path, clock):
     root = str(tmp_path)
     allowed = hierarchical.append_facts(root, [{"statement": "Approved wrist calibration.", "scopes": ["project:a"]}])
-    hidden = hierarchical.append_facts(root, [{"statement": "Private medical calibration.",
-                                                "scopes": ["health", "project:a"]}])
+    hidden = hierarchical.append_facts(
+        root, [{"statement": "Private medical calibration.", "scopes": ["health", "project:a"]}]
+    )
     activate(root, configured_policy())
     assert memory_authority.permits(root, allowed[0][0])
     assert not memory_authority.permits(root, hidden[0][0])
@@ -32,8 +34,7 @@ def test_canonical_fact_write_and_read_and_scope_tampering(tmp_path, clock):
     forged.scopes = ["project:a"]
     assert not memory_authority.permits(root, forged)
     with pytest.raises(PermissionError, match="policy"):
-        hierarchical.append_facts(root, [{"statement": "Disallowed medical write.",
-                                         "scopes": ["health", "project:a"]}])
+        hierarchical.append_facts(root, [{"statement": "Disallowed medical write.", "scopes": ["health", "project:a"]}])
     assert len(hierarchical.load_facts(root)) == 2
 
 
@@ -142,9 +143,15 @@ def test_read_denial_does_not_prevent_scoped_owner_runtime_erasure(tmp_path, clo
     activate(root, policy)
     assert journal.history("hidden") == []
     with pytest.raises(PermissionError):
-        record_api.operate(root, "record-forget", {"id": "hidden", "reason": "Wrong owner"},
-                           context=["agent:other"], untrusted=True)
-    record_api.operate(root, "record-forget", {"id": "hidden", "reason": "Owner requested erasure"},
-                       context=["agent:owner"], untrusted=True)
+        record_api.operate(
+            root, "record-forget", {"id": "hidden", "reason": "Wrong owner"}, context=["agent:other"], untrusted=True
+        )
+    record_api.operate(
+        root,
+        "record-forget",
+        {"id": "hidden", "reason": "Owner requested erasure"},
+        context=["agent:owner"],
+        untrusted=True,
+    )
     with journal.connect() as db:
         assert db.execute("SELECT 1 FROM records WHERE id='hidden'").fetchone() is None

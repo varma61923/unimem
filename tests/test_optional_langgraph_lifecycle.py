@@ -45,9 +45,17 @@ class _ToolModel(BaseChatModel):
         if isinstance(messages[-1], ToolMessage):
             response = AIMessage(content="The tool completed.")
         else:
-            response = AIMessage(content="", tool_calls=[{
-                "name": "lookup", "args": {"value": "result"}, "id": f"tool-{len(self.seen)}", "type": "tool_call",
-            }])
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup",
+                        "args": {"value": "result"},
+                        "id": f"tool-{len(self.seen)}",
+                        "type": "tool_call",
+                    }
+                ],
+            )
         return ChatResult(generations=[ChatGeneration(message=response)])
 
 
@@ -68,14 +76,19 @@ def test_native_tool_loop_scoped_recall_turn_outcome_and_checkpoint(tmp_path, as
 
     def retrieve(query, **kwargs):
         calls.append((query, kwargs))
-        return [{"id": "lesson-1", "memory": "Use idempotency keys."},
-                {"id": "lesson-2", "memory": "Log the delivery result."}]
+        return [
+            {"id": "lesson-1", "memory": "Use idempotency keys."},
+            {"id": "lesson-2", "memory": "Log the delivery result."},
+        ]
 
     memory = CausalMemory(retrieve, root=str(tmp_path), pinned=["lesson-1"])
     model = _ToolModel()
     agent = create_react_agent(
-        model, [lookup], pre_model_hook=create_pre_model_hook(memory, recall_kwargs=_scope),
-        checkpointer=InMemorySaver(), prompt="Stable system instructions.",
+        model,
+        [lookup],
+        pre_model_hook=create_pre_model_hook(memory, recall_kwargs=_scope),
+        checkpointer=InMemorySaver(),
+        prompt="Stable system instructions.",
     )
     config = {"configurable": {"thread_id": "conversation", "tenant_id": "tenant-a", "user_id": "user-a"}}
 
@@ -118,7 +131,9 @@ def test_native_tool_loop_caches_fail_open_result_and_retries_next_turn(tmp_path
 
     model = _ToolModel()
     agent = create_react_agent(
-        model, [lookup], pre_model_hook=create_pre_model_hook(CausalMemory(unavailable, root=str(tmp_path))),
+        model,
+        [lookup],
+        pre_model_hook=create_pre_model_hook(CausalMemory(unavailable, root=str(tmp_path))),
         checkpointer=InMemorySaver(),
     )
     config = {"configurable": {"thread_id": "conversation"}}

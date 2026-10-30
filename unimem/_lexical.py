@@ -2,6 +2,7 @@
 
 Unicode word tokenization is paired with overlapping CJK bigrams so languages
 without whitespace boundaries still contribute searchable terms."""
+
 from __future__ import annotations
 
 import re
@@ -19,9 +20,7 @@ STOPWORDS = frozenset(
 )
 
 _CJK_RE = re.compile(
-    "[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
-    "\u3040-\u309f\u30a0-\u30ff\uff66-\uff9d"
-    "\uac00-\ud7af\ua960-\ua97f]"
+    "[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u309f\u30a0-\u30ff\uff66-\uff9d\uac00-\ud7af\ua960-\ua97f]"
 )
 
 
@@ -43,9 +42,7 @@ def segment_cjk(token: str) -> list[str]:
         if len(buf) < 2:
             out.append("".join(buf))
         else:
-            out.extend(
-                "".join(buf[i:i + 2]) for i in range(len(buf) - 1)
-            )
+            out.extend("".join(buf[i : i + 2]) for i in range(len(buf) - 1))
         del buf[:]
 
     latin: list[str] = []

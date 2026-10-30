@@ -4,6 +4,7 @@ Version 2 retains exact rule/model/manual beliefs instead of extracting them
 again with today's heuristics. All sessions and facts commit together, and fact
 insertion follows archive order so equal-time reversions keep their chronology.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -21,26 +22,51 @@ def export(store):
         for session in store.sessions():
             sid = session["id"]
             turns = [dict(r) for r in store.db.execute("SELECT * FROM turns WHERE session=? ORDER BY idx", (sid,))]
-            facts = [dict(r) for r in store.db.execute(
-                "SELECT f.* FROM facts f JOIN turns t ON t.id=f.turn WHERE t.session=? ORDER BY f.id", (sid,))]
+            facts = [
+                dict(r)
+                for r in store.db.execute(
+                    "SELECT f.* FROM facts f JOIN turns t ON t.id=f.turn WHERE t.session=? ORDER BY f.id", (sid,)
+                )
+            ]
             sources = store.fact_source_ids(f["id"] for f in facts)
             speakers = {t["id"]: t["speaker"] for t in turns}
             done = store.get_meta(f"extracted:{sid}")
             processed = [t["id"] for t in turns if done is not None and t["idx"] <= int(done)]
             summary = summaries.get(sid)
             yield {
-                "format_version": VERSION, "session": sid, "started_at": session["started_at"],
+                "format_version": VERSION,
+                "session": sid,
+                "started_at": session["started_at"],
                 "summary": summary["text"] if summary else None,
                 "summary_meta": {k: summary[k] for k in ("method", "at")} if summary else None,
                 "extracted_source_id": processed[-1] if processed else None,
-                "messages": [{"source_id": t["id"], "id": t["ref"], "speaker": t["speaker"],
-                              "role": t["role"], "text": t["text"], "at": t["at"],
-                              "expires": t.get("expires")} for t in turns],
-                "memories": [{"id": f["id"], "anchor_source_id": f["turn"],
-                              "source_turn_ids": sources[f["id"]], "kind": f["kind"],
-                              "subject": f["subject"], "text": f["statement"], "at": f["at"],
-                              "slot": f.get("slot"), "source": f.get("source", "rule"),
-                              "owner": f.get("owner", speakers[f["turn"]].lower())} for f in facts],
+                "messages": [
+                    {
+                        "source_id": t["id"],
+                        "id": t["ref"],
+                        "speaker": t["speaker"],
+                        "role": t["role"],
+                        "text": t["text"],
+                        "at": t["at"],
+                        "expires": t.get("expires"),
+                    }
+                    for t in turns
+                ],
+                "memories": [
+                    {
+                        "id": f["id"],
+                        "anchor_source_id": f["turn"],
+                        "source_turn_ids": sources[f["id"]],
+                        "kind": f["kind"],
+                        "subject": f["subject"],
+                        "text": f["statement"],
+                        "at": f["at"],
+                        "slot": f.get("slot"),
+                        "source": f.get("source", "rule"),
+                        "owner": f.get("owner", speakers[f["turn"]].lower()),
+                    }
+                    for f in facts
+                ],
             }
 
 
@@ -73,8 +99,9 @@ def restore(store, rows: Iterable[Mapping]) -> dict:
             messages = row["messages"]
             if any(not isinstance(m, Mapping) for m in messages):
                 raise ConversationError("messages must be objects")
-            added += store.add(session, messages, session_at=row.get("started_at"),
-                               extract_profile=version == 1)["added"]
+            added += store.add(session, messages, session_at=row.get("started_at"), extract_profile=version == 1)[
+                "added"
+            ]
             local = [dict(r) for r in store.db.execute("SELECT * FROM turns WHERE session=? ORDER BY idx", (session,))]
             if version == 1:
                 if row.get("summary") and len(local) == len(messages):
@@ -89,15 +116,21 @@ def restore(store, rows: Iterable[Mapping]) -> dict:
                 if not _integer(source_id) or source_id in mapping:
                     raise ConversationError("messages require distinct positive source_id values")
                 ref = str(message["id"])[:200] if message.get("id") not in (None, "") else None
-                speaker = str(message.get("speaker") or message.get("name") or message.get("role") or "user") \
-                    .strip()[:120]
+                speaker = str(message.get("speaker") or message.get("name") or message.get("role") or "user").strip()[
+                    :120
+                ]
                 at = _iso(_moment(message.get("at") or message.get("timestamp") or started))
                 text = _clean(message.get("text", message.get("content", "")))
                 role = str(message.get("role") or "user").strip().lower()
                 expires = _iso(_moment(message.get("expires")))
                 turn = by_ref.get(ref) if ref else by_content.get((speaker, at, text))
-                if turn is None or (turn["speaker"], turn["at"], turn["text"], turn["role"], turn["expires"]) \
-                        != (speaker, at, text, role, expires):
+                if turn is None or (turn["speaker"], turn["at"], turn["text"], turn["role"], turn["expires"]) != (
+                    speaker,
+                    at,
+                    text,
+                    role,
+                    expires,
+                ):
                     raise ConversationError("archive message conflicts with an existing message id")
                 if turn["id"] in seen_local_ids:
                     raise ConversationError("archive source ids must refer to distinct messages")
@@ -122,8 +155,9 @@ def restore(store, rows: Iterable[Mapping]) -> dict:
                 meta = row.get("summary_meta") or {}
                 if not isinstance(meta, Mapping):
                     raise ConversationError("summary_meta must be an object")
-                summaries.append((session, str(row["summary"]), str(meta.get("method") or "imported"),
-                                  _iso(_moment(meta.get("at")))))
+                summaries.append(
+                    (session, str(row["summary"]), str(meta.get("method") or "imported"), _iso(_moment(meta.get("at"))))
+                )
 
         # Source archive ids specify insertion order across sessions, including
         # facts extracted later from older messages. Local ids may differ.
@@ -134,9 +168,13 @@ def restore(store, rows: Iterable[Mapping]) -> dict:
             archive_ids.add(archive_id)
             raw_sources = fact.get("source_turn_ids")
             anchor = fact.get("anchor_source_id")
-            if not isinstance(raw_sources, list) or not raw_sources \
-                    or any(not _integer(t) or t not in mapping for t in raw_sources) \
-                    or not _integer(anchor) or anchor not in raw_sources:
+            if (
+                not isinstance(raw_sources, list)
+                or not raw_sources
+                or any(not _integer(t) or t not in mapping for t in raw_sources)
+                or not _integer(anchor)
+                or anchor not in raw_sources
+            ):
                 raise ConversationError("memory sources and anchor must cite messages in their session")
             source_ids = {mapping[t] for t in raw_sources}
             turn = mapping[anchor]
@@ -149,10 +187,15 @@ def restore(store, rows: Iterable[Mapping]) -> dict:
             subject = _clean(fact.get("subject") or profile.subject_of(text))
             source = str(fact.get("source") or "imported")
             at = _iso(_moment(fact.get("at")))
-            matches = [r[0] for r in store.db.execute(
-                "SELECT id FROM facts WHERE turn=? AND kind=? AND subject=? AND owner=? "
-                "AND statement_hash=? AND at IS ? AND slot IS ? AND source=? ORDER BY id",
-                (turn, kind, subject, owner, fact_hash(text), at, slot, source)) if r[0] not in used]
+            matches = [
+                r[0]
+                for r in store.db.execute(
+                    "SELECT id FROM facts WHERE turn=? AND kind=? AND subject=? AND owner=? "
+                    "AND statement_hash=? AND at IS ? AND slot IS ? AND source=? ORDER BY id",
+                    (turn, kind, subject, owner, fact_hash(text), at, slot, source),
+                )
+                if r[0] not in used
+            ]
             evidence = store.fact_source_ids(matches)
             fid = next((f for f in matches if set(evidence.get(f, [])) == source_ids), None)
             if fid is None:

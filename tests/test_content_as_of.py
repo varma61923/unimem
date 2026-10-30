@@ -9,9 +9,14 @@ from unimem import lesson_io, templates
 
 def _lesson_fm(applies_when="original condition") -> dict:
     return templates.lesson_frontmatter(
-        slug="lesson_x", description="A test lesson.", agent_type="code",
-        domain="net", tags=["retry"], applies_when=applies_when,
-        do_not_apply_when="never", importance=3,
+        slug="lesson_x",
+        description="A test lesson.",
+        agent_type="code",
+        domain="net",
+        tags=["retry"],
+        applies_when=applies_when,
+        do_not_apply_when="never",
+        importance=3,
     )
 
 
@@ -39,15 +44,13 @@ class TestContentAsOf:
         import time
 
         fm = _lesson_fm("original condition")
-        lesson_io.write_lesson(path, fm, "## Rule\nOriginal.\n", root=root,
-                               actor="a", reason="first")
+        lesson_io.write_lesson(path, fm, "## Rule\nOriginal.\n", root=root, actor="a", reason="first")
         time.sleep(0.01)
         midpoint = _now_iso()
         time.sleep(0.01)
 
         fm["applies_when"] = "tightened condition"
-        lesson_io.write_lesson(path, fm, "## Rule\nTightened.\n", root=root,
-                               actor="a", reason="second")
+        lesson_io.write_lesson(path, fm, "## Rule\nTightened.\n", root=root, actor="a", reason="second")
 
         got_fm, got_body = lesson_io.content_as_of(root, "lesson_x", midpoint)
         assert got_fm["applies_when"] == "original condition"
@@ -98,9 +101,7 @@ class TestContentAsOf:
         with pytest.raises(lesson_io.ContentAsOfError):
             lesson_io.content_as_of(root, "lesson_x", "2000-01-01")
 
-    def test_a_write_that_changes_nothing_does_not_create_a_reconstructable_boundary(
-        self, root, path
-    ):
+    def test_a_write_that_changes_nothing_does_not_create_a_reconstructable_boundary(self, root, path):
         fm = _lesson_fm()
         lesson_io.write_lesson(path, fm, "## Rule\nOriginal.\n", root=root)
         fm["status"] = "active"
@@ -123,10 +124,25 @@ class TestLessonHistoryAsOfCli:
 
         store = str(tmp_path)
         assert main(["init", "--agent-type", "code", "--dest", store]) == 0
-        assert main([
-            "lesson", "new", "--slug", "my_rule", "--description", "d",
-            "--domain", "net", "--applies-when", "when X", "--dest", store,
-        ]) == 0
+        assert (
+            main(
+                [
+                    "lesson",
+                    "new",
+                    "--slug",
+                    "my_rule",
+                    "--description",
+                    "d",
+                    "--domain",
+                    "net",
+                    "--applies-when",
+                    "when X",
+                    "--dest",
+                    store,
+                ]
+            )
+            == 0
+        )
         capsys.readouterr()
 
         rc = main(["lesson", "history", "my_rule", "--as-of", "2099-01-01", "--dest", store])
@@ -139,10 +155,20 @@ class TestLessonHistoryAsOfCli:
 
         store = str(tmp_path)
         main(["init", "--agent-type", "code", "--dest", store])
-        main([
-            "lesson", "new", "--slug", "my_rule", "--description", "d",
-            "--domain", "net", "--dest", store,
-        ])
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "my_rule",
+                "--description",
+                "d",
+                "--domain",
+                "net",
+                "--dest",
+                store,
+            ]
+        )
         capsys.readouterr()
 
         rc = main(["lesson", "history", "my_rule", "--as-of", "garbage", "--dest", store])
@@ -154,10 +180,20 @@ class TestLessonHistoryAsOfCli:
 
         store = str(tmp_path)
         main(["init", "--agent-type", "code", "--dest", store])
-        main([
-            "lesson", "new", "--slug", "my_rule", "--description", "d",
-            "--domain", "net", "--dest", store,
-        ])
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "my_rule",
+                "--description",
+                "d",
+                "--domain",
+                "net",
+                "--dest",
+                store,
+            ]
+        )
         capsys.readouterr()
 
         rc = main(["lesson", "history", "my_rule", "--dest", store])

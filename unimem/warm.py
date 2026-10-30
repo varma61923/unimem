@@ -1,4 +1,5 @@
 """Keep the semantic retriever loaded between `unimem query` calls."""
+
 from __future__ import annotations
 
 import contextlib
@@ -11,6 +12,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 
@@ -44,8 +46,7 @@ def available() -> bool:
 
 def enabled(relative: str) -> bool:
     """Whether a call to the reference script `relative` may use a worker."""
-    return os.path.normpath(relative) in (_QUERY_SCRIPT, _BUILD_SCRIPT) and (
-        _LOCAL is not None or available())
+    return os.path.normpath(relative) in (_QUERY_SCRIPT, _BUILD_SCRIPT) and (_LOCAL is not None or available())
 
 
 def worker_script(relative: str, script: str) -> str:
@@ -60,7 +61,7 @@ def packaged_query_script() -> str:
 
 def _idle_seconds() -> float:
     try:
-        value = float(_configuration_getenv("UNIMEM_WARM_IDLE", DEFAULT_IDLE_SECONDS))
+        value = float(_configuration_getenv("UNIMEM_WARM_IDLE", str(DEFAULT_IDLE_SECONDS)))
     except ValueError:
         return DEFAULT_IDLE_SECONDS
     return value if value > 0 else DEFAULT_IDLE_SECONDS
@@ -111,9 +112,14 @@ def socket_path(script: str) -> str | None:
     if directory is None:
         return None
     try:
-        key = "|".join([
-            str(PROTOCOL), os.path.realpath(sys.executable), _fingerprint(script), _package_fingerprint(),
-        ])
+        key = "|".join(
+            [
+                str(PROTOCOL),
+                os.path.realpath(sys.executable),
+                _fingerprint(script),
+                _package_fingerprint(),
+            ]
+        )
     except OSError:
         return None
     name = hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
@@ -201,13 +207,32 @@ def _spawn(script: str, path: str, root: str | None, env: dict) -> bool:
     if root:
         cmd.extend(["--warm-root", root])
     try:
-        subprocess.Popen(
-            cmd, env=env, cwd=os.path.dirname(path),
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True, close_fds=True,
+        process = subprocess.Popen(
+            cmd,
+            env=env,
+            cwd=os.path.dirname(path),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
         )
     except OSError:
         return False
+    try:
+        # The worker intentionally outlives this call. Retain its Popen owner
+        # until exit so long-lived callers reap it instead of leaking zombies.
+        threading.Thread(target=process.wait, name="unimem-warm-reaper", daemon=True).start()
+    except BaseException as error:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        if isinstance(error, RuntimeError):
+            return False
+        raise
     return True
 
 
@@ -228,21 +253,32 @@ def _call(script: str, request: dict, root: str | None, env: dict, valid) -> dic
 
 
 def run(
-    script: str, argv: list[str], root: str, env: dict, *, build: bool = False,
+    script: str,
+    argv: list[str],
+    root: str,
+    env: dict,
+    *,
+    build: bool = False,
 ) -> tuple[int, str, str] | None:
     if not os.path.isfile(script):
         return None
     if _LOCAL is not None:
         if os.path.realpath(script) != os.path.realpath(_LOCAL.path):
             return None
-        reply = _LOCAL.build(argv, os.path.abspath(root)) if build else _LOCAL.answer(argv, os.path.abspath(root))
-        return reply["rc"], reply["stdout"], reply["stderr"]
+        local_reply = _LOCAL.build(argv, os.path.abspath(root)) if build else _LOCAL.answer(argv, os.path.abspath(root))
+        return local_reply["rc"], local_reply["stdout"], local_reply["stderr"]
     request = {"protocol": PROTOCOL, "argv": list(argv), "root": os.path.abspath(root)}
     if build:
         request["op"] = "build"
-    reply = _call(script, request, root, env, lambda r: (
-        isinstance(r.get("rc"), int) and isinstance(r.get("stdout"), str) and isinstance(r.get("stderr"), str)
-    ))
+    reply = _call(
+        script,
+        request,
+        root,
+        env,
+        lambda r: (
+            isinstance(r.get("rc"), int) and isinstance(r.get("stdout"), str) and isinstance(r.get("stderr"), str)
+        ),
+    )
     if reply is None:
         return None
     return reply["rc"], reply["stdout"], reply["stderr"]
@@ -265,9 +301,15 @@ def run_cli(argv: list[str]) -> tuple[int, str, str] | None:
     spawn_env = dict(env)
     spawn_env["PYTHONUTF8"] = "1"
     spawn_env["PYTHONSAFEPATH"] = "1"
-    reply = _call(packaged_query_script(), request, None, spawn_env, lambda r: (
-        isinstance(r.get("rc"), int) and isinstance(r.get("stdout"), str) and isinstance(r.get("stderr"), str)
-    ))
+    reply = _call(
+        packaged_query_script(),
+        request,
+        None,
+        spawn_env,
+        lambda r: (
+            isinstance(r.get("rc"), int) and isinstance(r.get("stdout"), str) and isinstance(r.get("stderr"), str)
+        ),
+    )
     if reply is None:
         return None
     return reply["rc"], reply["stdout"], reply["stderr"]
@@ -280,10 +322,17 @@ def rerank_scores(mode: str, pairs: list[tuple[str, str]]) -> list[float] | None
     env["PYTHONUTF8"] = "1"
     env["PYTHONSAFEPATH"] = "1"
     request = {"protocol": PROTOCOL, "op": "rerank", "mode": mode, "pairs": [list(p) for p in pairs]}
-    reply = _call(packaged_query_script(), request, None, env, lambda r: (
-        isinstance(r.get("scores"), list) and len(r["scores"]) == len(pairs)
-        and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in r["scores"])
-    ))
+    reply = _call(
+        packaged_query_script(),
+        request,
+        None,
+        env,
+        lambda r: (
+            isinstance(r.get("scores"), list)
+            and len(r["scores"]) == len(pairs)
+            and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in r["scores"])
+        ),
+    )
     return None if reply is None else [float(x) for x in reply["scores"]]
 
 
@@ -294,8 +343,10 @@ def status(script: str) -> tuple[bool, str]:
             return True, "not available on this platform; each semantic query loads the model"
         return True, "off (UNIMEM_WARM=0); each semantic query loads the model"
     if runtime_dir() is None:
-        return False, ("off: no private runtime directory (XDG_RUNTIME_DIR or %s must be owned "
-                       "by you, mode 0700); each semantic query loads the model" % tempfile.gettempdir())
+        return False, (
+            "off: no private runtime directory (XDG_RUNTIME_DIR or %s must be owned "
+            "by you, mode 0700); each semantic query loads the model" % tempfile.gettempdir()
+        )
     path = socket_path(script)
     if path is None:
         return False, "off: the runtime directory path is too long for a Unix socket"
@@ -329,6 +380,8 @@ class _Script:
         self.fingerprint = _fingerprint(script)
         self.package = _package_fingerprint()
         spec = importlib.util.spec_from_file_location("unimem_warm_query", script)
+        if spec is None or spec.loader is None:
+            raise ImportError("warm query script has no Python module loader")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         self.module = module
@@ -361,8 +414,8 @@ class _Script:
                 self._indexes[key] = index
             return self._indexes[key]
 
-        module.load_model = cached_model
-        module.load_index = cached_index
+        setattr(module, "load_model", cached_model)
+        setattr(module, "load_index", cached_index)
 
     def changed(self) -> bool:
         try:
@@ -412,6 +465,7 @@ class _Script:
             module._load_frontmatter = memoised
             real = module.SentenceTransformer
             if real is not None:
+
                 def shared(model_name, *args, **kwargs):
                     if model_name not in self._models:
                         self._models[model_name] = real(model_name, *args, **kwargs)
@@ -424,16 +478,16 @@ class _Script:
     def build(self, argv: list[str], root: str) -> dict:
         """What `python build_index.py *argv` with UNIMEM_ROOT=root would print."""
         module = self.builder()
-        module.INDEX_PATH = os.path.join(root, "memory", "attention", "index.npz")
-        module.LESSONS_DIR = os.path.join(root, "memory", "lessons")
+        setattr(module, "INDEX_PATH", os.path.join(root, "memory", "attention", "index.npz"))
+        setattr(module, "LESSONS_DIR", os.path.join(root, "memory", "lessons"))
         return self._main(module, module.__file__, argv)
 
     def answer(self, argv: list[str], root: str) -> dict:
         """What `python query.py *argv` with UNIMEM_ROOT=root would print."""
         module = self.module
-        module.INDEX_PATH = os.path.join(root, "memory", "attention", "index.npz")
-        module.LESSONS_DIR = os.path.join(root, "memory", "lessons")
-        module.TELEMETRY_PATH = os.path.join(root, "memory", "alpha_telemetry.jsonl")
+        setattr(module, "INDEX_PATH", os.path.join(root, "memory", "attention", "index.npz"))
+        setattr(module, "LESSONS_DIR", os.path.join(root, "memory", "lessons"))
+        setattr(module, "TELEMETRY_PATH", os.path.join(root, "memory", "alpha_telemetry.jsonl"))
         return self._main(module, self.path, argv)
 
     def cli(self, argv: list[str], cwd: str, env: dict) -> dict:
@@ -471,8 +525,10 @@ class _Script:
         elif not isinstance(rc, int):
             rc = _exit_code(rc, err)
         return {
-            "protocol": PROTOCOL, "rc": rc,
-            "stdout": _clean(out.getvalue()), "stderr": _clean(err.getvalue()),
+            "protocol": PROTOCOL,
+            "rc": rc,
+            "stdout": _clean(out.getvalue()),
+            "stderr": _clean(err.getvalue()),
         }
 
 
@@ -560,7 +616,7 @@ def _serve_locally(loaded: _Script) -> None:
     with contextlib.suppress(Exception):
         import importlib
 
-        importlib.import_module("unimem.warm")._LOCAL = loaded
+        setattr(importlib.import_module("unimem.warm"), "_LOCAL", loaded)
 
 
 def _replaced(path: str, inode: int) -> bool:
@@ -582,9 +638,12 @@ def _handle(conn: socket.socket, loaded: _Script) -> None:
         if request.get("op") == "cli":
             argv, cwd, env = request.get("argv"), request.get("cwd"), request.get("env")
             if (
-                not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv)
+                not isinstance(argv, list)
+                or not argv
+                or not all(isinstance(a, str) for a in argv)
                 or argv[0] not in CLI_COMMANDS
-                or not isinstance(cwd, str) or not os.path.isabs(cwd)
+                or not isinstance(cwd, str)
+                or not os.path.isabs(cwd)
                 or not isinstance(env, dict)
                 or not all(isinstance(k, str) and isinstance(v, str) for k, v in env.items())
             ):
@@ -595,8 +654,10 @@ def _handle(conn: socket.socket, loaded: _Script) -> None:
                 reply = {"protocol": PROTOCOL, "error": "%s: %s" % (type(exc).__name__, exc)}
         elif request.get("op", "query") == "rerank":
             mode, pairs = request.get("mode"), request.get("pairs")
-            if not isinstance(mode, str) or not isinstance(pairs, list) or not all(
-                isinstance(p, list) and len(p) == 2 and all(isinstance(t, str) for t in p) for p in pairs
+            if (
+                not isinstance(mode, str)
+                or not isinstance(pairs, list)
+                or not all(isinstance(p, list) and len(p) == 2 and all(isinstance(t, str) for t in p) for p in pairs)
             ):
                 return
             try:
@@ -606,8 +667,10 @@ def _handle(conn: socket.socket, loaded: _Script) -> None:
         else:
             argv, root = request.get("argv"), request.get("root")
             if (
-                not isinstance(argv, list) or not all(isinstance(a, str) for a in argv)
-                or not isinstance(root, str) or not os.path.isabs(root)
+                not isinstance(argv, list)
+                or not all(isinstance(a, str) for a in argv)
+                or not isinstance(root, str)
+                or not os.path.isabs(root)
             ):
                 return
             if request.get("op", "query") == "build":

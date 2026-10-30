@@ -30,7 +30,8 @@ class LocalEmbedder:
         provider = embeddings.provider(tag, local_files_only=True)
         if provider.spec.provider not in ("local", "fastembed"):
             raise embeddings.EmbeddingError(
-                "hosted providers require a server-supplied revision-bound projection factory")
+                "hosted providers require a server-supplied revision-bound projection factory"
+            )
         model = await asyncio.to_thread(provider._load)
         if provider.spec.provider == "fastembed":
             revision, dimension = await asyncio.to_thread(provider.projection_identity)
@@ -45,11 +46,11 @@ class LocalEmbedder:
                     break
             if revision is None:
                 raise embeddings.EmbeddingError(
-                    "local embedding model has no immutable revision; supply a revision-bound factory")
+                    "local embedding model has no immutable revision; supply a revision-bound factory"
+                )
             dimension = model.get_sentence_embedding_dimension()
             model_identity = provider.spec.tag + ":hf-" + revision + ":adapter-v1"
-        identity = ProjectionIdentity(
-            "memory-records", model_identity, dimension)
+        identity = ProjectionIdentity("memory-records", model_identity, dimension)
         return cls(provider, identity)
 
     async def encode_documents(self, texts):
@@ -92,8 +93,9 @@ class ProjectionFactory:
         try:
             # Check infrastructure before loading/downloading any optional weights.
             async with session_scope(self.factory) as session:
-                installed = (await session.execute(text(
-                    "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')"))).scalar_one()
+                installed = (
+                    await session.execute(text("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')"))
+                ).scalar_one()
             if not installed:
                 raise embeddings.EmbeddingError("pgvector extension is unavailable")
             tag = configuration.getenv("UNIMEM_FACT_EMBEDDER", "bge-small")
@@ -106,9 +108,17 @@ class ProjectionFactory:
             raise
 
     async def _open(self, org, identity):
-        return await PostgresVectorIndex.open(self.database_url.replace("postgresql+asyncpg://", "postgresql://", 1),
-            tenant=org, namespace=identity.namespace, model=identity.model, dimension=identity.dimension,
-            min_size=0, max_size=2, approximate=True, ef_search=64)
+        return await PostgresVectorIndex.open(
+            self.database_url.replace("postgresql+asyncpg://", "postgresql://", 1),
+            tenant=org,
+            namespace=identity.namespace,
+            model=identity.model,
+            dimension=identity.dimension,
+            min_size=0,
+            max_size=2,
+            approximate=True,
+            ef_search=64,
+        )
 
     @asynccontextmanager
     async def acquire(self, org):
@@ -145,10 +155,14 @@ class ProjectionFactory:
         perform the same erasure when it next becomes reachable.
         """
         async with session_scope(self.factory, org_id=org) as session:
-            await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:owner, 61923))"),
-                                  {"owner": "unimem-memory:" + org})
-            states = (await session.execute(select(MemoryProjectionState).where(
-                MemoryProjectionState.org_id == org))).scalars().all()
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:owner, 61923))"), {"owner": "unimem-memory:" + org}
+            )
+            states = (
+                (await session.execute(select(MemoryProjectionState).where(MemoryProjectionState.org_id == org)))
+                .scalars()
+                .all()
+            )
             clock = await session.get(MemoryChangeClock, org)
             if clock is None:
                 return {"completed": 0, "pending": False}

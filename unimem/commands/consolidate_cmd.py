@@ -28,41 +28,63 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "near-duplicate atomic facts.",
     )
     p.add_argument(
-        "target", nargs="?", choices=("lessons", "facts"), default="lessons",
+        "target",
+        nargs="?",
+        choices=("lessons", "facts"),
+        default="lessons",
         help="lessons (default): fusion/contradiction report; facts: near-duplicate fact clusters.",
     )
     facts = p.add_argument_group("facts", "options for `consolidate facts`")
-    facts.add_argument("--threshold", type=float, default=None,
-                       help="Stemmed token-set Jaccard at or above which two facts are linked "
-                            "(default 0.5).")
-    facts.add_argument("--embedder", default=None,
-                       help="Also link facts whose embedding cosine reaches --embed-threshold; any "
-                            "unimem.embeddings tag (default: $UNIMEM_CONSOLIDATE_EMBEDDER, else off).")
+    facts.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Stemmed token-set Jaccard at or above which two facts are linked (default 0.5).",
+    )
+    facts.add_argument(
+        "--embedder",
+        default=None,
+        help="Also link facts whose embedding cosine reaches --embed-threshold; any "
+        "unimem.embeddings tag (default: $UNIMEM_CONSOLIDATE_EMBEDDER, else off).",
+    )
     facts.add_argument("--embed-threshold", type=float, default=None, help="Cosine threshold (default 0.9).")
     facts.add_argument("--scope", default="", help="Only facts visible in this scope.")
-    facts.add_argument("--summarize", choices=("extractive", "model", "none"), default="extractive",
-                       help="Cluster summary: extractive (default), model (the configured LLM) or none.")
-    facts.add_argument("--apply", action="store_true",
-                       help="Write one status=review proposal per cluster. Facts are never changed or deleted.")
-    p.add_argument(
-        "--redundancy-threshold", type=float, default=redundancy.DEFAULT_THRESHOLD,
-        help="Similarity (unimem/redundancy.py) at or above which two active "
-             "lessons are proposed as a fusion candidate. Same default this store's "
-             "injection budget uses (`unimem retrieval --redundancy-threshold`).",
+    facts.add_argument(
+        "--summarize",
+        choices=("extractive", "model", "none"),
+        default="extractive",
+        help="Cluster summary: extractive (default), model (the configured LLM) or none.",
+    )
+    facts.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write one status=review proposal per cluster. Facts are never changed or deleted.",
     )
     p.add_argument(
-        "--activation-overlap", type=float, default=reliability.DEFAULT_ACTIVATION_OVERLAP,
+        "--redundancy-threshold",
+        type=float,
+        default=redundancy.DEFAULT_THRESHOLD,
+        help="Similarity (unimem/redundancy.py) at or above which two active "
+        "lessons are proposed as a fusion candidate. Same default this store's "
+        "injection budget uses (`unimem retrieval --redundancy-threshold`).",
+    )
+    p.add_argument(
+        "--activation-overlap",
+        type=float,
+        default=reliability.DEFAULT_ACTIVATION_OVERLAP,
         help="Same flag `unimem reliability` exposes -- how similar two "
-             "activation conditions must be before a contradiction is possible.",
+        "activation conditions must be before a contradiction is possible.",
     )
     p.add_argument("--json", action="store_true")
     p.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Exit non-zero if any fusion, archive, or high-severity contradiction "
         "candidate exists. For a periodic corpus-hygiene check in CI.",
     )
     p.add_argument(
-        "--draft", action="store_true",
+        "--draft",
+        action="store_true",
         help="Ask a configured LLM (UNIMEM_LLM_API_KEY) to draft a merged lesson "
         "for each fusion pair and a split-by-condition lesson for each high-severity "
         "contradiction, written at status=review. The originals are never changed.",
@@ -107,9 +129,12 @@ def _draft_from_pair(root: str, by_slug: dict, a: str, b: str, kind: str) -> str
         ]
     draft = _llm_draft.try_draft(
         instruction=_MERGE if kind == "merge" else _SPLIT,
-        slug=slug, current_rule_text="(see the two lessons below)",
-        applies_when="(see the two lessons below)", do_not_apply_when="(see the two lessons below)",
-        evidence_lines=evidence_lines, allowed_evidence_ids={a, b},
+        slug=slug,
+        current_rule_text="(see the two lessons below)",
+        applies_when="(see the two lessons below)",
+        do_not_apply_when="(see the two lessons below)",
+        evidence_lines=evidence_lines,
+        allowed_evidence_ids={a, b},
     )
     if draft is None:
         return None
@@ -130,7 +155,9 @@ def _draft_from_pair(root: str, by_slug: dict, a: str, b: str, kind: str) -> str
     )
     fm["merges" if kind == "merge" else "reconciles"] = [a, b]
     fm["llm_draft"] = dict(
-        draft.provenance, cited_evidence=draft.evidence, unverifiable_evidence=draft.unverifiable_evidence,
+        draft.provenance,
+        cited_evidence=draft.evidence,
+        unverifiable_evidence=draft.unverifiable_evidence,
     )
     body = (
         f"## Rule\n{draft.rule}\n\n"
@@ -139,7 +166,11 @@ def _draft_from_pair(root: str, by_slug: dict, a: str, b: str, kind: str) -> str
         "## Counter-examples\nTODO: cases where the rule does NOT apply.\n"
     )
     lesson_io.write_lesson(
-        out_path, fm, body, root=root, actor="consolidate",
+        out_path,
+        fm,
+        body,
+        root=root,
+        actor="consolidate",
         reason=f"consolidate --draft {kind} of {a} and {b}",
     )
     return slug
@@ -169,7 +200,8 @@ def run_facts(args: argparse.Namespace) -> int:
             threshold=fc.DEFAULT_THRESHOLD if args.threshold is None else args.threshold,
             embedder=args.embedder,
             embed_threshold=fc.DEFAULT_EMBED_THRESHOLD if args.embed_threshold is None else args.embed_threshold,
-            scope=args.scope, summarize=args.summarize,
+            scope=args.scope,
+            summarize=args.summarize,
         )
         if args.apply:
             report["applied"] = fc.apply_clusters(root, report)
@@ -206,12 +238,17 @@ def run(args: argparse.Namespace) -> int:
     )
 
     if args.json:
-        print(json.dumps({
-            "n_active": report.n_active,
-            "fuse": [dataclasses.asdict(p) for p in report.fuse],
-            "contradict": [dataclasses.asdict(c) for c in report.contradict],
-            "archive": list(report.archive),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "n_active": report.n_active,
+                    "fuse": [dataclasses.asdict(p) for p in report.fuse],
+                    "contradict": [dataclasses.asdict(c) for c in report.contradict],
+                    "archive": list(report.archive),
+                },
+                indent=2,
+            )
+        )
     else:
         print(consolidate.render(report))
 

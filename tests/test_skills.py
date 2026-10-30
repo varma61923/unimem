@@ -7,8 +7,14 @@ import pytest
 from unimem import frontmatter, skills
 
 
-def _write_skill(skills_dir: str, name: str, description: str, body: str = "Do the thing.",
-                 extra: dict | None = None, flat: bool = False) -> str:
+def _write_skill(
+    skills_dir: str,
+    name: str,
+    description: str,
+    body: str = "Do the thing.",
+    extra: dict | None = None,
+    flat: bool = False,
+) -> str:
     fm: dict = {"name": name, "description": description}
     if extra:
         fm.update(extra)
@@ -40,12 +46,10 @@ def isolated_user(tmp_path, monkeypatch):
 
 class TestFrontmatterValidation:
     def test_valid_frontmatter_has_no_errors(self):
-        assert skills.validate_skill_frontmatter(
-            {"name": "my-skill", "description": "Does X. Use when Y."}, "p") == []
+        assert skills.validate_skill_frontmatter({"name": "my-skill", "description": "Does X. Use when Y."}, "p") == []
 
     def test_optional_fields_are_accepted(self):
-        fm = {"name": "s", "description": "d",
-              "when_to_use": "when the task matches", "user_invocable": True}
+        fm = {"name": "s", "description": "d", "when_to_use": "when the task matches", "user_invocable": True}
         assert skills.validate_skill_frontmatter(fm, "p") == []
 
     def test_missing_name_is_rejected(self):
@@ -57,34 +61,29 @@ class TestFrontmatterValidation:
         assert any("description" in e for e in errors)
 
     def test_non_boolean_user_invocable_is_rejected(self):
-        errors = skills.validate_skill_frontmatter(
-            {"name": "s", "description": "d", "user_invocable": "yes"}, "p")
+        errors = skills.validate_skill_frontmatter({"name": "s", "description": "d", "user_invocable": "yes"}, "p")
         assert any("user_invocable" in e for e in errors)
 
     def test_non_string_when_to_use_is_rejected(self):
-        errors = skills.validate_skill_frontmatter(
-            {"name": "s", "description": "d", "when_to_use": 42}, "p")
+        errors = skills.validate_skill_frontmatter({"name": "s", "description": "d", "when_to_use": 42}, "p")
         assert any("when_to_use" in e for e in errors)
 
     def test_bad_slug_is_rejected(self):
-        errors = skills.validate_skill_frontmatter(
-            {"name": "Not A Slug!", "description": "d"}, "p")
+        errors = skills.validate_skill_frontmatter({"name": "Not A Slug!", "description": "d"}, "p")
         assert any("name" in e for e in errors)
 
 
 class TestDiscoveryOrdering:
     def test_project_skill_is_discovered(self, tmp_path, isolated_user):
         root = str(tmp_path / "root")
-        _write_skill(os.path.join(root, "skills"), "deploy-check",
-                     "Check deploys. Use when releasing.")
+        _write_skill(os.path.join(root, "skills"), "deploy-check", "Check deploys. Use when releasing.")
         found = skills.discover(root, user_dir=isolated_user, include_bundled=False)
         assert [s.name for s in found] == ["deploy-check"]
         assert found[0].source == "project"
 
     def test_flat_skill_files_are_discovered(self, tmp_path, isolated_user):
         root = str(tmp_path / "root")
-        _write_skill(os.path.join(root, "skills"), "flat-one",
-                     "Flat skill.", flat=True)
+        _write_skill(os.path.join(root, "skills"), "flat-one", "Flat skill.", flat=True)
         found = skills.discover(root, user_dir=isolated_user, include_bundled=False)
         assert any(s.name == "flat-one" for s in found)
 
@@ -94,12 +93,13 @@ class TestDiscoveryOrdering:
         _write_skill(sdir, "good-skill", "Good. Use when testing.")
         bad_dir = os.path.join(sdir, "bad-skill")
         os.makedirs(bad_dir, exist_ok=True)
-        _write_raw(os.path.join(bad_dir, "SKILL.md"),
-                   "---\nname: bad-skill\n---\n\nBody.\n")
+        _write_raw(os.path.join(bad_dir, "SKILL.md"), "---\nname: bad-skill\n---\n\nBody.\n")
         wrong_type_dir = os.path.join(sdir, "wrong-type")
         os.makedirs(wrong_type_dir, exist_ok=True)
-        _write_raw(os.path.join(wrong_type_dir, "SKILL.md"),
-                   "---\nname: wrong-type\ndescription: d\nuser_invocable: yes\n---\n\nBody.\n")
+        _write_raw(
+            os.path.join(wrong_type_dir, "SKILL.md"),
+            "---\nname: wrong-type\ndescription: d\nuser_invocable: yes\n---\n\nBody.\n",
+        )
         found = skills.discover(root, user_dir=isolated_user, include_bundled=False)
         names = [s.name for s in found]
         assert "good-skill" in names
@@ -113,8 +113,9 @@ class TestDiscoveryOrdering:
         assert packs, "expected bundled kb_packs for the ordering test"
         bundled_name = sorted(p.name for p in packs)[0]
         root = str(tmp_path / "root")
-        _write_skill(os.path.join(root, "skills"), bundled_name,
-                     "Project override description. Use when testing overrides.")
+        _write_skill(
+            os.path.join(root, "skills"), bundled_name, "Project override description. Use when testing overrides."
+        )
         found = skills.discover(root, user_dir=isolated_user, include_bundled=True)
         matches = [s for s in found if s.name == bundled_name]
         assert len(matches) == 1
@@ -141,8 +142,9 @@ class TestAgentLoopInjection:
         root = str(tmp_path / "root")
         os.makedirs(os.path.join(root, "memory", "lessons"), exist_ok=True)
         secret_body = "UNIQUE-BODY-MARKER-987654321"
-        _write_skill(os.path.join(root, "skills"), "pay-check",
-                     "Check payments. Use when handling webhooks.", body=secret_body)
+        _write_skill(
+            os.path.join(root, "skills"), "pay-check", "Check payments. Use when handling webhooks.", body=secret_body
+        )
         ctx = _assemble_context(root, "Handle a webhook redelivery")
         assert "pay-check" in ctx
         assert "Check payments" in ctx
@@ -159,9 +161,7 @@ class TestAgentLoopInjection:
     def test_skill_body_loads_on_demand(self, tmp_path, isolated_user):
         root = str(tmp_path / "root")
         body = "Step one. Step two."
-        _write_skill(os.path.join(root, "skills"), "on-demand",
-                     "On demand skill.", body=body)
-        skill = skills.get_skill(root, "on-demand", user_dir=isolated_user,
-                                 include_bundled=False)
+        _write_skill(os.path.join(root, "skills"), "on-demand", "On demand skill.", body=body)
+        skill = skills.get_skill(root, "on-demand", user_dir=isolated_user, include_bundled=False)
         assert skill is not None
         assert body in skills.load_body(skill)

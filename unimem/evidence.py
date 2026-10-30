@@ -43,7 +43,7 @@ class Analysis:
     corrupt: int
     wanted_salt: str
     n_other_salt: int
-    report: object | None
+    report: integrity.IntegrityReport | None
     effects: list
 
 
@@ -111,8 +111,7 @@ def for_lessons(root: str, *, lesson_slugs: Collection[str] | None = None) -> di
         evidence = {
             "available": False,
             "reason": (
-                "The experiment is COMPROMISED, so no effects are shown. Call "
-                "`experiment_status` for what to fix."
+                "The experiment is COMPROMISED, so no effects are shown. Call `experiment_status` for what to fix."
             ),
             "measured_at": measured_at,
             "by_lesson": {},

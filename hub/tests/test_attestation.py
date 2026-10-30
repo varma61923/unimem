@@ -1,4 +1,5 @@
 """Hub attestation tests use real Postgres isolation and explicit test-only quotes."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -12,8 +13,11 @@ from unimem import frontier_protocol as fp
 
 pytestmark = pytest.mark.asyncio
 
-BUILD = {"backend": "simulated", "claims": {"test_build": "hub-integration-only"},
-         "description": "Explicit simulator fixture; no hardware claim"}
+BUILD = {
+    "backend": "simulated",
+    "claims": {"test_build": "hub-integration-only"},
+    "description": "Explicit simulator fixture; no hardware claim",
+}
 
 
 class FakeTenantKeyProvider:
@@ -22,7 +26,7 @@ class FakeTenantKeyProvider:
 
     def unwrap(self, tenant):
         self.calls.append(tenant)
-        return b"t"*32
+        return b"t" * 32
 
 
 async def test_kms_provider_binds_ciphertext_to_exact_authenticated_tenant_context():
@@ -34,14 +38,13 @@ async def test_kms_provider_binds_ciphertext_to_exact_authenticated_tenant_conte
 
         def decrypt(self, **request):
             self.calls.append(request)
-            return {"Plaintext": b"k"*32}
+            return {"Plaintext": b"k" * 32}
 
     client = KMS()
     tenants = {"org-a": {"key_id": "alias/a", "ciphertext": base64.b64encode(b"wrapped").decode()}}
     provider = kms.TenantKeyProvider(tenants, client=client)
-    assert provider.unwrap("org-a") == b"k"*32
-    assert client.calls[0]["EncryptionContext"] == {
-        "purpose": "unimem-attested-tenant-key-v1", "tenant": "org-a"}
+    assert provider.unwrap("org-a") == b"k" * 32
+    assert client.calls[0]["EncryptionContext"] == {"purpose": "unimem-attested-tenant-key-v1", "tenant": "org-a"}
     with pytest.raises(RuntimeError, match="not provisioned"):
         provider.unwrap("org-b")
 
@@ -77,10 +80,12 @@ def decrypt(envelope, value, private):
     from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
     shared = private.exchange(X25519PublicKey.from_public_bytes(bytes.fromhex(envelope["ephemeral_key"])))
-    wrapping = HKDF(algorithm=hashes.SHA256(), length=32, salt=bytes.fromhex(fp.digest(value)),
-                    info=b"unimem-attested-key-v1").derive(shared)
-    return AESGCM(wrapping).decrypt(bytes.fromhex(envelope["nonce"]), bytes.fromhex(envelope["ciphertext"]),
-                                  fp.wire(value))
+    wrapping = HKDF(
+        algorithm=hashes.SHA256(), length=32, salt=bytes.fromhex(fp.digest(value)), info=b"unimem-attested-key-v1"
+    ).derive(shared)
+    return AESGCM(wrapping).decrypt(
+        bytes.fromhex(envelope["nonce"]), bytes.fromhex(envelope["ciphertext"]), fp.wire(value)
+    )
 
 
 async def test_measurement_challenge_encrypted_release_replay_and_revocation(session_factory, config, worker):
@@ -91,8 +96,9 @@ async def test_measurement_challenge_encrypted_release_replay_and_revocation(ses
     async with _client(app) as client:
         assert (await client.post("/v1/attestation/measurements-list", json={})).status_code == 401
         headers = _key(api_key)
-        registered = await client.post("/v1/attestation/measurements-register", headers=headers,
-                                       json={"profile": BUILD})
+        registered = await client.post(
+            "/v1/attestation/measurements-register", headers=headers, json={"profile": BUILD}
+        )
         assert registered.status_code == 200, registered.text
         enrollment = registered.json()
         measurement = fp.digest(keys.profile(BUILD))
@@ -101,28 +107,50 @@ async def test_measurement_challenge_encrypted_release_replay_and_revocation(ses
         from hub.db import session_scope
 
         async with session_scope(session_factory, org_id=org) as session:
-            await enrolled(session, org, measurement, {"secret": cfg.ledger_signing_key,
-                                                       "algorithm": cfg.transparency_algorithm})
-        issued = await client.post("/v1/attestation/challenge", headers=headers, json={
-            "measurement": measurement, "worker_key": worker[1], "operation": "recall",
-            "payload_digest": "cd"*32})
+            await enrolled(
+                session, org, measurement, {"secret": cfg.ledger_signing_key, "algorithm": cfg.transparency_algorithm}
+            )
+        issued = await client.post(
+            "/v1/attestation/challenge",
+            headers=headers,
+            json={
+                "measurement": measurement,
+                "worker_key": worker[1],
+                "operation": "recall",
+                "payload_digest": "cd" * 32,
+            },
+        )
         assert issued.status_code == 200, issued.text
         request = issued.json()["request"]
         quote = verifier.quote(request, BUILD)
-        released = await client.post("/v1/attestation/key-release", headers=headers,
-                                     json={"request": request, "evidence": quote})
+        released = await client.post(
+            "/v1/attestation/key-release", headers=headers, json={"request": request, "evidence": quote}
+        )
         assert released.status_code == 200, released.text
-        assert decrypt(released.json()["envelope"], request, worker[0]) == b"t"*32
+        assert decrypt(released.json()["envelope"], request, worker[0]) == b"t" * 32
         assert released.json()["attestation"]["simulated"] is True
         assert provider.calls == [org]
-        assert (await client.post("/v1/attestation/key-release", headers=headers,
-                                  json={"request": request, "evidence": quote})).status_code == 403
-        revoked = await client.post("/v1/attestation/measurements-register", headers=headers,
-                                    json={"profile": BUILD, "revoke": True})
+        assert (
+            await client.post(
+                "/v1/attestation/key-release", headers=headers, json={"request": request, "evidence": quote}
+            )
+        ).status_code == 403
+        revoked = await client.post(
+            "/v1/attestation/measurements-register", headers=headers, json={"profile": BUILD, "revoke": True}
+        )
         assert revoked.status_code == 200 and revoked.json()["revoked"]
-        assert (await client.post("/v1/attestation/challenge", headers=headers, json={
-            "measurement": measurement, "worker_key": worker[1], "operation": "recall",
-            "payload_digest": "cd"*32})).status_code == 403
+        assert (
+            await client.post(
+                "/v1/attestation/challenge",
+                headers=headers,
+                json={
+                    "measurement": measurement,
+                    "worker_key": worker[1],
+                    "operation": "recall",
+                    "payload_digest": "cd" * 32,
+                },
+            )
+        ).status_code == 403
 
 
 async def test_tenant_rls_registration_and_challenges_cannot_cross_organizations(session_factory, config, worker):
@@ -134,18 +162,30 @@ async def test_tenant_rls_registration_and_challenges_cannot_cross_organizations
         headers_a, headers_b = _key(key_a), _key(key_b)
         await client.post("/v1/attestation/measurements-register", headers=headers_a, json={"profile": BUILD})
         measurement = fp.digest(keys.profile(BUILD))
-        value = (await client.post("/v1/attestation/challenge", headers=headers_a, json={
-            "measurement": measurement, "worker_key": worker[1], "operation": "recall",
-            "payload_digest": "cd"*32})).json()["request"]
+        value = (
+            await client.post(
+                "/v1/attestation/challenge",
+                headers=headers_a,
+                json={
+                    "measurement": measurement,
+                    "worker_key": worker[1],
+                    "operation": "recall",
+                    "payload_digest": "cd" * 32,
+                },
+            )
+        ).json()["request"]
         quote = verifier.quote(value, BUILD)
         forged = {**value, "tenant": other, "operation": "join", "participants": sorted([org, other])}
-        response = await client.post("/v1/attestation/key-release", headers=headers_b,
-                                     json={"request": forged, "evidence": quote})
+        response = await client.post(
+            "/v1/attestation/key-release", headers=headers_b, json={"request": forged, "evidence": quote}
+        )
         assert response.status_code == 403
-        assert (await client.post("/v1/attestation/measurements-list", headers=headers_b, json={})
-                ).json()["measurements"] == []
-        assert (await client.post("/v1/attestation/measurements-list", headers=headers_a, json={})
-                ).json()["measurements"][0]["measurement"] == measurement
+        assert (await client.post("/v1/attestation/measurements-list", headers=headers_b, json={})).json()[
+            "measurements"
+        ] == []
+        assert (await client.post("/v1/attestation/measurements-list", headers=headers_a, json={})).json()[
+            "measurements"
+        ][0]["measurement"] == measurement
         from hub import scopes
 
         _, reader = await _org_with_key(session_factory, name="attest-reader", scopes=[scopes.SCOPE_READ])

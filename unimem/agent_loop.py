@@ -1,4 +1,5 @@
 """A memory-governed agent loop: retrieve, act, record, and consolidate."""
+
 from __future__ import annotations
 
 import datetime
@@ -21,6 +22,7 @@ Executor = Callable[[str, list[dict[str, Any]]], tuple[str, list[dict[str, Any]]
 @dataclass
 class AgentTurn:
     """One step of a run."""
+
     turn_index: int
     role: str
     content: str
@@ -32,6 +34,7 @@ class AgentTurn:
 @dataclass
 class AgentRunResult:
     """The outcome of a run."""
+
     run_id: str
     prompt: str
     turns: list[AgentTurn]
@@ -56,8 +59,9 @@ def _relevant_lessons(root: str, task: str) -> list[tuple[str, str]]:
         lessons, term_cache = lesson_cache.load_active_with_terms(root, None, reader=frontmatter.read)
         lessons = lesson_cache.filter_eligible(lessons)
         config = retrieval_io.load_config(root)
-        ranked = retrieval.rank_lessons(task, lessons, top_k=MAX_LESSONS, floor=config.floor,
-                                        scorer=config.scorer, term_cache=term_cache)
+        ranked = retrieval.rank_lessons(
+            task, lessons, top_k=MAX_LESSONS, floor=config.floor, scorer=config.scorer, term_cache=term_cache
+        )
     except (OSError, ValueError, frontmatter.FrontmatterError):
         return []
     items = []
@@ -67,16 +71,21 @@ def _relevant_lessons(root: str, task: str) -> list[tuple[str, str]]:
         except (OSError, ValueError, frontmatter.FrontmatterError):
             continue
         if not lesson_cache.fresh_eligible(
-            ranked_lesson.path, fm, slug=ranked_lesson.slug, body=body, root=root,
+            ranked_lesson.path,
+            fm,
+            slug=ranked_lesson.slug,
+            body=body,
+            root=root,
         ):
             continue
         description = str(fm.get("description", ""))
-        labeled = memory_ifc.safe_label(root, {"id": ranked_lesson.slug, "text": description},
-                                        identity=ranked_lesson.slug)
-        display = (labeled.get("quoted_text", "") if labeled.get("presentation") == "quoted-data"
-                   else description)
-        items.append({"slug": ranked_lesson.slug, "description": display,
-                      "applies_when": str(fm.get("applies_when", ""))})
+        labeled = memory_ifc.safe_label(
+            root, {"id": ranked_lesson.slug, "text": description}, identity=ranked_lesson.slug
+        )
+        display = labeled.get("quoted_text", "") if labeled.get("presentation") == "quoted-data" else description
+        items.append(
+            {"slug": ranked_lesson.slug, "description": display, "applies_when": str(fm.get("applies_when", ""))}
+        )
 
     clean, _quarantined = injection_guard.screen(items)
     return [(i["slug"], i["description"]) for i in clean]
@@ -101,8 +110,7 @@ def _assemble_context(root: str, task_prompt: str) -> str:
         if not _clean(fact.statement):
             continue
         labeled = memory_ifc.safe_label(root, {"id": fact.id, "text": fact.statement}, identity=fact.id)
-        statement = (labeled.get("quoted_text", "") if labeled.get("presentation") == "quoted-data"
-                     else fact.statement)
+        statement = labeled.get("quoted_text", "") if labeled.get("presentation") == "quoted-data" else fact.statement
         facts.append((fact, score, statement))
         if len(facts) >= MAX_FACTS:
             break
@@ -146,8 +154,11 @@ def _apply_update(root: str, run_id: str, update: dict[str, Any], result: AgentR
             result.blocks_updated += 1
         else:
             hierarchical.add_fact(
-                root, statement=text, category=str(update.get("category", "general")),
-                confidence=float(update.get("confidence", 0.8)), source_trace_id=run_id,
+                root,
+                statement=text,
+                category=str(update.get("category", "general")),
+                confidence=float(update.get("confidence", 0.8)),
+                source_trace_id=run_id,
             )
             result.facts_recorded += 1
     except (memory_blocks.MemoryBlockError, ValueError, TypeError, OSError):
@@ -201,8 +212,9 @@ class AgentLoop:
                 result.turns.append(AgentTurn(turn_index=turn_idx, role="error", content=f"Executor error: {exc}"))
                 break
             tool_results = [r for r in (tool_results or []) if isinstance(r, dict)]
-            result.turns.append(AgentTurn(turn_index=turn_idx, role="assistant", content=str(response),
-                                          tool_results=tool_results))
+            result.turns.append(
+                AgentTurn(turn_index=turn_idx, role="assistant", content=str(response), tool_results=tool_results)
+            )
             history.append({"turn": turn_idx, "response": str(response), "results": tool_results})
             for update in tool_results:
                 _apply_update(self.root, result.run_id, update, result)
@@ -261,11 +273,18 @@ def _trigger_dream(root: str) -> None:
     # the parent process's stdout/stderr while other agents are writing to them.
     try:
         subprocess.run(
-            [sys.executable, "-c",
-             "from unimem.commands.dream_cmd import main_dream; import sys; "
-             "raise SystemExit(main_dream(sys.argv[1], draft=False))", root],
-            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            check=False, timeout=125,
+            [
+                sys.executable,
+                "-c",
+                "from unimem.commands.dream_cmd import main_dream; import sys; "
+                "raise SystemExit(main_dream(sys.argv[1], draft=False))",
+                root,
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=125,
         )
     except (OSError, subprocess.SubprocessError):
         # Consolidation is best-effort after an agent run.

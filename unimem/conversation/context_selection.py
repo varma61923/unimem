@@ -13,6 +13,7 @@ per quoted token. Unselected candidates remain in their original relative rank.
 Facet coverage is a lexical heuristic, not entailment, answer correctness or a
 calibrated probability. The selector neither reads sources nor authorizes them.
 """
+
 from __future__ import annotations
 
 import datetime as dt
@@ -54,13 +55,19 @@ class Candidate:
             raise ValueError("candidate time must be a naive canonical datetime")
         if isinstance(self.turn, bool) or not isinstance(self.turn, int) or self.turn < 1:
             raise ValueError("candidate turn must be a positive integer")
-        if not isinstance(self.passages, tuple) or not 1 <= len(self.passages) <= MAX_PASSAGES \
-                or any(not isinstance(passage, str) for passage in self.passages):
+        if (
+            not isinstance(self.passages, tuple)
+            or not 1 <= len(self.passages) <= MAX_PASSAGES
+            or any(not isinstance(passage, str) for passage in self.passages)
+        ):
             raise ValueError(f"candidate passages must contain 1..{MAX_PASSAGES} rendered strings")
         if sum(len(passage) for passage in self.passages) > MAX_PASSAGE_CHARS:
             raise ValueError("candidate rendered passages exceed the character limit")
-        if isinstance(self.token_cost, bool) or not isinstance(self.token_cost, int) \
-                or not 1 <= self.token_cost <= MAX_TOKEN_COST:
+        if (
+            isinstance(self.token_cost, bool)
+            or not isinstance(self.token_cost, int)
+            or not 1 <= self.token_cost <= MAX_TOKEN_COST
+        ):
             raise ValueError(f"candidate token cost must be an integer in 1..{MAX_TOKEN_COST}")
 
 
@@ -78,16 +85,23 @@ class SelectionPlan:
     sessions: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
-        return {"strategy": self.strategy, "order": list(self.order), "priority": list(self.priority),
-                "facets": list(self.facets), "covered_facets": list(self.covered_facets),
-                "missing_facets": list(self.missing_facets), "omitted_facets": self.omitted_facets,
-                "quoted_tokens": self.quoted_tokens, "mode": self.mode, "sessions": list(self.sessions),
-                "meaning": "candidate excerpt lexical diversity; final emitted coverage is assessed separately"}
+        return {
+            "strategy": self.strategy,
+            "order": list(self.order),
+            "priority": list(self.priority),
+            "facets": list(self.facets),
+            "covered_facets": list(self.covered_facets),
+            "missing_facets": list(self.missing_facets),
+            "omitted_facets": self.omitted_facets,
+            "quoted_tokens": self.quoted_tokens,
+            "mode": self.mode,
+            "sessions": list(self.sessions),
+            "meaning": "candidate excerpt lexical diversity; final emitted coverage is assessed separately",
+        }
 
 
 def _facets(question: str) -> tuple[tuple[str, ...], int]:
-    words = sorted(word for word in _terms(question)
-                   if word not in profile.STOPWORDS and word not in _QUESTIONS)
+    words = sorted(word for word in _terms(question) if word not in profile.STOPWORDS and word not in _QUESTIONS)
     return tuple(words[:MAX_FACETS]), max(0, len(words) - MAX_FACETS)
 
 
@@ -96,8 +110,9 @@ def _supported(facets: tuple[str, ...], passages: tuple[str, ...]) -> frozenset[
     prefixes = {word[:5] for word in words if word.isascii() and len(word) >= 5}
     # Same conservative long-prefix heuristic as the evidence coverage gate;
     # short identifiers require an exact match and CJK terms remain Unicode.
-    return frozenset(word for word in facets if word in words
-                     or word.isascii() and len(word) >= 5 and word[:5] in prefixes)
+    return frozenset(
+        word for word in facets if word in words or word.isascii() and len(word) >= 5 and word[:5] in prefixes
+    )
 
 
 def prioritize(question: str, candidates: Sequence[Candidate], *, anchor_count: int = 1) -> SelectionPlan:
@@ -115,9 +130,12 @@ def prioritize(question: str, candidates: Sequence[Candidate], *, anchor_count: 
         raise ValueError("question must be a bounded string")
     if isinstance(anchor_count, bool) or not isinstance(anchor_count, int) or not 0 <= anchor_count <= MAX_CANDIDATES:
         raise ValueError(f"anchor_count must be an integer in 0..{MAX_CANDIDATES}")
-    if isinstance(candidates, (str, bytes)) or not isinstance(candidates, Sequence) \
-            or len(candidates) > MAX_CANDIDATES \
-            or any(not isinstance(candidate, Candidate) for candidate in candidates):
+    if (
+        isinstance(candidates, (str, bytes))
+        or not isinstance(candidates, Sequence)
+        or len(candidates) > MAX_CANDIDATES
+        or any(not isinstance(candidate, Candidate) for candidate in candidates)
+    ):
         raise ValueError(f"candidates must be a sequence of at most {MAX_CANDIDATES} Candidate objects")
     if len({candidate.turn for candidate in candidates}) != len(candidates):
         raise ValueError("candidate turn identities must be unique")
@@ -146,16 +164,24 @@ def prioritize(question: str, candidates: Sequence[Candidate], *, anchor_count: 
         covered.update(support[best])
         remaining.remove(best)
     priority = tuple(candidates[index].turn for index in chosen)
-    return SelectionPlan(priority + tuple(candidates[index].turn for index in remaining), priority, facets,
-                         tuple(sorted(covered)), tuple(word for word in facets if word not in covered), omitted,
-                         sum(candidates[index].token_cost for index in chosen))
+    return SelectionPlan(
+        priority + tuple(candidates[index].turn for index in remaining),
+        priority,
+        facets,
+        tuple(sorted(covered)),
+        tuple(word for word in facets if word not in covered),
+        omitted,
+        sum(candidates[index].token_cost for index in chosen),
+    )
 
 
 _HISTORY = re.compile(
     r"\b(?:summar\w*|recap|overview|timeline|chronolog\w*|sequence|order|over time|"
     r"across .*?(?:sessions?|conversations?|chats?)|all (?:the )?(?:events?|changes?|times?|steps?)|"
     r"how .*?chang\w*|before and after|used to|earlier .*?(?:now|later)|"
-    r"contradict\w*|conflict\w*|compare|comparison)\b", re.I)
+    r"contradict\w*|conflict\w*|compare|comparison)\b",
+    re.I,
+)
 
 
 def history_question(question: str) -> bool:
@@ -208,7 +234,15 @@ def prioritize_history(question: str, candidates: Sequence[Candidate], *, anchor
             dates.append(row.at)
         remaining.remove(best)
     priority = tuple(candidates[index].turn for index in chosen)
-    return SelectionPlan(priority + tuple(candidates[index].turn for index in remaining), priority, base.facets,
-                         tuple(sorted(covered)), tuple(word for word in base.facets if word not in covered),
-                         base.omitted_facets, sum(candidates[index].token_cost for index in chosen),
-                         "coverage-v2", "history", tuple(sorted(sessions)))
+    return SelectionPlan(
+        priority + tuple(candidates[index].turn for index in remaining),
+        priority,
+        base.facets,
+        tuple(sorted(covered)),
+        tuple(word for word in base.facets if word not in covered),
+        base.omitted_facets,
+        sum(candidates[index].token_cost for index in chosen),
+        "coverage-v2",
+        "history",
+        tuple(sorted(sessions)),
+    )

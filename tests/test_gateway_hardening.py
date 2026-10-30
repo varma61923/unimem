@@ -85,18 +85,14 @@ def test_gateway_resolve_tag(tmp_path):
     auth_headers = {"Authorization": "Bearer secret-token-12345"}
 
     # Valid tag
-    status, res, _ = _call(
-        gw, "POST", "/v1/resolve_tag", {"container_tag": "project-alpha_1"}, headers=auth_headers
-    )
+    status, res, _ = _call(gw, "POST", "/v1/resolve_tag", {"container_tag": "project-alpha_1"}, headers=auth_headers)
     assert status == 200
     assert res["valid"] is True
     assert res["container_tag"] == "project-alpha_1"
     assert res["scope"] == "container:project-alpha_1"
 
     # Invalid tag with disallowed characters
-    status, err_res, _ = _call(
-        gw, "POST", "/v1/resolve_tag", {"container_tag": "bad tag!@#"}, headers=auth_headers
-    )
+    status, err_res, _ = _call(gw, "POST", "/v1/resolve_tag", {"container_tag": "bad tag!@#"}, headers=auth_headers)
     assert status == 400
     assert err_res["error"]["code"] == "bad_request"
 
@@ -109,11 +105,14 @@ def test_container_tag_scopes_store_recall(tmp_path):
     base = {
         "description": "tenant retrieval rule",
         "applies_when": "tenant retrieval is requested",
-        "tags": ["tenant"], "domain": "other", "importance": 3,
-        "status": "active", "agent_type": "general", "uses": 0,
+        "tags": ["tenant"],
+        "domain": "other",
+        "importance": 3,
+        "status": "active",
+        "agent_type": "general",
+        "uses": 0,
     }
-    for slug, scopes in (("global", []), ("alpha", ["container:alpha"]),
-                         ("beta", ["container:beta"])):
+    for slug, scopes in (("global", []), ("alpha", ["container:alpha"]), ("beta", ["container:beta"])):
         frontmatter.write(
             os.path.join(paths.lessons_dir(store), f"lesson_{slug}.md"),
             {**base, "name": slug, "scopes": scopes},
@@ -124,17 +123,30 @@ def test_container_tag_scopes_store_recall(tmp_path):
         "Authorization": "Bearer secret-token-12345",
         "X-Container-Tag": "alpha",
     }
-    status, data, _ = _call(gw, "POST", "/v1/recall", {
-        "occasion_id": "alpha-1", "query": "tenant retrieval rule",
-    }, headers=headers)
+    status, data, _ = _call(
+        gw,
+        "POST",
+        "/v1/recall",
+        {
+            "occasion_id": "alpha-1",
+            "query": "tenant retrieval rule",
+        },
+        headers=headers,
+    )
     assert status == 200
     ids = {item["id"] for item in data["deliver"]}
     assert ids == {"global", "alpha"}
     assert "beta" not in ids
 
-    status, _data, _ = _call(gw, "GET", "/v1/status", headers={
-        "Authorization": "Bearer secret-token-12345", "X-Container-Tag": "bad tag",
-    })
+    status, _data, _ = _call(
+        gw,
+        "GET",
+        "/v1/status",
+        headers={
+            "Authorization": "Bearer secret-token-12345",
+            "X-Container-Tag": "bad tag",
+        },
+    )
     assert status == 400
 
 
@@ -152,16 +164,28 @@ def test_command_catalog_and_store_scoped_runner(tmp_path):
     assert any(item["name"] == "gateway" and not item["runnable"] for item in catalog["commands"])
 
     status, result, _ = _call(
-        gw, "POST", "/v1/command", {"command": "query", "args": ["--help"]}, headers=auth,
+        gw,
+        "POST",
+        "/v1/command",
+        {"command": "query", "args": ["--help"]},
+        headers=auth,
     )
     assert status == 200 and result["ok"] and "usage: unimem query" in result["stdout"]
 
     status, error, _ = _call(
-        gw, "POST", "/v1/command", {"command": "query", "args": ["--dest", "/tmp"]}, headers=auth,
+        gw,
+        "POST",
+        "/v1/command",
+        {"command": "query", "args": ["--dest", "/tmp"]},
+        headers=auth,
     )
     assert status == 400 and error["error"]["code"] == "bad_request"
 
     status, error, _ = _call(
-        gw, "POST", "/v1/command", {"command": "gateway", "args": []}, headers=auth,
+        gw,
+        "POST",
+        "/v1/command",
+        {"command": "gateway", "args": []},
+        headers=auth,
     )
     assert status == 409 and error["error"]["code"] == "command_unavailable"

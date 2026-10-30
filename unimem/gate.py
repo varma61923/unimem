@@ -1,4 +1,5 @@
 """Can this store's memory be shipped? A yes/no a CI job can enforce."""
+
 from __future__ import annotations
 
 import json
@@ -47,7 +48,7 @@ def _active_lessons(root: str) -> list[tuple[str, dict, str]]:
         except Exception:  # noqa: BLE001 - an unreadable lesson is reported by doctor, not here
             continue
         if str(fm.get("status")) == "active":
-            out.append((str(fm.get("name") or name[len("lesson_"):-3]), fm, body))
+            out.append((str(fm.get("name") or name[len("lesson_") : -3]), fm, body))
     return out
 
 
@@ -83,30 +84,46 @@ def run(root: str, *, strict: bool = False) -> GateResult:
     readable = report is not None and report.readable
     verdicts = {e.lesson_slug: e for e in analysis.effects} if readable else {}
     hurting = [
-        e for slug, e in verdicts.items()
+        e
+        for slug, e in verdicts.items()
         if e.verdict == experiment.VERDICT_HURTS and slug in by_slug and not by_slug[slug].get("core")
     ]
     for e in hurting:
         withdrawn = policy == harm.POLICY_WITHDRAW
-        result.checks.append(Check(
-            "harm", WARN if withdrawn else FAIL,
-            (f"active lesson measured to make outcomes worse (effect {e.effect:+.1%}, "
-             f"n={e.n_injected}+{e.n_withheld}); "
-             + ("withdrawn from injection by the store's harm policy -- rewrite or archive it"
-                if withdrawn else "it is still injected: archive it, or set --on-harm withdraw")),
-            subject=e.lesson_slug,
-        ))
+        result.checks.append(
+            Check(
+                "harm",
+                WARN if withdrawn else FAIL,
+                (
+                    f"active lesson measured to make outcomes worse (effect {e.effect:+.1%}, "
+                    f"n={e.n_injected}+{e.n_withheld}); "
+                    + (
+                        "withdrawn from injection by the store's harm policy -- rewrite or archive it"
+                        if withdrawn
+                        else "it is still injected: archive it, or set --on-harm withdraw"
+                    )
+                ),
+                subject=e.lesson_slug,
+            )
+        )
     if not hurting:
         result.checks.append(Check("harm", PASS, "no active lesson is measured to hurt"))
 
-    if lessons and readable and not any(
-        e.verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS, experiment.VERDICT_NO_EFFECT)
-        for e in analysis.effects
+    if (
+        lessons
+        and readable
+        and not any(
+            e.verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS, experiment.VERDICT_NO_EFFECT)
+            for e in analysis.effects
+        )
     ):
-        result.checks.append(Check(
-            "underpowered", WARN,
-            "no lesson has a verdict yet, so this gate cannot see harm it lacks the data for",
-        ))
+        result.checks.append(
+            Check(
+                "underpowered",
+                WARN,
+                "no lesson has a verdict yet, so this gate cannot see harm it lacks the data for",
+            )
+        )
 
     unsafe = scaffolded = 0
     for slug, fm, body in lessons:
@@ -116,14 +133,24 @@ def run(root: str, *, strict: bool = False) -> GateResult:
         if guard.should_block or labels:
             unsafe += 1
             kinds = sorted({f.label for f in guard.blocking_findings} | set(labels))
-            result.checks.append(Check(
-                "safety", FAIL, "active lesson trips the content screen: " + ", ".join(kinds), subject=slug,
-            ))
+            result.checks.append(
+                Check(
+                    "safety",
+                    FAIL,
+                    "active lesson trips the content screen: " + ", ".join(kinds),
+                    subject=slug,
+                )
+            )
         if templates.unfilled_placeholders(fm, body):
             scaffolded += 1
-            result.checks.append(Check(
-                "scaffolding", FAIL, "active lesson still carries unedited TODO scaffolding", subject=slug,
-            ))
+            result.checks.append(
+                Check(
+                    "scaffolding",
+                    FAIL,
+                    "active lesson still carries unedited TODO scaffolding",
+                    subject=slug,
+                )
+            )
     if not unsafe:
         result.checks.append(Check("safety", PASS, f"{len(lessons)} active lesson(s) pass the content screen"))
     if not scaffolded:
@@ -131,11 +158,14 @@ def run(root: str, *, strict: bool = False) -> GateResult:
 
     contradictions = reliability.find_contradictions([fm for _s, fm, _b in lessons])
     for c in contradictions:
-        result.checks.append(Check(
-            "contradiction", WARN,
-            f"fires alongside {c.slug_b} (activation overlap {c.activation_overlap:.0%}): " + "; ".join(c.signals),
-            subject=c.slug_a,
-        ))
+        result.checks.append(
+            Check(
+                "contradiction",
+                WARN,
+                f"fires alongside {c.slug_b} (activation overlap {c.activation_overlap:.0%}): " + "; ".join(c.signals),
+                subject=c.slug_a,
+            )
+        )
     if not contradictions:
         result.checks.append(Check("contradiction", PASS, "no contradicting active lessons found"))
     return result
@@ -153,11 +183,14 @@ def render_text(result: GateResult) -> str:
 
 
 def render_json(result: GateResult) -> str:
-    return json.dumps({
-        "passed": result.passed,
-        "strict": result.strict,
-        "checks": [c.__dict__ for c in result.checks],
-    }, indent=2)
+    return json.dumps(
+        {
+            "passed": result.passed,
+            "strict": result.strict,
+            "checks": [c.__dict__ for c in result.checks],
+        },
+        indent=2,
+    )
 
 
 def render_junit(result: GateResult) -> str:
@@ -166,17 +199,22 @@ def render_junit(result: GateResult) -> str:
     for c in result.checks:
         name = quoteattr(f"{c.name}[{c.subject}]" if c.subject else c.name)
         if c in result.failed:
-            rows.append(f'    <testcase classname="unimem.gate" name={name}>'
-                        f'<failure message={quoteattr(c.message)}>{escape(c.message)}</failure></testcase>')
+            rows.append(
+                f'    <testcase classname="unimem.gate" name={name}>'
+                f"<failure message={quoteattr(c.message)}>{escape(c.message)}</failure></testcase>"
+            )
         elif c.status == WARN:
-            rows.append(f'    <testcase classname="unimem.gate" name={name}>'
-                        f'<system-out>{escape("warning: " + c.message)}</system-out></testcase>')
+            rows.append(
+                f'    <testcase classname="unimem.gate" name={name}>'
+                f"<system-out>{escape('warning: ' + c.message)}</system-out></testcase>"
+            )
         else:
             rows.append(f'    <testcase classname="unimem.gate" name={name}/>')
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<testsuite name="unimem gate" tests="{len(result.checks)}" failures="{failures}">\n'
-        + "\n".join(rows) + "\n</testsuite>\n"
+        + "\n".join(rows)
+        + "\n</testsuite>\n"
     )
 
 

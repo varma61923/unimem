@@ -35,6 +35,7 @@ nearest common declared ancestor instead of guessing; below threshold the mentio
 is unknown (`type` None). Built-in evidence only scores types the ontology
 declares; `allowed` restricts the answer to types inheriting from an allowed type
 (e.g. a relation's domain)."""
+
 from __future__ import annotations
 
 import json
@@ -62,21 +63,35 @@ _TYPE_VECTORS: dict[tuple, list[list[float]]] = {}
 _TYPE_VECTORS_MAX = 16
 _TYPE_VECTORS_LOCK = threading.Lock()
 SCORES = {"alias": 0.95, "head": 0.92, "word": 0.75, "context": 0.7}
-CAMEL_HEAD = 0.85       # the type word is a part of a compound name: "OmniQueue", "FluxionDB"
+CAMEL_HEAD = 0.85  # the type word is a part of a compound name: "OmniQueue", "FluxionDB"
 NAME_FORM_SCORE = 0.55  # "Kaelen Voss": two or three capitalised words that name nothing else
 LEXICON_SCORE, LEXICON_AMBIGUOUS_SCORE = 0.88, 0.7
-PATTERN_SCORES = {"copula": 0.9, "apposition": 0.88, "parenthesis": 0.85, "such_as": 0.85, "and_other": 0.85,
-                  "reverse": 0.85, "of": 0.8, "named": 0.8, "before": 0.75, "after": 0.88}
+PATTERN_SCORES = {
+    "copula": 0.9,
+    "apposition": 0.88,
+    "parenthesis": 0.85,
+    "such_as": 0.85,
+    "and_other": 0.85,
+    "reverse": 0.85,
+    "of": 0.8,
+    "named": 0.8,
+    "before": 0.75,
+    "after": 0.88,
+}
 # Types whose noun after the name states it outright: "the KaelithCache class", "the .env file".
 _AFTER_TYPES = frozenset({"symbol", "file"})
 # The type noun must end its noun phrase: "a standard error code" is a code, not a standard.
-_NP_END = (r"(?=$|[^\w\s-]| (?:of|for|in|on|at|to|with|from|by|that|which|who|whose|where|when|and|or|but|is|"
-           r"was|are|were|we|our|it|its|has|have|had|used|so|because|than|since|after|before|during|until)\b)")
+_NP_END = (
+    r"(?=$|[^\w\s-]| (?:of|for|in|on|at|to|with|from|by|that|which|who|whose|where|when|and|or|but|is|"
+    r"was|are|were|we|our|it|its|has|have|had|used|so|because|than|since|after|before|during|until)\b)"
+)
 _VERSION = __import__("re").compile(r"^(?:v?\d+(?:\.\d+)*|[ivx]+)$")
 EXEMPLAR_NAME_SCORE, EXEMPLAR_HEAD_SCORE = 0.85, 0.65
 ABSTRACT_DAMPING = 0.5  # context evidence for a one-word abstract noun ("Observability was the theme")
-NULL_PROTOTYPE = ("a general concept, quality, practice or topic, such as reliability, latency, scalability, "
-                  "code review or technical debt")
+NULL_PROTOTYPE = (
+    "a general concept, quality, practice or topic, such as reliability, latency, scalability, "
+    "code review or technical debt"
+)
 # Words that may sit between an article and the noun naming the type: no preposition or
 # relative pronoun, so "the theme of the quarter" never reads as "a quarter".
 _MODIFIER = r"(?:(?!(?:of|for|in|on|at|to|with|from|by|that|which|who|and|or|but|is|was)\b)[\w'-]+ ){0,3}"
@@ -96,7 +111,7 @@ Context: {context}
 class Classification:
     type: str | None
     confidence: float
-    method: str              # alias | keyword | shape | lexicon | pattern | cue | exemplar | embedding | llm | none
+    method: str  # alias | keyword | shape | lexicon | pattern | cue | exemplar | embedding | llm | none
     ancestors: tuple[str, ...] = ()
     scores: dict = field(default_factory=dict, compare=False)
     evidence: tuple[tuple[str, str, float], ...] = field(default=(), compare=False)
@@ -106,8 +121,12 @@ class Classification:
         return self.type is not None
 
     def to_dict(self) -> dict:
-        out = {"type": self.type, "confidence": round(self.confidence, 4), "method": self.method,
-               "ancestors": list(self.ancestors)}
+        out: dict[str, object] = {
+            "type": self.type,
+            "confidence": round(self.confidence, 4),
+            "method": self.method,
+            "ancestors": list(self.ancestors),
+        }
         if self.evidence:
             out["evidence"] = [{"source": s, "type": t, "score": round(v, 4)} for s, t, v in self.evidence]
         return out
@@ -165,8 +184,11 @@ class Exemplars:
             cached = _EXEMPLAR_CACHE.get(root)
             if cached and cached[0] == stamp:
                 return cached[1]
-        pairs = [(n.name, n.entity_type) for n in graph.load_nodes(root).values()
-                 if n.is_latest and not n.is_forgotten and n.entity_type not in (FALLBACK_TYPE, *INTERNAL_TYPES)]
+        pairs = [
+            (n.name, n.entity_type)
+            for n in graph.load_nodes(root).values()
+            if n.is_latest and not n.is_forgotten and n.entity_type not in (FALLBACK_TYPE, *INTERNAL_TYPES)
+        ]
         found = cls(pairs)
         with _EXEMPLAR_LOCK:
             if len(_EXEMPLAR_CACHE) >= 8:
@@ -189,9 +211,13 @@ def candidate_types(onto, allowed=None) -> list[str]:
     from unimem.ontology import FALLBACK_TYPE
 
     wanted = {str(a).strip().lower() for a in allowed} if allowed else None
-    return sorted(name for name in onto.entity_types
-                  if name != FALLBACK_TYPE and name not in INTERNAL_TYPES
-                  and (wanted is None or set(onto.ancestors(name)) & wanted))
+    return sorted(
+        name
+        for name in onto.entity_types
+        if name != FALLBACK_TYPE
+        and name not in INTERNAL_TYPES
+        and (wanted is None or set(onto.ancestors(name)) & wanted)
+    )
 
 
 _ONTO_CACHE: dict[int, tuple[object, dict]] = {}
@@ -253,11 +279,11 @@ def _keyword_index(onto, types: list[str]) -> dict[str, list[tuple[str, tuple[st
 
 
 def _ends_with(words: list[str], phrase: tuple[str, ...]) -> bool:
-    return len(words) >= len(phrase) and tuple(words[-len(phrase):]) == phrase
+    return len(words) >= len(phrase) and tuple(words[-len(phrase) :]) == phrase
 
 
 def _contains(words: list[str], phrase: tuple[str, ...]) -> bool:
-    return any(tuple(words[i:i + len(phrase)]) == phrase for i in range(len(words) - len(phrase) + 1))
+    return any(tuple(words[i : i + len(phrase)]) == phrase for i in range(len(words) - len(phrase) + 1))
 
 
 def _neighbours(name: str, context: str) -> list[str]:
@@ -266,8 +292,8 @@ def _neighbours(name: str, context: str) -> list[str]:
     at = lowered.find(needle) if needle else -1
     if at < 0:
         return []
-    before = [w for w in _words(lowered[max(0, at - 60):at]) if w not in _ARTICLES][-2:]
-    after = _words(lowered[at + len(needle):at + len(needle) + 30])[:1]
+    before = [w for w in _words(lowered[max(0, at - 60) : at]) if w not in _ARTICLES][-2:]
+    after = _words(lowered[at + len(needle) : at + len(needle) + 30])[:1]
     return before + after
 
 
@@ -305,7 +331,7 @@ def _name_words(name: str) -> tuple[list[str], bool]:
     while len(words) > 1 and _VERSION.match(words[-1]):
         words = words[:-1]
     if "of" in words[1:-1]:
-        words = words[:words.index("of", 1)]  # "Terms of Service" is terms, "Bank of America" a bank
+        words = words[: words.index("of", 1)]  # "Terms of Service" is terms, "Bank of America" a bank
     return words, split
 
 
@@ -337,6 +363,7 @@ def by_keywords(name: str, context: str, onto, types: list[str]) -> tuple[str | 
 
 # --- offline evidence beyond keywords -------------------------------------------------
 
+
 def by_shape(name: str, types: list[str]) -> dict[str, float]:
     """Types the mention's form implies: paths, identifiers, error names, codes, regions."""
     out: dict[str, float] = {}
@@ -367,8 +394,11 @@ def by_lexicon(name: str, types: list[str]) -> dict[str, float]:
             out[type_name] = LEXICON_AMBIGUOUS_SCORE if key in ontology_lexicon.AMBIGUOUS else LEXICON_SCORE
     tokens = name.strip().split()
     if "person" in types and 1 < len(tokens) <= 3 and all(t[:1].isupper() for t in tokens):
-        if tokens[0].lower().strip(".") in ontology_lexicon.FIRST_NAMES and key not in ontology_lexicon.PLACES \
-                and key not in ontology_lexicon.ORGANIZATIONS:
+        if (
+            tokens[0].lower().strip(".") in ontology_lexicon.FIRST_NAMES
+            and key not in ontology_lexicon.PLACES
+            and key not in ontology_lexicon.ORGANIZATIONS
+        ):
             out["person"] = max(out.get("person", 0.0), 0.85)
     return out
 
@@ -400,15 +430,35 @@ def _hypernym_patterns(onto, types: list[str]) -> list[tuple[str, str, re.Patter
         noun = "(?:" + "|".join(re.escape(n) for n in sorted(nouns, key=len, reverse=True)) + r")(?:e?s)?\b"
         head = noun + _NP_END
         out += [
-            ("copula", type_name, re.compile(r"§ (?:is|was|are|were|remains|became|is now|has been|is still) "
-                                             + _ARTICLE + " " + _MODIFIER + head)),
+            (
+                "copula",
+                type_name,
+                re.compile(
+                    r"§ (?:is|was|are|were|remains|became|is now|has been|is still) "
+                    + _ARTICLE
+                    + " "
+                    + _MODIFIER
+                    + head
+                ),
+            ),
             ("apposition", type_name, re.compile(r"§, " + _ARTICLE + " " + _MODIFIER + head)),
             ("parenthesis", type_name, re.compile(r"§ \((?:" + _ARTICLE + " )?" + _MODIFIER + noun + r"\)")),
-            ("reverse", type_name, re.compile(r"\b(?:the|our|their|my|your) " + _MODIFIER + noun
-                                              + r"(?: (?:for|of|on|at|in)(?: [\w'-]+){1,3})? "
-                                              r"(?:is|was|will be|has been|is still) §(?:[.,;!?)]|$)")),
-            ("such_as", type_name, re.compile(noun + r",? (?:such as|including|especially|namely|like) "
-                                              r"(?:[\w.-]+(?:,| and| or) ){0,4}§")),
+            (
+                "reverse",
+                type_name,
+                re.compile(
+                    r"\b(?:the|our|their|my|your) " + _MODIFIER + noun + r"(?: (?:for|of|on|at|in)(?: [\w'-]+){1,3})? "
+                    r"(?:is|was|will be|has been|is still) §(?:[.,;!?)]|$)"
+                ),
+            ),
+            (
+                "such_as",
+                type_name,
+                re.compile(
+                    noun + r",? (?:such as|including|especially|namely|like) "
+                    r"(?:[\w.-]+(?:,| and| or) ){0,4}§"
+                ),
+            ),
             ("and_other", type_name, re.compile(r"§,? (?:and|or) (?:other|similar|another) " + noun)),
             ("of", type_name, re.compile(r"\b(?:the )?" + noun + r" of §")),
             ("named", type_name, re.compile(noun + r" (?:called|named|known as) §")),
@@ -456,8 +506,11 @@ def by_name_form(name: str, onto, types: list[str]) -> dict[str, float]:
         if not _NAME_TOKEN.fullmatch(token):
             return {}
         lowered = token.lower()
-        if lowered in ontology_lexicon.COMMON_WORDS or lowered in vocabulary or \
-                any(lowered in ontology_lexicon.HYPERNYMS.get(t, ()) for t in types):
+        if (
+            lowered in ontology_lexicon.COMMON_WORDS
+            or lowered in vocabulary
+            or any(lowered in ontology_lexicon.HYPERNYMS.get(t, ()) for t in types)
+        ):
             return {}
     key = name.strip().lower()
     if any(key in names for t, names in ontology_lexicon.LISTS.items() if t != "person"):
@@ -467,8 +520,10 @@ def by_name_form(name: str, onto, types: list[str]) -> dict[str, float]:
 
 _GOVERNED = re.compile(r"(?<![\w-])(?:in|at|from|of|near|into|on|within|across|inside|outside|for) (?:the )?§")
 _LOWER_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_]*")
-_CALL_TO = re.compile(r"(?<![\w-])(?:call|calls|invocation|invocations|invoke|invokes|invoking|invoked) "
-                      r"(?:to |of )?§")
+_CALL_TO = re.compile(
+    r"(?<![\w-])(?:call|calls|invocation|invocations|invoke|invokes|invoking|invoked) "
+    r"(?:to |of )?§"
+)
 
 
 def by_cues(name: str, context: str, types: list[str]) -> dict[str, float]:
@@ -482,8 +537,12 @@ def by_cues(name: str, context: str, types: list[str]) -> dict[str, float]:
     # "The team in Oakhaven mentioned": after a preposition the mention is not the verb's subject.
     governed = _GOVERNED.search(marked) is not None
     for type_name, score, pattern in ontology_lexicon.CUES:
-        if governed and type_name == "person" and pattern.pattern.startswith("§ ") \
-                and not pattern.pattern.startswith("§ to "):  # "waiting for X to approve" still holds
+        if (
+            governed
+            and type_name == "person"
+            and pattern.pattern.startswith("§ ")
+            and not pattern.pattern.startswith("§ to ")
+        ):  # "waiting for X to approve" still holds
             continue
         if type_name in types and score > out.get(type_name, 0.0) and pattern.search(marked):
             out[type_name] = score
@@ -507,25 +566,36 @@ def _learned_probabilities(name: str, context: str) -> dict[str, float]:
     if os.environ.get("UNIMEM_TYPING_MODEL", "on").strip().lower() == "off" or LEARNED_MODE == "off":
         return {}
     model = ontology_learned.load()
-    return model.probabilities(name, context) if model is not None else {}
+    if model is None:
+        return {}
+    try:
+        return model.probabilities(name, context)
+    except (ValueError, OverflowError):
+        # A corrupt optional classifier must not suppress other type evidence.
+        return {}
 
 
-def by_learned(name: str, context: str, types: list[str],
-               probabilities: dict[str, float] | None = None) -> dict[str, float]:
+def by_learned(
+    name: str, context: str, types: list[str], probabilities: dict[str, float] | None = None
+) -> dict[str, float]:
     """Types the learned typer gives at least LEARNED_FLOOR probability, scaled."""
     probs = _learned_probabilities(name, context) if probabilities is None else probabilities
-    return {t: round(p * LEARNED_WEIGHT, 4) for t, p in probs.items()
-            if t in types and p >= LEARNED_FLOOR}
+    return {t: round(p * LEARNED_WEIGHT, 4) for t, p in probs.items() if t in types and p >= LEARNED_FLOOR}
 
 
 def _abstract(name: str) -> bool:
     tokens = name.strip().split()
-    return len(tokens) == 1 and name[:1].isalpha() and not name.isupper() \
+    return (
+        len(tokens) == 1
+        and name[:1].isalpha()
+        and not name.isupper()
         and bool(ontology_lexicon.ABSTRACT_SUFFIX.search(name.lower()))
+    )
 
 
-def evidence(name: str, context: str, onto, types: list[str], exemplars: Exemplars | None = None
-             ) -> dict[str, dict[str, float]]:
+def evidence(
+    name: str, context: str, onto, types: list[str], exemplars: Exemplars | None = None
+) -> dict[str, dict[str, float]]:
     """Per-source type scores from all offline evidence: {source: {type: score}}."""
     out: dict[str, dict[str, float]] = {}
     aliased = _by_alias(name, onto, types)
@@ -540,10 +610,14 @@ def evidence(name: str, context: str, onto, types: list[str], exemplars: Exempla
         out["keyword"] = {t: v * 0.5 for t, v in out["keyword"].items()}
     lexicon = by_lexicon(name, types)
     form = {} if "person" in lexicon else by_name_form(name, onto, types)
-    for source, scores in (("shape", shape), ("lexicon", lexicon), ("form", form),
-                           ("pattern", by_patterns(name, context, onto, types)),
-                           ("cue", by_cues(name, context, types)),
-                           ("exemplar", exemplars.scores(name, types) if exemplars else {})):
+    for source, scores in (
+        ("shape", shape),
+        ("lexicon", lexicon),
+        ("form", form),
+        ("pattern", by_patterns(name, context, onto, types)),
+        ("cue", by_cues(name, context, types)),
+        ("exemplar", exemplars.scores(name, types) if exemplars else {}),
+    ):
         if scores:
             out[source] = scores
     if _abstract(name) and not ({"alias", "shape", "lexicon", "exemplar"} & set(out)):
@@ -583,20 +657,38 @@ def _common_ancestor(onto, a: str, b: str, types: list[str]) -> str | None:
 
 # On equal scores the more reliable kind of evidence wins: a mention's own form over
 # what the context happens to say about it ("raise MAX_RETRIES" names a setting).
-SOURCE_RANK = {"alias": 9, "shape": 8, "lexicon": 7, "pattern": 6, "keyword": 5, "exemplar": 4, "llm": 3,
-               "learned": 2, "embedding": 2, "cue": 1, "form": 0}
+SOURCE_RANK = {
+    "alias": 9,
+    "shape": 8,
+    "lexicon": 7,
+    "pattern": 6,
+    "keyword": 5,
+    "exemplar": 4,
+    "llm": 3,
+    "learned": 2,
+    "embedding": 2,
+    "cue": 1,
+    "form": 0,
+}
 
 
-def select(onto, combined: dict[str, float], types: list[str], threshold: float,
-           strongest: dict[str, tuple[str, float]] | None = None) -> tuple[str | None, float]:
+def select(
+    onto,
+    combined: dict[str, float],
+    types: list[str],
+    threshold: float,
+    strongest: dict[str, tuple[str, float]] | None = None,
+) -> tuple[str | None, float]:
     """The winning type: best score, the most specific on ties, then the most reliable
     evidence, or the nearest common ancestor of two near-tied siblings; None below
     threshold."""
     if not combined:
         return None, 0.0
     strongest = strongest or {}
-    ranked = sorted(combined, key=lambda t: (-combined[t], -_specificity(onto, t),
-                                             -SOURCE_RANK.get(strongest.get(t, ("", 0.0))[0], 0), t))
+    ranked = sorted(
+        combined,
+        key=lambda t: (-combined[t], -_specificity(onto, t), -SOURCE_RANK.get(strongest.get(t, ("", 0.0))[0], 0), t),
+    )
     best = ranked[0]
     for other in ranked[1:]:
         if combined[best] - combined[other] > SIBLING_MARGIN:
@@ -610,6 +702,7 @@ def select(onto, combined: dict[str, float], types: list[str], threshold: float,
 
 
 # --- model evidence -------------------------------------------------------------------
+
 
 def _type_text(onto, type_name: str) -> str:
     entity_type = onto.entity_types[type_name]
@@ -646,15 +739,17 @@ def _mention_text(name: str, context: str) -> str:
     return f"{name}: {context}"[:1000] if context and context.strip() != name.strip() else name
 
 
-def _embedding_scores(onto, types: list[str], vectors: list[list[float]], query: list[float]
-                      ) -> tuple[str | None, float, dict]:
+def _embedding_scores(
+    onto, types: list[str], vectors: list[list[float]], query: list[float]
+) -> tuple[str | None, float, dict]:
     scores = {t: kg_similarity.cosine(query, v) for t, v in zip(types, vectors)}
     null = kg_similarity.cosine(query, vectors[-1])
     best, top = _best(onto, scores)
     if best is None:
         return None, 0.0, scores
-    rivals = [s for t, s in scores.items() if t != best and t not in onto.ancestors(best)
-              and best not in onto.ancestors(t)]
+    rivals = [
+        s for t, s in scores.items() if t != best and t not in onto.ancestors(best) and best not in onto.ancestors(t)
+    ]
     margin = top - max([null, *rivals])
     if margin < EMBEDDING_MARGIN:
         return None, 0.0, scores
@@ -696,23 +791,38 @@ def by_llm(name: str, context: str, onto, types: list[str], complete) -> tuple[s
 
 # --- the classifier -------------------------------------------------------------------
 
-def _result(onto, chosen: str | None, confidence: float, combined: dict, strongest: dict,
-            per_source: dict) -> Classification:
-    trail = tuple(sorted(((s, t, v) for s, scores in per_source.items() for t, v in scores.items()),
-                         key=lambda x: -x[2]))[:8]
+
+def _result(
+    onto, chosen: str | None, confidence: float, combined: dict, strongest: dict, per_source: dict
+) -> Classification:
+    trail = tuple(
+        sorted(((s, t, v) for s, scores in per_source.items() for t, v in scores.items()), key=lambda x: -x[2])
+    )[:8]
     if chosen is None:
         return Classification(None, confidence, "none", (), combined, trail)
     method = strongest.get(chosen, ("keyword", 0.0))[0]
     if chosen not in strongest:  # a backed-off common ancestor: name the evidence that led there
-        method = max((strongest[t] for t in combined if chosen in onto.ancestors(t)), key=lambda x: x[1],
-                     default=("keyword", 0.0))[0]
+        method = max(
+            (strongest[t] for t in combined if chosen in onto.ancestors(t)),
+            key=lambda x: x[1],
+            default=("keyword", 0.0),
+        )[0]
     return Classification(chosen, confidence, method, tuple(onto.ancestors(chosen)), combined, trail)
 
 
-def classify(name: str, context: str = "", *, onto, embedder=None, llm=None, threshold: float = THRESHOLD,
-             embedding_threshold: float = EMBEDDING_THRESHOLD, allowed=None,
-             methods: tuple[str, ...] = ("keyword", "embedding", "llm"),
-             exemplars: Exemplars | None = None) -> Classification:
+def classify(
+    name: str,
+    context: str = "",
+    *,
+    onto,
+    embedder=None,
+    llm=None,
+    threshold: float = THRESHOLD,
+    embedding_threshold: float = EMBEDDING_THRESHOLD,
+    allowed=None,
+    methods: tuple[str, ...] = ("keyword", "embedding", "llm"),
+    exemplars: Exemplars | None = None,
+) -> Classification:
     """The ontology type of the mention `name` (seen in `context`), with its confidence
     and the strongest kind of evidence for it. `embedder` is a tag or provider
     (default: `UNIMEM_GRAPH_EMBEDDER`); `llm` a `complete(prompt) -> (text, usage)`
@@ -742,26 +852,40 @@ def classify(name: str, context: str = "", *, onto, embedder=None, llm=None, thr
     if "llm" in methods and llm is not None:
         best, score = by_llm(name, context, onto, types, llm)
         if best and score >= threshold:
-            return Classification(best, score, "llm", tuple(onto.ancestors(best)), {best: score},
-                                  (("llm", best, score),))
+            return Classification(
+                best, score, "llm", tuple(onto.ancestors(best)), {best: score}, (("llm", best, score),)
+            )
     return _result(onto, None, max(combined.values(), default=0.0), combined, strongest, per_source)
 
 
-def classify_many(mentions: list[tuple[str, str]], *, onto, embedder=None, llm=None, threshold: float = THRESHOLD,
-                  embedding_threshold: float = EMBEDDING_THRESHOLD, allowed=None,
-                  methods: tuple[str, ...] = ("keyword", "embedding", "llm"),
-                  exemplars: Exemplars | None = None) -> list[Classification]:
+def classify_many(
+    mentions: list[tuple[str, str]],
+    *,
+    onto,
+    embedder=None,
+    llm=None,
+    threshold: float = THRESHOLD,
+    embedding_threshold: float = EMBEDDING_THRESHOLD,
+    allowed=None,
+    methods: tuple[str, ...] = ("keyword", "embedding", "llm"),
+    exemplars: Exemplars | None = None,
+) -> list[Classification]:
     """`classify` over many (name, context) mentions with one embedding call for every
     mention the offline evidence leaves undecided."""
-    offline = [classify(n, c, onto=onto, threshold=threshold, allowed=allowed, methods=("keyword",),
-                        exemplars=exemplars) if "keyword" in methods else None for n, c in mentions]
+    offline = [
+        classify(n, c, onto=onto, threshold=threshold, allowed=allowed, methods=("keyword",), exemplars=exemplars)
+        if "keyword" in methods
+        else None
+        for n, c in mentions
+    ]
     undecided = [i for i, found in enumerate(offline) if found is None or not found.known]
     provider = kg_similarity.embedder(embedder) if "embedding" in methods and undecided else None
     if provider is not None:
         types = candidate_types(onto, allowed)
         vectors = _type_vectors(provider, onto, types) if types else []
-        queries = kg_similarity.embed(provider, [_mention_text(*mentions[i]) for i in undecided], query=True) \
-            if types else []
+        queries = (
+            kg_similarity.embed(provider, [_mention_text(*mentions[i]) for i in undecided], query=True) if types else []
+        )
         for i, query in zip(undecided, queries):
             name, context = mentions[i]
             per_source = evidence(name, context, onto, types, exemplars) if "keyword" in methods else {}
@@ -769,13 +893,17 @@ def classify_many(mentions: list[tuple[str, str]], *, onto, embedder=None, llm=N
             if best and score >= embedding_threshold:
                 per_source["embedding"] = {best: score}
             combined, strongest = fuse(per_source)
-            chosen, confidence = select(onto, combined, types, min(threshold, embedding_threshold)
-                                        if "embedding" in per_source else threshold, strongest)
+            chosen, confidence = select(
+                onto,
+                combined,
+                types,
+                min(threshold, embedding_threshold) if "embedding" in per_source else threshold,
+                strongest,
+            )
             offline[i] = _result(onto, chosen, confidence, combined, strongest, per_source)
     out = []
     for (name, context), found in zip(mentions, offline):
         if (found is None or not found.known) and "llm" in methods and llm is not None:
-            found = classify(name, context, onto=onto, llm=llm, threshold=threshold, allowed=allowed,
-                             methods=("llm",))
+            found = classify(name, context, onto=onto, llm=llm, threshold=threshold, allowed=allowed, methods=("llm",))
         out.append(found if found is not None else Classification(None, 0.0, "none"))
     return out

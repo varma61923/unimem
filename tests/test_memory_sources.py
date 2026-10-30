@@ -121,8 +121,7 @@ class TestEndToEnd:
         source = memory_sources.FileMemorySource(path, root=str(tmp_path))
         result = source.render("o1")
         for section_id in result.withheld:
-            heading = {"idempotency": "Idempotency", "office-hours": "Office hours",
-                       "deploys": "Deploys"}[section_id]
+            heading = {"idempotency": "Idempotency", "office-hours": "Office hours", "deploys": "Deploys"}[section_id]
             assert f"## {heading}" not in result.text
 
 

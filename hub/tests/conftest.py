@@ -33,8 +33,7 @@ def _per_worker_database() -> None:
         engine = create_async_engine(url, isolation_level="AUTOCOMMIT", connect_args={"timeout": 3})
         try:
             async with engine.connect() as conn:
-                exists = await conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :name"),
-                                           {"name": target})
+                exists = await conn.scalar(text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": target})
                 if not exists:
                     await conn.execute(text(f'CREATE DATABASE "{target}"'))
         finally:
@@ -83,7 +82,7 @@ async def config() -> HubConfig:
     return HubConfig(database_url=TEST_DATABASE_URL, rate_limit_per_minute=1_000_000, rate_limit_burst=1_000_000)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _schema():
     await _skip_if_no_db()
     engine = make_engine(HubConfig(database_url=TEST_DATABASE_URL))
@@ -108,14 +107,8 @@ async def session_factory(config: HubConfig, _schema):
 @pytest.fixture
 def establish_orgs(session_factory):
     async def _establish(*org_ids) -> None:
-        ids = [
-            oid
-            for group in org_ids
-            for oid in ([group] if isinstance(group, str) else group)
-        ]
-        backdated = datetime.now(timezone.utc) - timedelta(
-            hours=commons.COMMONS_VOTER_MIN_AGE_HOURS + 1
-        )
+        ids = [oid for group in org_ids for oid in ([group] if isinstance(group, str) else group)]
+        backdated = datetime.now(timezone.utc) - timedelta(hours=commons.COMMONS_VOTER_MIN_AGE_HOURS + 1)
         async with session_scope(session_factory) as session:
             await session.execute(
                 update(Organization)

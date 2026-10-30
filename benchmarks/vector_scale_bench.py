@@ -14,6 +14,7 @@ model. Queries are perturbed copies of stored points.
 The database needs the pgvector extension (0.8 or later for iterative scans).
 The benchmark drops its own tenant's rows when it finishes unless --keep.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -49,24 +51,50 @@ def _percentile(values: list[float], q: float) -> float:
     return ordered[min(len(ordered) - 1, int(round(q * (len(ordered) - 1))))]
 
 
-async def run(dsn: str, *, n: int, dim: int, queries: int, top_k: int, clusters: int, spread: float,
-              seed: int, batch: int, ef_search: list[int], m: int, ef_construction: int, keep: bool) -> dict:
+async def run(
+    dsn: str,
+    *,
+    n: int,
+    dim: int,
+    queries: int,
+    top_k: int,
+    clusters: int,
+    spread: float,
+    seed: int,
+    batch: int,
+    ef_search: list[int],
+    m: int,
+    ef_construction: int,
+    keep: bool,
+) -> dict:
     import asyncpg
 
     rng = np.random.default_rng(seed)
     centres = rng.normal(size=(clusters, dim)).astype(np.float32)
     centres /= np.linalg.norm(centres, axis=1, keepdims=True)
-    exact = await vector_store.PostgresVectorIndex.open(dsn, tenant=TENANT, namespace=NAMESPACE, model=MODEL,
-                                                        dimension=dim, max_size=4, command_timeout=3600)
-    report: dict = {"benchmark": "vector-scale", "n": n, "dim": dim, "queries": queries, "top_k": top_k,
-                    "clusters": clusters, "spread": spread, "seed": seed, "cpu_count": os.cpu_count()}
+    exact = await vector_store.PostgresVectorIndex.open(
+        dsn, tenant=TENANT, namespace=NAMESPACE, model=MODEL, dimension=dim, max_size=4, command_timeout=3600
+    )
+    report: dict = {
+        "benchmark": "vector-scale",
+        "n": n,
+        "dim": dim,
+        "queries": queries,
+        "top_k": top_k,
+        "clusters": clusters,
+        "spread": spread,
+        "seed": seed,
+        "cpu_count": os.cpu_count(),
+    }
     try:
         digest = hashlib.sha256(str(dim).encode()).hexdigest()[:16]
         connection = await asyncpg.connect(dsn)
         try:
             if await connection.fetchval("SELECT to_regclass($1)", f"unimem_vectors_hnsw_{digest}"):
-                raise RuntimeError(f"an HNSW index for dimension {dim} already exists; loading would insert into "
-                                   "it row by row instead of building it in bulk. Use a fresh database.")
+                raise RuntimeError(
+                    f"an HNSW index for dimension {dim} already exists; loading would insert into "
+                    "it row by row instead of building it in bulk. Use a fresh database."
+                )
         finally:
             await connection.close()
         started = time.perf_counter()
@@ -88,10 +116,12 @@ async def run(dsn: str, *, n: int, dim: int, queries: int, top_k: int, clusters:
             await connection.execute(
                 f"CREATE INDEX IF NOT EXISTS unimem_vectors_hnsw_{digest} ON unimem_vectors USING hnsw "
                 f"((embedding::vector({dim})) vector_cosine_ops) WITH (m={m}, ef_construction={ef_construction}) "
-                f"WHERE dimension={dim}")
+                f"WHERE dimension={dim}"
+            )
             report["index_build_seconds"] = round(time.perf_counter() - started, 1)
             report["index_bytes"] = await connection.fetchval(
-                f"SELECT pg_relation_size('unimem_vectors_hnsw_{digest}')")
+                f"SELECT pg_relation_size('unimem_vectors_hnsw_{digest}')"
+            )
         finally:
             await connection.close()
         noise = np.random.default_rng(seed + 1)
@@ -104,14 +134,24 @@ async def run(dsn: str, *, n: int, dim: int, queries: int, top_k: int, clusters:
             t0 = time.perf_counter()
             truths.append({h.key for h in await exact.search(q, top_k=top_k)})
             exact_ms.append((time.perf_counter() - t0) * 1000)
-        report["exact_ms"] = {"p50": round(statistics.median(exact_ms), 1),
-                              "p95": round(_percentile(exact_ms, 0.95), 1)}
+        report["exact_ms"] = {
+            "p50": round(statistics.median(exact_ms), 1),
+            "p95": round(_percentile(exact_ms, 0.95), 1),
+        }
         report["hnsw"] = {"m": m, "ef_construction": ef_construction, "iterative_scan": "strict_order"}
         report["sweep"] = []
         for ef in ef_search:
             approximate = await vector_store.PostgresVectorIndex.open(
-                dsn, tenant=TENANT, namespace=NAMESPACE, model=MODEL, dimension=dim, max_size=4,
-                approximate=True, command_timeout=3600, ef_search=ef)
+                dsn,
+                tenant=TENANT,
+                namespace=NAMESPACE,
+                model=MODEL,
+                dimension=dim,
+                max_size=4,
+                approximate=True,
+                command_timeout=3600,
+                ef_search=ef,
+            )
             try:
                 for q in probes[:5]:
                     await approximate.search(q, top_k=top_k)
@@ -123,10 +163,14 @@ async def run(dsn: str, *, n: int, dim: int, queries: int, top_k: int, clusters:
                     recalls.append(len(want & {h.key for h in hits}) / max(1, len(want)))
             finally:
                 await approximate.close()
-            report["sweep"].append({
-                "ef_search": ef, "ann_ms": {"p50": round(statistics.median(ann_ms), 2),
-                                            "p95": round(_percentile(ann_ms, 0.95), 2)},
-                f"recall_at_{top_k}": round(statistics.fmean(recalls), 4), "recall_min": round(min(recalls), 4)})
+            report["sweep"].append(
+                {
+                    "ef_search": ef,
+                    "ann_ms": {"p50": round(statistics.median(ann_ms), 2), "p95": round(_percentile(ann_ms, 0.95), 2)},
+                    f"recall_at_{top_k}": round(statistics.fmean(recalls), 4),
+                    "recall_min": round(min(recalls), 4),
+                }
+            )
     finally:
         if not keep:
             connection = await asyncpg.connect(dsn)
@@ -137,29 +181,62 @@ async def run(dsn: str, *, n: int, dim: int, queries: int, top_k: int, clusters:
         await exact.close()
     with open(__file__, "rb") as fh:
         report["source_sha256"] = hashlib.sha256(fh.read()).hexdigest()
-    report["note"] = ("Synthetic unit vectors around seeded cluster centres through the product Postgres index; "
-                      "measures index and query-path latency and recall against exhaustive search, not an "
-                      "embedding model or lexical fusion.")
+    report["note"] = (
+        "Synthetic unit vectors around seeded cluster centres through the product Postgres index; "
+        "measures index and query-path latency and recall against exhaustive search, not an "
+        "embedding model or lexical fusion."
+    )
     return report
 
 
-async def run_lance(*, n: int, dim: int, queries: int, top_k: int, clusters: int, spread: float,
-                    seed: int, batch: int, keep: bool, work_dir: str | None = None) -> dict:
+async def run_lance(
+    *,
+    n: int,
+    dim: int,
+    queries: int,
+    top_k: int,
+    clusters: int,
+    spread: float,
+    seed: int,
+    batch: int,
+    keep: bool,
+    work_dir: str | None = None,
+) -> dict:
     """Measure the optional local engine through product searches before/after ANN."""
-    if not (256 <= n <= 1_000_000 and 1 <= dim <= 2000 and 1 <= queries <= min(n, 1000)
-            and 1 <= top_k <= min(n, vector_store.MAX_BATCH) and 1 <= clusters <= n
-            and 1 <= batch <= vector_store.MAX_BATCH and seed >= 0
-            and math.isfinite(spread) and spread > 0):
+    if not (
+        256 <= n <= 1_000_000
+        and 1 <= dim <= 2000
+        and 1 <= queries <= min(n, 1000)
+        and 1 <= top_k <= min(n, vector_store.MAX_BATCH)
+        and 1 <= clusters <= n
+        and 1 <= batch <= vector_store.MAX_BATCH
+        and seed >= 0
+        and math.isfinite(spread)
+        and spread > 0
+    ):
         raise ValueError("invalid Lance scale workload")
     from unimem.vector_lance import ANN_REFINE_FACTOR, LanceVectorIndex
 
     root = tempfile.mkdtemp(prefix="unimem-lance-scale-", dir=work_dir)
     index = None
-    report = {"benchmark": "vector-scale", "engine": "lance", "n": n, "dim": dim,
-              "queries": queries, "top_k": top_k, "clusters": clusters, "spread": spread,
-              "seed": seed, "batch": batch, "cpu_count": os.cpu_count(), "platform": platform.platform(),
-              "python": platform.python_version(), "lancedb": importlib.metadata.version("lancedb"),
-              "numpy": np.__version__, "hybrid_gate": "unverified: vector component only"}
+    report = {
+        "benchmark": "vector-scale",
+        "engine": "lance",
+        "n": n,
+        "dim": dim,
+        "queries": queries,
+        "top_k": top_k,
+        "clusters": clusters,
+        "spread": spread,
+        "seed": seed,
+        "batch": batch,
+        "cpu_count": os.cpu_count(),
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "lancedb": importlib.metadata.version("lancedb"),
+        "numpy": np.__version__,
+        "hybrid_gate": "unverified: vector component only",
+    }
     try:
         index = LanceVectorIndex(root, tenant=TENANT, namespace=NAMESPACE, model=MODEL, dimension=dim)
         rng = np.random.default_rng(seed)
@@ -170,9 +247,10 @@ async def run_lance(*, n: int, dim: int, queries: int, top_k: int, clusters: int
         for start in range(0, n, batch):
             block = _vectors(rng, centres, min(batch, n - start), spread)
             if len(sample) < queries:
-                sample.extend(block[:queries - len(sample)])
-            await index.upsert(vector_store.VectorRecord(f"m{start+i}", point.tolist())
-                               for i, point in enumerate(block))
+                sample.extend(block[: queries - len(sample)])
+            await index.upsert(
+                vector_store.VectorRecord(f"m{start + i}", point.tolist()) for i, point in enumerate(block)
+            )
         report["load_seconds"] = time.perf_counter() - started
         noise = np.random.default_rng(seed + 1)
         probes = []
@@ -185,7 +263,7 @@ async def run_lance(*, n: int, dim: int, queries: int, top_k: int, clusters: int
             truths.append({hit.key for hit in await index.search(query, top_k=top_k)})
             exact_ms.append((time.perf_counter() - started) * 1000)
         report["exact_samples_ms"] = exact_ms
-        report["exact_ms"] = {"p50": statistics.median(exact_ms), "p95": _percentile(exact_ms, .95)}
+        report["exact_ms"] = {"p50": statistics.median(exact_ms), "p95": _percentile(exact_ms, 0.95)}
         started = time.perf_counter()
         report["maintenance"] = await index.maintain()
         report["index_build_seconds"] = time.perf_counter() - started
@@ -199,18 +277,33 @@ async def run_lance(*, n: int, dim: int, queries: int, top_k: int, clusters: int
             hits = await index.search(query, top_k=top_k)
             samples.append((time.perf_counter() - started) * 1000)
             recalls.append(len(truth & {hit.key for hit in hits}) / len(truth))
-        report["sweep"] = [{"configuration": "product HnswSq defaults", "refine_factor": ANN_REFINE_FACTOR,
-                            "samples_ms": samples,
-                            "p50_ms": statistics.median(samples), "p95_ms": _percentile(samples, .95),
-                            "recall_at_k": statistics.mean(recalls), "recall_min": min(recalls)}]
+        report["sweep"] = [
+            {
+                "configuration": "product HnswSq defaults",
+                "refine_factor": ANN_REFINE_FACTOR,
+                "samples_ms": samples,
+                "p50_ms": statistics.median(samples),
+                "p95_ms": _percentile(samples, 0.95),
+                "recall_at_k": statistics.mean(recalls),
+                "recall_min": min(recalls),
+            }
+        ]
         repository = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         report["source_files_sha256"] = {
-            name: hashlib.sha256(open(os.path.join(repository, name), "rb").read()).hexdigest()
-            for name in ("benchmarks/vector_scale_bench.py", "unimem/vector_lance.py",
-                         "unimem/vector_store.py", "unimem/async_workers.py")}
-        report["source_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository,
-                                                          text=True).strip()
-        report["note"] = "Synthetic paired vector queries; excludes embeddings, lexical/graph fusion and canonical admission."
+            name: hashlib.sha256(Path(os.path.join(repository, name)).read_bytes()).hexdigest()
+            for name in (
+                "benchmarks/vector_scale_bench.py",
+                "unimem/vector_lance.py",
+                "unimem/vector_store.py",
+                "unimem/async_workers.py",
+            )
+        }
+        report["source_commit"] = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repository, text=True
+        ).strip()
+        report["note"] = (
+            "Synthetic paired vector queries; excludes embeddings, lexical/graph fusion and canonical admission."
+        )
         if keep:
             report["retained_benchmark_store"] = root
         return report
@@ -226,10 +319,10 @@ def lance_component_gates(report: dict) -> dict[str, bool]:
     rows = report.get("sweep", [])
     return {
         "million_vectors": report.get("n") == 1_000_000,
-        "local_vector_p95_lt_50ms": bool(rows) and all(
-            math.isfinite(row["p95_ms"]) and 0 <= row["p95_ms"] < 50 for row in rows),
-        "mean_recall_gte_0_97": bool(rows) and all(
-            math.isfinite(row["recall_at_k"]) and .97 <= row["recall_at_k"] <= 1 for row in rows),
+        "local_vector_p95_lt_50ms": bool(rows)
+        and all(math.isfinite(row["p95_ms"]) and 0 <= row["p95_ms"] < 50 for row in rows),
+        "mean_recall_gte_0_97": bool(rows)
+        and all(math.isfinite(row["recall_at_k"]) and 0.97 <= row["recall_at_k"] <= 1 for row in rows),
     }
 
 
@@ -237,8 +330,11 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--dsn", default=os.environ.get("UNIMEM_SCALE_DSN", ""))
     p.add_argument("--engine", choices=("postgres", "lance"), default="postgres")
-    p.add_argument("--check-lance", action="store_true",
-                   help="fail unless the 1M vector component meets p95 <50 ms and mean recall >=0.97")
+    p.add_argument(
+        "--check-lance",
+        action="store_true",
+        help="fail unless the 1M vector component meets p95 <50 ms and mean recall >=0.97",
+    )
     p.add_argument("--work-dir", default=None, help="parent directory for a benchmark-owned Lance store")
     p.add_argument("--n", type=int, default=1_000_000)
     p.add_argument("--dim", type=int, default=384)
@@ -248,8 +344,7 @@ def main(argv=None) -> int:
     p.add_argument("--spread", type=float, default=0.05)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--batch", type=int, default=vector_store.MAX_BATCH)
-    p.add_argument("--ef-search", default="40,100,200,400,800",
-                   help="comma-separated hnsw.ef_search values to measure")
+    p.add_argument("--ef-search", default="40,100,200,400,800", help="comma-separated hnsw.ef_search values to measure")
     p.add_argument("--m", type=int, default=16)
     p.add_argument("--ef-construction", type=int, default=64)
     p.add_argument("--keep", action="store_true")
@@ -260,14 +355,38 @@ def main(argv=None) -> int:
     if args.engine == "postgres" and not args.dsn:
         p.error("--dsn (or UNIMEM_SCALE_DSN) is required")
     if args.engine == "lance":
-        report = asyncio.run(run_lance(n=args.n, dim=args.dim, queries=args.queries, top_k=args.top_k,
-                                      clusters=args.clusters, spread=args.spread, seed=args.seed,
-                                      batch=args.batch, keep=args.keep, work_dir=args.work_dir))
+        report = asyncio.run(
+            run_lance(
+                n=args.n,
+                dim=args.dim,
+                queries=args.queries,
+                top_k=args.top_k,
+                clusters=args.clusters,
+                spread=args.spread,
+                seed=args.seed,
+                batch=args.batch,
+                keep=args.keep,
+                work_dir=args.work_dir,
+            )
+        )
     else:
-        report = asyncio.run(run(args.dsn, n=args.n, dim=args.dim, queries=args.queries, top_k=args.top_k,
-                             clusters=args.clusters, spread=args.spread, seed=args.seed, batch=args.batch,
-                             ef_search=[int(x) for x in args.ef_search.split(",")], m=args.m, ef_construction=args.ef_construction,
-                             keep=args.keep))
+        report = asyncio.run(
+            run(
+                args.dsn,
+                n=args.n,
+                dim=args.dim,
+                queries=args.queries,
+                top_k=args.top_k,
+                clusters=args.clusters,
+                spread=args.spread,
+                seed=args.seed,
+                batch=args.batch,
+                ef_search=[int(x) for x in args.ef_search.split(",")],
+                m=args.m,
+                ef_construction=args.ef_construction,
+                keep=args.keep,
+            )
+        )
     if args.check_lance:
         report["vector_component_gates"] = lance_component_gates(report)
     text = json.dumps(report, indent=2)

@@ -93,11 +93,16 @@ def test_injection_policy_vectors(tmp_path, vector):
     root = str(tmp_path)
     holdout_io.configure(root, rate=0.01, salt="extension-fixture")
     kit = HookKit(root, "agent", embedder=_Embedder(vector.get("dense_agrees", True)))
-    kit.journal.put(MemoryRecord(
-        "candidate", "lesson", 1,
-        {"text": vector["text"], "trigger": vector.get("trigger", {})},
-        status=vector["status"], scope=kit.scope,
-    ))
+    kit.journal.put(
+        MemoryRecord(
+            "candidate",
+            "lesson",
+            1,
+            {"text": vector["text"], "trigger": vector.get("trigger", {})},
+            status=vector["status"],
+            scope=kit.scope,
+        )
+    )
     payload = {"session_id": "run", "prompt": "pytest parser", "budget": vector.get("budget", 600)}
     reply = kit.handle("UserPromptSubmit", payload, deadline_ms=1000, defer_delivery=True)
     assert reply["injected"] == vector["injected"]
@@ -139,11 +144,14 @@ def test_learning_cursor_and_quarantine_vectors(tmp_path, vector):
             raise RuntimeError("fixture provider unavailable")
         if stage == "WRITER":
             return json.dumps({"accept": vector["writer_accepts"]}), {}
-        return json.dumps({
-            "operation": vector.get("curator_operation", "create"), "kind": "pitfall",
-            "text": "Validate parser boundaries before pytest.",
-            "trigger": {"event": "PostToolUseFailure", "error": "AssertionError"},
-        }), {}
+        return json.dumps(
+            {
+                "operation": vector.get("curator_operation", "create"),
+                "kind": "pitfall",
+                "text": "Validate parser boundaries before pytest.",
+                "trigger": {"event": "PostToolUseFailure", "error": "AssertionError"},
+            }
+        ), {}
 
     if fail_stage:
         with pytest.raises(RuntimeError, match="provider unavailable"):

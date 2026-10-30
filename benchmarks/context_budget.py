@@ -3,6 +3,7 @@
 No substring truncation or stale source-selection proof: each returned context
 and its source identities come from a complete native retrieval/assembly call.
 """
+
 from __future__ import annotations
 
 

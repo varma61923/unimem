@@ -17,9 +17,7 @@ class TestPersistReportCollisionSort:
         base = "2026-09-05_120000_000000"
         base_file = f"{base}.json"
         collision_file = f"{base}_0001.json"
-        assert collision_file > base_file, (
-            f"Collision suffix '{collision_file}' must sort after base '{base_file}'"
-        )
+        assert collision_file > base_file, f"Collision suffix '{collision_file}' must sort after base '{base_file}'"
 
     def test_persist_report_returns_valid_json_file(self, tmp_path):
         with patch.object(measure_performance, "_reports_dir", return_value=str(tmp_path)):
@@ -46,6 +44,7 @@ class TestPersistReportCollisionSort:
 
     def test_persist_report_collision_loop_produces_distinct_sorted_files(self, tmp_path):
         import datetime
+
         ts = datetime.datetime(2026, 9, 5, 12, 0, 0, 123456)
         with patch.object(measure_performance, "_reports_dir", return_value=str(tmp_path)):
             path1 = measure_performance.persist_report({"run": 1}, ts=ts)
@@ -123,12 +122,8 @@ class TestInstallCmdRootResolution:
 
         assert len(captured_roots) == 1
         resolved = captured_roots[0]
-        assert resolved.startswith(str(dest)), (
-            f"Expected root under dest={dest}, got root={resolved}"
-        )
-        assert resolved != os.getcwd(), (
-            "Root must not be caller's cwd when --dest points elsewhere"
-        )
+        assert resolved.startswith(str(dest)), f"Expected root under dest={dest}, got root={resolved}"
+        assert resolved != os.getcwd(), "Root must not be caller's cwd when --dest points elsewhere"
 
 
 class TestDatetimeTimezoneIntegrity:
@@ -146,6 +141,7 @@ class TestDatetimeTimezoneIntegrity:
 
     def test_compute_freshness_compares_aware_and_naive_without_type_error(self):
         import datetime
+
         utc_now = datetime.datetime(2026, 9, 5, 12, 0, 0, tzinfo=datetime.timezone.utc)
         lessons = {
             "l1": {"last_hit": "2026-09-01"},
@@ -187,6 +183,7 @@ class TestTransferGapMemoization:
 class TestShelloutPythonUtf8:
     def test_shellout_sets_pythonutf8_even_when_capture_false(self, tmp_path):
         from unimem.commands import _shellout
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = types.SimpleNamespace(returncode=0)
             with patch("os.path.isfile", return_value=True):
@@ -199,6 +196,7 @@ class TestShelloutPythonUtf8:
 class TestIndexCmd:
     def test_index_cmd_missing_deps_exits_1(self, capsys):
         from unimem.commands import index_cmd
+
         args = types.SimpleNamespace(force=False, dest=None)
         with patch("unimem.commands.index_cmd.has_attention_deps", return_value=False):
             rc = index_cmd.run(args)
@@ -208,6 +206,7 @@ class TestIndexCmd:
 
     def test_index_cmd_with_deps_runs_script(self):
         from unimem.commands import index_cmd
+
         args = types.SimpleNamespace(force=True, dest="/tmp/test_store")
         with patch("unimem.commands.index_cmd.has_attention_deps", return_value=True):
             with patch("unimem.commands.index_cmd.run_script", return_value=0) as mock_run:
@@ -219,13 +218,16 @@ class TestIndexCmd:
 
 
 class TestInstallCmdTargets:
-    @pytest.mark.parametrize("target,expected_file", [
-        ("cursor", ".cursor/rules/unimem.mdc"),
-        ("windsurf", ".windsurf/rules/unimem.md"),
-        ("devin", ".devin/skills/unimem/SKILL.md"),
-        ("generic-mcp", "unimem.hub.mcp.json.example"),
-        ("generic", "UNIMEM.md"),
-    ])
+    @pytest.mark.parametrize(
+        "target,expected_file",
+        [
+            ("cursor", ".cursor/rules/unimem.mdc"),
+            ("windsurf", ".windsurf/rules/unimem.md"),
+            ("devin", ".devin/skills/unimem/SKILL.md"),
+            ("generic-mcp", "unimem.hub.mcp.json.example"),
+            ("generic", "UNIMEM.md"),
+        ],
+    )
     def test_install_cmd_all_targets(self, tmp_path, target, expected_file):
         args = types.SimpleNamespace(target=target, dest=str(tmp_path))
         with patch.object(install_cmd, "_write_local_mcp", return_value=None):
@@ -239,6 +241,7 @@ class TestInstallCmdTargets:
 class TestReportHtml:
     def test_wrap_page_structure(self):
         from unimem import report_html
+
         html = report_html.wrap_page("Test Title", "<p>Body</p>", "2026-09-05")
         assert "<!DOCTYPE html>" in html
         assert "<title>Test Title — 2026-09-05</title>" in html
@@ -247,6 +250,7 @@ class TestReportHtml:
 
     def test_stat_card_generation(self):
         from unimem import report_html
+
         card = report_html.stat_card("Metric", "99%", note="High accuracy")
         assert 'class="card"' in card
         assert 'class="label">Metric<' in card
@@ -257,6 +261,7 @@ class TestReportHtml:
 class TestApprovalPolicyUnknownKeys:
     def test_load_policy_rejects_typo_keys(self, tmp_path):
         from unimem import approval
+
         policy_file = tmp_path / "memory" / "approval-policy.yaml"
         policy_file.parent.mkdir(parents=True, exist_ok=True)
         policy_file.write_text("mode: single\nrequire-human: true\n", encoding="utf-8")
@@ -265,6 +270,7 @@ class TestApprovalPolicyUnknownKeys:
 
     def test_load_policy_accepts_valid_keys(self, tmp_path):
         from unimem import approval
+
         policy_file = tmp_path / "memory" / "approval-policy.yaml"
         policy_file.parent.mkdir(parents=True, exist_ok=True)
         policy_file.write_text("mode: two-person\nrequire_human: true\n", encoding="utf-8")
@@ -278,6 +284,7 @@ class TestImportCmdFileCheck:
         import argparse
 
         from unimem.commands import import_cmd
+
         dest = tmp_path / "target_store"
         args = argparse.Namespace(
             file=str(tmp_path / "nonexistent.jsonl"),
@@ -300,6 +307,7 @@ class TestImportCmdFileCheck:
 class TestMcpServerDraftLessonErrorHandling:
     def test_draft_lesson_handles_validation_exception(self, tmp_path):
         import asyncio
+
         pytest.importorskip("mcp", reason="`unimem serve` needs the MCP SDK: pip install 'unimem[serve]'")
         from unimem import mcp_server
 
@@ -346,6 +354,7 @@ class TestMcpServerDraftLessonErrorHandling:
 class TestTraceIoFallback:
     def test_trace_io_read_falls_back_when_frontmatter_empty_or_none(self, tmp_path):
         from unimem import trace_io
+
         trace_file = tmp_path / "test_trace.md"
         content = (
             "---\n"
@@ -353,7 +362,7 @@ class TestTraceIoFallback:
             "title: Test Fallback\n"
             "agent_type: code\n"
             "tags: [test]\n"
-            "context_text: \"\"\n"
+            'context_text: ""\n'
             "solution_text: null\n"
             "---\n\n"
             "## Context\n"

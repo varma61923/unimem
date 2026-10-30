@@ -1,4 +1,5 @@
 """Explicit provider registration. Import strings from untrusted config are never executed."""
+
 from __future__ import annotations
 
 import re
@@ -60,8 +61,12 @@ class LLMFactory:
             if config.provider != provider or provider not in LLMFactory.names():
                 raise ConfigurationError("model configuration must match the selected registered provider")
             if provider in {"openai", "ollama"}:
-                config = replace(config, provider="openai-compatible", base_url=config.base_url or (
-                    "https://api.openai.com/v1" if provider == "openai" else "http://localhost:11434/v1"))
+                config = replace(
+                    config,
+                    provider="openai-compatible",
+                    base_url=config.base_url
+                    or ("https://api.openai.com/v1" if provider == "openai" else "http://localhost:11434/v1"),
+                )
             return _LanguageModel(config)
         try:
             from unimem.provider_config import LLMConfig
@@ -88,8 +93,11 @@ class EmbedderFactory:
 
         if isinstance(config, (str, embeddings.Spec)):
             tag = config.tag if isinstance(config, embeddings.Spec) else config
-            return (embeddings.provider(config, local_files_only=True) if tag == embeddings.DEFAULT_LOCAL_TAG
-                    else embeddings.provider(config))
+            return (
+                embeddings.provider(config, local_files_only=True)
+                if tag == embeddings.DEFAULT_LOCAL_TAG
+                else embeddings.provider(config)
+            )
         try:
             from unimem.provider_config import EmbedderConfig
         except ImportError:
@@ -199,9 +207,11 @@ def mmr_reranker(lam: float = MMR_LAMBDA):
         chosen: list[int] = []
         remaining = list(range(len(ranked)))
         while remaining:
+
             def value(i: int) -> float:
                 overlap = max((len(bags[i] & bags[j]) / (len(bags[i] | bags[j]) or 1) for j in chosen), default=0.0)
                 return lam * (ranked[i].score / top) - (1.0 - lam) * overlap
+
             best = max(remaining, key=lambda i: (value(i), -i))
             chosen.append(best)
             remaining.remove(best)
@@ -222,6 +232,7 @@ def _hosted_reranker(provider: str):
         from unimem.rerankers_hosted import HostedReranker
 
         return HostedReranker(provider, model)
+
     return factory
 
 
@@ -268,22 +279,27 @@ def register_local_backends() -> None:
     with _LOCAL_LOCK:
         if _LOCAL_REGISTERED[0]:
             return
+
         def lance(**kwargs):
             from unimem.vector_lance import LanceVectorIndex
 
             return LanceVectorIndex(**kwargs)
+
         def sqlite(**kwargs):
             from unimem.vector_store import SQLiteVectorIndex
 
             return SQLiteVectorIndex.open(**kwargs)
+
         def postgres(**kwargs):
             from unimem.vector_store import PostgresVectorIndex
 
             return PostgresVectorIndex.open(**kwargs)
+
         def sentence_transformers():
             from unimem.semantic import load_model
 
             return load_model()
+
         VECTORS.register("lance", lance)
         VECTORS.register("sqlite", sqlite)
         VECTORS.register("postgres", postgres)
@@ -301,6 +317,7 @@ class BackendFactory:
     SQLite uses separate files for every owner/dataset. Postgres/Lance additionally
     enforce their immutable tenant/namespace in every backend operation.
     """
+
     def __init__(self, root: str):
         self.root = root
         register_local_backends()
@@ -318,7 +335,7 @@ class BackendFactory:
         args = {"tenant": scope.tenant, "namespace": scope.namespace, "model": model, "dimension": dimension}
         if provider == "sqlite":
             identity = hashlib.sha256(repr((owner, dataset)).encode()).hexdigest()
-            filename = os.path.join(paths.memory_dir(self.root), "vectors", identity+".sqlite")
+            filename = os.path.join(paths.memory_dir(self.root), "vectors", identity + ".sqlite")
             paths.enforce_boundary(self.root, filename)
             args["path"] = paths.safe_prepare_output_path(filename, allow_unlink_leaf=False)
         elif provider == "postgres":
@@ -333,8 +350,12 @@ class BackendFactory:
             raise CapabilityError("unsupported configured vector backend")
         value = await STORE_WORKERS.run(VECTORS.create, provider, **args)
         value = await value if inspect.isawaitable(value) else value
-        expected = {"tenant": scope.tenant, "namespace": scope.namespace, "model": scope.model,
-                    "dimension": scope.dimension}
+        expected = {
+            "tenant": scope.tenant,
+            "namespace": scope.namespace,
+            "model": scope.model,
+            "dimension": scope.dimension,
+        }
         if any(getattr(value, key, None) != wanted for key, wanted in expected.items()):
             close = getattr(value, "close", None)
             if callable(close):
@@ -356,10 +377,20 @@ class BackendFactory:
         validated = config if isinstance(config, VectorStoreConfig) else VectorStoreConfig.model_validate(config)
         from unimem.secrets_provider import env_secret
 
-        dsn = (validated.dsn.get_secret_value() if validated.dsn is not None else
-               env_secret(validated.dsn_env) if validated.dsn_env is not None else "")
+        dsn = (
+            validated.dsn.get_secret_value()
+            if validated.dsn is not None
+            else env_secret(validated.dsn_env)
+            if validated.dsn_env is not None
+            else ""
+        )
         if dsn.startswith("postgresql+asyncpg://"):
-            dsn = "postgresql://" + dsn[len("postgresql+asyncpg://"):]
-        return await self.vector(validated.provider, owner=validated.owner, dataset=validated.dataset,
-                                 model=validated.model, dimension=validated.dimension,
-                                 dsn=dsn)
+            dsn = "postgresql://" + dsn[len("postgresql+asyncpg://") :]
+        return await self.vector(
+            validated.provider,
+            owner=validated.owner,
+            dataset=validated.dataset,
+            model=validated.model,
+            dimension=validated.dimension,
+            dsn=dsn,
+        )

@@ -1,4 +1,5 @@
 """Semantic matching for the Knowledge Base, computed entirely locally."""
+
 from __future__ import annotations
 
 import hashlib
@@ -21,6 +22,7 @@ class Encoder(Protocol):
 
     def encode(self, texts: list[str], /, *, normalize_embeddings: bool) -> Any: ...
 
+
 DEFAULT_SEMANTIC_THRESHOLD = 0.65
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
@@ -42,15 +44,18 @@ _model_lock = threading.Lock()
 _identity_lock = threading.Lock()
 _identities: weakref.WeakKeyDictionary[Any, object] = weakref.WeakKeyDictionary()
 _vectors: RuntimeCache[Any] = RuntimeCache(
-    max_entries=128, max_bytes=64 * 1024 * 1024, ttl=300,
+    max_entries=128,
+    max_bytes=64 * 1024 * 1024,
+    ttl=300,
     weigh=lambda _key, value: int(value.nbytes) + 128,
 )
 
 
 def available() -> bool:
     """Whether semantic matching can run, without loading anything heavy."""
-    return (importlib.util.find_spec("numpy") is not None
-            and importlib.util.find_spec("sentence_transformers") is not None)
+    return (
+        importlib.util.find_spec("numpy") is not None and importlib.util.find_spec("sentence_transformers") is not None
+    )
 
 
 def load_model() -> Encoder:
@@ -88,14 +93,18 @@ def encode(texts: Sequence[str]) -> NDArray[np.floating[Any]]:
         raise SemanticUnavailable("nothing to encode")
     model = load_model()
     items = list(texts)
-    digest = hashlib.sha256(json.dumps(items, ensure_ascii=False, separators=(",", ":"))
-                            .encode("utf-8")).digest()
+    digest = hashlib.sha256(json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode("utf-8")).digest()
+
     def compute() -> NDArray[np.floating[Any]]:
         import numpy as np
 
         vectors = np.asarray(model.encode(items, normalize_embeddings=True)).copy()
-        if vectors.ndim != 2 or vectors.shape[0] != len(items) or vectors.shape[1] == 0 \
-                or not np.isfinite(vectors).all():
+        if (
+            vectors.ndim != 2
+            or vectors.shape[0] != len(items)
+            or vectors.shape[1] == 0
+            or not np.isfinite(vectors).all()
+        ):
             raise SemanticUnavailable("encoder returned invalid vectors")
         vectors.flags.writeable = False
         return vectors
@@ -133,8 +142,10 @@ def best_matches(
     for row in sims:
         order = list(np.argsort(-row)[:top_k])
         best_i = int(order[0]) if order else -1
-        out.append({
-            "best": (best_i, float(row[best_i])) if best_i >= 0 else None,
-            "matches": [(int(i), float(row[i])) for i in order if float(row[i]) >= threshold],
-        })
+        out.append(
+            {
+                "best": (best_i, float(row[best_i])) if best_i >= 0 else None,
+                "matches": [(int(i), float(row[i])) for i in order if float(row[i]) >= threshold],
+            }
+        )
     return out

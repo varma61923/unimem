@@ -1,4 +1,5 @@
 """Durable grounded extraction retries keep review gates and source evidence."""
+
 from __future__ import annotations
 
 import glob
@@ -12,11 +13,19 @@ from unimem.cli import main
 from unimem.distillation_worker import distill_job
 
 
-@pytest.mark.parametrize("payload", [
-    {"status": "active"}, {"failed_only": "false"}, {"semantic_dedup": 1},
-    {"min_validation_score": float("nan")}, {"similarity": float("inf")},
-    {"min_cluster": True}, {"min_cluster": 1001}, {"agent_type": []},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"status": "active"},
+        {"failed_only": "false"},
+        {"semantic_dedup": 1},
+        {"min_validation_score": float("nan")},
+        {"similarity": float("inf")},
+        {"min_cluster": True},
+        {"min_cluster": 1001},
+        {"agent_type": []},
+    ],
+)
 def test_worker_rejects_invalid_or_privilege_expanding_configuration(tmp_path: Path, payload: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         distill_job(str(tmp_path), payload)
@@ -28,10 +37,13 @@ def test_real_durable_distillation_is_review_only_and_retry_safe(tmp_path: Path)
     assert main(["init", "--dest", root, "--agent-type", "support"]) == 0
     for number in range(3):
         trace_io.write_new(
-            root, title=f"Postgres connection timeout {number}",
+            root,
+            title=f"Postgres connection timeout {number}",
             context="A postgres database transaction timed out because all pooled connections were busy.",
             solution="Bound concurrent requests to the database pool size and retry only transient connection failures.",
-            tags=["postgres", "connection", "timeout"], agent_type="support", outcome={"resolved": False},
+            tags=["postgres", "connection", "timeout"],
+            agent_type="support",
+            outcome={"resolved": False},
         )
     first = jobs.enqueue(root, "distill", {"min_validation_score": 0.7}, dedupe_key="failure-lessons")
     assert jobs.enqueue(root, "distill", {"min_validation_score": 0.7}, dedupe_key="failure-lessons").id == first.id

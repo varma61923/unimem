@@ -1,5 +1,6 @@
 """Facts reach the knowledge graph on their own: entities and relations are projected
 incrementally, with provenance, and closed when the fact that stated them retires."""
+
 import json
 
 import pytest
@@ -115,8 +116,7 @@ def test_an_exclusive_relation_exposes_a_contradiction_words_cannot(tmp_path, mo
     report = graph_sync.sync(root)
     assert report["conflicts"] == 1
     [conflict] = fact_conflicts.pending(root)
-    assert (conflict.older, conflict.newer, conflict.kind, conflict.action) == (old.id, new.id, "exclusive",
-                                                                                "flagged")
+    assert (conflict.older, conflict.newer, conflict.kind, conflict.action) == (old.id, new.id, "exclusive", "flagged")
     assert hierarchical.load_facts(root)[old.id].status == "active"  # flag mode changes nothing
 
 

@@ -13,9 +13,12 @@ def _lesson(root, slug: str, *, rule: str = "Do the thing.", status: str = "acti
     os.makedirs(ldir, exist_ok=True)
     path = os.path.join(ldir, f"lesson_{slug}.md")
     lesson_io.write_lesson(
-        path, {"name": slug, "status": status},
+        path,
+        {"name": slug, "status": status},
         f"## Rule\n{rule}\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
-        root=str(root), actor="cli:test", reason="seed",
+        root=str(root),
+        actor="cli:test",
+        reason="seed",
     )
     return path
 
@@ -63,9 +66,7 @@ class TestWhatARelesaseRecords:
     def test_the_same_set_from_a_different_base_is_a_different_release(self, tmp_path):
         _lesson(tmp_path, "alpha")
         entries = release.active_entries(str(tmp_path))
-        assert release.compute_id("base-one", entries) != release.compute_id(
-            "base-two", entries
-        )
+        assert release.compute_id("base-one", entries) != release.compute_id("base-two", entries)
 
     def test_the_first_release_has_a_named_genesis_parent(self, tmp_path):
         _lesson(tmp_path, "alpha")
@@ -108,9 +109,12 @@ class TestTheDiff:
 
         fm, _ = frontmatter.read(path)
         lesson_io.write_lesson(
-            path, fm, "## Rule\nRewritten.\n## Why\nw\n## How to apply\nh\n"
-            "## Counter-examples\nc\n",
-            root=str(tmp_path), actor="cli:test", reason="edit",
+            path,
+            fm,
+            "## Rule\nRewritten.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+            root=str(tmp_path),
+            actor="cli:test",
+            reason="edit",
         )
         after = _cut(tmp_path)
 
@@ -172,9 +176,12 @@ class TestRollback:
 
         fm, _ = frontmatter.read(path)
         lesson_io.write_lesson(
-            path, fm, "## Rule\nSomething else entirely.\n## Why\nw\n"
-            "## How to apply\nh\n## Counter-examples\nc\n",
-            root=str(tmp_path), actor="cli:test", reason="rewrite",
+            path,
+            fm,
+            "## Rule\nSomething else entirely.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+            root=str(tmp_path),
+            actor="cli:test",
+            reason="rewrite",
         )
         _cut(tmp_path)
 
@@ -187,9 +194,12 @@ class TestRollback:
         target = _cut(tmp_path)
         fm, _ = frontmatter.read(path)
         lesson_io.write_lesson(
-            path, fm, "## Rule\nChanged.\n## Why\nw\n## How to apply\nh\n"
-            "## Counter-examples\nc\n",
-            root=str(tmp_path), actor="cli:test", reason="rewrite",
+            path,
+            fm,
+            "## Rule\nChanged.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+            root=str(tmp_path),
+            actor="cli:test",
+            reason="rewrite",
         )
         plan = release.plan_rollback(str(tmp_path), target)
         with pytest.raises(release.ReleaseError, match="DIFFERENT rule"):
@@ -202,9 +212,12 @@ class TestRollback:
 
         fm, _ = frontmatter.read(path)
         lesson_io.write_lesson(
-            path, fm, "## Rule\nChanged.\n## Why\nw\n## How to apply\nh\n"
-            "## Counter-examples\nc\n",
-            root=str(tmp_path), actor="cli:test", reason="rewrite",
+            path,
+            fm,
+            "## Rule\nChanged.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+            root=str(tmp_path),
+            actor="cli:test",
+            reason="rewrite",
         )
         _set_status(tmp_path, "beta", "review")
 
@@ -255,6 +268,7 @@ class TestTheLog:
         _lesson(tmp_path, "beta")
         second = _cut(tmp_path)
         import json
+
         forged = second.to_dict()
         forged["release_id"] = first.release_id[:6] + "0" * 58
         with open(release.releases_log_path(str(tmp_path)), "a", encoding="utf-8") as fh:
@@ -269,8 +283,11 @@ class TestTheLog:
         _lesson(tmp_path, "alpha")
         moment = datetime.datetime(2026, 5, 1, tzinfo=datetime.timezone.utc)
         cut = release.cut(
-            str(tmp_path), base_id=release.current_id(str(tmp_path)),
-            actor="cli:alice", reason="ship it", now=moment,
+            str(tmp_path),
+            base_id=release.current_id(str(tmp_path)),
+            actor="cli:alice",
+            reason="ship it",
+            now=moment,
         )
         assert cut.actor == "cli:alice"
         assert cut.reason == "ship it"

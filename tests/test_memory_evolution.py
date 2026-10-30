@@ -1,9 +1,11 @@
 """Behavioral contracts for the integrated memory evolution path."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -49,8 +51,9 @@ def add(root, text, **options):
 
 
 def request(gateway, path, body, token="owner"):
-    response = gateway.handle("POST", path, {"Authorization": "Bearer " + token, "Host": "localhost"},
-                              json.dumps(body).encode())
+    response = gateway.handle(
+        "POST", path, {"Authorization": "Bearer " + token, "Host": "localhost"}, json.dumps(body).encode()
+    )
     return response.status, json.loads(response.body)
 
 
@@ -73,16 +76,20 @@ def test_invalid_append_batch_has_no_partial_write(tmp_path):
 def test_single_pass_model_cannot_update_existing_records(tmp_path):
     add(tmp_path, "release uses gatekeeper")
     calls = []
+
     def complete(prompt):
         calls.append(prompt)
-        return json.dumps({"facts": [{"statement": "release uses gatekeeper"},
-                                    {"statement": "release now uses another approver"}]}), {}
+        return json.dumps(
+            {"facts": [{"statement": "release uses gatekeeper"}, {"statement": "release now uses another approver"}]}
+        ), {}
+
     result = additive_extract.extract(str(tmp_path), "input", complete=complete)
     assert len(calls) == result["calls"] == 1
     assert [f["action"] for f in result["facts"]] == ["NOOP", "ADD"]
     with pytest.raises(ValueError, match="unsupported"):
-        additive_extract.extract(str(tmp_path), "input", complete=lambda _: (
-            '{"facts":[{"statement":"x", "operation":"DELETE"}]}', {}))
+        additive_extract.extract(
+            str(tmp_path), "input", complete=lambda _: ('{"facts":[{"statement":"x", "operation":"DELETE"}]}', {})
+        )
 
 
 def test_recipe_filters_before_sparse_statistics_and_supports_dense(tmp_path):
@@ -169,8 +176,11 @@ def test_reflect_does_not_launder_forgotten_facts_through_observations(tmp_path)
 def test_active_lesson_requires_current_admission_and_validity(tmp_path):
     root = str(tmp_path)
     filename = tmp_path / "memory" / "lessons" / "lesson_unapproved.md"
-    frontmatter.write(str(filename), {"name": "unapproved", "status": "active", "valid_until": "2020-01-01"},
-                      "Gatekeeper release advice")
+    frontmatter.write(
+        str(filename),
+        {"name": "unapproved", "status": "active", "valid_until": "2020-01-01"},
+        "Gatekeeper release advice",
+    )
     assert not memory_control.reflect(root, "gatekeeper")["context"]
 
 
@@ -180,8 +190,9 @@ def test_reflect_honors_holdout_and_sdk_records_outcome(tmp_path):
     from unimem import experiment
 
     holdout_io.configure(root, rate=0.5, salt="test")
-    occasion = next("occasion-" + str(i) for i in range(100)
-                    if experiment.is_held_out(fact.id, "occasion-" + str(i), 0.5, "test"))
+    occasion = next(
+        "occasion-" + str(i) for i in range(100) if experiment.is_held_out(fact.id, "occasion-" + str(i), 0.5, "test")
+    )
     memory = MemoryClient(root)
     result = memory.reflect("release", occasion_id=occasion)
     assert result["withheld"] == [fact.id] and result["context"] == ""
@@ -204,13 +215,15 @@ def test_session_watermark_does_not_advance_on_failed_or_invalid_model_call(tmp_
     root = str(tmp_path)
     entries = [{"sequence": 1, "text": "release failed because review was skipped"}]
     with pytest.raises(RuntimeError):
-        memory_control.distill_session(root, "session-a", entries,
-                                      lambda _: (_ for _ in ()).throw(RuntimeError("unavailable")))
+        memory_control.distill_session(
+            root, "session-a", entries, lambda _: (_ for _ in ()).throw(RuntimeError("unavailable"))
+        )
     assert not memory_control.records(root, "watermark")
     with pytest.raises(ValueError):
         memory_control.distill_session(root, "session-a", entries, lambda _: ('{"lessons":42}', {}))
-    result = memory_control.distill_session(root, "session-a", entries,
-                                          lambda _: ('{"lessons":["Require review before release"]}', {}))
+    result = memory_control.distill_session(
+        root, "session-a", entries, lambda _: ('{"lessons":["Require review before release"]}', {})
+    )
     assert result["sealed_through"] == 1
     replay = memory_control.distill_session(root, "session-a", entries, lambda _: pytest.fail("replay called model"))
     assert not replay["proposals"]
@@ -225,8 +238,10 @@ def test_exploration_inclusion_probability_and_delayed_outcomes(tmp_path):
     assert all(r["outcome"] == 0.8 for r in causal_policy.read(root))
     with pytest.raises(ValueError):
         causal_policy.record(root, "one", assignments, outcome=0.2)
-    rows = [{"delivered": True, "outcome": 1, "selection_probability": 0.5, "treatment_probability": 0.5},
-            {"delivered": False, "outcome": 0, "selection_probability": 0.5, "treatment_probability": 0.5}]
+    rows = [
+        {"delivered": True, "outcome": 1, "selection_probability": 0.5, "treatment_probability": 0.5},
+        {"delivered": False, "outcome": 0, "selection_probability": 0.5, "treatment_probability": 0.5},
+    ]
     assert causal_policy.snipw(rows)["effect"] == 1
     assert not causal_policy.snipw([{**rows[0], "outcome": None}])["identified"]
 
@@ -242,8 +257,13 @@ def test_origin_corroboration_requires_same_claim_and_operator_bound_authority()
 
 def test_runtime_routes_and_stops_before_next_call(tmp_path):
     route = llm.Config("ollama", "local-model", "")
-    runtime = LLMRuntime(str(tmp_path), "dream", routes={"extract": route}, budget=Budget(calls=1),
-                         complete=lambda prompt, config: ("ok", {"prompt_tokens": 10, "completion_tokens": 4}))
+    runtime = LLMRuntime(
+        str(tmp_path),
+        "dream",
+        routes={"extract": route},
+        budget=Budget(calls=1),
+        complete=lambda prompt, config: ("ok", {"prompt_tokens": 10, "completion_tokens": 4}),
+    )
     assert runtime.complete("x", purpose="extract")[0] == "ok"
     with pytest.raises(BudgetExceeded):
         runtime.complete("y", purpose="extract")
@@ -255,6 +275,7 @@ def test_gliner_and_schema_adapters_are_local():
     class Model:
         def predict_entities(self, text, labels, threshold):
             return [{"text": "Meridian", "label": "project", "score": 0.9}]
+
     assert gliner_entities("Meridian", ["project"], model=Model()) == [("Meridian", "project")]
     assert "project" in ontology.Ontology.from_json_schema({"$defs": {"Project": {"type": "object"}}}).entity_types
     assert decay.perishability("temporary", 1) == 0.5
@@ -283,9 +304,12 @@ def test_evolution_routes_cannot_bypass_existing_container_namespace(tmp_path):
     add(root, "B-only release", scopes=["container:B"])
     gateway = Gateway(root, token="owner")
     for method, path in (("POST", "/v1/memory/profile"), ("GET", "/v1/palace")):
-        response = gateway.handle(method, path, {"Authorization": "Bearer owner", "Host": "localhost",
-                                                "X-Container-Tag": "A"},
-                                  json.dumps({"context": ["container:B"]}).encode())
+        response = gateway.handle(
+            method,
+            path,
+            {"Authorization": "Bearer owner", "Host": "localhost", "X-Container-Tag": "A"},
+            json.dumps({"context": ["container:B"]}).encode(),
+        )
         assert response.status == 403 and b"B-only" not in response.body
 
 
@@ -332,11 +356,25 @@ def test_installer_bootstraps_git_and_isolated_skill(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "-c", "user.name=test", "-c", "user.email=t@example.com",
-                    "commit", "--allow-empty", "-qm", "Add release review"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=t@example.com",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "Add release review",
+        ],
+        check=True,
+    )
     result = onboarding.install(str(tmp_path / "store"), "agent-a", repo=str(repo))
     assert result["traces_imported"] == 1
-    assert "MemoryClient" in open(result["skill_path"]).read()
+    assert "MemoryClient" in Path(result["skill_path"]).read_text()
 
 
 def test_memfs_signed_snapshot_and_shared_attachment_detect_drift(tmp_path, monkeypatch):
@@ -363,8 +401,11 @@ def test_shared_experiments_never_write_into_readonly_attachment(tmp_path, monke
     add(shared, "gatekeeper shared release")
     lessons = tmp_path / "shared" / "memory" / "lessons"
     lessons.mkdir(parents=True)
-    frontmatter.write(str(lessons / "lesson_release.md"), {"name": "lesson_release", "status": "active"},
-                      "Release checklist requires gatekeeper approval.")
+    frontmatter.write(
+        str(lessons / "lesson_release.md"),
+        {"name": "lesson_release", "status": "active"},
+        "Release checklist requires gatekeeper approval.",
+    )
     holdout_io.configure(shared, rate=0.5)
     holdout_io.configure(root, rate=0.5)
     memfs.init(shared)
@@ -394,28 +435,53 @@ def test_shared_directives_are_enforced_even_when_context_budget_is_full(tmp_pat
 
 def test_skill_proposal_retains_raw_sources_and_requires_causal_gate(tmp_path):
     root = str(tmp_path)
-    trace_io.write_new(root, title="release", context="review required", solution="asked gatekeeper", tags=[], trace_id="t1", outcome={"resolved": True})
-    result = experience_skills.propose(root, "release-review", steps=[{"tool": "review", "inputs": {"branch": "main"}}],
-              cases=[{"trace_id": "t1", "succeeded": True}], applies_when="release", do_not_apply_when="read-only")
+    trace_io.write_new(
+        root,
+        title="release",
+        context="review required",
+        solution="asked gatekeeper",
+        tags=[],
+        trace_id="t1",
+        outcome={"resolved": True},
+    )
+    result = experience_skills.propose(
+        root,
+        "release-review",
+        steps=[{"tool": "review", "inputs": {"branch": "main"}}],
+        cases=[{"trace_id": "t1", "succeeded": True}],
+        applies_when="release",
+        do_not_apply_when="read-only",
+    )
     assert result["data"]["status"] == "review" and result["data"]["sources"] == ["t1"]
-    assert not experience_skills.causal_gate(raw_effect=0.5, abstract_effect=0.8, ci_low=None,
-                    independent_review=True, effective_samples=100)["admit"]
+    assert not experience_skills.causal_gate(
+        raw_effect=0.5, abstract_effect=0.8, ci_low=None, independent_review=True, effective_samples=100
+    )["admit"]
 
 
 def test_federated_export_omits_raw_tenant_data_and_requires_exact_approval():
-    skill = {"text": "tenant secret", "scopes": ["user:private"], "data": {
-        "steps": [{"tool": "internal-review", "inputs": {"token": "private value"}}],
-        "sources": ["tenant-trace"], "beta_alpha": 6, "beta_beta": 2, "reliability_mean": 0.75}}
+    skill = {
+        "text": "tenant secret",
+        "scopes": ["user:private"],
+        "data": {
+            "steps": [{"tool": "internal-review", "inputs": {"token": "private value"}}],
+            "sources": ["tenant-trace"],
+            "beta_alpha": 6,
+            "beta_beta": 2,
+            "reliability_mean": 0.75,
+        },
+    }
     tools = {"internal-review": "review"}
     prepared = federation.prepare(skill, public_tools=tools)
     assert "private" not in json.dumps(prepared) and "tenant" not in json.dumps(prepared)
     principal = origin.Principal("reviewer", "org", "federation-export", b"k" * 32)
     approval = origin.bind({"export_digest": prepared["export_digest"]}, principal)
-    assert federation.export(skill, public_tools=tools, approval=approval,
-                             principals={"reviewer": principal}) == prepared
+    assert (
+        federation.export(skill, public_tools=tools, approval=approval, principals={"reviewer": principal}) == prepared
+    )
     with pytest.raises(PermissionError):
-        federation.export(skill, public_tools={"internal-review": "deploy"}, approval=approval,
-                          principals={"reviewer": principal})
+        federation.export(
+            skill, public_tools={"internal-review": "deploy"}, approval=approval, principals={"reviewer": principal}
+        )
 
 
 def test_causal_fixture_is_reproducible_and_keeps_cost_latency_with_accuracy():
@@ -432,8 +498,10 @@ def test_benchmark_does_not_credit_identifier_prefixes():
     class WrongProject:
         def ingest(self, memories):
             pass
+
         def retrieve(self, question, budget):
             return Retrieval(["case-10"], "gatekeeper10 approves another project", 12, 0, 0)
+
     dataset = fixture(2)
     dataset["cases"] = [dataset["cases"][1]] * 10
     metrics = run({"wrong": WrongProject()}, dataset)["adapters"]["wrong"]

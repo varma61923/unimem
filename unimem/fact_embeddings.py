@@ -13,6 +13,7 @@ Fact vectors are cached by statement hash: in memory, and on disk under
 restart does not re-embed every fact. Encoding never holds the shared lock,
 so queries against warm vectors are not serialized behind a cold batch.
 """
+
 from __future__ import annotations
 
 import array
@@ -75,9 +76,11 @@ def _resolve(model, model_path):
     except ImportError:
         return None, None  # Core installation retains its lexical fallback.
     # Cache by local weights' file identity; replacements reload the model.
-    identity = tuple((name, os.stat(os.path.join(selected, name)).st_mtime_ns,
-                      os.stat(os.path.join(selected, name)).st_size)
-                     for name in sorted(os.listdir(selected)) if os.path.isfile(os.path.join(selected, name)))
+    identity = tuple(
+        (name, os.stat(os.path.join(selected, name)).st_mtime_ns, os.stat(os.path.join(selected, name)).st_size)
+        for name in sorted(os.listdir(selected))
+        if os.path.isfile(os.path.join(selected, name))
+    )
     return _cached_model((selected, identity), lambda: SentenceTransformer(selected, local_files_only=True))
 
 
@@ -91,8 +94,10 @@ def _tag_model(tag: str):
         # If the extra is absent, retrieval can stay lexical without trying to
         # import a backend or reach a model host.
         try:
-            available = all(importlib.util.find_spec(name) is not None
-                            for name in ("numpy", "onnxruntime", "tokenizers", "huggingface_hub"))
+            available = all(
+                importlib.util.find_spec(name) is not None
+                for name in ("numpy", "onnxruntime", "tokenizers", "huggingface_hub")
+            )
         except (ImportError, ValueError):
             available = False
         if not available:
@@ -166,7 +171,7 @@ def vectors(facts, *, model=None, model_path: str | None = None, root: str | Non
             if db is not None:
                 hashes = [k[1] for k in missing]
                 for start in range(0, len(hashes), 500):
-                    chunk = hashes[start:start + 500]
+                    chunk = hashes[start : start + 500]
                     marks = ",".join("?" * len(chunk))
                     for digest, blob in db.execute(f"SELECT hash, v FROM vec WHERE hash IN ({marks})", chunk):  # nosec B608
                         if not dimension or len(blob) == dimension * array.array("f").itemsize:
@@ -181,8 +186,10 @@ def vectors(facts, *, model=None, model_path: str | None = None, root: str | Non
                     found[key] = vector
                 if db is not None:
                     with db:
-                        db.executemany("INSERT OR REPLACE INTO vec VALUES (?, ?)",
-                                       [(k[1], array.array("f", v).tobytes()) for k, v in zip(todo, encoded)])
+                        db.executemany(
+                            "INSERT OR REPLACE INTO vec VALUES (?, ?)",
+                            [(k[1], array.array("f", v).tobytes()) for k, v in zip(todo, encoded)],
+                        )
         finally:
             if db is not None:
                 db.close()
@@ -224,15 +231,19 @@ def _matrix_cosines(by_id: dict, ids: list[str], probe) -> list[float] | None:
     return [float(v) for v in np.clip(values, -1.0, 1.0)]
 
 
-def scores(query: str, facts, *, model_path: str | None = None, model=None,
-           root: str | None = None) -> dict[str, float] | None:
+def scores(
+    query: str, facts, *, model_path: str | None = None, model=None, root: str | None = None
+) -> dict[str, float] | None:
     """Cosine similarity of `query` to each fact, or None when no embedder is configured."""
-    facts = list(facts)
     model_obj, _key = _resolve(model, model_path)
     if model_obj is None:
         return None
-    _key, by_id = vectors(facts, model=model, model_path=model_path, root=root)
+    # Resolve and probe the query before consuming a potentially expensive
+    # canonical iterator. An absent dependency or cache-only model must leave
+    # lexical retrieval independent of corpus size.
     query_vector = _encode(model_obj, [query], query=True)[0]
+    facts = list(facts)
+    _key, by_id = vectors(facts, model=model, model_path=model_path, root=root)
     ids = [f.id for f in facts]
     fast = _matrix_cosines(by_id, ids, query_vector)
     if fast is not None:
@@ -253,12 +264,12 @@ def similar(statement: str, facts, *, model=None, root: str | None = None, thres
     Both sides are embedded as documents: this compares statements with each
     other, not a question with candidate answers.
     """
-    facts = list(facts)
     model_obj, _key = _resolve(model, None)
     if model_obj is None:
         return None
-    _key, by_id = vectors(facts, model=model, root=root)
     probe = _encode(model_obj, [statement], query=False)[0]
+    facts = list(facts)
+    _key, by_id = vectors(facts, model=model, root=root)
     pairs = []
     for fact in facts:
         vector = by_id[fact.id]

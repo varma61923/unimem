@@ -46,7 +46,7 @@ fastembed = [
 ]
 hub-sync = [
     "mcp>=2.0,<3.0",
-    "httpx>=0.27.0,<1.0",
+    "httpx2>=2.10,<3.0",
 ]
 llm = [
     "boto3>=1.35,<2.0",
@@ -116,6 +116,7 @@ select = ["E", "F", "W", "I"]
 "benchmarks/**" = ["E501"]
 
 [tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "unit: isolated contract without an externally provisioned service",
     "integration: native driver, SDK or service contract (optional services must be explicitly enabled)",

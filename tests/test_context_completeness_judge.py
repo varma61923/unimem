@@ -26,8 +26,7 @@ def test_prompt_separates_retrieval_sufficiency_from_answer_quality():
 @pytest.mark.parametrize("grade", ["COMPLETE", "PARTIAL", "INSUFFICIENT"])
 def test_parse_structured_completeness_grade(grade):
     result = ContextCompletenessJudge.parse_response(
-        '{"grade":"' + grade.lower() + '","reasoning":"short","present_elements":["Oslo"],'
-        '"missing_elements":["year"]}'
+        '{"grade":"' + grade.lower() + '","reasoning":"short","present_elements":["Oslo"],"missing_elements":["year"]}'
     )
 
     assert result == {
@@ -49,9 +48,11 @@ def test_grade_passes_question_gold_and_context_to_the_model():
 
     def complete(prompt):
         calls.append(prompt)
-        return ('{"grade":"PARTIAL","reasoning":"The city is present, but not the year.",'
-                '"present_elements":["city"],"missing_elements":["year"]}',
-                {"input_tokens": 25, "output_tokens": 12})
+        return (
+            '{"grade":"PARTIAL","reasoning":"The city is present, but not the year.",'
+            '"present_elements":["city"],"missing_elements":["year"]}',
+            {"input_tokens": 25, "output_tokens": 12},
+        )
 
     result = ContextCompletenessJudge(model="fixture").grade(
         {"question": "Where did Mira move?", "answer": "Mira moved to Oslo in 2024."},
@@ -72,29 +73,60 @@ def test_benchmark_reports_context_sufficiency_separately_and_caches_calls(tmp_p
     import json
 
     source = tmp_path / "dataset.json"
-    source.write_text(json.dumps([
-        {"sample_id": f"c{i}", "conversation": {
-            "session_1_date_time": "2024-01-01", "session_1": [
-                {"dia_id": "D1:1", "speaker": "user", "text": "The orchid launch completed on Tuesday."},
-            ]}, "qa": [{"question": "When did the orchid launch complete?", "answer": "Tuesday",
-                        "category": 2, "evidence": ["D1:1"]}]}
-        for i in range(3)
-    ]))
+    source.write_text(
+        json.dumps(
+            [
+                {
+                    "sample_id": f"c{i}",
+                    "conversation": {
+                        "session_1_date_time": "2024-01-01",
+                        "session_1": [
+                            {"dia_id": "D1:1", "speaker": "user", "text": "The orchid launch completed on Tuesday."},
+                        ],
+                    },
+                    "qa": [
+                        {
+                            "question": "When did the orchid launch complete?",
+                            "answer": "Tuesday",
+                            "category": 2,
+                            "evidence": ["D1:1"],
+                        }
+                    ],
+                }
+                for i in range(3)
+            ]
+        )
+    )
     args = argparse.Namespace(
-        dataset="locomo", data=str(source), root=str(tmp_path / "store"), budget="1500",
-        embedder="none", rerank="none", neighbours=1, profile_facts=4, rerank_blend=1.,
-        limit=0, seed=0, answer=False, context_completeness=True, personas="", bootstrap=False,
+        dataset="locomo",
+        data=str(source),
+        root=str(tmp_path / "store"),
+        budget="1500",
+        embedder="none",
+        rerank="none",
+        neighbours=1,
+        profile_facts=4,
+        rerank_blend=1.0,
+        limit=0,
+        seed=0,
+        answer=False,
+        context_completeness=True,
+        personas="",
+        bootstrap=False,
     )
     calls = []
 
     def config(model):
-        return llm.Config(provider="openai-compatible", model=model, api_key="fixture",
-                          base_url="https://fixture.invalid/v1")
+        return llm.Config(
+            provider="openai-compatible", model=model, api_key="fixture", base_url="https://fixture.invalid/v1"
+        )
 
     def complete(prompt, cfg, guard, *, output_limit):
         calls.append(prompt)
-        response = ('{"grade":"PARTIAL","reasoning":"Some evidence is available.",'
-                    '"present_elements":["launch day"],"missing_elements":["year"]}')
+        response = (
+            '{"grade":"PARTIAL","reasoning":"Some evidence is available.",'
+            '"present_elements":["launch day"],"missing_elements":["year"]}'
+        )
         usage = {"input_tokens": 40, "output_tokens": 20}
         guard.record_call(0.00001)
         return response, usage, 0.00001

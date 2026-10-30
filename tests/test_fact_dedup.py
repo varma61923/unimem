@@ -1,4 +1,5 @@
 """Fact deduplication: exact and near-duplicate reinforcement, semantic mode, and the persistent dense cache."""
+
 from __future__ import annotations
 
 import time
@@ -16,14 +17,17 @@ def _clean(monkeypatch):
     fact_embeddings._MODELS.clear()
 
 
-@pytest.mark.parametrize("a, b, same", [
-    ("The office is located in Tokyo, Japan", "Our office is located in Tokyo Japan", True),
-    ("I have 2 cats at home now", "I have 3 cats at home now", False),
-    ("Alice likes spicy food a lot", "Alice does not like spicy food a lot", False),
-    ("Prefers dark mode in the editor", "Prefers light mode in the editor", False),
-    ("Bob works at Acme", "Bob worked at Initech", False),
-    ("Short one", "Short one!", False),  # too few content words to call a paraphrase
-])
+@pytest.mark.parametrize(
+    "a, b, same",
+    [
+        ("The office is located in Tokyo, Japan", "Our office is located in Tokyo Japan", True),
+        ("I have 2 cats at home now", "I have 3 cats at home now", False),
+        ("Alice likes spicy food a lot", "Alice does not like spicy food a lot", False),
+        ("Prefers dark mode in the editor", "Prefers light mode in the editor", False),
+        ("Bob works at Acme", "Bob worked at Initech", False),
+        ("Short one", "Short one!", False),  # too few content words to call a paraphrase
+    ],
+)
 def test_the_near_duplicate_rule_is_precision_first(a, b, same):
     assert hierarchical.near_duplicate(a, b) is same
 
@@ -78,11 +82,14 @@ def test_batches_use_one_index_and_dedupe_within_the_batch(tmp_path, monkeypatch
         original(self, facts)
 
     monkeypatch.setattr(hierarchical._StatementIndex, "__init__", counting)
-    results = hierarchical.add_facts(root, [
-        {"statement": "The office is located in Tokyo, Japan"},
-        {"statement": "Our office is located in Tokyo Japan"},
-        {"statement": "The quarterly report is due on Friday"},
-    ])
+    results = hierarchical.add_facts(
+        root,
+        [
+            {"statement": "The office is located in Tokyo, Japan"},
+            {"statement": "Our office is located in Tokyo Japan"},
+            {"statement": "The quarterly report is due on Friday"},
+        ],
+    )
     assert [action for _f, action in results] == ["ADD", "NOOP", "ADD"]
     many = [{"statement": f"Customer {i} prefers invoices by email in region {i % 7}"} for i in range(1500)]
     builds.clear()
@@ -129,9 +136,10 @@ def test_fact_vectors_persist_across_processes(tmp_path, monkeypatch):
     model = _Topics()
     monkeypatch.setattr(fact_embeddings, "_resolve", lambda m, p: (model, ("tag", "fake-topics")))
     root = str(tmp_path)
-    facts = [hierarchical.add_fact(root, s)[0] for s in ("Tokyo office opens at nine",
-                                                         "The cats sleep all day long",
-                                                         "The report is due this Friday")]
+    facts = [
+        hierarchical.add_fact(root, s)[0]
+        for s in ("Tokyo office opens at nine", "The cats sleep all day long", "The report is due this Friday")
+    ]
     scores = fact_embeddings.scores("when does the tokyo office open", facts, root=root)
     assert max(scores, key=scores.get) == facts[0].id and model.calls == 4
     fact_embeddings._VECTORS.clear()  # a new process: only the on-disk cache remains
@@ -170,8 +178,9 @@ def test_recall_fuses_a_dense_arm_into_the_facts_channel(tmp_path, monkeypatch):
     question = "where is the tokyo head office"
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", "none")
     lexical_only = recall.recall(root, question, channels=("facts",), embedder="none")
-    assert all(i.id != f"fact:{tokyo.id}" or "dense_cosine" not in i.provenance["search"]
-               for i in lexical_only.items)  # explicit opt-out preserves lexical-only behavior
+    assert all(
+        i.id != f"fact:{tokyo.id}" or "dense_cosine" not in i.provenance["search"] for i in lexical_only.items
+    )  # explicit opt-out preserves lexical-only behavior
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", "fake")
     hybrid = recall.recall(root, question, channels=("facts",))
     top = hybrid.items[0]

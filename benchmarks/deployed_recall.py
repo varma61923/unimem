@@ -10,6 +10,7 @@ recall latency, recall throughput under concurrent clients, gold-evidence recall
 per category, and parity: whether each served context is byte-identical to an
 in-process `recall` over the same store with the same options.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,6 +36,7 @@ from unimem.conversation import Options, Store, recall  # noqa: E402
 
 ADD_BATCH = 200  # messages per add request, under the transport's per-request bound
 
+
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -45,52 +47,98 @@ def _percentiles(values: list[float]) -> dict:
     ordered = sorted(values)
     if not ordered:
         return {}
-    return {"p50_ms": round(ordered[int(0.5 * (len(ordered) - 1))], 1),
-            "p95_ms": round(ordered[int(0.95 * (len(ordered) - 1))], 1),
-            "mean_ms": round(statistics.mean(ordered), 1)}
+    return {
+        "p50_ms": round(ordered[int(0.5 * (len(ordered) - 1))], 1),
+        "p95_ms": round(ordered[int(0.95 * (len(ordered) - 1))], 1),
+        "mean_ms": round(statistics.mean(ordered), 1),
+    }
 
 
 class Gateway:
     def __init__(self, root: str):
         self.port, self.token = _free_port(), secrets.token_urlsafe(24)
-        self.process = subprocess.Popen(
-            [sys.executable, "-m", "unimem.cli", "gateway", "--dest", root, "--host", "127.0.0.1",
-             "--port", str(self.port), "--token", self.token],
-            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise RuntimeError("gateway exited: " + self.process.stderr.read().decode(errors="replace")[-500:])
-            try:
-                if self.call("GET", "/v1/health/live")[0] == 200:
-                    return
-            except OSError:
-                time.sleep(0.2)
-        raise RuntimeError("gateway did not become ready")
-
-    def call(self, method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
-        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=300)
+        # A pipe that nobody drains can block the serving process once its log
+        # buffer fills. Keep diagnostics off the request path and bound reads.
+        self._stderr = tempfile.TemporaryFile()
         try:
-            connection.request(method, path, json.dumps(body) if body is not None else None,
-                               {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"})
+            self.process = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "unimem.cli",
+                    "gateway",
+                    "--dest",
+                    root,
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    str(self.port),
+                    "--token",
+                    self.token,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=self._stderr,
+            )
+        except BaseException:
+            self._stderr.close()
+            raise
+        try:
+            deadline = time.monotonic() + 60
+            while (remaining := deadline - time.monotonic()) > 0:
+                if self.process.poll() is not None:
+                    end = self._stderr.seek(0, os.SEEK_END)
+                    self._stderr.seek(max(0, end - 500))
+                    raise RuntimeError("gateway exited: " + self._stderr.read(500).decode(errors="replace"))
+                try:
+                    if self.call("GET", "/v1/health/live", timeout=min(remaining, 1.0))[0] == 200:
+                        return
+                except OSError:
+                    time.sleep(0.2)
+            raise RuntimeError("gateway did not become ready")
+        except BaseException:
+            self.close()
+            raise
+
+    def call(self, method: str, path: str, body: dict | None = None, *, timeout: float = 300) -> tuple[int, dict]:
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
+        try:
+            connection.request(
+                method,
+                path,
+                json.dumps(body) if body is not None else None,
+                {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
+            )
             response = connection.getresponse()
             return response.status, json.loads(response.read() or b"{}")
         finally:
             connection.close()
 
     def close(self) -> None:
-        self.process.terminate()
         try:
-            self.process.wait(10)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
+            if self.process.poll() is None:
+                self.process.terminate()
+            try:
+                self.process.wait(10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(10)
+        finally:
+            self._stderr.close()
 
 
 def run(args) -> dict:
+    cases = _load_cases(args)
+    if not any(questions for _space, _sessions, _now, questions in cases):
+        raise ValueError("no benchmark questions selected")
+    if args.root:
+        return _measure(args, cases, args.root)
+    with tempfile.TemporaryDirectory(prefix="unimem-deployed-") as root:
+        return _measure(args, cases, root)
+
+
+def _measure(args, cases, root: str) -> dict:
     from unimem.conversation import embed
 
-    cases = _load_cases(args)
-    root = args.root or tempfile.mkdtemp(prefix="unimem-deployed-")
     # Vectors can only be prepared at write time when this host has an embedder.
     cache_vectors = bool(args.cache_vectors and embed.configured())
     gateway = Gateway(root)
@@ -100,12 +148,22 @@ def run(args) -> dict:
             space = re.sub(r"[^A-Za-z0-9._-]", "_", space)
             for session, date, messages in sessions:
                 for start in range(0, len(messages), ADD_BATCH):
-                    batch = [{key: str(m[key]) for key in ("id", "speaker", "role", "text") if m.get(key) is not None}
-                             for m in messages[start:start + ADD_BATCH]]
+                    batch = [
+                        {key: str(m[key]) for key in ("id", "speaker", "role", "text") if m.get(key) is not None}
+                        for m in messages[start : start + ADD_BATCH]
+                    ]
                     started = time.perf_counter()
-                    status, body = gateway.call("POST", "/v1/conversation/add", {
-                        "space": space, "session": session, "session_at": date, "messages": batch,
-                        "cache_vectors": cache_vectors})
+                    status, body = gateway.call(
+                        "POST",
+                        "/v1/conversation/add",
+                        {
+                            "space": space,
+                            "session": session,
+                            "session_at": date,
+                            "messages": batch,
+                            "cache_vectors": cache_vectors,
+                        },
+                    )
                     if status != 200:
                         raise RuntimeError(f"add failed ({status}): {body}")
                     ingest_ms.append(1000 * (time.perf_counter() - started))
@@ -134,8 +192,9 @@ def run(args) -> dict:
     finally:
         gateway.close()
 
-    opts = Options(budget=args.budget, adaptive_budget=args.adaptive_budget,
-                   max_budget=max(args.budget, args.max_budget))
+    opts = Options(
+        budget=args.budget, adaptive_budget=args.adaptive_budget, max_budget=max(args.budget, args.max_budget)
+    )
     by_type, latencies, identical = defaultdict(list), [], 0
     for (space, sessions, now, q, _body), served, ms in answers:
         latencies.append(ms)
@@ -144,20 +203,33 @@ def run(args) -> dict:
             identical += local.context == served["context"]
             delivered = {turn.ref for turn in store.turns(served["turns"]).values()}
         gold = gold_turns(q["evidence"], sessions)
-        by_type[q["type"]].append({"evidence": len(gold & delivered) / len(gold) if gold else None,
-                                   "tokens": served["tokens"]})
+        by_type[q["type"]].append(
+            {"evidence": len(gold & delivered) / len(gold) if gold else None, "tokens": served["tokens"]}
+        )
 
     def block(rows):
         known = [r["evidence"] for r in rows if r["evidence"] is not None]
-        return {"n": len(rows), "evidence": round(statistics.mean(known), 4) if known else None,
-                "tokens": round(statistics.mean(r["tokens"] for r in rows), 1)}
+        return {
+            "n": len(rows),
+            "evidence": round(statistics.mean(known), 4) if known else None,
+            "tokens": round(statistics.mean(r["tokens"] for r in rows), 1),
+        }
 
     return {
-        "dataset": args.dataset, "questions": len(answers), "conversations": len(cases),
-        "budget": args.budget, "adaptive_budget": args.adaptive_budget, "max_budget": args.max_budget,
-        "concurrency": args.concurrency, "vectors_prepared_at_write": cache_vectors,
-        "ingest": {"turns": add_turns, "requests": len(ingest_ms), **_percentiles(ingest_ms),
-                   "turns_per_second": round(add_turns / (sum(ingest_ms) / 1000), 1) if ingest_ms else None},
+        "dataset": args.dataset,
+        "questions": len(answers),
+        "conversations": len(cases),
+        "budget": args.budget,
+        "adaptive_budget": args.adaptive_budget,
+        "max_budget": args.max_budget,
+        "concurrency": args.concurrency,
+        "vectors_prepared_at_write": cache_vectors,
+        "ingest": {
+            "turns": add_turns,
+            "requests": len(ingest_ms),
+            **_percentiles(ingest_ms),
+            "turns_per_second": round(add_turns / (sum(ingest_ms) / 1000), 1) if ingest_ms else None,
+        },
         "recall": {**_percentiles(latencies), "queries_per_second": round(len(answers) / wall, 2)},
         "parity": {"identical_contexts": identical, "of": len(answers)},
         "overall": block([r for rows in by_type.values() for r in rows]),
@@ -176,8 +248,12 @@ def main(argv=None) -> int:
     p.add_argument("--adaptive-budget", action="store_true")
     p.add_argument("--max-budget", type=int, default=12_000)
     p.add_argument("--concurrency", type=int, default=1)
-    p.add_argument("--lazy-vectors", dest="cache_vectors", action="store_false",
-                   help="embed on first recall instead of at write time (cold first queries)")
+    p.add_argument(
+        "--lazy-vectors",
+        dest="cache_vectors",
+        action="store_false",
+        help="embed on first recall instead of at write time (cold first queries)",
+    )
     p.add_argument("--out")
     args = p.parse_args(argv)
     args.question_exclusions = None

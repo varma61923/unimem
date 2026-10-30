@@ -6,6 +6,7 @@ interfaces. Deterministic templates and lexical verifier tasks are reference
 heuristics, not claims to reproduce those results. A sandbox runner supplied by
 the operator must enforce process isolation for programmatic candidates.
 """
+
 from __future__ import annotations
 
 import re
@@ -26,8 +27,7 @@ class Sandbox(Protocol):
 
 
 def metadata(name: str, description: str) -> dict[str, str]:
-    if (not isinstance(name, str) or re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name) is None
-            or len(name) > 64):
+    if not isinstance(name, str) or re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name) is None or len(name) > 64:
         raise ValueError("UniMem Agent Skills names require a lowercase, single-hyphen-separated slug")
     fp.text(description, "Agent Skills description", 1024)
     return {"name": name, "description": description}
@@ -41,26 +41,44 @@ def template(trajectories: Sequence[dict[str, Any]], *, name: str) -> dict[str, 
         solution = fp.text(trace.get("solution_text", ""), "measured successful procedure", 12000)
         if solution not in steps:
             steps.append(solution)
-    return {"format": "prose", "body": "\n\n".join([
-        "# " + name, "## Activation", "Confirm the task matches the measured source scope.",
-        "## Procedure", *[f"{i+1}. {step}" for i, step in enumerate(steps)],
-        "## Verification", "Verify the outcome independently. Stop on an unmet precondition."])}
+    return {
+        "format": "prose",
+        "body": "\n\n".join(
+            [
+                "# " + name,
+                "## Activation",
+                "Confirm the task matches the measured source scope.",
+                "## Procedure",
+                *[f"{i + 1}. {step}" for i, step in enumerate(steps)],
+                "## Verification",
+                "Verify the outcome independently. Stop on an unmet precondition.",
+            ]
+        ),
+    }
 
 
-def candidate(trajectories: Sequence[dict[str, Any]], *, name: str, description: str,
-              inducer: Inducer | None = None) -> dict[str, Any]:
+def candidate(
+    trajectories: Sequence[dict[str, Any]], *, name: str, description: str, inducer: Inducer | None = None
+) -> dict[str, Any]:
     fields = metadata(name, description)
     value = (inducer or template)(trajectories, name=name)
     fp.wire(value)
     if set(value) != {"format", "body"} or value["format"] not in ("prose", "program"):
         raise ValueError("UniMem inducer must return format and body only")
     body = fp.text(value["body"], "candidate skill body", 48000)
-    return {**fields, "body": body, "format": value["format"], "content_hash": fp.digest(body),
-            "classification": "heuristic", "method": "template" if inducer is None else "operator-configured inducer"}
+    return {
+        **fields,
+        "body": body,
+        "format": value["format"],
+        "content_hash": fp.digest(body),
+        "classification": "heuristic",
+        "method": "template" if inducer is None else "operator-configured inducer",
+    }
 
 
-def prescreen(value: dict[str, Any], tasks: Sequence[dict[str, Any]], *,
-              sandbox: Sandbox | None = None) -> dict[str, Any]:
+def prescreen(
+    value: dict[str, Any], tasks: Sequence[dict[str, Any]], *, sandbox: Sandbox | None = None
+) -> dict[str, Any]:
     """Fail-closed reference verifier: lexical procedures or operator sandbox.
 
     A task's passing and failing examples must establish that its verifier can
@@ -74,8 +92,10 @@ def prescreen(value: dict[str, Any], tasks: Sequence[dict[str, Any]], *,
         fp.text(task["trace_id"])
         fp.text(task["instruction"], "verifier instruction", 4096)
         token = fp.text(task["verifier"]["contains"], "required verified step", 256)
+
         def verify(response: str) -> bool:
             return token in response
+
         passing = fp.text(task["passing"], "passing verifier fixture", 12000)
         failing = fp.text(task["failing"], "failing verifier fixture", 12000)
         if not verify(passing) or verify(failing):
@@ -88,10 +108,19 @@ def prescreen(value: dict[str, Any], tasks: Sequence[dict[str, Any]], *,
         else:
             response = value["body"]
         passed = verify(response)
-        results.append({"trace_id": task["trace_id"], "passed": passed,
-                        "reason": "required step present" if passed else "required step absent"})
-    return {"passed": all(r["passed"] for r in results), "tasks": results, "classification": "heuristic",
-            "assumptions": ["operator verifiers reflect the failure cluster", "lexical checks do not prove semantics"]}
+        results.append(
+            {
+                "trace_id": task["trace_id"],
+                "passed": passed,
+                "reason": "required step present" if passed else "required step absent",
+            }
+        )
+    return {
+        "passed": all(r["passed"] for r in results),
+        "tasks": results,
+        "classification": "heuristic",
+        "assumptions": ["operator verifiers reflect the failure cluster", "lexical checks do not prove semantics"],
+    }
 
 
 def exposed(value: dict[str, Any], injected: bool) -> list[dict[str, Any]]:
@@ -105,8 +134,12 @@ def document(value: dict[str, Any]) -> str:
     """Agent Skills body; the signed card binds this complete rendered string."""
     body = value["body"]
     if value["format"] == "program":
-        body = ("# " + value["name"] + "\n\nRun this helper only in the configured sandbox.\n\n"
-                + "\n".join("    " + line for line in body.splitlines()))
+        body = (
+            "# "
+            + value["name"]
+            + "\n\nRun this helper only in the configured sandbox.\n\n"
+            + "\n".join("    " + line for line in body.splitlines())
+        )
     # Match the managed folder reader's universal-newline and leading-newline
     # normalization before signing the rendered body commitment.
     body = str(body).replace("\r\n", "\n").replace("\r", "\n").lstrip("\n")

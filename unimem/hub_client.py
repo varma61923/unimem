@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp import ClientSession
+
 import asyncio
 import contextlib
 import glob
@@ -50,8 +55,7 @@ class HubConnectionError(RuntimeError):
     """Raised when the Hub can't be reached or rejects the request."""
 
 
-class HubConfigurationError(HubConnectionError):
-    ...
+class HubConfigurationError(HubConnectionError): ...
 
 
 class _ToolRateLimited(Exception):
@@ -60,8 +64,7 @@ class _ToolRateLimited(Exception):
         self.retry_after = retry_after
 
 
-class HubToolError(HubConnectionError):
-    ...
+class HubToolError(HubConnectionError): ...
 
 
 class HubAuthError(HubConnectionError):
@@ -155,6 +158,7 @@ def _validate_hub_url(hub_url: str) -> None:
             "the API key is sent as a Bearer token on every call. Use https://, "
             "or connect to localhost/127.0.0.1 for local development."
         )
+    ip: ipaddress.IPv4Address | ipaddress.IPv6Address | None
     try:
         ip = ipaddress.ip_address(hostname)
     except ValueError:
@@ -206,13 +210,12 @@ async def _open_session(hub_url: str, api_key: str, timeout_seconds: float):
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise HubConfigurationError("Hub timeout must be a finite positive number")
     try:
-        import httpx
+        import httpx2 as httpx
         from mcp import ClientSession
         from mcp.client.streamable_http import streamable_http_client
     except ImportError as exc:
         raise HubClientUnavailable(
-            "the Hub client needs the optional 'mcp' dependency. Install it with "
-            "`pip install unimem[hub-sync]`."
+            "the Hub client needs the optional 'mcp' dependency. Install it with `pip install unimem[hub-sync]`."
         ) from exc
 
     probe = HttpStatusProbe()
@@ -339,8 +342,16 @@ def _is_retryable(exc: BaseException, observed_status: int | None = None) -> boo
         if any(
             marker in text
             for marker in (
-                "timeout", "connect", "refused", "reset", "temporarily",
-                "eof", "broken pipe", "502", "503", "504",
+                "timeout",
+                "connect",
+                "refused",
+                "reset",
+                "temporarily",
+                "eof",
+                "broken pipe",
+                "502",
+                "503",
+                "504",
             )
         ):
             return True
@@ -414,9 +425,7 @@ def _transport_failure(
             f"HUB_READ_RATE_LIMIT_PER_MINUTE / HUB_RATE_LIMIT_PER_MINUTE. [{detail}]",
             retry_after=retry_after,
         )
-    return HubConnectionError(
-        f"could not reach the Hub at {hub_url} after {attempts} {plural}: {detail}"
-    )
+    return HubConnectionError(f"could not reach the Hub at {hub_url} after {attempts} {plural}: {detail}")
 
 
 class _RateLimitGate:
@@ -452,9 +461,7 @@ class _RateLimitGate:
         loop_time = asyncio.get_running_loop().time()
         resume_at = loop_time + min(max(seconds, 0.0), RETRY_MAX_DELAY_SECONDS)
         self._resume_at = max(self._resume_at, resume_at)
-        self._min_interval = min(
-            max(self._min_interval * 2.0, _PACE_MIN_INTERVAL_SECONDS), _PACE_MAX_INTERVAL_SECONDS
-        )
+        self._min_interval = min(max(self._min_interval * 2.0, _PACE_MIN_INTERVAL_SECONDS), _PACE_MAX_INTERVAL_SECONDS)
         self._next_slot = max(self._next_slot, self._resume_at)
         if not self._announced:
             self._announced = True
@@ -485,10 +492,13 @@ class HubSession:
         self._max_attempts = max_attempts
         self._probe = probe
         self._gate = gate if gate is not None else _RateLimitGate()
-        self._session = None
+        self._session: ClientSession | None = None
 
     async def call(self, name: str, arguments: dict[str, Any], *, retry_transport: bool = True) -> dict:
         """One tool call, with retries."""
+        current_session = self._session
+        if current_session is None:
+            raise HubConnectionError("Hub session is not open")
         last_exc: Exception | None = None
         attempts = 0
         transport_attempts = 0
@@ -500,7 +510,7 @@ class HubSession:
                 self._probe.reset()
             await self._gate.wait()
             try:
-                result = _unwrap_result(name, await self._session.call_tool(name, arguments))
+                result = _unwrap_result(name, await current_session.call_tool(name, arguments))
                 refusal = _tool_rate_limit(result)
                 if refusal is not None:
                     raise refusal
@@ -526,9 +536,7 @@ class HubSession:
             else:
                 self._gate.succeeded()
                 return result
-        raise _transport_failure(
-            self._hub_url, attempts, last_exc, status, retry_after
-        ) from last_exc
+        raise _transport_failure(self._hub_url, attempts, last_exc, status, retry_after) from last_exc
 
     async def search_traces(
         self,
@@ -566,8 +574,9 @@ class HubSession:
         """Soft-delete or retract a memory trace from the Hub."""
         return await self.call("delete_trace", {"id": trace_id})
 
-    async def _trace_batches(self, name: str, field: str, items: Iterable[Any], *,
-                             retry_transport: bool = True) -> list[dict]:
+    async def _trace_batches(
+        self, name: str, field: str, items: Iterable[Any], *, retry_transport: bool = True
+    ) -> list[dict]:
         """Bound wire requests while retaining ordered per-item refusals."""
         iterator, results = iter(items), []
         while batch := list(itertools.islice(iterator, TRACE_BATCH_SIZE)):
@@ -578,8 +587,7 @@ class HubSession:
                 retry = retry and all(isinstance(t, dict) and t.get("idempotency_key") for t in batch)
             response = await self.call(name, {field: batch}, retry_transport=retry)
             rows = response.get("results")
-            if not isinstance(rows, list) or len(rows) != len(batch) or any(
-                    not isinstance(row, dict) for row in rows):
+            if not isinstance(rows, list) or len(rows) != len(batch) or any(not isinstance(row, dict) for row in rows):
                 raise HubToolError(f"{name} returned an invalid batch result envelope")
             results.extend(rows)
         return results
@@ -597,8 +605,7 @@ class HubSession:
 
     async def delete_traces_batch(self, trace_ids: Iterable[str]) -> list[dict]:
         """Retract bounded batches without replaying ambiguous transport failures."""
-        return await self._trace_batches("delete_traces_batch", "ids", trace_ids,
-                                         retry_transport=False)
+        return await self._trace_batches("delete_traces_batch", "ids", trace_ids, retry_transport=False)
 
     async def vote_trace(self, trace_id: str, vote: str) -> dict:
         """Cast an upvote or downvote on a published memory trace."""
@@ -643,8 +650,7 @@ def _backoff_delay(attempt: int, exc: BaseException, observed_retry_after: float
         retry_after = observed_retry_after
     if retry_after is not None:
         return min(max(retry_after, 0.0), RETRY_MAX_DELAY_SECONDS)
-    ceiling = min(RETRY_BASE_DELAY_SECONDS * (2 ** min(max(attempt - 1, 0), 16)),
-                  RETRY_MAX_DELAY_SECONDS)
+    ceiling = min(RETRY_BASE_DELAY_SECONDS * (2 ** min(max(attempt - 1, 0), 16)), RETRY_MAX_DELAY_SECONDS)
     # Equal jitter retains a nonzero pause while preventing a fleet of clients
     # from retrying in lockstep. Explicit Retry-After remains authoritative.
     return random.uniform(ceiling / 2, ceiling)
@@ -659,11 +665,13 @@ async def open_hub_session(
     on_first_pause: Callable[[float], None] | None = None,
 ):
     """Hold one MCP session open for a batch of calls. See HubSession."""
-    transport_ctx, ClientSession, http_client, probe = await _open_session(
-        hub_url, api_key, timeout_seconds
-    )
+    transport_ctx, ClientSession, http_client, probe = await _open_session(hub_url, api_key, timeout_seconds)
     hub_session = HubSession(
-        hub_url, api_key, timeout_seconds, max_attempts, probe,
+        hub_url,
+        api_key,
+        timeout_seconds,
+        max_attempts,
+        probe,
         gate=_RateLimitGate(on_first_pause),
     )
     try:
@@ -671,9 +679,7 @@ async def open_hub_session(
             try:
                 await session.initialize()
             except Exception as exc:  # noqa: BLE001 - the handshake fails the same ways a call does
-                raise _transport_failure(
-                    hub_url, 1, exc, probe.status, probe.retry_after
-                ) from exc
+                raise _transport_failure(hub_url, 1, exc, probe.status, probe.retry_after) from exc
             hub_session._session = session
             yield hub_session
     finally:
@@ -721,6 +727,8 @@ async def _call_tool(
                 break
             await asyncio.sleep(_backoff_delay(attempt, exc))
 
+    if last_exc is None:
+        raise HubConfigurationError("max_attempts must be a positive integer")
     raise _transport_failure(hub_url, attempts, last_exc) from last_exc
 
 
@@ -793,9 +801,7 @@ class _LazyHubSession:
             async with self._lock:
                 if self._session is None:
                     self._session = await self._stack.enter_async_context(
-                        open_hub_session(
-                            self._hub_url, self._api_key, on_first_pause=self._on_first_pause
-                        )
+                        open_hub_session(self._hub_url, self._api_key, on_first_pause=self._on_first_pause)
                     )
         return self._session
 
@@ -851,7 +857,8 @@ async def push_active_lessons(
             )
 
         clean, _ = memory_guard.sanitize_metadata(
-            {"fm": fm, "body": body}, pii=memory_guard.privacy_redaction_enabled(),
+            {"fm": fm, "body": body},
+            pii=memory_guard.privacy_redaction_enabled(),
         )
         fm, body = clean["fm"], clean["body"]
         if fm.get("status") != "active":
@@ -870,9 +877,10 @@ async def push_active_lessons(
             )
 
         sections = _lesson_sections(body)
-        solution_text = "\n\n".join(
-            part for part in (sections.get("rule", ""), sections.get("how to apply", "")) if part
-        ) or "(no Rule/How to apply section found in the lesson body)"
+        solution_text = (
+            "\n\n".join(part for part in (sections.get("rule", ""), sections.get("how to apply", "")) if part)
+            or "(no Rule/How to apply section found in the lesson body)"
+        )
         title = fm.get("description") or slug
         context_text = fm.get("applies_when") or ""
         tags = list(fm.get("tags") or []) if isinstance(fm.get("tags"), list) else []
@@ -902,6 +910,8 @@ async def push_active_lessons(
             if result.get("error"):
                 return PushResult(slug=slug, hub_trace_id=str(existing_hub_id), error=result["error"])
             amended_id = result.get("id")
+            if not isinstance(amended_id, str) or not amended_id.strip() or len(amended_id) > 256:
+                return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
             try:
                 await asyncio.to_thread(_write_hub_push_fields, path, amended_id, fingerprint)
             except Exception as exc:  # noqa: BLE001 - the Hub write already succeeded; a
@@ -936,6 +946,8 @@ async def push_active_lessons(
             return PushResult(slug=slug, hub_trace_id=None, error=result["error"])
 
         hub_trace_id = result.get("id")
+        if not isinstance(hub_trace_id, str) or not hub_trace_id.strip() or len(hub_trace_id) > 256:
+            return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
         try:
             await asyncio.to_thread(_write_hub_push_fields, path, hub_trace_id, fingerprint)
         except Exception as exc:  # noqa: BLE001 - see the amend branch above for why this
@@ -950,7 +962,7 @@ async def push_active_lessons(
         hub_url,
         api_key,
         _iter_active_lesson_paths(root),
-        lambda session: (lambda path: _push_one(path, session)),
+        lambda session: lambda path: _push_one(path, session),
         concurrency=concurrency,
     )
     return [r for r in outcomes if r is not None]
@@ -1027,6 +1039,8 @@ async def push_captured_traces(
             if result.get("error"):
                 return PushResult(slug=slug, hub_trace_id=str(existing_hub_id), error=result["error"])
             amended_id = result.get("id")
+            if not isinstance(amended_id, str) or not amended_id.strip() or len(amended_id) > 256:
+                return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
             try:
                 await asyncio.to_thread(_write_hub_push_fields, path, amended_id, fingerprint)
             except Exception as exc:  # noqa: BLE001 - see push_active_lessons's identical
@@ -1062,6 +1076,8 @@ async def push_captured_traces(
             return PushResult(slug=slug, hub_trace_id=None, error=result["error"])
 
         new_id = result.get("id")
+        if not isinstance(new_id, str) or not new_id.strip() or len(new_id) > 256:
+            return PushResult(slug=slug, hub_trace_id=None, error="Hub reply did not include a valid trace id")
         try:
             await asyncio.to_thread(_write_hub_push_fields, path, new_id, fingerprint)
         except Exception as exc:  # noqa: BLE001 - see the amend branch above for why this
@@ -1076,7 +1092,7 @@ async def push_captured_traces(
         hub_url,
         api_key,
         _iter_captured_trace_paths(root),
-        lambda session: (lambda path: _push_one(path, session)),
+        lambda session: lambda path: _push_one(path, session),
         concurrency=concurrency,
     )
 
@@ -1123,8 +1139,7 @@ async def commons_export(hub_url: str, api_key: str, limit: int | None = None) -
         arguments["limit"] = limit
     response = await _call_tool(hub_url, api_key, "commons_export", arguments)
     if response.get("error"):
-        raise HubConnectionError(
-            f"commons_export failed: {response['error']}: {response.get('detail', '')}")
+        raise HubConnectionError(f"commons_export failed: {response['error']}: {response.get('detail', '')}")
     from unimem.commons_integrity import CommonsIntegrityError, verify_records
 
     try:
@@ -1149,8 +1164,12 @@ async def submit_kb_entry(
     idempotency_key: str | None = None,
 ) -> dict:
     arguments: dict[str, Any] = {
-        "title": title, "context_text": context_text, "solution_text": solution_text,
-        "tags": tags or [], "agent_type": agent_type, "rationale": rationale,
+        "title": title,
+        "context_text": context_text,
+        "solution_text": solution_text,
+        "tags": tags or [],
+        "agent_type": agent_type,
+        "rationale": rationale,
     }
     if idempotency_key is not None:
         arguments["idempotency_key"] = idempotency_key
@@ -1167,9 +1186,7 @@ async def list_my_kb_submissions(hub_url: str, api_key: str, limit: int | None =
         arguments["limit"] = limit
     response = await _call_tool(hub_url, api_key, "list_my_kb_submissions", arguments)
     if response.get("error"):
-        raise HubConnectionError(
-            f"list_my_kb_submissions failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"list_my_kb_submissions failed: {response['error']}: {response.get('detail', '')}")
     return response
 
 
@@ -1187,38 +1204,31 @@ async def fleet_outcomes(hub_url: str, api_key: str, agent_type: str = "") -> di
         arguments["agent_type"] = agent_type
     response = await _call_tool(hub_url, api_key, "fleet_outcomes", arguments)
     if response.get("error"):
-        raise HubConnectionError(
-            f"fleet_outcomes failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"fleet_outcomes failed: {response['error']}: {response.get('detail', '')}")
     return response
 
 
-async def holdout_assign(
-    hub_url: str, api_key: str, trace_ids: list[str], occasion_id: str
-) -> dict:
+async def holdout_assign(hub_url: str, api_key: str, trace_ids: list[str], occasion_id: str) -> dict:
     response = await _call_tool(
-        hub_url, api_key, "holdout_assign",
+        hub_url,
+        api_key,
+        "holdout_assign",
         {"trace_ids": list(trace_ids), "occasion_id": occasion_id},
     )
     if response.get("error"):
-        raise HubConnectionError(
-            f"holdout_assign failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"holdout_assign failed: {response['error']}: {response.get('detail', '')}")
     return response
 
 
-async def record_occasion_outcome(
-    hub_url: str, api_key: str, occasion_id: str, succeeded: bool
-) -> dict:
+async def record_occasion_outcome(hub_url: str, api_key: str, occasion_id: str, succeeded: bool) -> dict:
     response = await _call_tool(
-        hub_url, api_key, "record_occasion_outcome",
+        hub_url,
+        api_key,
+        "record_occasion_outcome",
         {"occasion_id": occasion_id, "succeeded": bool(succeeded)},
     )
     if response.get("error"):
-        raise HubConnectionError(
-            f"record_occasion_outcome failed: {response['error']}: "
-            f"{response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"record_occasion_outcome failed: {response['error']}: {response.get('detail', '')}")
     return response
 
 
@@ -1234,18 +1244,14 @@ async def delete_trace(hub_url: str, api_key: str, trace_id: str) -> bool:
 async def request_account_deletion(hub_url: str, api_key: str) -> dict:
     response = await _call_tool(hub_url, api_key, "request_account_deletion", {})
     if response.get("error"):
-        raise HubConnectionError(
-            f"request_account_deletion failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"request_account_deletion failed: {response['error']}: {response.get('detail', '')}")
     return response
 
 
 async def cancel_account_deletion(hub_url: str, api_key: str) -> bool:
     response = await _call_tool(hub_url, api_key, "cancel_account_deletion", {})
     if response.get("error"):
-        raise HubConnectionError(
-            f"cancel_account_deletion failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"cancel_account_deletion failed: {response['error']}: {response.get('detail', '')}")
     return bool(response.get("cancelled"))
 
 
@@ -1254,9 +1260,7 @@ async def confirm_account_deletion(hub_url: str, api_key: str, confirmation_toke
         hub_url, api_key, "confirm_account_deletion", {"confirmation_token": confirmation_token}
     )
     if response.get("error"):
-        raise HubConnectionError(
-            f"confirm_account_deletion failed: {response['error']}: {response.get('detail', '')}"
-        )
+        raise HubConnectionError(f"confirm_account_deletion failed: {response['error']}: {response.get('detail', '')}")
 
 
 DEFAULT_MAX_PULL_RESULTS = 2000
@@ -1281,7 +1285,10 @@ async def pull_search_results(
         session = _LazyHubSession(stack, hub_url, api_key)
         while True:
             response = await _call_tool(
-                hub_url, api_key, "search_traces", {"query": query, "tags": tags or [], "offset": offset},
+                hub_url,
+                api_key,
+                "search_traces",
+                {"query": query, "tags": tags or [], "offset": offset},
                 session=session,
             )
             if response.get("error"):
@@ -1290,7 +1297,7 @@ async def pull_search_results(
             if isinstance(raw_ignored, list):
                 ignored_terms = [str(t) for t in raw_ignored]
             page = response.get("traces", [])
-            traces.extend(page[:max_results - len(traces)])
+            traces.extend(page[: max_results - len(traces)])
             if not page or not response.get("has_more") or len(traces) >= max_results:
                 break
             next_offset = int(response.get("offset", offset)) + (int(response.get("limit", 0)) or len(page))

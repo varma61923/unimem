@@ -66,10 +66,12 @@ async def _traces(session_factory, org_id, n):
         for i in range(n):
             topic = _UNRELATED_TOPICS[i]
             t = Trace(
-                org_id=org_id, title=f"lesson {i}",
+                org_id=org_id,
+                title=f"lesson {i}",
                 context_text=topic,
                 solution_text=f"resolved by addressing {topic}",
-                tags=[], agent_type="code",
+                tags=[],
+                agent_type="code",
             )
             session.add(t)
             await session.flush()
@@ -84,9 +86,7 @@ async def _assign(session_factory, org_id, trace_ids, occasion):
 
 async def _assign_pinned(session_factory, org_id, trace_ids, occasion, pinned):
     async with session_scope(session_factory) as session:
-        return await crud.holdout_assign(
-            session, org_id, trace_ids, occasion, pinned=pinned
-        )
+        return await crud.holdout_assign(session, org_id, trace_ids, occasion, pinned=pinned)
 
 
 async def _resolve(session_factory, org_id, occasion, succeeded):
@@ -116,8 +116,7 @@ class TestAssignment:
             await _assign(session_factory, org, traces, "occ-1")
         async with session_scope(session_factory) as session:
             n = await session.scalar(
-                select(func.count()).select_from(HoldoutObservation)
-                .where(HoldoutObservation.occasion_id == "occ-1")
+                select(func.count()).select_from(HoldoutObservation).where(HoldoutObservation.occasion_id == "occ-1")
             )
         assert n == 4
 
@@ -156,9 +155,7 @@ class TestAssignment:
     async def test_an_oversized_batch_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="too many traces"):
-                await crud.holdout_assign(
-                    session, org, ["x"] * (crud.MAX_TRACES_PER_ASSIGN + 1), "occ-1"
-                )
+                await crud.holdout_assign(session, org, ["x"] * (crud.MAX_TRACES_PER_ASSIGN + 1), "occ-1")
 
     async def test_a_non_list_trace_ids_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
@@ -173,9 +170,7 @@ class TestAssignment:
 
 
 class TestSearchIntegration:
-    async def test_no_occasion_id_leaves_search_completely_unchanged(
-        self, session_factory, org
-    ):
+    async def test_no_occasion_id_leaves_search_completely_unchanged(self, session_factory, org):
         await _traces(session_factory, org, 3)
         async with session_scope(session_factory) as session:
             result = await crud.search_traces(session, org, query="lesson")
@@ -185,9 +180,7 @@ class TestSearchIntegration:
         traces = await _traces(session_factory, org, 12)
         async with session_scope(session_factory) as session:
             found = await crud.search_traces(session, org, limit=50)
-            holdout = await crud.holdout_for_results(
-                session, org, found["traces"], "occ-search-1"
-            )
+            holdout = await crud.holdout_for_results(session, org, found["traces"], "occ-search-1")
         assert holdout["occasion_id"] == "occ-search-1"
         assert set(holdout["withhold"]) <= set(traces)
         assert "must NOT be used" in holdout["note"]
@@ -196,9 +189,7 @@ class TestSearchIntegration:
         traces = await _traces(session_factory, org, 20)
         async with session_scope(session_factory) as session:
             found = await crud.search_traces(session, org, limit=50)
-            holdout = await crud.holdout_for_results(
-                session, org, found["traces"], "occ-search-2"
-            )
+            holdout = await crud.holdout_for_results(session, org, found["traces"], "occ-search-2")
         assert len(found["traces"]) == len(traces)
         assert holdout["withhold"]
 
@@ -212,9 +203,7 @@ class TestSearchIntegration:
             report = await crud.causal_effects(session, org)
         assert report["n_observations"] == 6
 
-    async def test_no_experiment_running_returns_empty_rather_than_raising(
-        self, session_factory
-    ):
+    async def test_no_experiment_running_returns_empty_rather_than_raising(self, session_factory):
         async with session_scope(session_factory) as session:
             o = Organization(name="no-experiment")
             session.add(o)
@@ -223,9 +212,7 @@ class TestSearchIntegration:
         await _traces(session_factory, org_id, 2)
         async with session_scope(session_factory) as session:
             found = await crud.search_traces(session, org_id, limit=50)
-            assert await crud.holdout_for_results(
-                session, org_id, found["traces"], "occ-1"
-            ) == {}
+            assert await crud.holdout_for_results(session, org_id, found["traces"], "occ-1") == {}
 
     async def test_an_empty_result_set_records_nothing(self, session_factory, org):
         async with session_scope(session_factory) as session:
@@ -240,11 +227,16 @@ class TestNearDuplicateClustering:
             for i in range(n):
                 outcome = {"resolved": False} if i in failed_ids else None
                 result = await crud.contribute_trace(
-                    session, org_id, config, rate_limiter,
+                    session,
+                    org_id,
+                    config,
+                    rate_limiter,
                     title=f"connection pool exhausted (occasion {i})",
                     context_text="connection pool exhausted running the test suite in parallel",
                     solution_text="dispose the sqlalchemy engine in the fixture teardown",
-                    tags=[], agent_type="code", outcome=outcome,
+                    tags=[],
+                    agent_type="code",
+                    outcome=outcome,
                 )
                 ids.append(result["id"])
         return ids
@@ -274,9 +266,7 @@ class TestNearDuplicateClustering:
             f"not fragment across {len(report['effects'])}"
         )
 
-    async def test_the_unit_is_stable_as_the_page_composition_changes(
-        self, session_factory, config, org
-    ):
+    async def test_the_unit_is_stable_as_the_page_composition_changes(self, session_factory, config, org):
         canonical = (await self._near_duplicates(session_factory, config, org, 1))[0]
         for i in range(12):
             async with session_scope(session_factory) as session:
@@ -285,26 +275,19 @@ class TestNearDuplicateClustering:
             await self._near_duplicates(session_factory, config, org, 1)
 
         async with session_scope(session_factory) as session:
-            units = (
-                await session.execute(select(func.distinct(HoldoutObservation.trace_id)))
-            ).scalars().all()
+            units = (await session.execute(select(func.distinct(HoldoutObservation.trace_id)))).scalars().all()
         assert [str(u) for u in units] == [canonical], (
-            f"one lesson must stay one randomization unit across changing pages; "
-            f"got {len(units)} units"
+            f"one lesson must stay one randomization unit across changing pages; got {len(units)} units"
         )
 
     async def test_representative_prefers_a_non_failed_member(self, session_factory, config, org):
-        ids = await self._near_duplicates(
-            session_factory, config, org, 6, failed_ids={0, 1, 2, 3, 4}
-        )
+        ids = await self._near_duplicates(session_factory, config, org, 6, failed_ids={0, 1, 2, 3, 4})
         only_ok = ids[5]
         async with session_scope(session_factory) as session:
             found = await crud.search_traces(session, org, limit=50)
             await crud.holdout_for_results(session, org, found["traces"], "occ-1")
         async with session_scope(session_factory) as session:
-            trace_ids = (
-                await session.execute(select(func.distinct(HoldoutObservation.trace_id)))
-            ).scalars().all()
+            trace_ids = (await session.execute(select(func.distinct(HoldoutObservation.trace_id)))).scalars().all()
         assert [str(t) for t in trace_ids] == [only_ok]
 
     async def test_genuinely_distinct_traces_are_not_merged(self, session_factory, org):
@@ -319,9 +302,7 @@ class TestNearDuplicateClustering:
             report = await crud.causal_effects(session, org)
         assert len(report["effects"]) == 6
 
-    async def test_withhold_list_never_names_an_id_outside_the_input(
-        self, session_factory, config, org
-    ):
+    async def test_withhold_list_never_names_an_id_outside_the_input(self, session_factory, config, org):
         ids = await self._near_duplicates(session_factory, config, org, 5)
         async with session_scope(session_factory) as session:
             found = await crud.search_traces(session, org, limit=50)
@@ -345,12 +326,14 @@ class TestRecordingOutcomes:
 
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(HoldoutObservation.succeeded).where(
-                        HoldoutObservation.occasion_id == "occ-1"
+                (
+                    await session.execute(
+                        select(HoldoutObservation.succeeded).where(HoldoutObservation.occasion_id == "occ-1")
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert all(r is True for r in rows)
 
     async def test_another_orgs_occasion_is_untouched(self, session_factory, org, other_org):
@@ -359,12 +342,12 @@ class TestRecordingOutcomes:
         await _assign(session_factory, org, mine, "shared-name")
         await _assign(session_factory, other_org, theirs, "shared-name")
 
-        assert (await _resolve(session_factory, org, "shared-name", True))[
-            "observations_resolved"
-        ] == 2
+        assert (await _resolve(session_factory, org, "shared-name", True))["observations_resolved"] == 2
         async with session_scope(session_factory) as session:
             unresolved = await session.scalar(
-                select(func.count()).select_from(HoldoutObservation).where(
+                select(func.count())
+                .select_from(HoldoutObservation)
+                .where(
                     HoldoutObservation.org_id == other_org,
                     HoldoutObservation.succeeded.is_(None),
                 )
@@ -416,9 +399,7 @@ class TestAnalysis:
             report = await crud.causal_effects(session, org)
         assert report["effects"][0]["verdict"] == "HURTS"
 
-    async def test_too_few_occasions_reads_as_underpowered_not_no_effect(
-        self, session_factory, org
-    ):
+    async def test_too_few_occasions_reads_as_underpowered_not_no_effect(self, session_factory, org):
         [trace] = await _traces(session_factory, org, 1)
         await self._run_experiment(session_factory, org, trace, 8, 0.9, 0.3)
 
@@ -428,9 +409,7 @@ class TestAnalysis:
         assert effect["verdict"] == "UNDERPOWERED"
         assert "cannot answer yet" in effect["note"]
 
-    async def test_unresolved_observations_are_excluded_not_counted_as_failures(
-        self, session_factory, org
-    ):
+    async def test_unresolved_observations_are_excluded_not_counted_as_failures(self, session_factory, org):
         [trace] = await _traces(session_factory, org, 1)
         for i in range(20):
             await _assign(session_factory, org, [trace], f"occ-{i}")
@@ -440,9 +419,7 @@ class TestAnalysis:
             report = await crud.causal_effects(session, org)
         assert report["n_observations"] == 1
 
-    async def test_observations_from_a_previous_salt_are_not_pooled(
-        self, session_factory, org, capsys
-    ):
+    async def test_observations_from_a_previous_salt_are_not_pooled(self, session_factory, org, capsys):
         [trace] = await _traces(session_factory, org, 1)
         await self._run_experiment(session_factory, org, trace, 60, 0.9, 0.3)
         async with session_scope(session_factory) as session:
@@ -499,9 +476,7 @@ class TestOperatorCommands:
         assert first != second
         assert "replaces experiment" in capsys.readouterr().out
 
-    async def test_starting_pre_registers_what_the_run_will_measure(
-        self, session_factory, capsys
-    ):
+    async def test_starting_pre_registers_what_the_run_will_measure(self, session_factory, capsys):
         from unimem import prereg
 
         async with session_scope(session_factory) as session:
@@ -510,9 +485,7 @@ class TestOperatorCommands:
             await session.flush()
             org_id = o.id
 
-        assert await manage.start_experiment(
-            org_id, "0.25", "resolved", "Q1 pilot", session_factory=session_factory
-        )
+        assert await manage.start_experiment(org_id, "0.25", "resolved", "Q1 pilot", session_factory=session_factory)
         assert "pre-registered" in capsys.readouterr().out
 
         async with session_scope(session_factory) as session:
@@ -568,9 +541,7 @@ class TestOperatorCommands:
         assert not await manage.start_experiment(org, "half", session_factory=session_factory)
         assert "must be a number" in capsys.readouterr().err
 
-    async def test_stop_halts_withholding_but_keeps_observations(
-        self, session_factory, org, capsys
-    ):
+    async def test_stop_halts_withholding_but_keeps_observations(self, session_factory, org, capsys):
         traces = await _traces(session_factory, org, 2)
         await _assign(session_factory, org, traces, "occ-1")
         await _resolve(session_factory, org, "occ-1", True)
@@ -655,9 +626,7 @@ class TestTheEstimateIsAuditable:
         assert [f["check"] for f in blocking] == ["differential_attrition"]
         assert integrity_report["n_assignments"] > integrity_report["n_resolved"]
 
-    async def test_a_compromised_report_says_so_in_the_note_an_agent_reads(
-        self, session_factory, org
-    ):
+    async def test_a_compromised_report_says_so_in_the_note_an_agent_reads(self, session_factory, org):
         traces = await _traces(session_factory, org, 1)
         for i in range(120):
             result = await _assign(session_factory, org, traces, f"occ-{i}")
@@ -716,9 +685,11 @@ class TestTheTreatmentIsPinnedToItsText:
         await _assign(session_factory, org, traces, "occ-1")
 
         async with session_scope(session_factory) as session:
-            row = (await session.execute(
-                select(HoldoutObservation).where(HoldoutObservation.org_id == org)
-            )).scalars().one()
+            row = (
+                (await session.execute(select(HoldoutObservation).where(HoldoutObservation.org_id == org)))
+                .scalars()
+                .one()
+            )
             trace = await session.get(Trace, traces[0])
             assert row.trace_revision == revision.revision_of_trace(
                 trace.title, trace.context_text, trace.solution_text, list(trace.tags or [])
@@ -742,8 +713,7 @@ class TestTheTreatmentIsPinnedToItsText:
             report = await crud.causal_effects(session, org)
 
         assert report["integrity"]["verdict"] == "COMPROMISED"
-        blocking = [f["check"] for f in report["integrity"]["findings"]
-                    if f["severity"] == "INVALIDATES"]
+        blocking = [f["check"] for f in report["integrity"]["findings"] if f["severity"] == "INVALIDATES"]
         assert "treatment_stability" in blocking
 
     async def test_an_unchanged_trace_reads_as_stable(self, session_factory, org):
@@ -755,14 +725,11 @@ class TestTheTreatmentIsPinnedToItsText:
         async with session_scope(session_factory) as session:
             report = await crud.causal_effects(session, org)
 
-        stability = next(f for f in report["integrity"]["findings"]
-                         if f["check"] == "treatment_stability")
+        stability = next(f for f in report["integrity"]["findings"] if f["check"] == "treatment_stability")
         assert stability["severity"] == "OK"
         assert report["integrity"]["verdict"] == "SOUND"
 
-    async def test_recording_an_outcome_is_not_a_change_to_the_treatment(
-        self, session_factory, org
-    ):
+    async def test_recording_an_outcome_is_not_a_change_to_the_treatment(self, session_factory, org):
         traces = await _traces(session_factory, org, 1)
         for i in range(20):
             await _assign(session_factory, org, traces, f"occ-{i}")
@@ -780,8 +747,7 @@ class TestTheTreatmentIsPinnedToItsText:
         async with session_scope(session_factory) as session:
             report = await crud.causal_effects(session, org)
 
-        stability = next(f for f in report["integrity"]["findings"]
-                         if f["check"] == "treatment_stability")
+        stability = next(f for f in report["integrity"]["findings"] if f["check"] == "treatment_stability")
         assert stability["severity"] == "OK", stability
 
     async def test_a_retry_does_not_restamp_the_revision(self, session_factory, org):
@@ -789,25 +755,33 @@ class TestTheTreatmentIsPinnedToItsText:
         await _assign(session_factory, org, traces, "occ-1")
 
         async with session_scope(session_factory) as session:
-            original = (await session.execute(
-                select(HoldoutObservation.trace_revision).where(
-                    HoldoutObservation.org_id == org)
-            )).scalars().one()
+            original = (
+                (
+                    await session.execute(
+                        select(HoldoutObservation.trace_revision).where(HoldoutObservation.org_id == org)
+                    )
+                )
+                .scalars()
+                .one()
+            )
             trace = await session.get(Trace, traces[0])
             trace.solution_text = "Rewritten after the assignment was made."
 
         await _assign(session_factory, org, traces, "occ-1")
 
         async with session_scope(session_factory) as session:
-            rows = (await session.execute(
-                select(HoldoutObservation.trace_revision).where(
-                    HoldoutObservation.org_id == org)
-            )).scalars().all()
+            rows = (
+                (
+                    await session.execute(
+                        select(HoldoutObservation.trace_revision).where(HoldoutObservation.org_id == org)
+                    )
+                )
+                .scalars()
+                .all()
+            )
         assert rows == [original]
 
-    async def test_rows_written_before_the_column_existed_are_unchecked(
-        self, session_factory, org
-    ):
+    async def test_rows_written_before_the_column_existed_are_unchecked(self, session_factory, org):
         traces = await _traces(session_factory, org, 1)
         for i in range(20):
             await _assign(session_factory, org, traces, f"occ-{i}")
@@ -815,16 +789,13 @@ class TestTheTreatmentIsPinnedToItsText:
 
         async with session_scope(session_factory) as session:
             await session.execute(
-                sa_update(HoldoutObservation)
-                .where(HoldoutObservation.org_id == org)
-                .values(trace_revision=None)
+                sa_update(HoldoutObservation).where(HoldoutObservation.org_id == org).values(trace_revision=None)
             )
 
         async with session_scope(session_factory) as session:
             report = await crud.causal_effects(session, org)
 
-        stability = next(f for f in report["integrity"]["findings"]
-                         if f["check"] == "treatment_stability")
+        stability = next(f for f in report["integrity"]["findings"] if f["check"] == "treatment_stability")
         assert stability["severity"] == "WEAKENS"
         assert "cannot be checked" in stability["headline"]
 
@@ -835,10 +806,12 @@ class TestWhatTheMemoryWasWorth:
         async with session_scope(session_factory) as session:
             t = Trace(
                 id="22222222-2222-4222-8222-222222222222",
-                org_id=org, title="lesson 0",
+                org_id=org,
+                title="lesson 0",
                 context_text=topic,
                 solution_text=f"resolved by addressing {topic}",
-                tags=[], agent_type="code",
+                tags=[],
+                agent_type="code",
             )
             session.add(t)
             await session.flush()
@@ -850,9 +823,7 @@ class TestWhatTheMemoryWasWorth:
             await _resolve(session_factory, org, f"occ-{i}", good)
         return traces
 
-    async def test_it_reports_occasions_and_takes_the_rate_from_the_caller(
-        self, session_factory, org
-    ):
+    async def test_it_reports_occasions_and_takes_the_rate_from_the_caller(self, session_factory, org):
         await self._running_experiment(session_factory, org)
         async with session_scope(session_factory) as session:
             counted = await crud.value_delivered(session, org)
@@ -861,8 +832,7 @@ class TestWhatTheMemoryWasWorth:
         assert counted["readable"]
         assert counted["money"] is None
         assert counted["value_per_occasion"] is None
-        assert priced["money"] == pytest.approx(
-            priced["occasions_improved"] * 25.0, rel=1e-6)
+        assert priced["money"] == pytest.approx(priced["occasions_improved"] * 25.0, rel=1e-6)
         assert priced["money_range"] is not None
 
     async def test_a_compromised_experiment_yields_no_figure(self, session_factory, org):
@@ -880,16 +850,13 @@ class TestWhatTheMemoryWasWorth:
         assert worth["money"] is None
         assert "COMPROMISED" in worth["reason"]
 
-    async def test_the_value_and_the_effect_table_cannot_disagree(
-        self, session_factory, org
-    ):
+    async def test_the_value_and_the_effect_table_cannot_disagree(self, session_factory, org):
         await self._running_experiment(session_factory, org)
         async with session_scope(session_factory) as session:
             causal = await crud.causal_effects(session, org)
             worth = await crud.value_delivered(session, org)
 
-        assert {m["trace_id"] for m in worth["memories"]} == \
-            {e["trace_id"] for e in causal["effects"]}
+        assert {m["trace_id"] for m in worth["memories"]} == {e["trace_id"] for e in causal["effects"]}
         for memory in worth["memories"]:
             match = next(e for e in causal["effects"] if e["trace_id"] == memory["trace_id"])
             assert memory["verdict"] == match["verdict"]
@@ -915,9 +882,7 @@ class TestWhatTheMemoryWasWorth:
         assert "MEASURED" in worth["note"]
         assert "subtracted rather than" in worth["note"]
 
-    async def test_it_never_reaches_another_orgs_data(
-        self, session_factory, org, other_org
-    ):
+    async def test_it_never_reaches_another_orgs_data(self, session_factory, org, other_org):
         await self._running_experiment(session_factory, org)
         async with session_scope(session_factory) as session:
             theirs = await crud.value_delivered(session, other_org)
@@ -962,9 +927,7 @@ class TestTheWorkingSet:
         assert trace in ws["block"]
         assert ws["chars_used"] > 0
 
-    async def test_nothing_is_promoted_before_the_experiment_answers(
-        self, session_factory, org
-    ):
+    async def test_nothing_is_promoted_before_the_experiment_answers(self, session_factory, org):
         await _traces(session_factory, org, 3)
         async with session_scope(session_factory) as session:
             ws = await crud.working_set(session, org)
@@ -1016,18 +979,14 @@ class TestTheWorkingSet:
         assert "chars]" in ws["gauge"] and "%" in ws["gauge"]
         assert ws["gauge"] in ws["block"]
 
-    async def test_it_is_stable_across_calls_so_the_prefix_cache_survives(
-        self, session_factory, org
-    ):
+    async def test_it_is_stable_across_calls_so_the_prefix_cache_survives(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             first = await crud.working_set(session, org)
             second = await crud.working_set(session, org)
         assert first["block"] == second["block"]
 
-    async def test_another_orgs_proven_memory_is_never_visible(
-        self, session_factory, org, other_org
-    ):
+    async def test_another_orgs_proven_memory_is_never_visible(self, session_factory, org, other_org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             theirs = await crud.working_set(session, other_org)
@@ -1038,8 +997,13 @@ class TestTheWorkingSet:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, org, trace, config, rate_limiter,
-                solution_text="the corrected fix", actor="test",
+                session,
+                org,
+                trace,
+                config,
+                rate_limiter,
+                solution_text="the corrected fix",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             ws = await crud.working_set(session, org)
@@ -1055,9 +1019,7 @@ class TestTheWorkingSet:
                 .values(created_at=func.now() - timedelta(days=days))
             )
 
-    async def test_the_fixture_builds_an_uncompromised_experiment(
-        self, session_factory, org
-    ):
+    async def test_the_fixture_builds_an_uncompromised_experiment(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             causal = await crud.causal_effects(session, org)
@@ -1068,9 +1030,7 @@ class TestTheWorkingSet:
         assert balance["numbers"]["withheld"] == 60
         assert balance["numbers"]["total"] == 120
 
-    async def test_evidence_older_than_the_horizon_is_not_pinned(
-        self, session_factory, org
-    ):
+    async def test_evidence_older_than_the_horizon_is_not_pinned(self, session_factory, org):
         await self._established(session_factory, org)
         await self._backdate(session_factory, org, days=400)
         async with session_scope(session_factory) as session:
@@ -1078,13 +1038,9 @@ class TestTheWorkingSet:
         assert ws["entries"] == []
         assert ws["established"] is False
         assert "evidence horizon" in ws["reason"]
-        assert "stopped working" in ws["reason"], (
-            "the reason must not claim decay it did not measure"
-        )
+        assert "stopped working" in ws["reason"], "the reason must not claim decay it did not measure"
 
-    async def test_evidence_inside_the_horizon_is_still_pinned(
-        self, session_factory, org
-    ):
+    async def test_evidence_inside_the_horizon_is_still_pinned(self, session_factory, org):
         [trace] = await self._established(session_factory, org)
         await self._backdate(session_factory, org, days=10)
         async with session_scope(session_factory) as session:
@@ -1092,9 +1048,7 @@ class TestTheWorkingSet:
         assert [e["trace_id"] for e in ws["entries"]] == [trace]
         assert ws["established"] is True
 
-    async def test_each_entry_reports_the_age_of_its_evidence(
-        self, session_factory, org
-    ):
+    async def test_each_entry_reports_the_age_of_its_evidence(self, session_factory, org):
         await self._established(session_factory, org)
         await self._backdate(session_factory, org, days=30)
         async with session_scope(session_factory) as session:
@@ -1140,27 +1094,27 @@ class TestAPinnedTraceIsNotItsOwnControl:
                 break
         assert withheld_somewhere, "expected this trace to land in the control arm unpinned"
 
-        pinned_result = await _assign_pinned(
-            session_factory, org, traces, "pinned-occ", pinned=[traces[0]]
-        )
+        pinned_result = await _assign_pinned(session_factory, org, traces, "pinned-occ", pinned=[traces[0]])
         assert traces[0] not in pinned_result["withhold"]
         assert traces[0] in pinned_result["inject"]
         assert pinned_result["pinned"] == [traces[0]]
 
     async def test_a_pinned_trace_records_no_observation(self, session_factory, org):
         traces = await _traces(session_factory, org, 2)
-        await _assign_pinned(
-            session_factory, org, traces, "occ-pinned", pinned=[traces[0]]
-        )
+        await _assign_pinned(session_factory, org, traces, "occ-pinned", pinned=[traces[0]])
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(HoldoutObservation.trace_id).where(
-                        HoldoutObservation.org_id == org,
-                        HoldoutObservation.occasion_id == "occ-pinned",
+                (
+                    await session.execute(
+                        select(HoldoutObservation.trace_id).where(
+                            HoldoutObservation.org_id == org,
+                            HoldoutObservation.occasion_id == "occ-pinned",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert traces[0] not in rows, "a pinned trace must contribute to neither arm"
         assert traces[1] in rows, "unpinned traces must still be measured normally"
 
@@ -1170,38 +1124,43 @@ class TestAPinnedTraceIsNotItsOwnControl:
         assert plain["pinned"] == []
         assert sorted(plain["inject"] + plain["withhold"]) == sorted(traces)
 
-    async def test_a_pinned_trace_cannot_return_as_a_cluster_representative(
-        self, session_factory, config, org
-    ):
+    async def test_a_pinned_trace_cannot_return_as_a_cluster_representative(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         made = []
         async with session_scope(session_factory) as session:
             for i in range(3):
                 t = await crud.contribute_trace(
-                    session, org, config, rate_limiter,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
                     title="connection pool exhaustion under load",
                     context_text="the pool runs out of connections under concurrent load",
                     solution_text=f"raise the pool ceiling and add backpressure ({i})",
-                    tags=["db"], agent_type="code", actor="test",
+                    tags=["db"],
+                    agent_type="code",
+                    actor="test",
                 )
                 made.append(t["id"])
 
         traces = [{"id": t} for t in made]
         async with session_scope(session_factory) as session:
-            holdout = await crud.holdout_for_results(
-                session, org, traces, "occ-cluster", pinned=[made[0]]
-            )
+            holdout = await crud.holdout_for_results(session, org, traces, "occ-cluster", pinned=[made[0]])
         assert made[0] not in holdout.get("withhold", [])
 
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(HoldoutObservation.trace_id).where(
-                        HoldoutObservation.org_id == org,
-                        HoldoutObservation.occasion_id == "occ-cluster",
+                (
+                    await session.execute(
+                        select(HoldoutObservation.trace_id).where(
+                            HoldoutObservation.org_id == org,
+                            HoldoutObservation.occasion_id == "occ-cluster",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert made[0] not in rows
 
 
@@ -1216,31 +1175,31 @@ class TestTieredValuationAndTheAuditLedger:
         {"name": "critical escalation", "share": 0.02, "cost_per_occasion": 350.0},
     ]
 
-    async def test_a_rate_card_prices_the_run_and_is_echoed_as_an_input(
-        self, session_factory, org
-    ):
+    async def test_a_rate_card_prices_the_run_and_is_echoed_as_an_input(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             worth = await crud.value_delivered(session, org, rate_tiers=self._TIERS)
         blended = sum(t["share"] * t["cost_per_occasion"] for t in self._TIERS)
         assert worth["rate_applied"] == pytest.approx(blended)
         assert worth["money"] == pytest.approx(worth["occasions_improved"] * blended)
-        assert [t["name"] for t in worth["rate_tiers"]] == [
-            t["name"] for t in self._TIERS
-        ], "the tiers must come back as the inputs they are"
+        assert [t["name"] for t in worth["rate_tiers"]] == [t["name"] for t in self._TIERS], (
+            "the tiers must come back as the inputs they are"
+        )
 
-    async def test_the_ledger_verifies_and_covers_every_counted_memory(
-        self, session_factory, org
-    ):
+    async def test_the_ledger_verifies_and_covers_every_counted_memory(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             worth = await crud.value_delivered(session, org, rate_tiers=self._TIERS)
         assert worth["ledger"], "a priced, readable run must carry a ledger"
         entries = [
             value.LedgerEntry(
-                index=e["index"], slug=e["trace_id"], verdict=e["verdict"],
-                occasions_improved=e["occasions_improved"], rate=e["rate"],
-                money=e["money"], previous_hash=e["previous_hash"],
+                index=e["index"],
+                slug=e["trace_id"],
+                verdict=e["verdict"],
+                occasions_improved=e["occasions_improved"],
+                rate=e["rate"],
+                money=e["money"],
+                previous_hash=e["previous_hash"],
                 entry_hash=e["entry_hash"],
             )
             for e in worth["ledger"]
@@ -1249,9 +1208,7 @@ class TestTieredValuationAndTheAuditLedger:
         counted = [m for m in worth["memories"] if m["counted"]]
         assert len(entries) == len(counted)
 
-    async def test_co_injected_traces_produce_no_total_but_still_a_policy_figure(
-        self, session_factory, org
-    ):
+    async def test_co_injected_traces_produce_no_total_but_still_a_policy_figure(self, session_factory, org):
         [first] = await self._established(session_factory, org, n=120)
         [second] = await _traces(session_factory, org, 1)
         for i in range(120):
@@ -1264,8 +1221,7 @@ class TestTieredValuationAndTheAuditLedger:
 
         shared = {frozenset(p) for p in causal["co_injection"]["pairs"]}
         assert frozenset((first, second)) in shared, (
-            "the two traces ran on the same occasions, which is what this asserts "
-            "the Hub notices"
+            "the two traces ran on the same occasions, which is what this asserts the Hub notices"
         )
         if not worth["aggregate_readable"]:
             assert worth["money"] is None
@@ -1277,9 +1233,7 @@ class TestTieredValuationAndTheAuditLedger:
             "one occasion must count once, however many traces it received"
         )
 
-    async def test_no_signing_key_leaves_the_ledger_unsigned_but_explicit(
-        self, session_factory, org
-    ):
+    async def test_no_signing_key_leaves_the_ledger_unsigned_but_explicit(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             worth = await crud.value_delivered(session, org, rate_tiers=self._TIERS)
@@ -1288,23 +1242,28 @@ class TestTieredValuationAndTheAuditLedger:
         assert "not configured" in worth["signature_reason"]
         assert worth["issued_at"]
 
-    async def test_a_signing_key_produces_a_verifiable_signature(
-        self, session_factory, org
-    ):
+    async def test_a_signing_key_produces_a_verifiable_signature(self, session_factory, org):
         await self._established(session_factory, org)
         key = "test-issuer-signing-key"
         async with session_scope(session_factory) as session:
             worth = await crud.value_delivered(
-                session, org, rate_tiers=self._TIERS, signing_key=key,
+                session,
+                org,
+                rate_tiers=self._TIERS,
+                signing_key=key,
             )
         assert worth["signature"]
         assert worth["signature_algorithm"] == "HMAC-SHA256"
         assert worth["signature_reason"] == ""
         entries = [
             value.LedgerEntry(
-                index=e["index"], slug=e["trace_id"], verdict=e["verdict"],
-                occasions_improved=e["occasions_improved"], rate=e["rate"],
-                money=e["money"], previous_hash=e["previous_hash"],
+                index=e["index"],
+                slug=e["trace_id"],
+                verdict=e["verdict"],
+                occasions_improved=e["occasions_improved"],
+                rate=e["rate"],
+                money=e["money"],
+                previous_hash=e["previous_hash"],
                 entry_hash=e["entry_hash"],
             )
             for e in worth["ledger"]
@@ -1314,23 +1273,32 @@ class TestTieredValuationAndTheAuditLedger:
             "prereg_fingerprint": worth["preregistration"]["fingerprint"],
         }
         assert value.verify_ledger_signature(
-            entries, worth["signature"], key.encode("utf-8"),
-            org_id=org, issued_at=worth["issued_at"], **anchors,
+            entries,
+            worth["signature"],
+            key.encode("utf-8"),
+            org_id=org,
+            issued_at=worth["issued_at"],
+            **anchors,
         )
         assert not value.verify_ledger_signature(
-            entries, worth["signature"], b"wrong-key",
-            org_id=org, issued_at=worth["issued_at"], **anchors,
+            entries,
+            worth["signature"],
+            b"wrong-key",
+            org_id=org,
+            issued_at=worth["issued_at"],
+            **anchors,
         )
         assert not value.verify_ledger_signature(
-            entries, worth["signature"], key.encode("utf-8"),
-            org_id=org, issued_at=worth["issued_at"],
+            entries,
+            worth["signature"],
+            key.encode("utf-8"),
+            org_id=org,
+            issued_at=worth["issued_at"],
             evidence_digest="a-different-data-set",
             prereg_fingerprint=anchors["prereg_fingerprint"],
         )
 
-    async def test_the_report_carries_the_evidence_it_was_computed_from(
-        self, session_factory, org
-    ):
+    async def test_the_report_carries_the_evidence_it_was_computed_from(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             worth = await crud.value_delivered(session, org, rate_tiers=self._TIERS)
@@ -1342,9 +1310,7 @@ class TestTieredValuationAndTheAuditLedger:
         result = raw_export.export(exported)
         assert raw_export.verify(result.csv_text, worth["evidence_digest"])
 
-    async def test_an_unregistered_experiment_says_so_rather_than_passing(
-        self, session_factory, org
-    ):
+    async def test_an_unregistered_experiment_says_so_rather_than_passing(self, session_factory, org):
         await self._established(session_factory, org)
         async with session_scope(session_factory) as session:
             causal = await crud.causal_effects(session, org)
@@ -1360,38 +1326,30 @@ class TestTieredValuationAndTheAuditLedger:
         assert worth["money"] is None
         assert worth["ledger"] == []
 
-    async def test_a_malformed_rate_card_is_refused_rather_than_ignored(
-        self, session_factory, org
-    ):
+    async def test_a_malformed_rate_card_is_refused_rather_than_ignored(self, session_factory, org):
         await self._established(session_factory, org)
         with pytest.raises(ValueError, match="sum to"):
             async with session_scope(session_factory) as session:
                 await crud.value_delivered(
-                    session, org,
+                    session,
+                    org,
                     rate_tiers=[{"name": "half", "share": 0.5, "cost_per_occasion": 10.0}],
                 )
 
 
 class TestTheOperatorCLIReachesTheSameNumbers:
     async def _running_experiment(self, session_factory, org, n=120, helps=True):
-        return await TestWhatTheMemoryWasWorth()._running_experiment(
-            session_factory, org, n=n, helps=helps
-        )
+        return await TestWhatTheMemoryWasWorth()._running_experiment(session_factory, org, n=n, helps=helps)
 
     async def test_an_unknown_org_reports_an_error(self, session_factory, capsys):
-        assert not await manage.value("00000000-0000-0000-0000-000000000000",
-                                       session_factory=session_factory)
+        assert not await manage.value("00000000-0000-0000-0000-000000000000", session_factory=session_factory)
         assert "no such organization" in capsys.readouterr().err
 
-    async def test_a_non_numeric_rate_reports_an_error_without_touching_the_db(
-        self, session_factory, org, capsys
-    ):
+    async def test_a_non_numeric_rate_reports_an_error_without_touching_the_db(self, session_factory, org, capsys):
         assert not await manage.value(org, "free", session_factory=session_factory)
         assert "must be a number" in capsys.readouterr().err
 
-    async def test_no_activity_yet_reports_zero_rather_than_erroring(
-        self, session_factory, org, capsys
-    ):
+    async def test_no_activity_yet_reports_zero_rather_than_erroring(self, session_factory, org, capsys):
         assert await manage.value(org, session_factory=session_factory)
         out = capsys.readouterr().out
         assert "occasions improved: 0.0" in out
@@ -1415,9 +1373,7 @@ class TestTheOperatorCLIReachesTheSameNumbers:
         billable = expected["money"] * plans.VALUE_CAPTURE_SHARE
         assert f"{billable:,.2f}" in out
 
-    async def test_a_compromised_experiment_prints_the_reason_not_a_figure(
-        self, session_factory, org, capsys
-    ):
+    async def test_a_compromised_experiment_prints_the_reason_not_a_figure(self, session_factory, org, capsys):
         traces = await _traces(session_factory, org, 1)
         for i in range(120):
             result = await _assign(session_factory, org, traces, f"occ-{i}")
@@ -1432,8 +1388,7 @@ class TestTheOperatorCLIReachesTheSameNumbers:
 
 class TestEvidenceDecayReachesTheInvoice:
     async def _established(self, session_factory, org, n=120, helps=True):
-        return await TestTheWorkingSet()._established(
-            session_factory, org, n=n, helps=helps)
+        return await TestTheWorkingSet()._established(session_factory, org, n=n, helps=helps)
 
     async def _backdate(self, session_factory, org, days):
         await TestTheWorkingSet()._backdate(session_factory, org, days)
@@ -1474,14 +1429,11 @@ class TestEvidenceDecayReachesTheInvoice:
         assert memory["counted"], "a stale harm must not vanish from the invoice"
         assert worth["occasions_improved"] < 0
 
-    async def test_the_horizon_can_be_turned_off_for_a_historical_figure(
-        self, session_factory, org
-    ):
+    async def test_the_horizon_can_be_turned_off_for_a_historical_figure(self, session_factory, org):
         await self._established(session_factory, org)
         await self._backdate(session_factory, org, days=400)
         async with session_scope(session_factory) as session:
-            worth = await crud.value_delivered(
-                session, org, value_per_occasion=25.0, evidence_horizon_days=None)
+            worth = await crud.value_delivered(session, org, value_per_occasion=25.0, evidence_horizon_days=None)
         assert worth["n_counted"] == 1
 
     async def test_the_hub_and_the_ledger_share_one_horizon(self):

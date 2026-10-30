@@ -1,4 +1,5 @@
 """Content bindings for optional local benchmark libraries and cached models."""
+
 from __future__ import annotations
 
 import hashlib

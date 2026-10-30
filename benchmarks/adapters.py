@@ -5,6 +5,7 @@ Adapted from Cognee benchmark evaluation framework and Zep memory benchmarks:
 - Snapshot cache reuse across parameter sweeps to eliminate duplicate chunking/parsing overhead.
 - Dual grading: primary evidence completeness score and secondary answer generation accuracy.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -66,11 +67,36 @@ class SyntheticBenchmarkAdapter(BaseAdapter):
         seed: int = 42,
     ) -> list[BenchmarkItem]:
         topics = [
-            ("database index", "B-tree indexes accelerate range queries and point lookups.", "What index structure accelerates range queries?", "B-tree"),
-            ("retrieval cache", "LRU cache holds hot embeddings and suppresses round-trips.", "What does the LRU cache hold?", "hot embeddings"),
-            ("ssrf defense", "DNS resolver pinning prevents DNS rebinding TOCTOU attacks.", "How does resolver pinning mitigate SSRF?", "prevents DNS rebinding"),
-            ("rate limiter", "Token bucket leaky algorithm caps sustained request rates.", "What algorithm caps sustained request rates?", "Token bucket"),
-            ("memory block", "Working memory blocks provide persistent scratchpad context.", "What provides persistent scratchpad context?", "Working memory blocks"),
+            (
+                "database index",
+                "B-tree indexes accelerate range queries and point lookups.",
+                "What index structure accelerates range queries?",
+                "B-tree",
+            ),
+            (
+                "retrieval cache",
+                "LRU cache holds hot embeddings and suppresses round-trips.",
+                "What does the LRU cache hold?",
+                "hot embeddings",
+            ),
+            (
+                "ssrf defense",
+                "DNS resolver pinning prevents DNS rebinding TOCTOU attacks.",
+                "How does resolver pinning mitigate SSRF?",
+                "prevents DNS rebinding",
+            ),
+            (
+                "rate limiter",
+                "Token bucket leaky algorithm caps sustained request rates.",
+                "What algorithm caps sustained request rates?",
+                "Token bucket",
+            ),
+            (
+                "memory block",
+                "Working memory blocks provide persistent scratchpad context.",
+                "What provides persistent scratchpad context?",
+                "Working memory blocks",
+            ),
         ]
         items = []
         for i in range(limit or 10):

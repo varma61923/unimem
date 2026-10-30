@@ -8,6 +8,7 @@ Adapted from Cognee Text-to-SQL architecture:
 
 Portions adapted from Cognee (Apache-2.0, Copyright 2024 Topoteretes UG); see THIRD_PARTY_NOTICES.md.
 """
+
 from __future__ import annotations
 
 import math
@@ -173,8 +174,9 @@ def ensure_limit(sql: str, max_rows: int = 100) -> str:
     return f"SELECT * FROM ({sql}) AS guarded_query LIMIT {max_rows}"  # nosec B608
 
 
-def _read_only_authorizer(action: int, arg1: str | None, arg2: str | None,
-                          database: str | None, source: str | None) -> int:
+def _read_only_authorizer(
+    action: int, arg1: str | None, arg2: str | None, database: str | None, source: str | None
+) -> int:
     if action == sqlite3.SQLITE_READ:
         return sqlite3.SQLITE_DENY if (arg1 or "").lower().startswith("pragma_") else sqlite3.SQLITE_OK
     if action == sqlite3.SQLITE_FUNCTION:
@@ -186,14 +188,30 @@ def _read_only_authorizer(action: int, arg1: str | None, arg2: str | None,
     return sqlite3.SQLITE_DENY
 
 
-_LEGACY_SAFE_FUNCTIONS = frozenset({
-    "count", "sum", "avg", "min", "max", "total", "length", "typeof",
-    "abs", "round", "coalesce", "ifnull", "nullif", "instr", "unicode",
-})
+_LEGACY_SAFE_FUNCTIONS = frozenset(
+    {
+        "count",
+        "sum",
+        "avg",
+        "min",
+        "max",
+        "total",
+        "length",
+        "typeof",
+        "abs",
+        "round",
+        "coalesce",
+        "ifnull",
+        "nullif",
+        "instr",
+        "unicode",
+    }
+)
 
 
-def _legacy_authorizer(action: int, arg1: str | None, arg2: str | None,
-                       database: str | None, source: str | None) -> int:
+def _legacy_authorizer(
+    action: int, arg1: str | None, arg2: str | None, database: str | None, source: str | None
+) -> int:
     # Python 3.10 exposes no sqlite3 setlimit. Keep normal analytical SELECTs,
     # but reject allocation functions/aggregates instead of relying on a VM
     # timeout to interrupt a single randomblob/group_concat/printf invocation.
@@ -247,8 +265,17 @@ def execute_guarded_sql(
                 # Include conservative container/value overhead, so many tiny
                 # scalar rows cannot inflate a small cell-byte budget into
                 # hundreds of MiB of retained Python dictionaries.
-                result_bytes += 64 + sum(64 + (len(value.encode("utf-8")) if isinstance(value, str)
-                                              else len(value) if isinstance(value, bytes) else 8) for value in row)
+                result_bytes += 64 + sum(
+                    64
+                    + (
+                        len(value.encode("utf-8"))
+                        if isinstance(value, str)
+                        else len(value)
+                        if isinstance(value, bytes)
+                        else 8
+                    )
+                    for value in row
+                )
                 if result_bytes > MAX_RESULT_BYTES:
                     raise SqlGuardError(f"query result exceeded {MAX_RESULT_BYTES}-byte limit")
                 rows.append(dict(row))

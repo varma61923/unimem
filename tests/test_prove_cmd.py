@@ -29,26 +29,42 @@ def _causal(effects, running=True, n_obs=120, n_occ=60):
 
 def _effect(verdict, title="retry with jittered backoff", effect=0.29):
     return {
-        "trace_id": "t-1", "title": title,
-        "n_injected": 465, "n_withheld": 235,
-        "rate_injected": 0.66, "rate_withheld": 0.37,
-        "effect": effect, "ci_95": [0.217, 0.367], "p_value": 0.0001,
-        "significant": True, "min_detectable_effect": 0.09,
-        "verdict": verdict, "note": "Injecting this lesson causes better outcomes.",
+        "trace_id": "t-1",
+        "title": title,
+        "n_injected": 465,
+        "n_withheld": 235,
+        "rate_injected": 0.66,
+        "rate_withheld": 0.37,
+        "effect": effect,
+        "ci_95": [0.217, 0.367],
+        "p_value": 0.0001,
+        "significant": True,
+        "min_detectable_effect": 0.09,
+        "verdict": verdict,
+        "note": "Injecting this lesson causes better outcomes.",
     }
 
 
 def _report(causal):
     return {
-        "n_baseline_traces": 120, "n_current_traces": 240,
+        "n_baseline_traces": 120,
+        "n_current_traces": 240,
         "headline": "2 of 4 metric(s) improved measurably since the baseline window.",
-        "metrics": [{
-            "metric": "resolution_rate", "direction": "up",
-            "baseline": {"rate": 0.55, "n": 120}, "current": {"rate": 0.78, "n": 240},
-            "delta": 0.23, "ci_95": [0.14, 0.31], "p_value": 0.0,
-            "significant": True, "min_detectable_effect": 0.09,
-            "verdict": "improved", "note": "",
-        }],
+        "metrics": [
+            {
+                "metric": "resolution_rate",
+                "direction": "up",
+                "baseline": {"rate": 0.55, "n": 120},
+                "current": {"rate": 0.78, "n": 240},
+                "delta": 0.23,
+                "ci_95": [0.14, 0.31],
+                "p_value": 0.0,
+                "significant": True,
+                "min_detectable_effect": 0.09,
+                "verdict": "improved",
+                "note": "",
+            }
+        ],
         "cost": [],
         "caveat": "OBSERVED CHANGE, NOT A CAUSAL EFFECT.",
         "causal": causal,
@@ -94,16 +110,19 @@ class TestRenderOrdering:
 
 
 class TestAssign:
-    def test_withheld_traces_are_labelled_and_the_warning_is_shown(
-        self, capsys, monkeypatch
-    ):
+    def test_withheld_traces_are_labelled_and_the_warning_is_shown(self, capsys, monkeypatch):
         monkeypatch.setattr(
-            prove_cmd.hub_client, "holdout_assign",
-            lambda *a, **k: _async({
-                "occasion_id": "ticket-1", "holdout_rate": 0.2,
-                "inject": ["t-a"], "withhold": ["t-b"],
-                "note": "Withheld traces must NOT be used on this occasion.",
-            }),
+            prove_cmd.hub_client,
+            "holdout_assign",
+            lambda *a, **k: _async(
+                {
+                    "occasion_id": "ticket-1",
+                    "holdout_rate": 0.2,
+                    "inject": ["t-a"],
+                    "withhold": ["t-b"],
+                    "note": "Withheld traces must NOT be used on this occasion.",
+                }
+            ),
         )
         assert prove_cmd.run_assign(_args(occasion_id="ticket-1", trace_ids=["t-a", "t-b"])) == 0
         out = capsys.readouterr().out
@@ -113,11 +132,17 @@ class TestAssign:
 
     def test_no_eligible_traces_is_explained_not_silent(self, capsys, monkeypatch):
         monkeypatch.setattr(
-            prove_cmd.hub_client, "holdout_assign",
-            lambda *a, **k: _async({
-                "occasion_id": "ticket-1", "holdout_rate": 0.2,
-                "inject": [], "withhold": [], "note": "",
-            }),
+            prove_cmd.hub_client,
+            "holdout_assign",
+            lambda *a, **k: _async(
+                {
+                    "occasion_id": "ticket-1",
+                    "holdout_rate": 0.2,
+                    "inject": [],
+                    "withhold": [],
+                    "note": "",
+                }
+            ),
         )
         assert prove_cmd.run_assign(_args(occasion_id="ticket-1", trace_ids=["nope"])) == 0
         assert "no eligible traces" in capsys.readouterr().out
@@ -136,22 +161,20 @@ class TestAssign:
 class TestRecord:
     def test_a_resolved_occasion_reports_the_count(self, capsys, monkeypatch):
         monkeypatch.setattr(
-            prove_cmd.hub_client, "record_occasion_outcome",
+            prove_cmd.hub_client,
+            "record_occasion_outcome",
             lambda *a, **k: _async({"occasion_id": "ticket-1", "observations_resolved": 3}),
         )
-        assert prove_cmd.run_record(
-            _args(occasion_id="ticket-1", succeeded=True, failed=False)
-        ) == 0
+        assert prove_cmd.run_record(_args(occasion_id="ticket-1", succeeded=True, failed=False)) == 0
         assert "3 observation(s) resolved" in capsys.readouterr().out
 
     def test_zero_resolved_names_both_likely_causes(self, capsys, monkeypatch):
         monkeypatch.setattr(
-            prove_cmd.hub_client, "record_occasion_outcome",
+            prove_cmd.hub_client,
+            "record_occasion_outcome",
             lambda *a, **k: _async({"occasion_id": "ticket-1", "observations_resolved": 0}),
         )
-        assert prove_cmd.run_record(
-            _args(occasion_id="ticket-1", succeeded=True, failed=False)
-        ) == 0
+        assert prove_cmd.run_record(_args(occasion_id="ticket-1", succeeded=True, failed=False)) == 0
         out = capsys.readouterr().out
         assert "already reported" in out
         assert "never called" in out
@@ -185,46 +208,71 @@ class TestTheValidityVerdictIsAboveTheEffects:
     def _report(integrity: dict) -> str:
         from unimem.commands import prove_cmd
 
-        return prove_cmd.render_outcomes({
-            "headline": "Resolution is up.",
-            "metrics": [],
-            "causal": {
-                "experiment_running": True,
-                "holdout_rate": 0.5,
-                "n_observations": 300,
-                "n_occasions": 300,
-                "integrity": integrity,
-                "effects": [{
-                    "trace_id": "t1", "title": "A lesson", "verdict": "HURTS",
-                    "n_injected": 150, "n_withheld": 150,
-                    "rate_injected": 0.48, "rate_withheld": 0.65,
-                    "effect": -0.17, "ci_95": [-0.28, -0.07], "p_value": 0.002,
-                    "significant": True, "min_detectable_effect": 0.1,
-                    "note": "Outcomes are WORSE when this is injected.",
-                }],
-            },
-        })
+        return prove_cmd.render_outcomes(
+            {
+                "headline": "Resolution is up.",
+                "metrics": [],
+                "causal": {
+                    "experiment_running": True,
+                    "holdout_rate": 0.5,
+                    "n_observations": 300,
+                    "n_occasions": 300,
+                    "integrity": integrity,
+                    "effects": [
+                        {
+                            "trace_id": "t1",
+                            "title": "A lesson",
+                            "verdict": "HURTS",
+                            "n_injected": 150,
+                            "n_withheld": 150,
+                            "rate_injected": 0.48,
+                            "rate_withheld": 0.65,
+                            "effect": -0.17,
+                            "ci_95": [-0.28, -0.07],
+                            "p_value": 0.002,
+                            "significant": True,
+                            "min_detectable_effect": 0.1,
+                            "note": "Outcomes are WORSE when this is injected.",
+                        }
+                    ],
+                },
+            }
+        )
 
     def test_a_compromised_sample_is_flagged_before_the_numbers(self):
-        text = self._report({
-            "verdict": "COMPROMISED", "effects_readable": False,
-            "findings": [{
-                "check": "differential_attrition", "severity": "INVALIDATES",
-                "headline": "The arms are not equally observed.",
-                "detail": "The withheld arm is losing occasions faster.",
-            }],
-        })
+        text = self._report(
+            {
+                "verdict": "COMPROMISED",
+                "effects_readable": False,
+                "findings": [
+                    {
+                        "check": "differential_attrition",
+                        "severity": "INVALIDATES",
+                        "headline": "The arms are not equally observed.",
+                        "detail": "The withheld arm is losing occasions faster.",
+                    }
+                ],
+            }
+        )
         assert "Do not quote the effect sizes" in text
         assert "more data will not fix it" in text
         assert text.index("Do not quote") < text.index("HURTS")
 
     def test_a_weakened_sample_says_so_without_suppressing_the_estimate(self):
-        text = self._report({
-            "verdict": "WEAKENED", "effects_readable": True,
-            "findings": [{"check": "differential_attrition", "severity": "WEAKENS",
-                          "headline": "38.0% of assignments never got an outcome.",
-                          "detail": ""}],
-        })
+        text = self._report(
+            {
+                "verdict": "WEAKENED",
+                "effects_readable": True,
+                "findings": [
+                    {
+                        "check": "differential_attrition",
+                        "severity": "WEAKENS",
+                        "headline": "38.0% of assignments never got an outcome.",
+                        "detail": "",
+                    }
+                ],
+            }
+        )
         assert "Weakened" in text and "38.0%" in text
         assert "HURTS" in text
 

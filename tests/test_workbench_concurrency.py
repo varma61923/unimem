@@ -1,9 +1,11 @@
 """Browser decisions apply only to the authoritative revision the operator saw."""
+
 from __future__ import annotations
 
 import concurrent.futures
 import os
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -25,11 +27,14 @@ def acting(root):
     return gateway.Gateway(root, token=TOKEN, allow_approval=True)
 
 
-@pytest.mark.parametrize("action,fields", [
-    ("edit", {"rule": "Use a stable request identifier."}),
-    ("approve", {"rationale": "reviewed"}),
-    ("reject", {"reason": "too broad"}),
-])
+@pytest.mark.parametrize(
+    "action,fields",
+    [
+        ("edit", {"rule": "Use a stable request identifier."}),
+        ("approve", {"rationale": "reviewed"}),
+        ("reject", {"reason": "too broad"}),
+    ],
+)
 def test_stale_browser_decisions_do_not_mutate_or_sign(root, acting, action, fields):
     _lesson(root, "lesson_good")
     revision = call(acting, "GET", "/v1/lesson?slug=lesson_good")[1]["revision"]
@@ -37,11 +42,12 @@ def test_stale_browser_decisions_do_not_mutate_or_sign(root, acting, action, fie
     fm, body = frontmatter.read(path)
     body += "\nAdditional evidence not reviewed by the operator.\n"
     frontmatter.write(path, fm, body)
-    before = open(path, encoding="utf-8").read()
-    status, payload = call(acting, "POST", f"/v1/lesson/{action}",
-                           {"slug": "lesson_good", "expected_revision": revision, **fields})
+    before = Path(path).read_text(encoding="utf-8")
+    status, payload = call(
+        acting, "POST", f"/v1/lesson/{action}", {"slug": "lesson_good", "expected_revision": revision, **fields}
+    )
     assert status == 409 and payload["error"]["code"] == "stale_review"
-    assert open(path, encoding="utf-8").read() == before
+    assert Path(path).read_text(encoding="utf-8") == before
     assert not os.path.exists(os.path.join(paths.memory_dir(root), "lesson_admissions.db"))
 
 
@@ -70,8 +76,12 @@ def test_current_review_approval_issues_a_valid_receipt(root, acting):
 def test_revision_schema_is_strict(root, acting, revision, action):
     _lesson(root, "lesson_good")
     fields = {"edit": {"rule": "changed"}, "approve": {}, "reject": {"reason": "broad"}}[action]
-    assert call(acting, "POST", f"/v1/lesson/{action}",
-                {"slug": "lesson_good", "expected_revision": revision, **fields})[0] == 400
+    assert (
+        call(acting, "POST", f"/v1/lesson/{action}", {"slug": "lesson_good", "expected_revision": revision, **fields})[
+            0
+        ]
+        == 400
+    )
 
 
 def test_two_concurrent_edits_have_one_winner(root):
@@ -144,7 +154,9 @@ def test_full_revision_does_not_authorize_an_unviewable_tail(root, acting):
     frontmatter.write(path, fm, body + "a" * workbench.MAX_BODY_CHARS)
     view = call(acting, "GET", "/v1/lesson?slug=lesson_good")[1]
     assert view["body_truncated"]
-    status, payload = call(acting, "POST", "/v1/lesson/approve", {"slug": "lesson_good", "expected_revision": view["revision"]})
+    status, payload = call(
+        acting, "POST", "/v1/lesson/approve", {"slug": "lesson_good", "expected_revision": view["revision"]}
+    )
     assert status == 409 and payload["error"]["code"] == "review_truncated"
 
 

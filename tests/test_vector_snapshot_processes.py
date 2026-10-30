@@ -4,6 +4,7 @@ SQLite always runs; PostgreSQL exact/HNSW run when the service DSN is provided.
 Child interpreters create their own connections, so parent-only locks or caches
 cannot make these publication, read-lease and crash-recovery tests pass.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,8 +27,12 @@ from unimem.vector_store import PostgresVectorIndex, SQLiteVectorIndex, VectorRe
 
 
 async def _opening(settings: dict[str, Any]) -> SQLiteVectorIndex | PostgresVectorIndex:
-    scope = {"tenant": settings["tenant"], "namespace": "memory",
-             "model": settings.get("model", "contract-embedding"), "dimension": 3}
+    scope = {
+        "tenant": settings["tenant"],
+        "namespace": "memory",
+        "model": settings.get("model", "contract-embedding"),
+        "dimension": 3,
+    }
     if settings["engine"] == "sqlite":
         return await SQLiteVectorIndex.open(settings["path"], **scope)
     return await PostgresVectorIndex.open(settings["dsn"], approximate=settings["engine"] == "pghnsw", **scope)
@@ -55,8 +60,9 @@ async def _worker() -> None:
         snapshots = index.snapshots
         if request["role"] == "builder":
             generation = request["generation"]
-            lease = await snapshots.begin(request["revision"], generation,
-                                          lease_seconds=request.get("lease_seconds", 60))
+            lease = await snapshots.begin(
+                request["revision"], generation, lease_seconds=request.get("lease_seconds", 60)
+            )
             assert lease is not None
             await snapshots.stage(lease, [VectorRecord(generation, [0, 1, 0])])
             _emit({"ready": True, "lease": asdict(lease)})
@@ -101,9 +107,14 @@ def _receive(process: subprocess.Popen[str]) -> dict[str, Any]:
 def _child(settings: dict[str, Any], role: str, **kwargs: object) -> Iterator[subprocess.Popen[str]]:
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    process = subprocess.Popen([sys.executable, str(Path(__file__).resolve())],
-                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, env=environment)
+    process = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve())],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+    )
     try:
         _send(process, {"settings": settings, "role": role, **kwargs})
         yield process
@@ -125,8 +136,12 @@ def settings(request, tmp_path):
     dsn = os.environ.get("UNIMEM_TEST_PGVECTOR_DSN")
     if request.param != "sqlite" and not dsn:
         pytest.skip("set UNIMEM_TEST_PGVECTOR_DSN to exercise real PostgreSQL processes")
-    return {"engine": request.param, "path": str(tmp_path / "vectors.db"), "dsn": dsn,
-            "tenant": "process-contract-" + uuid.uuid4().hex}
+    return {
+        "engine": request.param,
+        "path": str(tmp_path / "vectors.db"),
+        "dsn": dsn,
+        "tenant": "process-contract-" + uuid.uuid4().hex,
+    }
 
 
 async def _seed(index: SQLiteVectorIndex | PostgresVectorIndex) -> None:
@@ -141,8 +156,10 @@ def test_independent_builders_publish_one_complete_snapshot(settings):
         index = await _opening(settings)
         try:
             await _seed(index)
-            with _child(settings, "builder", revision=1, generation="left") as left, \
-                    _child(settings, "builder", revision=2, generation="right") as right:
+            with (
+                _child(settings, "builder", revision=1, generation="left") as left,
+                _child(settings, "builder", revision=2, generation="right") as right,
+            ):
                 first, second = _receive(left), _receive(right)
                 assert first["lease"]["base_revision"] == second["lease"]["base_revision"] == 0
                 assert first["lease"]["fence"] != second["lease"]["fence"]
@@ -161,6 +178,7 @@ def test_independent_builders_publish_one_complete_snapshot(settings):
                 await index.snapshots.release(read)
         finally:
             await index.close()
+
     asyncio.run(exercise())
 
 
@@ -188,6 +206,7 @@ def test_process_reader_pin_survives_publication_and_collection(settings):
                 await index.snapshots.release(current)
         finally:
             await index.close()
+
     asyncio.run(exercise())
 
 
@@ -218,6 +237,7 @@ def test_crashed_builder_cannot_publish_after_lease_expiry(settings):
             await index.snapshots.release(read)
         finally:
             await index.close()
+
     asyncio.run(exercise())
 
 
@@ -231,8 +251,17 @@ def test_external_process_mutation_aborts_staged_canonical_build(settings, tmp_p
             vectors = []
             for text in texts:
                 words = set(text.lower().strip(".?").split())
-                vector = np.array([len(words & {"lynx", "feline"}), len(words & {"rocket", "space"}),
-                                   len(words & {"sea", "waves"})], dtype=np.float32) + 0.01
+                vector = (
+                    np.array(
+                        [
+                            len(words & {"lynx", "feline"}),
+                            len(words & {"rocket", "space"}),
+                            len(words & {"sea", "waves"}),
+                        ],
+                        dtype=np.float32,
+                    )
+                    + 0.01
+                )
                 vectors.append(vector / np.linalg.norm(vector))
             return np.asarray(vectors, dtype=np.float32)
 
@@ -240,14 +269,24 @@ def test_external_process_mutation_aborts_staged_canonical_build(settings, tmp_p
     monkeypatch.setattr(embed, "available", lambda: True)
     monkeypatch.setattr(embed, "_model", lambda _tag: encoder)
     configured = {**settings, "model": embed.MODELS["minilm"][0]}
-    options = Options(embedder="minilm", rerank=None, neighbours_before=0, neighbours_after=0,
-                      profile_facts=0, instructions=0, summaries=False, entity_boost=0, recency_boost=0)
+    options = Options(
+        embedder="minilm",
+        rerank=None,
+        neighbours_before=0,
+        neighbours_after=0,
+        profile_facts=0,
+        instructions=0,
+        summaries=False,
+        entity_boost=0,
+        recency_boost=0,
+    )
 
     async def exercise() -> None:
         index = await _opening(configured)
         try:
-            async with await AsyncStore.open(str(tmp_path), "memory", vector_index=index,
-                                            tenant=settings["tenant"]) as store:
+            async with await AsyncStore.open(
+                str(tmp_path), "memory", vector_index=index, tenant=settings["tenant"]
+            ) as store:
                 await store.add("cats", [{"text": "A lynx rests."}], extract_profile=False)
                 assert "lynx" in (await store.recall("feline", options=options)).context
                 previous = await index.snapshots.head()
@@ -276,6 +315,7 @@ def test_external_process_mutation_aborts_staged_canonical_build(settings, tmp_p
                     assert await index.snapshots.head() != previous
         finally:
             await index.close()
+
     asyncio.run(exercise())
 
 

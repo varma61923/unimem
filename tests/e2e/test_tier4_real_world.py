@@ -34,62 +34,97 @@ def test_tier4_code_review_pipeline_simulation(
 
     task_description = "Implement async database connection pool with automatic timeout and retry"
 
-    res_alpha = cli_runner([
-        "query",
-        task_description,
-        "--lexical",
-        "--top-k", "3",
-        "--dest", str(store),
-    ])
+    res_alpha = cli_runner(
+        [
+            "query",
+            task_description,
+            "--lexical",
+            "--top-k",
+            "3",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_alpha.exit_code == 0
     assert "lesson_db_connection_pooling" in res_alpha.stdout
     injected_lessons = ["lesson_db_connection_pooling"]
 
-    res_cap_a1 = cli_runner([
-        "capture",
-        "--title", "DB Connection Pool Initial Implementation",
-        "--context", "Implemented pool but connection timeout occurred under load tests",
-        "--solution", "Added basic timeout configuration to connection socket",
-        "--agent-id", "agent-a-implementer",
-        "--agent-type", "code",
-        "--tags", "database,concurrency,timeout",
-        "--tokens-used", "920",
-        "--llm-calls", "4",
-        "--dest", str(store),
-    ])
+    res_cap_a1 = cli_runner(
+        [
+            "capture",
+            "--title",
+            "DB Connection Pool Initial Implementation",
+            "--context",
+            "Implemented pool but connection timeout occurred under load tests",
+            "--solution",
+            "Added basic timeout configuration to connection socket",
+            "--agent-id",
+            "agent-a-implementer",
+            "--agent-type",
+            "code",
+            "--tags",
+            "database,concurrency,timeout",
+            "--tokens-used",
+            "920",
+            "--llm-calls",
+            "4",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_cap_a1.exit_code == 0
 
     verdict_round_1 = "GAP"
     gap_feedback = "Timeout handling lacks exponential backoff with jitter on retry"
 
-    res_cap_a2 = cli_runner([
-        "capture",
-        "--title", "DB Pool Retry With Exponential Backoff and Jitter",
-        "--context", f"Reviewer B gap report: {gap_feedback}",
-        "--solution", "Wrapped acquire in exponential backoff loop with random jitter factor",
-        "--agent-id", "agent-a-implementer",
-        "--agent-type", "code",
-        "--tags", "database,concurrency,retry,backoff",
-        "--resolved",
-        "--tokens-used", "680",
-        "--llm-calls", "3",
-        "--dest", str(store),
-    ])
+    res_cap_a2 = cli_runner(
+        [
+            "capture",
+            "--title",
+            "DB Pool Retry With Exponential Backoff and Jitter",
+            "--context",
+            f"Reviewer B gap report: {gap_feedback}",
+            "--solution",
+            "Wrapped acquire in exponential backoff loop with random jitter factor",
+            "--agent-id",
+            "agent-a-implementer",
+            "--agent-type",
+            "code",
+            "--tags",
+            "database,concurrency,retry,backoff",
+            "--resolved",
+            "--tokens-used",
+            "680",
+            "--llm-calls",
+            "3",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_cap_a2.exit_code == 0
 
     verdict_round_2 = "CONFORM"
     assert verdict_round_2 == "CONFORM"
 
     new_slug = "lesson_db_pool_retry_backoff"
-    res_omega = cli_runner([
-        "lesson", "new",
-        "--slug", new_slug,
-        "--description", "Connection pools under heavy load fail without backoff; apply exponential backoff with jitter.",
-        "--domain", "database",
-        "--applies-when", "When acquiring database connections from pool under high concurrency",
-        "--do-not-apply-when", "When using local in-memory SQLite databases without connection pools",
-        "--dest", str(store),
-    ])
+    res_omega = cli_runner(
+        [
+            "lesson",
+            "new",
+            "--slug",
+            new_slug,
+            "--description",
+            "Connection pools under heavy load fail without backoff; apply exponential backoff with jitter.",
+            "--domain",
+            "database",
+            "--applies-when",
+            "When acquiring database connections from pool under high concurrency",
+            "--do-not-apply-when",
+            "When using local in-memory SQLite databases without connection pools",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_omega.exit_code == 0
 
     new_lesson_file = store / "memory" / "lessons" / f"{new_slug}.md"
@@ -144,13 +179,17 @@ def test_tier4_code_review_pipeline_simulation(
     )
     episode_file.write_text(episode_content, encoding="utf-8")
 
-    res_next_alpha = cli_runner([
-        "query",
-        "database connection acquire retry backoff",
-        "--lexical",
-        "--top-k", "3",
-        "--dest", str(store),
-    ])
+    res_next_alpha = cli_runner(
+        [
+            "query",
+            "database connection acquire retry backoff",
+            "--lexical",
+            "--top-k",
+            "3",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_next_alpha.exit_code == 0
     assert new_slug in res_next_alpha.stdout
 
@@ -222,18 +261,20 @@ def test_tier4_fleet_telemetry_and_failure_distillation(
         outcome={"resolved": True, "tokens_used": 210, "llm_calls": 1},
     )
 
-    res_distill = cli_runner([
-        "distill",
-        "--min-cluster-size", "3",
-        "--similarity-threshold", "0.25",
-        "--dest", str(store),
-    ])
+    res_distill = cli_runner(
+        [
+            "distill",
+            "--min-cluster-size",
+            "3",
+            "--similarity-threshold",
+            "0.25",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_distill.exit_code == 0
 
-    proposed = [
-        p for p in (store / "memory" / "lessons").glob("lesson_*.md")
-        if p.name != "lesson_template.md"
-    ]
+    proposed = [p for p in (store / "memory" / "lessons").glob("lesson_*.md") if p.name != "lesson_template.md"]
     assert len(proposed) >= 1, "Expected distill to cluster recurring failure patterns into lessons"
 
     for prop in proposed:
@@ -243,7 +284,12 @@ def test_tier4_fleet_telemetry_and_failure_distillation(
 
     res_tax = cli_runner(["taxonomy", "--dest", str(store)])
     assert res_tax.exit_code == 0
-    assert "taxonomy" in res_tax.stdout.lower() or "categories" in res_tax.stdout.lower() or "clusters" in res_tax.stdout.lower() or "tag" in res_tax.stdout.lower()
+    assert (
+        "taxonomy" in res_tax.stdout.lower()
+        or "categories" in res_tax.stdout.lower()
+        or "clusters" in res_tax.stdout.lower()
+        or "tag" in res_tax.stdout.lower()
+    )
 
     res_rel = cli_runner(["reliability", "--dest", str(store)])
     assert res_rel.exit_code == 0
@@ -285,19 +331,23 @@ def test_tier4_large_corpus_stress_and_dosage_management(
     for j in range(5):
         episode_factory(
             store,
-            name=f"2026-09-{10+j:02d}_scale-episode-{j}",
+            name=f"2026-09-{10 + j:02d}_scale-episode-{j}",
             verdict="CONFORM" if j % 4 != 0 else "GAP",
             lessons_retrieved=[f"lesson_scale_{j:03d}_{domains[j]}"],
             lessons_hit=[f"lesson_scale_{j:03d}_{domains[j]}"],
         )
 
-    res_q_bound = cli_runner([
-        "query",
-        "microservice architecture database security",
-        "--lexical",
-        "--top-k", "5",
-        "--dest", str(store),
-    ])
+    res_q_bound = cli_runner(
+        [
+            "query",
+            "microservice architecture database security",
+            "--lexical",
+            "--top-k",
+            "5",
+            "--dest",
+            str(store),
+        ]
+    )
     assert res_q_bound.exit_code == 0
     assert "lesson_scale_" in res_q_bound.stdout
 
@@ -363,4 +413,9 @@ def test_tier4_large_corpus_stress_and_dosage_management(
     assert res_bench.exit_code == 0
     bench_data = json.loads(res_bench.stdout)
     assert isinstance(bench_data, dict)
-    assert "health_score" in bench_data or "overall_health" in bench_data or "score" in bench_data or "n_lessons" in bench_data
+    assert (
+        "health_score" in bench_data
+        or "overall_health" in bench_data
+        or "score" in bench_data
+        or "n_lessons" in bench_data
+    )

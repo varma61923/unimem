@@ -232,9 +232,7 @@ def test_within_limits_accepted(small_config):
 
 def test_suspicion_flags_excessive_urls(small_config):
     text = " ".join(f"http://spam{i}.example.com" for i in range(5))
-    reason = suspicion_reason(
-        {"title": "t", "context_text": text, "solution_text": "s"}, small_config
-    )
+    reason = suspicion_reason({"title": "t", "context_text": text, "solution_text": "s"}, small_config)
     assert reason is not None
     assert "URL" in reason
 
@@ -438,8 +436,7 @@ async def test_pg_rate_limiter_sweeps_idle_rows(pg_limiter_factory):
     async def idle_rows() -> int:
         return await limiter._await_on_pool_loop(
             limiter._shared.pool.fetchval(
-                "SELECT count(*) FROM hub_rate_limit_buckets "
-                "WHERE limiter_name = $1 AND bucket_key = $2",
+                "SELECT count(*) FROM hub_rate_limit_buckets WHERE limiter_name = $1 AND bucket_key = $2",
                 limiter._limiter_name,
                 "idle-org",
             )
@@ -532,9 +529,7 @@ async def test_pg_rate_limiter_refund_is_namespaced_by_limiter_name(pg_limiter_f
 
 
 @pytest.mark.asyncio
-async def test_api_key_auth_middleware_works_against_the_postgres_backend(
-    session_factory, config
-):
+async def test_api_key_auth_middleware_works_against_the_postgres_backend(session_factory, config):
     import uuid
 
     import httpx
@@ -558,11 +553,15 @@ async def test_api_key_auth_middleware_works_against_the_postgres_backend(
         session_factory=session_factory,
         protected_path="/mcp",
         auth_rate_limiter=PostgresRateLimiter(
-            per_minute=1000, burst=1000, database_url=PG_TEST_DATABASE_URL,
+            per_minute=1000,
+            burst=1000,
+            database_url=PG_TEST_DATABASE_URL,
             limiter_name=f"mw-auth-{uuid.uuid4().hex[:8]}",
         ),
         read_rate_limiter=PostgresRateLimiter(
-            per_minute=1000, burst=1000, database_url=PG_TEST_DATABASE_URL,
+            per_minute=1000,
+            burst=1000,
+            database_url=PG_TEST_DATABASE_URL,
             limiter_name=f"mw-read-{uuid.uuid4().hex[:8]}",
         ),
     )

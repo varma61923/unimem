@@ -1,4 +1,5 @@
 """Public error categories with safe, actionable HTTP/CLI diagnostics."""
+
 from __future__ import annotations
 
 
@@ -15,8 +16,12 @@ class UniMemError(Exception):
     def public(self) -> dict:
         from unimem.telemetry import redact
 
-        return {"code": self.code, "message": redact(str(self)), "retryable": self.retryable,
-                "remediation": redact(self.remediation)}
+        return {
+            "code": self.code,
+            "message": redact(str(self)),
+            "retryable": self.retryable,
+            "remediation": redact(self.remediation),
+        }
 
 
 class DomainError(UniMemError, ValueError):

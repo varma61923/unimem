@@ -4,6 +4,7 @@ python -m benchmarks.runtime_comparison --output /tmp/baseline.json
 The corpus index is warm in both workloads. Repeated and distinct queries are
 reported separately; this is not an end-to-end gateway or LLM benchmark.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,10 +26,19 @@ from unimem import lesson_cache, retrieval
 def run(size: int, runs: int) -> dict:
     rng = random.Random(61923)
     words = [f"term{i}" for i in range(100)]
-    lessons = [(f"/benchmark/{i}.md", {
-        "name": f"lesson-{i}", "description": " ".join(rng.sample(words, 12)),
-        "tags": rng.sample(words, 3), "importance": i % 5 + 1, "uses": i % 7,
-    }) for i in range(size)]
+    lessons = [
+        (
+            f"/benchmark/{i}.md",
+            {
+                "name": f"lesson-{i}",
+                "description": " ".join(rng.sample(words, 12)),
+                "tags": rng.sample(words, 3),
+                "importance": i % 5 + 1,
+                "uses": i % 7,
+            },
+        )
+        for i in range(size)
+    ]
     terms = lesson_cache.TermCache({p: lesson_cache.field_terms(fm) for p, fm in lessons})
     terms.stamps = {p: (1, i) for i, (p, _) in enumerate(lessons)}
     terms.lessons = lessons
@@ -50,7 +60,7 @@ def run(size: int, runs: int) -> dict:
         samples.sort()
         result[name] = {
             "median_ms": statistics.median(samples),
-            "p95_ms": samples[min(len(samples) - 1, int(len(samples) * .95))],
+            "p95_ms": samples[min(len(samples) - 1, int(len(samples) * 0.95))],
             "ranking_sha256": hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest(),
         }
     return result
@@ -79,7 +89,8 @@ def main() -> None:
 def measure(args) -> dict:
     source = Path(retrieval.__file__).resolve()
     report = {
-        "python": platform.python_version(), "platform": platform.platform(),
+        "python": platform.python_version(),
+        "platform": platform.platform(),
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "query_cache_setting": os.environ.get("UNIMEM_QUERY_CACHE", "1"),
         "source_sha256": {source.name: hashlib.sha256(source.read_bytes()).hexdigest()},
@@ -107,8 +118,13 @@ def compare(args) -> dict:
                 target = os.path.join(directory, name + ".json")
                 subprocess.run(
                     [sys.executable, str(script), "--sizes", args.sizes, "--runs", str(args.runs), "--output", target],
-                    cwd=roots[name], env={**os.environ, "PYTHONPATH": str(roots[name])},
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True, timeout=120,
+                    cwd=roots[name],
+                    env={**os.environ, "PYTHONPATH": str(roots[name])},
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=True,
+                    timeout=120,
                 )
                 with open(target, encoding="utf-8") as fh:
                     pair[name] = json.load(fh)
@@ -116,15 +132,25 @@ def compare(args) -> dict:
     summary = []
     for position, size in enumerate(args.sizes.split(",")):
         for workload in ("repeated", "distinct"):
-            pages = [pair[version]["results"][position][workload]
-                     for pair in trials for version in ("baseline", "candidate")]
+            pages = [
+                pair[version]["results"][position][workload] for pair in trials for version in ("baseline", "candidate")
+            ]
             if len({page["ranking_sha256"] for page in pages}) != 1:
                 raise RuntimeError(f"ranking mismatch for {size} documents / {workload}")
-            before, after = (statistics.median(pair[version]["results"][position][workload]["median_ms"]
-                                               for pair in trials) for version in ("baseline", "candidate"))
-            summary.append({"documents": int(size), "workload": workload,
-                            "baseline_median_ms": before, "candidate_median_ms": after,
-                            "speedup": before / after, "ranking_sha256": pages[0]["ranking_sha256"]})
+            before, after = (
+                statistics.median(pair[version]["results"][position][workload]["median_ms"] for pair in trials)
+                for version in ("baseline", "candidate")
+            )
+            summary.append(
+                {
+                    "documents": int(size),
+                    "workload": workload,
+                    "baseline_median_ms": before,
+                    "candidate_median_ms": after,
+                    "speedup": before / after,
+                    "ranking_sha256": pages[0]["ranking_sha256"],
+                }
+            )
     return {"trials": trials, "summary": summary}
 
 

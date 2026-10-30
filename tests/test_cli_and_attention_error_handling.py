@@ -7,9 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-_ATTENTION_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference"
-)
+_ATTENTION_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference")
 if _ATTENTION_DIR not in sys.path:
     sys.path.insert(0, _ATTENTION_DIR)
 
@@ -25,6 +23,7 @@ def _import_attention():
                 sys.modules[_mod] = _stubs[_mod]
     import build_index as _bi
     import query as _aq
+
     for _mod, _stub in _stubs.items():
         if sys.modules.get(_mod) is _stub:
             del sys.modules[_mod]
@@ -181,13 +180,19 @@ def test_capture_cmd_open_vocabulary_agent_type():
     subparsers = parser.add_subparsers()
     capture_cmd.add_parser(subparsers)
 
-    args = parser.parse_args([
-        "capture",
-        "--title", "Test Title",
-        "--context", "Test Context",
-        "--solution", "Test Solution",
-        "--agent-type", "autonomous-security-auditor-v2",
-    ])
+    args = parser.parse_args(
+        [
+            "capture",
+            "--title",
+            "Test Title",
+            "--context",
+            "Test Context",
+            "--solution",
+            "Test Solution",
+            "--agent-type",
+            "autonomous-security-auditor-v2",
+        ]
+    )
     assert args.agent_type == "autonomous-security-auditor-v2"
 
 
@@ -261,9 +266,11 @@ def test_query_cmd_importance_floor_flag(tmp_path):
     args = parser.parse_args(["query", "my task", "--include-importance-floor", "3", "--dest", str(tmp_path)])
     assert args.include_importance_floor == 3
 
-    with patch("unimem.commands.query_cmd._has_candidates", return_value=True), \
-            patch("unimem.commands.query_cmd.has_attention_deps", return_value=True), \
-            patch("unimem.commands.query_cmd._index_is_unusable", return_value=""):
+    with (
+        patch("unimem.commands.query_cmd._has_candidates", return_value=True),
+        patch("unimem.commands.query_cmd.has_attention_deps", return_value=True),
+        patch("unimem.commands.query_cmd._index_is_unusable", return_value=""),
+    ):
         with patch("unimem.commands.query_cmd.run_script", return_value=(0, "")) as mock_run:
             query_cmd.run(args)
             assert mock_run.called

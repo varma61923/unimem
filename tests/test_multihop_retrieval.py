@@ -1,4 +1,5 @@
 """Multi-hop retrieval, query expansion and triplet search over governed facts."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,9 +14,7 @@ from unimem.client import MemoryClient
 
 @pytest.fixture(params=["jsonl", "sqlite"])
 def root(tmp_path, request):
-    (tmp_path / "unimem.yaml").write_text(
-        "profiles:\n  local:\n    embedding: none\n    reranker: none\n"
-    )
+    (tmp_path / "unimem.yaml").write_text("profiles:\n  local:\n    embedding: none\n    reranker: none\n")
     if request.param == "sqlite":
         fact_store.migrate(str(tmp_path))
     return str(tmp_path)
@@ -80,12 +79,20 @@ class TestDecompose:
             return json.dumps({"subquestions": ["Which company acquired GitHub?", "Who founded Microsoft?"]}), {}
 
         assert multihop.decompose(QUESTION, complete=complete)[1:] == [
-            "Which company acquired GitHub?", "Who founded Microsoft?"]
+            "Which company acquired GitHub?",
+            "Who founded Microsoft?",
+        ]
 
-    @pytest.mark.parametrize("reply", [
-        "not json", json.dumps({"subquestions": "one"}), json.dumps({"subquestions": []}),
-        json.dumps({"subquestions": ["x" * 301]}), json.dumps({"subquestions": [1]}),
-    ])
+    @pytest.mark.parametrize(
+        "reply",
+        [
+            "not json",
+            json.dumps({"subquestions": "one"}),
+            json.dumps({"subquestions": []}),
+            json.dumps({"subquestions": ["x" * 301]}),
+            json.dumps({"subquestions": [1]}),
+        ],
+    )
     def test_an_unusable_model_reply_falls_back_to_the_rules(self, reply):
         parts = multihop.decompose(QUESTION, complete=lambda prompt: (reply, {}))
         assert parts == multihop.decompose(QUESTION)
@@ -174,9 +181,8 @@ class TestReason:
         starts = [row["id"] for row in multihop._chain_starts(blocks)]
         # A fused ranking puts the rows every block agrees on first and pushes the
         # inner clause's answer past the hop frontier.
-        assert starts[:multihop.HOP_FRONTIER] == ["bridge", "s0", "s1", "s2", "s3"]
+        assert starts[: multihop.HOP_FRONTIER] == ["bridge", "s0", "s1", "s2", "s3"]
         assert len(starts) == len(set(starts)) == 9
-
 
     def test_a_three_fact_chain_follows_two_bridges(self, root):
         start = add(root, "Ada Lovelace was born in London.")
@@ -196,8 +202,9 @@ class TestReason:
     def test_the_registry_retriever_returns_the_same_ranking(self, root):
         corpus(root)
         client = MemoryClient(root)
-        assert ([row["id"] for row in client.search(QUESTION, retriever="multi-hop", reranker="none")]
-                == [row["id"] for row in client.reason(QUESTION, reranker="none")["results"]])
+        assert [row["id"] for row in client.search(QUESTION, retriever="multi-hop", reranker="none")] == [
+            row["id"] for row in client.reason(QUESTION, reranker="none")["results"]
+        ]
 
     def test_a_private_fact_is_never_a_bridge(self, root):
         # The answer shares no words with the question; only the private fact links them.
@@ -223,8 +230,9 @@ class TestReason:
 
     def test_valid_time_applies_to_every_hop(self, root):
         facts = corpus(root)
-        later, _ = hierarchical.add_fact(root, "Bill Gates also founded Cascade in 2030.",
-                                         valid_from="2030-01-01T00:00:00Z")
+        later, _ = hierarchical.add_fact(
+            root, "Bill Gates also founded Cascade in 2030.", valid_from="2030-01-01T00:00:00Z"
+        )
         out = MemoryClient(root).reason(QUESTION, as_of="2026-01-01T00:00:00Z")
         assert later.id not in {row["id"] for row in out["results"]}
         assert facts["answer"].id in {row["id"] for row in out["results"]}
@@ -311,11 +319,14 @@ class TestPprRetriever:
 
 class TestQueryExpansion:
     def test_feedback_terms_exclude_the_query_and_prefer_recurring_words(self):
-        terms = query_expansion.prf_terms("billing owner", [
-            ("Dana runs the billing service and invoices", 1.0),
-            ("Dana approves billing refunds", 0.8),
-            ("Unrelated zebra fact", 0.1),
-        ])
+        terms = query_expansion.prf_terms(
+            "billing owner",
+            [
+                ("Dana runs the billing service and invoices", 1.0),
+                ("Dana approves billing refunds", 0.8),
+                ("Unrelated zebra fact", 0.1),
+            ],
+        )
         assert "billing" not in terms and terms[0] == "dana"
         assert "zebra" not in terms or terms.index("dana") < terms.index("zebra")
 
@@ -349,8 +360,11 @@ class TestQueryExpansion:
         add(root, "The release train ships every Tuesday.")
         explain = {}
         rows = query_expansion.hyde(
-            root, "Who should I ask about invoices?", explain=explain,
-            complete=lambda prompt: (json.dumps({"answer": "Dana owns the billing service."}), {}))
+            root,
+            "Who should I ask about invoices?",
+            explain=explain,
+            complete=lambda prompt: (json.dumps({"answer": "Dana owns the billing service."}), {}),
+        )
         assert rows[0]["id"] == target.id
         assert explain["retriever"] == "hyde" and "hypothesis" in rows[0]["channels"]
 
@@ -380,8 +394,12 @@ def _relation(root, subject, relation, obj, **properties):
 
 class TestTripletSearch:
     def test_a_triplet_matching_two_elements_outranks_one_matching_one(self, root):
-        for node, kind, name in (("person:dana", "person", "Dana"), ("org:meridian", "organization", "Meridian"),
-                                 ("org:acme", "organization", "Acme"), ("place:bristol", "location", "Bristol")):
+        for node, kind, name in (
+            ("person:dana", "person", "Dana"),
+            ("org:meridian", "organization", "Meridian"),
+            ("org:acme", "organization", "Acme"),
+            ("place:bristol", "location", "Bristol"),
+        ):
             graph.add_node(root, node, kind, name)
         _relation(root, "person:dana", "works_at", "org:meridian")
         _relation(root, "org:acme", "located_in", "place:bristol")
@@ -440,8 +458,9 @@ class TestTripletSearch:
                 out = []
                 for text in texts:
                     words = text.lower().split()
-                    vector = [1.0 if term in words or (term == "billing" and "invoices" in words) else 0.0
-                              for term in vocab]
+                    vector = [
+                        1.0 if term in words or (term == "billing" and "invoices" in words) else 0.0 for term in vocab
+                    ]
                     out.append(vector if any(vector) else [0.0, 0.0, 0.0, 1e-3])
                 return out
 
@@ -504,9 +523,9 @@ def test_a_question_naming_a_private_fact_node_cannot_walk_through_it(root, pref
     graph.add_node(root, prefix + private.id, "memory", private.statement)
     graph.add_node(root, target.id, "memory", target.statement)
     graph.add_edge(root, prefix + private.id, target.id, "derived_from")
-    scores, walk = multihop.walk_scores(root, "zephyr ledger reconciliation", {},
-                                        context=["agent:reader"])
+    scores, walk = multihop.walk_scores(root, "zephyr ledger reconciliation", {}, context=["agent:reader"])
     assert private.id not in walk.facts and target.id not in scores
     rows = MemoryClient(root, agent_id="reader").search(
-        "zephyr ledger reconciliation", retriever="ppr", reranker="none")
+        "zephyr ledger reconciliation", retriever="ppr", reranker="none"
+    )
     assert target.id not in {row["id"] for row in rows}

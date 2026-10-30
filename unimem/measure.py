@@ -51,8 +51,9 @@ def content_revision(text: str | None) -> str | None:
 
 
 class HarmWatch:
-    def __init__(self, root: str, on_harm: str | None = None,
-                 check_every: int = DEFAULT_CHECK_EVERY, graduate: bool = False) -> None:
+    def __init__(
+        self, root: str, on_harm: str | None = None, check_every: int = DEFAULT_CHECK_EVERY, graduate: bool = False
+    ) -> None:
         if on_harm is not None and on_harm not in harm.POLICIES:
             raise ValueError(f"on_harm must be one of {', '.join(harm.POLICIES)} (or None)")
         if not isinstance(check_every, int) or isinstance(check_every, bool) or check_every < 1:
@@ -133,8 +134,9 @@ class CausalMemory:
     def recall(self, query: Any, *, occasion_id: str, **kwargs: Any) -> list[Any]:
         return self.recall_detailed(query, occasion_id=occasion_id, **kwargs).items
 
-    def recall_detailed(self, query: Any, *, occasion_id: str, record: bool = True, context: str = "",
-                        **kwargs: Any) -> Recall:
+    def recall_detailed(
+        self, query: Any, *, occasion_id: str, record: bool = True, context: str = "", **kwargs: Any
+    ) -> Recall:
         """`recall`, plus which memories were withdrawn for measured harm.
 
         `context` labels the kind of occasion (a task family, an agent type) so a
@@ -186,9 +188,14 @@ class CausalMemory:
                 item_id = str(self._key(item))
                 # Provider rankings use incomparable score scales. A fixed score
                 # calibrates the provider policy as a whole without inventing relevance.
-                if conformal_gate.admit(calibration, .5, context=holdout_io.context_label(context),
-                                        hazard=item_id in hazards, scorer=self._scorer):
-                    relevance[item_id] = .5
+                if conformal_gate.admit(
+                    calibration,
+                    0.5,
+                    context=holdout_io.context_label(context),
+                    hazard=item_id in hazards,
+                    scorer=self._scorer,
+                ):
+                    relevance[item_id] = 0.5
                     kept.append(item)
                 else:
                     quarantined[item_id] = "harm-budget gate abstained"
@@ -210,22 +217,46 @@ class CausalMemory:
         assignments: list[dict] = []
         if ids and config.running:
             if record:
-                withheld = holdout_io.assign_and_log(self._root, ids, occasion_id=occasion_id,
-                    rate=config.rate, salt=config.salt, scorer=self._scorer,
-                    revisions=revisions, durable=self._durable, context=context, relevance=relevance or None)
+                withheld = holdout_io.assign_and_log(
+                    self._root,
+                    ids,
+                    occasion_id=occasion_id,
+                    rate=config.rate,
+                    salt=config.salt,
+                    scorer=self._scorer,
+                    revisions=revisions,
+                    durable=self._durable,
+                    context=context,
+                    relevance=relevance or None,
+                )
             else:
-                withheld, assignments = holdout_io.plan_assignments(self._root, ids, occasion_id=occasion_id,
-                    rate=config.rate, salt=config.salt, scorer=self._scorer,
-                    revisions=revisions, durable=self._durable, context=context, relevance=relevance or None)
+                withheld, assignments = holdout_io.plan_assignments(
+                    self._root,
+                    ids,
+                    occasion_id=occasion_id,
+                    rate=config.rate,
+                    salt=config.salt,
+                    scorer=self._scorer,
+                    revisions=revisions,
+                    durable=self._durable,
+                    context=context,
+                    relevance=relevance or None,
+                )
         return Recall(
-            items=[item for item_id, item in keyed if item_id not in withheld], withdrawn=removed,
+            items=[item for item_id, item in keyed if item_id not in withheld],
+            withdrawn=removed,
             assignments=assignments,
             quarantined=quarantined,
-            graduated={item_id: helping[item_id] for item_id, _item in keyed
-                       if item_id in helping and item_id not in self._pinned},
+            graduated={
+                item_id: helping[item_id]
+                for item_id, _item in keyed
+                if item_id in helping and item_id not in self._pinned
+            },
         )
 
-    def record_outcome(self, occasion_id: str, *, succeeded: bool,
-                       secondary_metrics: dict[str, float | bool] | None = None) -> bool:
-        return holdout_io.record_outcome(self._root, occasion_id, succeeded, self._durable,
-                                         secondary_metrics=secondary_metrics)
+    def record_outcome(
+        self, occasion_id: str, *, succeeded: bool, secondary_metrics: dict[str, float | bool] | None = None
+    ) -> bool:
+        return holdout_io.record_outcome(
+            self._root, occasion_id, succeeded, self._durable, secondary_metrics=secondary_metrics
+        )

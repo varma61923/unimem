@@ -3,6 +3,7 @@
 No test touches the network: hosted calls go to an injected `post` or a
 monkeypatched `llm._post_json`, local models are fake cross-encoders.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -33,11 +34,13 @@ class Recorder:
 
 def scored(field, scores):
     """A provider reply listing (index, score) rows in the provider's own (best-first) order."""
+
     def reply(payload):
         rows = [{"index": i, "relevance_score": s} for i, s in enumerate(scores)]
         rows.sort(key=lambda r: -r["relevance_score"])
         want = payload.get("top_n", payload.get("top_k"))
         return {field: rows[:want]}
+
     return reply
 
 
@@ -47,15 +50,18 @@ def keys(monkeypatch):
         monkeypatch.setenv(name, "k-" + name.split("_")[0].lower())
 
 
-@pytest.mark.parametrize("provider, url, field, model", [
-    ("cohere", "https://api.cohere.com/v2/rerank", "results", "rerank-v3.5"),
-    ("voyage", "https://api.voyageai.com/v1/rerank", "data", "rerank-2.5"),
-    ("jina", "https://api.jina.ai/v1/rerank", "results", "jina-reranker-v2-base-multilingual"),
-])
+@pytest.mark.parametrize(
+    "provider, url, field, model",
+    [
+        ("cohere", "https://api.cohere.com/v2/rerank", "results", "rerank-v3.5"),
+        ("voyage", "https://api.voyageai.com/v1/rerank", "data", "rerank-2.5"),
+        ("jina", "https://api.jina.ai/v1/rerank", "results", "jina-reranker-v2-base-multilingual"),
+    ],
+)
 def test_hosted_request_shape_and_stable_reordering(provider, url, field, model):
     post = Recorder(scored(field, [0.1, 0.9, 0.1]))
     hits = HostedReranker(provider, post=post).rerank("postgres failover", DOCS)
-    (called, headers, payload), = post.calls
+    ((called, headers, payload),) = post.calls
     assert called == url and headers["Authorization"] == f"Bearer k-{provider}"
     assert payload["model"] == model and payload["query"] == "postgres failover" and payload["documents"] == DOCS
     if provider == "voyage":
@@ -113,13 +119,16 @@ def test_missing_key_is_a_clear_error(monkeypatch):
         HostedReranker("cohere", post=Recorder(scored("results", [1, 2]))).rerank("q", ["a", "b"])
 
 
-@pytest.mark.parametrize("rows, match", [
-    ([{"index": 0, "relevance_score": 0.5}], "1 results for 2 documents"),
-    ([{"index": 0, "relevance_score": 0.5}, {"index": 0, "relevance_score": 0.4}], "repeated"),
-    ([{"index": 0, "relevance_score": 0.5}, {"index": 7, "relevance_score": 0.4}], "invalid"),
-    ([{"index": 0, "relevance_score": "high"}, {"index": 1, "relevance_score": 0.4}], "non-numeric"),
-    ([{"index": True, "relevance_score": 0.5}, {"index": 1, "relevance_score": 0.4}], "invalid"),
-])
+@pytest.mark.parametrize(
+    "rows, match",
+    [
+        ([{"index": 0, "relevance_score": 0.5}], "1 results for 2 documents"),
+        ([{"index": 0, "relevance_score": 0.5}, {"index": 0, "relevance_score": 0.4}], "repeated"),
+        ([{"index": 0, "relevance_score": 0.5}, {"index": 7, "relevance_score": 0.4}], "invalid"),
+        ([{"index": 0, "relevance_score": "high"}, {"index": 1, "relevance_score": 0.4}], "non-numeric"),
+        ([{"index": True, "relevance_score": 0.5}, {"index": 1, "relevance_score": 0.4}], "invalid"),
+    ],
+)
 def test_mismatched_replies_raise_naming_the_provider(rows, match):
     ranker = HostedReranker("cohere", post=lambda *_a: {"results": rows})
     with pytest.raises(RerankError, match=match) as info:
@@ -135,16 +144,19 @@ def test_no_result_list_and_too_many_documents():
     assert HostedReranker("jina", post=lambda *_a: 1 / 0).rerank("q", []) == []
 
 
-@pytest.mark.parametrize("reply, expected", [
-    ('{"ranking": [2, 3, 1]}', [1, 2, 0]),
-    ('Sure! ```json\n{"ranking": ["3", "1", "2"]}\n```', [2, 0, 1]),
-    ("[3, 2, 1]", [2, 1, 0]),
-    ('{"ranking": [2, 2, 1]}', None),   # duplicate
-    ('{"ranking": [1, 2]}', None),      # missing id
-    ('{"ranking": [1, 2, 3, 4]}', None),  # invented id
-    ("passage 2 is best", None),
-    ('{"ranking": [true, 2, 3]}', None),
-])
+@pytest.mark.parametrize(
+    "reply, expected",
+    [
+        ('{"ranking": [2, 3, 1]}', [1, 2, 0]),
+        ('Sure! ```json\n{"ranking": ["3", "1", "2"]}\n```', [2, 0, 1]),
+        ("[3, 2, 1]", [2, 1, 0]),
+        ('{"ranking": [2, 2, 1]}', None),  # duplicate
+        ('{"ranking": [1, 2]}', None),  # missing id
+        ('{"ranking": [1, 2, 3, 4]}', None),  # invented id
+        ("passage 2 is best", None),
+        ('{"ranking": [true, 2, 3]}', None),
+    ],
+)
 def test_only_exact_permutations_are_accepted(reply, expected):
     assert parse_permutation(reply, 3) == expected
 
@@ -176,8 +188,17 @@ def test_llm_reranker_uses_the_configured_llm_with_a_model_override(monkeypatch)
 
 def test_registry_lists_every_reranker_and_parses_tags():
     names = set(providers.reranker_names())
-    assert {"mmr", "cross-encoder", "cross-encoder-fast", "bge-reranker-v2-m3", "mxbai-rerank",
-            "cohere", "voyage", "jina", "llm"} <= names
+    assert {
+        "mmr",
+        "cross-encoder",
+        "cross-encoder-fast",
+        "bge-reranker-v2-m3",
+        "mxbai-rerank",
+        "cohere",
+        "voyage",
+        "jina",
+        "llm",
+    } <= names
     assert providers.reranker("voyage").name == "voyage:rerank-2.5"
     assert providers.reranker("llm").name == "llm"
     for bad in ("mmr:x", "cross-encoder:x", "cohere:bad model", "cohere:"):
@@ -205,8 +226,10 @@ class FakeCE:
         return [float("pool" in text) + 0.01 * len(text) for _q, text in pairs]
 
 
-@pytest.mark.parametrize("mode, model", [("bge-reranker-v2-m3", "BAAI/bge-reranker-v2-m3"),
-                                         ("mxbai-rerank", "mixedbread-ai/mxbai-rerank-base-v1")])
+@pytest.mark.parametrize(
+    "mode, model",
+    [("bge-reranker-v2-m3", "BAAI/bge-reranker-v2-m3"), ("mxbai-rerank", "mixedbread-ai/mxbai-rerank-base-v1")],
+)
 def test_modern_local_models_load_lazily(monkeypatch, mode, model):
     assert rerank_arm.MODELS[mode][0] == model
     assert rerank_arm.mode_for_tag(rerank_arm.tag(mode)) == mode
@@ -225,9 +248,11 @@ def test_local_cross_encoder_keeps_the_lesson_contract(monkeypatch, tmp_path):
     monkeypatch.setattr(rerank_arm, "_load", lambda *_a: FakeCE())
     path = tmp_path / "pool.md"
     path.write_text("---\ndescription: reset the pool\n---\nreset the connection pool after failover\n")
-    ranked = [RankedLesson(path="/missing/a.md", slug="a", description="", score=1.0, matched_terms=[]),
-              RankedLesson(path="/missing/b.md", slug="b", description="", score=0.9, matched_terms=[]),
-              RankedLesson(path=str(path), slug="pool", description="", score=0.5, matched_terms=[])]
+    ranked = [
+        RankedLesson(path="/missing/a.md", slug="a", description="", score=1.0, matched_terms=[]),
+        RankedLesson(path="/missing/b.md", slug="b", description="", score=0.9, matched_terms=[]),
+        RankedLesson(path=str(path), slug="pool", description="", score=0.5, matched_terms=[]),
+    ]
     out = retrieval.apply_reranker("failover", ranked, providers.reranker("mxbai-rerank"))
     # The readable lesson is scored first; unreadable ones keep their order after it.
     assert [r.slug for r in out] == ["pool", "a", "b"]

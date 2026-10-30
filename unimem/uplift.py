@@ -8,6 +8,7 @@ ranking rule and group definitions must be fixed before validation outcomes.
 Failure to validate falls back to the existing empirical-Bayes gate; a permanent
 untargeted exploration slice retains positivity. No silent sim/real pooling.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,7 +34,7 @@ def _score(row: dict[str, Any], means: dict[tuple[str, bool], float], floor: flo
     if type(row["injected"]) is not bool:
         raise ValueError("binary randomized action required")
     key = _key(row["features"])
-    m0, m1 = means.get((key, False), .5), means.get((key, True), .5)
+    m0, m1 = means.get((key, False), 0.5), means.get((key, True), 0.5)
     return m1 - m0 + ((y - m1) / p if row["injected"] else -(y - m0) / (1 - p))
 
 
@@ -49,27 +50,39 @@ class Targeting:
     valid: bool
     feature_hash: str
 
-    def decide(self, features: dict[str, str], *, exploration_draw: float,
-               fallback_probability: float = .5) -> dict[str, Any]:
+    def decide(
+        self, features: dict[str, str], *, exploration_draw: float, fallback_probability: float = 0.5
+    ) -> dict[str, Any]:
         fp.number(exploration_draw, 0, 1)
-        fp.number(fallback_probability, .01, .99)
+        fp.number(fallback_probability, 0.01, 0.99)
         key = _key(features)
         exploring = exploration_draw < self.exploration
         target = self.valid and key in self.positive_classes
-        probability = fallback_probability if not self.valid or exploring else (.95 if target else .05)
-        return {"injection_probability": probability, "targeted": self.valid and not exploring,
-                "exploration": exploring, "fallback": not self.valid,
-                "estimated_effect": self.effects.get(key), "rate_lower": self.rate_lower,
-                "kind": "validated uplift policy" if self.valid else "empirical-Bayes fallback required"}
+        probability = fallback_probability if not self.valid or exploring else (0.95 if target else 0.05)
+        return {
+            "injection_probability": probability,
+            "targeted": self.valid and not exploring,
+            "exploration": exploring,
+            "fallback": not self.valid,
+            "estimated_effect": self.effects.get(key),
+            "rate_lower": self.rate_lower,
+            "kind": "validated uplift policy" if self.valid else "empirical-Bayes fallback required",
+        }
 
 
-def fit(rows: Sequence[dict[str, Any]], *, training_size: int, propensity_floor: float = .1,
-        alpha: float = .05, exploration: float = .1) -> Targeting:
+def fit(
+    rows: Sequence[dict[str, Any]],
+    *,
+    training_size: int,
+    propensity_floor: float = 0.1,
+    alpha: float = 0.05,
+    exploration: float = 0.1,
+) -> Targeting:
     fp.count(len(rows), training_size + 20, 20_000)
     fp.count(training_size, 20, 10_000)
-    fp.number(propensity_floor, .01, .5)
-    fp.number(alpha, .0001, .2)
-    fp.number(exploration, .01, .5)
+    fp.number(propensity_floor, 0.01, 0.5)
+    fp.number(alpha, 0.0001, 0.2)
+    fp.number(exploration, 0.01, 0.5)
     environments = {r["environment"] for r in rows}
     if len(environments) != 1 or not environments <= {"sim", "real"}:
         raise ValueError("uplift cannot pool sim and real")
@@ -105,9 +118,17 @@ def fit(rows: Sequence[dict[str, Any]], *, training_size: int, propensity_floor:
             low = sum(subgroup) / len(subgroup) - radius_group
             if low > 0:
                 eligible.add(key)
-    return Targeting(effects, frozenset(eligible), rate, lower, len(validation), exploration,
-                     next(iter(environments)), lower > 0,
-                     fp.digest({"features": FEATURES, "training_size": training_size}))
+    return Targeting(
+        effects,
+        frozenset(eligible),
+        rate,
+        lower,
+        len(validation),
+        exploration,
+        next(iter(environments)),
+        lower > 0,
+        fp.digest({"features": FEATURES, "training_size": training_size}),
+    )
 
 
 def activate(root: str, lesson: str, model: Targeting, contexts: dict[str, dict[str, str]]) -> dict[str, Any]:
@@ -124,20 +145,33 @@ def activate(root: str, lesson: str, model: Targeting, contexts: dict[str, dict[
     classes = {}
     for label, features in contexts.items():
         from unimem.holdout_io import context_label
+
         context_label(label)
         if _key(features) in model.positive_classes:
-            rates[label] = model.exploration * .5 + (1 - model.exploration) * .05
+            rates[label] = model.exploration * 0.5 + (1 - model.exploration) * 0.05
             classes[label] = features
     if not rates:
         raise PermissionError("no site/embodiment class has a positive simultaneous lower bound")
-    return fp.append(root, "uplift-policies.jsonl", {"type": "validated-uplift-policy-v1",
-        "lesson": lesson, "rates": rates, "classes": classes,
-        "rate_lower": model.rate_lower, "environment": model.environment, "feature_hash": model.feature_hash,
-        "validation_n": model.validation_n, "exploration": model.exploration})
+    return fp.append(
+        root,
+        "uplift-policies.jsonl",
+        {
+            "type": "validated-uplift-policy-v1",
+            "lesson": lesson,
+            "rates": rates,
+            "classes": classes,
+            "rate_lower": model.rate_lower,
+            "environment": model.environment,
+            "feature_hash": model.feature_hash,
+            "validation_n": model.validation_n,
+            "exploration": model.exploration,
+        },
+    )
 
 
-def apply_rates(root: str, contextual: dict[str, dict[str, float]], floor: float, *,
-                lesson_rates: dict[str, float] | None = None) -> dict[str, dict[str, float]]:
+def apply_rates(
+    root: str, contextual: dict[str, dict[str, float]], floor: float, *, lesson_rates: dict[str, float] | None = None
+) -> dict[str, dict[str, float]]:
     policies = fp.journal(root, "uplift-policies.jsonl")
     result = {lesson: dict(rates) for lesson, rates in contextual.items()}
     for row in policies:
@@ -147,6 +181,7 @@ def apply_rates(root: str, contextual: dict[str, dict[str, float]], floor: float
             # Outside validated classes retain only the exploration floor;
             # global empirical-Bayes lift cannot broaden the fleet rollout.
             lesson_rates[row["lesson"]] = 1 - floor
-        result.setdefault(row["lesson"], {}).update({label: max(floor, min(1 - floor, rate))
-                                                    for label, rate in row["rates"].items()})
+        result.setdefault(row["lesson"], {}).update(
+            {label: max(floor, min(1 - floor, rate)) for label, rate in row["rates"].items()}
+        )
     return result

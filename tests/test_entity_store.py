@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -51,7 +52,7 @@ def test_entity_free_memory_does_not_access_index(tmp_path, monkeypatch):
     root = str(tmp_path)
     entity_store.link_memory(root, "existing", "Postgres uses a journal.")
     path = entity_store._entities_file(root)
-    before = open(path, "rb").read()
+    before = Path(path).read_bytes()
 
     def forbidden(*args, **kwargs):
         raise AssertionError("entity-free writes must not access the index")
@@ -60,7 +61,7 @@ def test_entity_free_memory_does_not_access_index(tmp_path, monkeypatch):
     monkeypatch.setattr(entity_store, "load_entities", forbidden)
     monkeypatch.setattr(entity_store, "save_entities", forbidden)
     assert entity_store.link_memory(root, "new", "component item1 uses durable storage") == []
-    assert open(path, "rb").read() == before
+    assert Path(path).read_bytes() == before
 
 
 def test_extraction_identifiers():
@@ -201,7 +202,9 @@ def test_link_memories_matches_sequential_linking_with_one_save(store, monkeypat
 
     saves = []
     original = entity_store.save_entities
-    monkeypatch.setattr(entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities)))
+    monkeypatch.setattr(
+        entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities))
+    )
     assert entity_store.link_memories(store, pairs) == 3
     assert len(saves) == 1
     actual = {n: (e["type"], e["memory_ids"], e["count"]) for n, e in entity_store.load_entities(store).items()}
@@ -217,7 +220,9 @@ def test_link_memories_with_nothing_to_link_never_writes(store, monkeypatch):
 def test_batched_fact_writes_rewrite_the_entity_index_once(store, monkeypatch):
     saves = []
     original = entity_store.save_entities
-    monkeypatch.setattr(entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities)))
+    monkeypatch.setattr(
+        entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities))
+    )
     hierarchical.add_facts(store, [{"statement": f"Customer Acme{i} prefers invoices by email"} for i in range(25)])
     assert len(saves) == 1
 

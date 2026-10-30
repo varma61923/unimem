@@ -25,9 +25,16 @@ async def trace_id(session_factory, org, config):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         t = await crud.contribute_trace(
-            session, org, config, rate_limiter,
-            title="ok", context_text="c", solution_text="s", tags=[],
-            agent_type="code", actor="test",
+            session,
+            org,
+            config,
+            rate_limiter,
+            title="ok",
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
+            actor="test",
         )
     return t["id"]
 
@@ -38,9 +45,17 @@ class TestLenRunsAfterTypeCheckNotBefore:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="idempotency_key"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test", idempotency_key=123,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
+                    idempotency_key=123,
                 )
 
     async def test_contribute_trace_non_string_agent_id(self, session_factory, org, config):
@@ -48,9 +63,17 @@ class TestLenRunsAfterTypeCheckNotBefore:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="agent_id"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test", agent_id=123,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
+                    agent_id=123,
                 )
 
     async def test_amend_trace_non_string_idempotency_key(self, session_factory, org, config, trace_id):
@@ -58,8 +81,14 @@ class TestLenRunsAfterTypeCheckNotBefore:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="idempotency_key"):
                 await crud.amend_trace(
-                    session, org, trace_id, config, rate_limiter,
-                    title="new", actor="test", idempotency_key=123,
+                    session,
+                    org,
+                    trace_id,
+                    config,
+                    rate_limiter,
+                    title="new",
+                    actor="test",
+                    idempotency_key=123,
                 )
 
     async def test_submit_kb_entry_non_string_rationale(self, session_factory, org, config):
@@ -67,8 +96,14 @@ class TestLenRunsAfterTypeCheckNotBefore:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="rationale"):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", rationale=123,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    rationale=123,
                 )
 
     async def test_submit_kb_entry_non_string_idempotency_key(self, session_factory, org, config):
@@ -76,8 +111,14 @@ class TestLenRunsAfterTypeCheckNotBefore:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="idempotency_key"):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", idempotency_key=123,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    idempotency_key=123,
                 )
 
     async def test_vote_trace_non_string_feedback_text(self, session_factory, org, trace_id):
@@ -86,9 +127,7 @@ class TestLenRunsAfterTypeCheckNotBefore:
                 await crud.vote_trace(session, org, trace_id, "up", feedback_text=123, actor="test")
 
     @pytest.mark.parametrize("bad", [None, 1.5, True, [1], float("nan")], ids=["none", "float", "bool", "list", "nan"])
-    async def test_vote_trace_rejects_every_non_string_feedback_text_shape(
-        self, session_factory, org, trace_id, bad
-    ):
+    async def test_vote_trace_rejects_every_non_string_feedback_text_shape(self, session_factory, org, trace_id, bad):
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="feedback_text"):
                 await crud.vote_trace(session, org, trace_id, "up", feedback_text=bad, actor="test")

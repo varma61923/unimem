@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -11,10 +12,15 @@ KITS = functions.builtin_kits()
 
 
 GOOD = {
-    "key": "warehouse", "title": "Warehouse picking",
+    "key": "warehouse",
+    "title": "Warehouse picking",
     "occasion": {"label": "pick order", "example": "PO-1"},
-    "outcome": {"success": "picked correctly with no re-pick", "window_days": 2,
-                "signals": ["from_threshold", "from_no_reversal"], "combine": "all"},
+    "outcome": {
+        "success": "picked correctly with no re-pick",
+        "window_days": 2,
+        "signals": ["from_threshold", "from_no_reversal"],
+        "combine": "all",
+    },
     "planning": {"baseline": 0.9, "effect": 0.03, "holdout_rate": 0.5},
 }
 
@@ -25,8 +31,7 @@ def _effects(root):
 
 
 def test_the_built_in_kits_cover_the_functions_the_product_claims():
-    assert set(KITS) == {"support", "sales", "hr", "coding", "marketing", "robotics",
-                         "legal", "finance", "clinical"}
+    assert set(KITS) == {"support", "sales", "hr", "coding", "marketing", "robotics", "legal", "finance", "clinical"}
     assert KITS["coding"].agent_type == "code"
     assert {k for k, v in KITS.items() if v.regulated} == {"legal", "finance", "clinical"}
 
@@ -53,9 +58,12 @@ def test_demo_data_is_reproducible(tmp_path):
     a, b = str(tmp_path / "a"), str(tmp_path / "b")
     for root in (a, b):
         functions.seed_demo(root, KITS["sales"], seed=3, occasions=300)
-    assert open(holdout_io.holdout_log_path(a)).read().count("\n") == open(holdout_io.holdout_log_path(b)).read().count("\n")
-    assert {s: (e.n_injected, e.rate_injected) for s, e in _effects(a).items()} == \
-           {s: (e.n_injected, e.rate_injected) for s, e in _effects(b).items()}
+    assert Path(holdout_io.holdout_log_path(a)).read_text().count("\n") == Path(
+        holdout_io.holdout_log_path(b)
+    ).read_text().count("\n")
+    assert {s: (e.n_injected, e.rate_injected) for s, e in _effects(a).items()} == {
+        s: (e.n_injected, e.rate_injected) for s, e in _effects(b).items()
+    }
 
 
 def test_demo_data_never_goes_into_a_store_holding_real_data(tmp_path):
@@ -79,19 +87,22 @@ def test_a_new_function_is_just_a_file(tmp_path):
     assert _effects(root)["demo-helpful-memory"].verdict == experiment.VERDICT_HELPS
 
 
-@pytest.mark.parametrize("change, message", [
-    (lambda s: s.update(key="Bad Key"), "key must be a lowercase slug"),
-    (lambda s: s.update(surprise=1), "unknown field 'surprise'"),
-    (lambda s: s["outcome"].update(signals=["from_vibes"]), "not a detector"),
-    (lambda s: s["outcome"].update(combine="single"), "exactly one signal"),
-    (lambda s: s["outcome"].update(window_days=-1), "outcome.window_days"),
-    (lambda s: s["planning"].update(baseline=1.0), "planning.baseline"),
-    (lambda s: s["planning"].update(effect=0), "planning.effect"),
-    (lambda s: s["planning"].update(baseline=True), "planning.baseline"),
-    (lambda s: s["occasion"].pop("example"), "occasion.example"),
-    (lambda s: s.pop("planning"), "planning is required"),
-    (lambda s: s.update(domains=["Not A Slug"]), "domains"),
-])
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        (lambda s: s.update(key="Bad Key"), "key must be a lowercase slug"),
+        (lambda s: s.update(surprise=1), "unknown field 'surprise'"),
+        (lambda s: s["outcome"].update(signals=["from_vibes"]), "not a detector"),
+        (lambda s: s["outcome"].update(combine="single"), "exactly one signal"),
+        (lambda s: s["outcome"].update(window_days=-1), "outcome.window_days"),
+        (lambda s: s["planning"].update(baseline=1.0), "planning.baseline"),
+        (lambda s: s["planning"].update(effect=0), "planning.effect"),
+        (lambda s: s["planning"].update(baseline=True), "planning.baseline"),
+        (lambda s: s["occasion"].pop("example"), "occasion.example"),
+        (lambda s: s.pop("planning"), "planning is required"),
+        (lambda s: s.update(domains=["Not A Slug"]), "domains"),
+    ],
+)
 def test_a_bad_kit_is_refused_with_the_reason(change, message):
     spec = json.loads(json.dumps(GOOD))
     change(spec)
@@ -137,7 +148,7 @@ def test_init_with_each_function_stamps_its_agent_type_and_carries_the_kit(tmp_p
         assert main(["init", "--function", key, "--dest", root]) == 0
         assert paths.store_agent_type(root) == kit.agent_type
         assert functions.store_kit(root) == kit
-        index = open(paths.index_path(root), encoding="utf-8").read()
+        index = Path(paths.index_path(root)).read_text(encoding="utf-8")
         assert kit.domains[0].replace("-", " ").title() in index
 
 

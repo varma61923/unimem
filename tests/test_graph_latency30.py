@@ -1,4 +1,5 @@
 """Demand-driven graph indexing keeps exact results and source-generation safety."""
+
 from __future__ import annotations
 
 import contextlib
@@ -11,11 +12,14 @@ BASE = "2024-01-01T00:00:00+00:00"
 
 
 def _seed(root, count=200):
-    nodes = {identity: graph.GraphNode(identity, "concept", name, {}, BASE, BASE)
-             for identity, name in (("target", "Target Service"), ("peer", "Peer Tool"),
-                                    ("unrelated", "Unrelated Service"))}
-    edges = [graph.GraphEdge("target" if index < 3 else "unrelated", "peer", "uses", 1,
-                            BASE, None, None, created_at=BASE) for index in range(count)]
+    nodes = {
+        identity: graph.GraphNode(identity, "concept", name, {}, BASE, BASE)
+        for identity, name in (("target", "Target Service"), ("peer", "Peer Tool"), ("unrelated", "Unrelated Service"))
+    }
+    edges = [
+        graph.GraphEdge("target" if index < 3 else "unrelated", "peer", "uses", 1, BASE, None, None, created_at=BASE)
+        for index in range(count)
+    ]
     graph.save_nodes(root, nodes)
     graph.save_edges(root, edges)
     graph._clear_graph_cache()
@@ -43,8 +47,7 @@ def test_entity_queries_do_not_build_global_subsidiary_indexes(tmp_path):
     _seed(root)
     graph.get_neighbors(root, "target")
     index = graph._full_index(root)
-    subsidiary = {"begins", "ends", "chains", "by_relation", "by_source_relation",
-                  "order_by_valid", "sorted_begins"}
+    subsidiary = {"begins", "ends", "chains", "by_relation", "by_source_relation", "order_by_valid", "sorted_begins"}
     assert not subsidiary.intersection(index.__dict__)
     assert len(graph.edges_between(root, BASE, "2025-01-01", entity="target")) == 3
     assert len(graph.timeline(root, "target")) == 3

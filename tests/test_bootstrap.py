@@ -1,4 +1,5 @@
 """Tests for benchmarks/bootstrap.py (paired bootstrap 95% CIs and hypothesis testing)."""
+
 from __future__ import annotations
 
 import pytest

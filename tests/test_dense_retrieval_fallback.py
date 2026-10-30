@@ -122,8 +122,9 @@ def test_offline_uncached_reranker_preserves_first_stage_without_download(tmp_pa
     hierarchical.add_fact(root, "Kubernetes deployment checks reconcile migration manifests.")
     latest, _ = hierarchical.add_fact(root, "Kubernetes deployment checks validate rollout health.")
     reference = latest.created_at
-    baseline = search_recipes.search(root, "Kubernetes deployment checks", embedder="none", reranker="none",
-                                     as_of=reference)
+    baseline = search_recipes.search(
+        root, "Kubernetes deployment checks", embedder="none", reranker="none", as_of=reference
+    )
     assert len(baseline) == 2
     monkeypatch.setenv("UNIMEM_OFFLINE", "1")
     calls = []
@@ -136,8 +137,14 @@ def test_offline_uncached_reranker_preserves_first_stage_without_download(tmp_pa
 
     rerank_arm = _stub_cross_encoder_runtime(monkeypatch, cross_encoder)
     report = {}
-    rows = search_recipes.search(root, "Kubernetes deployment checks", embedder="none",
-                                 reranker="cross-encoder-fast", explain=report, as_of=reference)
+    rows = search_recipes.search(
+        root,
+        "Kubernetes deployment checks",
+        embedder="none",
+        reranker="cross-encoder-fast",
+        explain=report,
+        as_of=reference,
+    )
 
     assert calls == [(rerank_arm.MODELS["cross-encoder-fast"][0], True)]
     assert rows == baseline
@@ -162,8 +169,7 @@ def test_offline_cached_reranker_remains_available(monkeypatch, use_worker):
         raise AssertionError("an existing worker may have inherited an online environment")
 
     monkeypatch.setattr(warm, "rerank_scores", online_worker)
-    rows, _ = rerank_arm.rerank("question", ["a", "b"], {"a": "one", "b": "two"}, 2,
-                               mode="cross-encoder-fast")
+    rows, _ = rerank_arm.rerank("question", ["a", "b"], {"a": "one", "b": "two"}, 2, mode="cross-encoder-fast")
     assert [identity for identity, _score in rows] == ["b", "a"]
     assert rerank_arm._load("cross-encoder-fast") is model
     assert calls == [(rerank_arm.MODELS["cross-encoder-fast"][0], True)]

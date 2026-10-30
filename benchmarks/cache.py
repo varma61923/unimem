@@ -4,6 +4,7 @@ Caches LLM completions keyed by configuration, generation settings and prompt.
 Allows interrupted benchmark runs to resume without re-running or re-paying for calls.
 Enforces --max-cost USD budget limits before starting.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -52,10 +53,15 @@ def completion_binding(config: object, *, generation: dict | None = None) -> dic
     fields["credential_sha256"] = prompt_hash(credential)
     with open(llm.__file__, "rb") as source:
         implementation = hashlib.sha256(source.read()).hexdigest()
-    payload = {"schema": 2, "configuration": fields, "generation": generation or {},
-               "completion_source_sha256": implementation}
-    digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"),
-                                       allow_nan=False).encode()).hexdigest()
+    payload = {
+        "schema": 2,
+        "configuration": fields,
+        "generation": generation or {},
+        "completion_source_sha256": implementation,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+    ).hexdigest()
     return {"schema": 2, "identity_sha256": digest}
 
 
@@ -148,11 +154,25 @@ class BenchmarkCache:
 
     @staticmethod
     def _binding_hash(binding: dict | None) -> str:
-        return prompt_hash(json.dumps(binding if binding is not None else {"unbound": True, "schema": 2},
-                                      sort_keys=True, separators=(",", ":"), allow_nan=False))
+        return prompt_hash(
+            json.dumps(
+                binding if binding is not None else {"unbound": True, "schema": 2},
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        )
 
-    def put(self, model: str, prompt: str, response: str, usage: dict, cost_usd: float | None = None,
-            *, binding: dict | None = None) -> None:
+    def put(
+        self,
+        model: str,
+        prompt: str,
+        response: str,
+        usage: dict,
+        cost_usd: float | None = None,
+        *,
+        binding: dict | None = None,
+    ) -> None:
         """Store completion in cache."""
         p_hash = prompt_hash(prompt)
         if cost_usd is None:
@@ -164,7 +184,16 @@ class BenchmarkCache:
                 (binding_sha256, model, prompt_hash, prompt, response, usage_json, cost_usd, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (self._binding_hash(binding), model, p_hash, prompt, response, json.dumps(usage), cost_usd, time.time()),
+                (
+                    self._binding_hash(binding),
+                    model,
+                    p_hash,
+                    prompt,
+                    response,
+                    json.dumps(usage),
+                    cost_usd,
+                    time.time(),
+                ),
             )
 
     def complete_cached(
@@ -172,7 +201,8 @@ class BenchmarkCache:
         model: str,
         prompt: str,
         complete_fn: Callable[[str, str], tuple[str, dict]],
-        *, binding: dict | None = None,
+        *,
+        binding: dict | None = None,
     ) -> tuple[str, dict, float, bool]:
         """Get from cache or invoke complete_fn(prompt, model).
 
@@ -216,8 +246,9 @@ class CostGuard:
         self._lock = threading.RLock()
 
     def reserve_call(self, model: str, input_upper: int, output_limit: int) -> float:
-        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0
-               for value in (input_upper, output_limit)):
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in (input_upper, output_limit)
+        ):
             raise ValueError("token limits must be nonnegative integers")
         rates = get_price(model, self.prices, require_known=True)
         upper_cost = (input_upper * rates[0] + output_limit * rates[1]) / 1_000_000
@@ -225,7 +256,8 @@ class CostGuard:
             if self.uncertain_calls:
                 raise RuntimeError("benchmark stopped after an uncertain provider charge")
             if self.max_cost_usd is not None and (
-                    self.total_cost_usd + self.reserved_cost_usd + upper_cost > self.max_cost_usd):
+                self.total_cost_usd + self.reserved_cost_usd + upper_cost > self.max_cost_usd
+            ):
                 raise RuntimeError("next bounded completion exceeds remaining --max-cost budget")
             self.reserved_cost_usd += upper_cost
         return upper_cost
@@ -253,11 +285,17 @@ class CostGuard:
             self.uncertain_calls += 1
 
     def snapshot(self) -> dict:
-        return {"current_run_spend_usd": self.total_cost_usd, "reserved_cost_usd": self.reserved_cost_usd,
-                "historical_cached_cost_usd": self.cached_cost_usd, "calls": self.call_count,
-                "refused_calls": self.refused_calls, "free_uncertain_calls": self.free_uncertain_calls,
-                "cache_hits": self.cached_count, "uncertain_calls": self.uncertain_calls,
-                "max_cost_usd": self.max_cost_usd}
+        return {
+            "current_run_spend_usd": self.total_cost_usd,
+            "reserved_cost_usd": self.reserved_cost_usd,
+            "historical_cached_cost_usd": self.cached_cost_usd,
+            "calls": self.call_count,
+            "refused_calls": self.refused_calls,
+            "free_uncertain_calls": self.free_uncertain_calls,
+            "cache_hits": self.cached_count,
+            "uncertain_calls": self.uncertain_calls,
+            "max_cost_usd": self.max_cost_usd,
+        }
 
     def record_call(self, cost_usd: float, is_cached: bool = False) -> None:
         if not math.isfinite(cost_usd) or cost_usd < 0:

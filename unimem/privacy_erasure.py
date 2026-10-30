@@ -40,8 +40,14 @@ def _purge_fact(root: str, identity: str, *, reason: str) -> dict:
         raise ValueError("fact not found")
     deleted = {identity}
     while True:
-        derived = {fact.id for fact in facts.values() if any(e.source.id in deleted for e in fact.evidence)}
-        derived.update(facts[key].superseded_by for key in deleted if facts[key].superseded_by in facts)
+        derived = {
+            fact.id
+            for fact in facts.values()
+            if any(e.kind == "fact" and e.source_id in deleted for e in fact.evidence)
+        }
+        derived.update(
+            successor for key in deleted if (successor := facts[key].superseded_by) is not None and successor in facts
+        )
         if derived <= deleted:
             break
         deleted |= derived
@@ -180,9 +186,16 @@ def _purge_mirrors(root: str, deleted: set[str]) -> set[str]:
     observation_path = observations._observations_file(root)
     observed = _jsonl.read_rows(observation_path)
     while True:
-        additions = {row.get("id") for row in observed if set(row.get("source_fact_ids", [])) & derived}
-        additions.update(row.get("id") for _, row in revisions if set(row.get("data", {}).get("sources", [])) & derived)
-        additions.discard(None)
+        additions = {
+            identity
+            for row in observed
+            if isinstance(identity := row.get("id"), str) and set(row.get("source_fact_ids", [])) & derived
+        }
+        additions.update(
+            identity
+            for _, row in revisions
+            if isinstance(identity := row.get("id"), str) and set(row.get("data", {}).get("sources", [])) & derived
+        )
         if additions <= derived:
             break
         derived.update(additions)

@@ -1,4 +1,5 @@
 """Guided workflows that execute the existing CLI with argument lists, never a shell."""
+
 from __future__ import annotations
 
 import argparse
@@ -49,14 +50,16 @@ def _plan(args: argparse.Namespace) -> dict:
     if workflow is None:
         if not interactive:
             raise ValueError("non-interactive setup requires --workflow")
-        workflow = _answer("Workflow (runtime, ingest, migrate)", "runtime",
-                           choices=("runtime", "ingest", "migrate"))
+        workflow = _answer("Workflow (runtime, ingest, migrate)", "runtime", choices=("runtime", "ingest", "migrate"))
     root = paths.resolve_root(args.dest or (_answer("Store directory", ".") if interactive else None))
     commands: list[list[str]] = []
     next_commands: list[list[str]] = []
     if workflow == "runtime":
-        profile = args.profile or (_answer("Profile (local, team, server)", "local",
-                                          choices=("local", "team", "server")) if interactive else "local")
+        profile = args.profile or (
+            _answer("Profile (local, team, server)", "local", choices=("local", "team", "server"))
+            if interactive
+            else "local"
+        )
         if any(agent not in AGENTS for agent in args.agent):
             raise ValueError("agent hooks must name a supported agent")
         command = ["up", "--setup-only", "--dest", root, "--profile", profile]
@@ -74,9 +77,14 @@ def _plan(args: argparse.Namespace) -> dict:
         contexts = args.context
         if not contexts and interactive:
             contexts = [_answer("Memory context (for example, project:payments)")]
-        if (not contexts or any(not value.strip() or len(value) > 512
-                                or any(ord(c) < 32 or ord(c) == 127 for c in value) for value in contexts)
-                or len(contexts) > 32):
+        if (
+            not contexts
+            or any(
+                not value.strip() or len(value) > 512 or any(ord(c) < 32 or ord(c) == 127 for c in value)
+                for value in contexts
+            )
+            or len(contexts) > 32
+        ):
             raise ValueError("choose 1-32 explicit nonempty contexts, each at most 512 characters")
         if workflow == "ingest":
             if len(contexts) != 1:
@@ -87,8 +95,9 @@ def _plan(args: argparse.Namespace) -> dict:
         else:
             if not os.path.isfile(source):
                 raise ValueError("competitor migration requires an export file")
-            vendor = args.vendor or (_answer("Vendor (" + ", ".join(VENDORS) + ")", choices=tuple(VENDORS))
-                                     if interactive else "")
+            vendor = args.vendor or (
+                _answer("Vendor (" + ", ".join(VENDORS) + ")", choices=tuple(VENDORS)) if interactive else ""
+            )
             if vendor not in VENDORS:
                 raise ValueError("competitor migration requires a supported --vendor")
             command = ["migrate", vendor, source, "--dest", root]
@@ -124,9 +133,15 @@ def run(args: argparse.Namespace) -> int:
             output, error = BoundedCapture(), BoundedCapture()
             with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
                 exit_code = cli.main(command)
-            steps.append({"command": command, "exit_code": exit_code,
-                          "stdout": output.getvalue(), "stderr": error.getvalue(),
-                          "truncated": output.truncated or error.truncated})
+            steps.append(
+                {
+                    "command": command,
+                    "exit_code": exit_code,
+                    "stdout": output.getvalue(),
+                    "stderr": error.getvalue(),
+                    "truncated": output.truncated or error.truncated,
+                }
+            )
             if not args.json:
                 print(output.getvalue(), end="")
                 print(error.getvalue(), end="", file=sys.stderr)

@@ -20,11 +20,18 @@ def factory(request, tmp_path) -> Callable[..., Awaitable[VectorIndex]]:
 
     async def opening(*, tenant=owner, namespace="memory", model="test-model", dimension=3):
         if request.param == "sqlite":
-            return await SQLiteVectorIndex.open(str(tmp_path / "vectors.db"), tenant=tenant,
-                                                namespace=namespace, model=model, dimension=dimension)
-        return await PostgresVectorIndex.open(dsn, tenant=tenant, namespace=namespace,
-                                              model=model, dimension=dimension,
-                                              approximate=request.param == "pghnsw")
+            return await SQLiteVectorIndex.open(
+                str(tmp_path / "vectors.db"), tenant=tenant, namespace=namespace, model=model, dimension=dimension
+            )
+        return await PostgresVectorIndex.open(
+            dsn,
+            tenant=tenant,
+            namespace=namespace,
+            model=model,
+            dimension=dimension,
+            approximate=request.param == "pghnsw",
+        )
+
     return opening
 
 
@@ -32,11 +39,16 @@ def test_search_upsert_filter_and_delete_contract(factory):
     async def run():
         index = await factory()
         try:
-            assert await index.upsert([
-                VectorRecord("exact", [2, 0, 0], "revision1"),
-                VectorRecord("similar", [1, 1, 0], "revision1"),
-                VectorRecord("opposite", [-1, 0, 0], "revision1"),
-            ]) == 3
+            assert (
+                await index.upsert(
+                    [
+                        VectorRecord("exact", [2, 0, 0], "revision1"),
+                        VectorRecord("similar", [1, 1, 0], "revision1"),
+                        VectorRecord("opposite", [-1, 0, 0], "revision1"),
+                    ]
+                )
+                == 3
+            )
             hits = await index.search([1, 0, 0], top_k=3, generation="revision1")
             assert [h.key for h in hits] == ["exact", "similar", "opposite"]
             assert [h.score for h in hits] == pytest.approx([1, 2**-0.5, -1], abs=1e-6)
@@ -53,6 +65,7 @@ def test_search_upsert_filter_and_delete_contract(factory):
             assert not await index.search([1, 0, 0])
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
@@ -76,6 +89,7 @@ def test_namespace_tenant_model_and_dimensions_are_isolated(factory):
         finally:
             for index in indices:
                 await index.close()
+
     asyncio.run(run())
 
 
@@ -94,6 +108,7 @@ def test_invalid_batch_is_atomic_and_bad_queries_fail(factory):
                     await index.search([1, 0, 0], top_k=limit)
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
@@ -101,15 +116,16 @@ def test_concurrent_batches_remain_durable(factory):
     async def run():
         index = await factory()
         try:
-            writes = await asyncio.gather(*[
-                index.upsert([VectorRecord(f"key-{i:04}", [1, i / 1000, 0])]) for i in range(32)
-            ])
+            writes = await asyncio.gather(
+                *[index.upsert([VectorRecord(f"key-{i:04}", [1, i / 1000, 0])]) for i in range(32)]
+            )
             assert sum(writes) == 32
             hits = await index.search([1, 0, 0], top_k=32)
             assert len(hits) == 32
             assert hits[0].key == "key-0000"
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
@@ -117,9 +133,11 @@ def test_invalid_scope_fails_before_driver_or_database(tmp_path):
     async def run():
         for dimension in (0, True, 2001):
             with pytest.raises(ValueError, match="dimension"):
-                await SQLiteVectorIndex.open(str(tmp_path / "invalid.db"), tenant="owner", namespace="space",
-                                             model="model", dimension=dimension)
+                await SQLiteVectorIndex.open(
+                    str(tmp_path / "invalid.db"), tenant="owner", namespace="space", model="model", dimension=dimension
+                )
         assert not (tmp_path / "invalid.db").exists()
+
     asyncio.run(run())
 
 
@@ -128,8 +146,9 @@ def test_canonical_source_binding_is_atomic_and_immutable(factory):
         first = await factory()
         second = await factory(tenant=first.tenant, namespace=first.namespace)
         try:
-            outcomes = await asyncio.gather(first.bind_source("source-one"), second.bind_source("source-two"),
-                                            return_exceptions=True)
+            outcomes = await asyncio.gather(
+                first.bind_source("source-one"), second.bind_source("source-two"), return_exceptions=True
+            )
             assert sum(result is None for result in outcomes) == 1
             assert sum(isinstance(result, ValueError) for result in outcomes) == 1
             winner = "source-one" if outcomes[0] is None else "source-two"
@@ -138,6 +157,7 @@ def test_canonical_source_binding_is_atomic_and_immutable(factory):
         finally:
             await first.close()
             await second.close()
+
     asyncio.run(run())
 
 
@@ -145,10 +165,12 @@ def test_cancelled_sqlite_write_finishes_before_close(tmp_path):
     started, release = threading.Event(), threading.Event()
     path = str(tmp_path / "cancelled.sqlite")
     common = {"tenant": "owner", "namespace": "memory", "model": "model", "dimension": 3}
+
     def records():
         started.set()
         assert release.wait(5)
         yield VectorRecord("accepted", [1, 0, 0])
+
     async def run():
         index = await SQLiteVectorIndex.open(path, **common)
         write = asyncio.create_task(index.upsert(records()))
@@ -166,6 +188,7 @@ def test_cancelled_sqlite_write_finishes_before_close(tmp_path):
             assert [hit.key for hit in await reopened.search([1, 0, 0])] == ["accepted"]
         finally:
             await reopened.close()
+
     try:
         asyncio.run(run())
     finally:
@@ -183,8 +206,7 @@ def test_repeated_searches_keep_a_custom_plan(factory):
         index = await factory(dimension=64)
         try:
             rng = random.Random(4)
-            await index.upsert([VectorRecord(f"k{i}", [rng.gauss(0, 1) for _ in range(64)], "r")
-                                for i in range(4000)])
+            await index.upsert([VectorRecord(f"k{i}", [rng.gauss(0, 1) for _ in range(64)], "r") for i in range(4000)])
             query = [rng.gauss(0, 1) for _ in range(64)]
             first, timings = None, []
             for _ in range(12):
@@ -196,11 +218,21 @@ def test_repeated_searches_keep_a_custom_plan(factory):
             assert sum(timings[8:]) / 4 < 5 * max(sum(timings[1:4]) / 3, 0.002)
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 @pytest.mark.parametrize("bad", [0, 1001, True, 2.5])
 def test_ef_search_is_validated_before_connecting(bad):
     with pytest.raises(ValueError, match="ef_search"):
-        asyncio.run(PostgresVectorIndex.open("postgresql://unused", tenant="t", namespace="n", model="m",
-                                             dimension=3, approximate=True, ef_search=bad))
+        asyncio.run(
+            PostgresVectorIndex.open(
+                "postgresql://unused",
+                tenant="t",
+                namespace="n",
+                model="m",
+                dimension=3,
+                approximate=True,
+                ef_search=bad,
+            )
+        )

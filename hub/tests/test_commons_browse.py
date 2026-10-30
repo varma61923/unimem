@@ -115,9 +115,12 @@ class TestTheTenantBoundary:
     async def test_a_private_trace_is_never_listed(self, session_factory, orgs):
         async with session_scope(session_factory) as session:
             private = Trace(
-                org_id=orgs["other"], title="our private incident",
-                context_text="internal", solution_text="internal",
-                tags=["postgres"], agent_type="code",
+                org_id=orgs["other"],
+                title="our private incident",
+                context_text="internal",
+                solution_text="internal",
+                tags=["postgres"],
+                agent_type="code",
             )
             session.add(private)
             await session.flush()
@@ -143,9 +146,7 @@ class TestTheTenantBoundary:
 
 class TestThePlanBoundary:
     async def test_a_plan_without_commons_access_is_refused(self, session_factory, orgs):
-        no_access = next(
-            (name for name, plan in plans.PLANS.items() if not plan.commons_access), None
-        )
+        no_access = next((name for name, plan in plans.PLANS.items() if not plan.commons_access), None)
         if no_access is None:
             pytest.skip("every current plan includes commons_access")
         async with session_scope(session_factory) as session:
@@ -164,7 +165,7 @@ class TestMetering:
             await _browse(session_factory, orgs["reader"])
         async with session_scope(session_factory) as session:
             after = await crud.entitlements(session, orgs["reader"])
-        assert (after["commons_queries"]["used"] == before["commons_queries"]["used"])
+        assert after["commons_queries"]["used"] == before["commons_queries"]["used"]
 
     async def test_browsing_does_not_count_as_a_hit(self, session_factory, orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"], hits=7)
@@ -188,16 +189,22 @@ class TestGovernanceIsVisible:
         result = await _browse(session_factory, orgs["reader"])
         assert result["entries"][0]["standing"] == commons.STANDING_UNPROVEN
 
-    async def test_a_disputed_entry_is_sorted_to_the_back_not_hidden(
-        self, session_factory, orgs
-    ):
+    async def test_a_disputed_entry_is_sorted_to_the_back_not_hidden(self, session_factory, orgs):
         await _seed_entry(
-            session_factory, orgs["operator"], title="disputed one",
-            trust=0.1, votes=9, hits=500,
+            session_factory,
+            orgs["operator"],
+            title="disputed one",
+            trust=0.1,
+            votes=9,
+            hits=500,
         )
         await _seed_entry(
-            session_factory, orgs["operator"], title="solid one",
-            trust=1.0, votes=5, hits=1,
+            session_factory,
+            orgs["operator"],
+            title="solid one",
+            trust=1.0,
+            votes=5,
+            hits=1,
         )
         result = await _browse(session_factory, orgs["reader"])
         titles = [e["title"] for e in result["entries"]]
@@ -206,7 +213,10 @@ class TestGovernanceIsVisible:
 
     async def test_a_stale_entry_says_so(self, session_factory, orgs):
         await _seed_entry(
-            session_factory, orgs["operator"], trust=1.0, votes=5,
+            session_factory,
+            orgs["operator"],
+            trust=1.0,
+            votes=5,
             review_after=datetime.now(timezone.utc) - timedelta(days=1),
         )
         result = await _browse(session_factory, orgs["reader"])
@@ -231,18 +241,14 @@ async def _first(session_factory, org_id):
 
 
 class TestTheCatalogueShowsWhyNotJustWhat:
-    async def test_a_vote_reason_reaches_the_catalogue(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_a_vote_reason_reaches_the_catalogue(self, session_factory, orgs, establish_orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         await establish_orgs(orgs["reader"])
         await _vote(session_factory, orgs["reader"], entry_id, "down", feedback_tag="outdated")
 
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {"outdated": 1}
 
-    async def test_reasons_are_counted_per_tag_not_lumped_together(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_reasons_are_counted_per_tag_not_lumped_together(self, session_factory, orgs, establish_orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         third = await _fresh_org(session_factory, "third")
         await establish_orgs(orgs["reader"], orgs["other"], third)
@@ -251,7 +257,8 @@ class TestTheCatalogueShowsWhyNotJustWhat:
         await _vote(session_factory, third, entry_id, "down", feedback_tag="wrong")
 
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {
-            "outdated": 2, "wrong": 1,
+            "outdated": 2,
+            "wrong": 1,
         }
 
     async def test_a_security_concern_raised_alongside_an_upvote_still_counts(
@@ -259,8 +266,7 @@ class TestTheCatalogueShowsWhyNotJustWhat:
     ):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         await establish_orgs(orgs["reader"])
-        await _vote(session_factory, orgs["reader"], entry_id, "up",
-                    feedback_tag="security_concern")
+        await _vote(session_factory, orgs["reader"], entry_id, "up", feedback_tag="security_concern")
 
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {
             "security_concern": 1,
@@ -271,16 +277,13 @@ class TestTheCatalogueShowsWhyNotJustWhat:
     ):
         entry_id = await _seed_entry(session_factory, orgs["operator"], trust=0.5, votes=0)
         await establish_orgs(orgs["reader"])
-        await _vote(session_factory, orgs["reader"], entry_id, "down",
-                    feedback_tag="security_concern")
+        await _vote(session_factory, orgs["reader"], entry_id, "down", feedback_tag="security_concern")
 
         entry = await _first(session_factory, orgs["reader"])
         assert entry["standing"] == commons.STANDING_UNPROVEN
         assert entry["concerns"] == {"security_concern": 1}
 
-    async def test_an_untagged_vote_contributes_no_reason(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_an_untagged_vote_contributes_no_reason(self, session_factory, orgs, establish_orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         await establish_orgs(orgs["reader"])
         await _vote(session_factory, orgs["reader"], entry_id, "down")
@@ -306,23 +309,17 @@ class TestReasonsObeyTheSameAntiAbuseBarAsStanding:
 
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {}
 
-    async def test_five_minted_orgs_cannot_brand_an_entry_a_security_risk(
-        self, session_factory, orgs
-    ):
+    async def test_five_minted_orgs_cannot_brand_an_entry_a_security_risk(self, session_factory, orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         for i in range(5):
             sock = await _fresh_org(session_factory, f"smear-{i}")
-            await _vote(session_factory, sock, entry_id, "down",
-                        feedback_tag="security_concern")
+            await _vote(session_factory, sock, entry_id, "down", feedback_tag="security_concern")
 
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {}
 
-    async def test_a_flag_starts_counting_once_its_org_qualifies(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_a_flag_starts_counting_once_its_org_qualifies(self, session_factory, orgs, establish_orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
-        await _vote(session_factory, orgs["reader"], entry_id, "down",
-                    feedback_tag="security_concern")
+        await _vote(session_factory, orgs["reader"], entry_id, "down", feedback_tag="security_concern")
         assert (await _first(session_factory, orgs["reader"]))["concerns"] == {}
 
         await establish_orgs(orgs["reader"])
@@ -332,25 +329,26 @@ class TestReasonsObeyTheSameAntiAbuseBarAsStanding:
 
 
 class TestNoCrossTenantDisclosureThroughTheReasons:
-    async def test_the_reasons_never_name_an_organisation(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_the_reasons_never_name_an_organisation(self, session_factory, orgs, establish_orgs):
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         await establish_orgs(orgs["reader"])
-        await _vote(session_factory, orgs["reader"], entry_id, "down",
-                    feedback_tag="wrong", feedback_text="broke our billing service")
+        await _vote(
+            session_factory,
+            orgs["reader"],
+            entry_id,
+            "down",
+            feedback_tag="wrong",
+            feedback_text="broke our billing service",
+        )
 
         blob = json.dumps(await _first(session_factory, orgs["other"]))
         assert orgs["reader"] not in blob
 
-    async def test_free_text_feedback_never_reaches_another_org(
-        self, session_factory, orgs, establish_orgs
-    ):
+    async def test_free_text_feedback_never_reaches_another_org(self, session_factory, orgs, establish_orgs):
         secret = "internal-host-db7.corp.example"
         entry_id = await _seed_entry(session_factory, orgs["operator"])
         await establish_orgs(orgs["reader"])
-        await _vote(session_factory, orgs["reader"], entry_id, "down",
-                    feedback_tag="wrong", feedback_text=secret)
+        await _vote(session_factory, orgs["reader"], entry_id, "down", feedback_tag="wrong", feedback_text=secret)
 
         entry = await _first(session_factory, orgs["other"])
         assert secret not in json.dumps(entry)

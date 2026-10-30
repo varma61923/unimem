@@ -7,6 +7,7 @@ verified valuation. Operator-established sellers/stakes are the Sybil boundary.
 DP uses clipped fixed-size means and basic sequential epsilon composition;
 querier identities must be authenticated to prevent budget resets/collusion.
 """
+
 from __future__ import annotations
 
 import math
@@ -24,8 +25,9 @@ class SealedRunner(Protocol):
     def attest(self, handle: str) -> dict[str, Any]: ...
 
 
-def listing(root: str, *, seller: str, handle: str, content_digest: str, minhash: list[int],
-            stake_cents: int) -> dict[str, Any]:
+def listing(
+    root: str, *, seller: str, handle: str, content_digest: str, minhash: list[int], stake_cents: int
+) -> dict[str, Any]:
     fp.text(seller)
     fp.text(handle)
     if len(content_digest) != 64 or any(c not in "0123456789abcdef" for c in content_digest):
@@ -34,14 +36,26 @@ def listing(root: str, *, seller: str, handle: str, content_digest: str, minhash
     for x in minhash:
         fp.count(x, 0, 2**64 - 1)
     fp.count(stake_cents, 1, 100_000_000)
-    body = {"id": "sealed-" + content_digest[:24], "seller": seller, "handle": handle,
-            "content_digest": content_digest, "minhash": minhash, "stake_cents": stake_cents}
+    body = {
+        "id": "sealed-" + content_digest[:24],
+        "seller": seller,
+        "handle": handle,
+        "content_digest": content_digest,
+        "minhash": minhash,
+        "stake_cents": stake_cents,
+    }
     return fp.sign(root, body)
 
 
-def trial(root: str, offer: dict[str, Any], runner: SealedRunner, occasion: str, *,
-          verify_offer: Callable[[dict[str, Any]], bool],
-          verify_attestation: Callable[[dict[str, Any]], bool]) -> dict[str, Any]:
+def trial(
+    root: str,
+    offer: dict[str, Any],
+    runner: SealedRunner,
+    occasion: str,
+    *,
+    verify_offer: Callable[[dict[str, Any]], bool],
+    verify_attestation: Callable[[dict[str, Any]], bool],
+) -> dict[str, Any]:
     if not verify_offer(offer):
         raise PermissionError("seller listing signature is not trusted")
     body = offer["record"]
@@ -50,22 +64,44 @@ def trial(root: str, offer: dict[str, Any], runner: SealedRunner, occasion: str,
     config = holdout_io.load_config(root)
     if not config.running:
         raise ValueError("sealed trial requires a randomized buyer experiment")
-    held = holdout_io.assign_and_log(root, [body["id"]], occasion_id=occasion, rate=config.rate, salt=config.salt,
-                                    revisions={body["id"]: body["content_digest"]}, context="sealed-trial")
+    held = holdout_io.assign_and_log(
+        root,
+        [body["id"]],
+        occasion_id=occasion,
+        rate=config.rate,
+        salt=config.salt,
+        revisions={body["id"]: body["content_digest"]},
+        context="sealed-trial",
+    )
     injected = body["id"] not in held
     success = runner.run(body["handle"], fp.text(occasion), injected=injected)
     if type(success) is not bool:
         raise ValueError("sealed runner may return only the bounded binary outcome")
     holdout_io.record_outcome(root, occasion, success)
-    return {"occasion_id": occasion, "injected": injected, "success": success,
-            "content_exposed": False, "listing": body["id"]}
+    return {
+        "occasion_id": occasion,
+        "injected": injected,
+        "success": success,
+        "content_exposed": False,
+        "listing": body["id"],
+    }
 
 
-def attested_trial(root: str, offer: dict[str, Any], runner: SealedRunner, occasion: str, *,
-                   verify_offer: Callable[[dict[str, Any]], bool],
-                   verify_attestation: Callable[[dict[str, Any]], bool], tenant: str, measurement: str,
-                   worker_key: str, result_quote: Callable[[dict[str, Any]], dict[str, Any]],
-                   verifier: Any, allow_simulated: bool = False) -> dict[str, Any]:
+def attested_trial(
+    root: str,
+    offer: dict[str, Any],
+    runner: SealedRunner,
+    occasion: str,
+    *,
+    verify_offer: Callable[[dict[str, Any]], bool],
+    verify_attestation: Callable[[dict[str, Any]], bool],
+    tenant: str,
+    measurement: str,
+    worker_key: str,
+    result_quote: Callable[[dict[str, Any]], dict[str, Any]],
+    verifier: Any,
+    allow_simulated: bool = False,
+) -> dict[str, Any]:
     """Ordinary sealed trial plus a fresh quote bound to its exact result bytes.
 
     The deployment-controlled worker supplies result_quote using its actual
@@ -75,20 +111,21 @@ def attested_trial(root: str, offer: dict[str, Any], runner: SealedRunner, occas
     from unimem import attested_keys
 
     attested_keys.admitted(root, measurement)
-    result = trial(root, offer, runner, occasion, verify_offer=verify_offer,
-                   verify_attestation=verify_attestation)
-    challenge = attested_keys.issue(root, tenant, measurement, worker_key,
-        operation="sealed-trial", payload_digest=fp.digest(result))
+    result = trial(root, offer, runner, occasion, verify_offer=verify_offer, verify_attestation=verify_attestation)
+    challenge = attested_keys.issue(
+        root, tenant, measurement, worker_key, operation="sealed-trial", payload_digest=fp.digest(result)
+    )
     evidence = result_quote(challenge)
     appraisal = attested_keys.accept_result(root, challenge, evidence, verifier, allow_simulated=allow_simulated)
     return {"result": result, "result_digest": fp.digest(result), **appraisal}
 
 
-def royalties(offers: Sequence[dict[str, Any]], values: dict[str, float], budget_cents: int, *,
-              duplicate_threshold: float = .8) -> dict[str, Any]:
+def royalties(
+    offers: Sequence[dict[str, Any]], values: dict[str, float], budget_cents: int, *, duplicate_threshold: float = 0.8
+) -> dict[str, Any]:
     fp.count(len(offers), 0, 256)
     fp.count(budget_cents, 0, 100_000_000)
-    fp.number(duplicate_threshold, .5, 1)
+    fp.number(duplicate_threshold, 0.5, 1)
     groups: list[list[dict[str, Any]]] = []
     for offer in offers:
         fp.text(offer["id"])
@@ -97,8 +134,11 @@ def royalties(offers: Sequence[dict[str, Any]], values: dict[str, float], budget
         for value in offer["minhash"]:
             fp.count(value, 0, 2**64 - 1)
         fp.number(values.get(offer["id"], 0), -1, 1)
-        matches = [group for group in groups if any(
-            overlap.estimate_jaccard(offer["minhash"], item["minhash"]) >= duplicate_threshold for item in group)]
+        matches = [
+            group
+            for group in groups
+            if any(overlap.estimate_jaccard(offer["minhash"], item["minhash"]) >= duplicate_threshold for item in group)
+        ]
         merged = [offer]
         for group in matches:
             merged.extend(group)
@@ -114,8 +154,10 @@ def royalties(offers: Sequence[dict[str, Any]], values: dict[str, float], budget
         quotas = [Fraction(budget_cents) * weight / exact_total for weight in exact_weights]
         rewards = [quota.numerator // quota.denominator for quota in quotas]
         leftover = budget_cents - sum(rewards)
-        cluster_order = sorted(range(len(groups)), key=lambda index: (
-            -(quotas[index] - rewards[index]), tuple(sorted(item["id"] for item in groups[index]))))
+        cluster_order = sorted(
+            range(len(groups)),
+            key=lambda index: (-(quotas[index] - rewards[index]), tuple(sorted(item["id"] for item in groups[index]))),
+        )
         for index in cluster_order[:leftover]:
             rewards[index] += 1
     payouts: dict[str, int] = {}
@@ -130,19 +172,29 @@ def royalties(offers: Sequence[dict[str, Any]], values: dict[str, float], budget
         total = sum(stakes.values())
         if reward:
             seller_quotas = {seller: Fraction(reward * stakes[seller], total) for seller in sorted(stakes)}
-            seller_rewards = {seller: quota.numerator // quota.denominator
-                              for seller, quota in seller_quotas.items()}
+            seller_rewards = {seller: quota.numerator // quota.denominator for seller, quota in seller_quotas.items()}
             leftover = reward - sum(seller_rewards.values())
-            seller_order = sorted(stakes, key=lambda seller: (
-                -(seller_quotas[seller] - seller_rewards[seller]), -stakes[seller], seller))
+            seller_order = sorted(
+                stakes, key=lambda seller: (-(seller_quotas[seller] - seller_rewards[seller]), -stakes[seller], seller)
+            )
             for seller in seller_order[:leftover]:
                 seller_rewards[seller] += 1
             for seller, amount in sorted(seller_rewards.items()):
                 payouts[seller] = payouts.get(seller, 0) + amount
-        clusters.append({"listings": sorted({x["id"] for x in group}), "reward_cents": reward,
-                         "interventional_value": weight, "stakes": dict(sorted(stakes.items()))})
-    return {"payouts": payouts, "clusters": clusters, "paid_cents": sum(payouts.values()),
-            "kind": "one reward per near-duplicate cluster, split by slashable stake"}
+        clusters.append(
+            {
+                "listings": sorted({x["id"] for x in group}),
+                "reward_cents": reward,
+                "interventional_value": weight,
+                "stakes": dict(sorted(stakes.items())),
+            }
+        )
+    return {
+        "payouts": payouts,
+        "clusters": clusters,
+        "paid_cents": sum(payouts.values()),
+        "kind": "one reward per near-duplicate cluster, split by slashable stake",
+    }
 
 
 def overlap_price(base_cents: int, seller_signature: list[int], buyer_signature: list[int]) -> int:
@@ -150,8 +202,16 @@ def overlap_price(base_cents: int, seller_signature: list[int], buyer_signature:
     return round(base_cents * (1 - overlap.estimate_jaccard(seller_signature, buyer_signature)))
 
 
-def settle(root: str, escrow: str, offer: dict[str, Any], certificate: dict[str, Any], *,
-           amount_cents: int, verify_offer: Callable[[dict[str, Any]], bool], minimum_e: float = 20) -> dict[str, Any]:
+def settle(
+    root: str,
+    escrow: str,
+    offer: dict[str, Any],
+    certificate: dict[str, Any],
+    *,
+    amount_cents: int,
+    verify_offer: Callable[[dict[str, Any]], bool],
+    minimum_e: float = 20,
+) -> dict[str, Any]:
     fp.text(escrow)
     fp.count(amount_cents, 0, 100_000_000)
     fp.number(minimum_e, 1, 1e12)
@@ -174,8 +234,14 @@ def settle(root: str, escrow: str, offer: dict[str, Any], certificate: dict[str,
         prior = [r for r in fp.journal(root, "sealed-escrow.jsonl") if r["escrow"] == escrow]
         if prior:
             return prior[0]
-        body = {"escrow": escrow, "listing": identity, "seller": offer["record"]["seller"],
-                "amount_cents": amount_cents, "certificate_digest": fp.digest(certificate), "status": "released"}
+        body = {
+            "escrow": escrow,
+            "listing": identity,
+            "seller": offer["record"]["seller"],
+            "amount_cents": amount_cents,
+            "certificate_digest": fp.digest(certificate),
+            "status": "released",
+        }
         signed = fp.append(root, "sealed-escrow.jsonl", body)
         log.append(root, "sealed-escrow-release", signed)
         return cast(dict[str, Any], signed["record"])
@@ -189,16 +255,20 @@ def slash(root: str, offer: dict[str, Any], *, verify_offer: Callable[[dict[str,
     measured = report.get("by_lesson", {}).get(identity, {}) if report.get("available") else {}
     if measured.get("verdict") != "HURTS":
         raise PermissionError("stake slashing requires a canonical significant harm verdict")
-    return fp.append(root, "sealed-slashes.jsonl", {"listing": identity,
-        "stake_cents": offer["record"]["stake_cents"], "reason": "canonical HURTS"})
+    return fp.append(
+        root,
+        "sealed-slashes.jsonl",
+        {"listing": identity, "stake_cents": offer["record"]["stake_cents"], "reason": "canonical HURTS"},
+    )
 
 
-def private_effect(root: str, querier: str, query: str, effects: Sequence[float], *, epsilon: float,
-                   total_budget: float = 1) -> dict[str, Any]:
+def private_effect(
+    root: str, querier: str, query: str, effects: Sequence[float], *, epsilon: float, total_budget: float = 1
+) -> dict[str, Any]:
     fp.text(querier)
     fp.text(query)
-    fp.number(epsilon, .001, 10)
-    fp.number(total_budget, .001, 10)
+    fp.number(epsilon, 0.001, 10)
+    fp.number(total_budget, 0.001, 10)
     fp.count(len(effects), 1, 10_000)
     for value in effects:
         fp.number(value, -1, 1)
@@ -214,11 +284,17 @@ def private_effect(root: str, querier: str, query: str, effects: Sequence[float]
         if spent + epsilon > budget + 1e-12:
             raise PermissionError("differential privacy budget exhausted")
         scale = 2 / len(effects) / epsilon
-        uniform = random.SystemRandom().uniform(-.5 + 1e-15, .5 - 1e-15)
+        uniform = random.SystemRandom().uniform(-0.5 + 1e-15, 0.5 - 1e-15)
         noise = -scale * math.copysign(math.log1p(-2 * abs(uniform)), uniform)
-        body = {"querier": querier, "query": query, "epsilon": epsilon, "spent": spent + epsilon,
-                "total_budget": budget, "effect": sum(effects) / len(effects) + noise,
-                "mechanism": "Laplace, replacement adjacency, fixed cohort size, clipped [-1,1] mean"}
+        body = {
+            "querier": querier,
+            "query": query,
+            "epsilon": epsilon,
+            "spent": spent + epsilon,
+            "total_budget": budget,
+            "effect": sum(effects) / len(effects) + noise,
+            "mechanism": "Laplace, replacement adjacency, fixed cohort size, clipped [-1,1] mean",
+        }
         # No raw effect sizes or cohort membership enter the release ledger.
         return cast(dict[str, Any], fp.append(root, name, body)["record"])
 
@@ -235,5 +311,9 @@ class StripeConnect:
         if self.root is None or settlement not in fp.journal(self.root, "sealed-escrow.jsonl"):
             raise PermissionError("payment requires the exact authenticated escrow ledger release")
         fp.text(account, "Stripe account", 128)
-        return self.client.transfers.create(amount=settlement["amount_cents"], currency="usd", destination=account,
-            idempotency_key="unimem-" + fp.digest(settlement["escrow"]))
+        return self.client.transfers.create(
+            amount=settlement["amount_cents"],
+            currency="usd",
+            destination=account,
+            idempotency_key="unimem-" + fp.digest(settlement["escrow"]),
+        )

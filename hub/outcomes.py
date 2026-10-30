@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TypeGuard
+
 from unimem import experiment
 
 PROPORTION_METRICS: tuple[tuple[str, str, str], ...] = (
@@ -44,16 +46,14 @@ def _is_bool(value: object) -> bool:
     return isinstance(value, bool)
 
 
-def _is_number(value: object) -> bool:
+def _is_number(value: object) -> TypeGuard[int | float]:
     from unimem.validate import finite_number
 
     return finite_number(value)
 
 
 KNOWN_OUTCOME_FIELDS: frozenset[str] = frozenset(
-    {field for _n, field, _d in PROPORTION_METRICS}
-    | {field for _n, field in MEAN_METRICS}
-    | {"baseline"}
+    {field for _n, field, _d in PROPORTION_METRICS} | {field for _n, field in MEAN_METRICS} | {"baseline"}
 )
 
 
@@ -65,8 +65,7 @@ def validate_outcome(outcome: dict | None) -> dict:
     unknown = set(outcome) - KNOWN_OUTCOME_FIELDS
     if unknown:
         raise ValueError(
-            f"outcome has unknown field(s) {sorted(unknown)}; "
-            f"expected any of {sorted(KNOWN_OUTCOME_FIELDS)}"
+            f"outcome has unknown field(s) {sorted(unknown)}; expected any of {sorted(KNOWN_OUTCOME_FIELDS)}"
         )
     for _n, field, _d in PROPORTION_METRICS:
         if field in outcome and outcome[field] is not None and not _is_bool(outcome[field]):
@@ -122,8 +121,7 @@ def proportion(outcomes: list[dict], field: str) -> tuple[int, int]:
 
 
 def mean(outcomes: list[dict], field: str) -> tuple[float | None, int]:
-    values = [o.get(field) for o in outcomes]
-    values = [v for v in values if _is_number(v)]
+    values = [v for o in outcomes if _is_number(v := o.get(field))]
     if not values:
         return None, 0
     return sum(values) / len(values), len(values)
@@ -182,9 +180,7 @@ def compare_tallies(baseline: Tally, current: Tally, alpha: float = DEFAULT_ALPH
                 "note": "",
             }
         )
-        row["min_detectable_effect"] = experiment.minimum_detectable_effect(
-            min(b_n, c_n), b_s / b_n
-        )
+        row["min_detectable_effect"] = experiment.minimum_detectable_effect(min(b_n, c_n), b_s / b_n)
         testable_idx.append(len(rows))
         p_values.append(p)
         rows.append(row)

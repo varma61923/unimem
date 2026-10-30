@@ -1,5 +1,6 @@
 """Observability: spans feed metrics, context propagates into JSON logs, secrets are
 redacted, Prometheus text renders, and the gateway and CLI are instrumented."""
+
 import asyncio
 import io
 import json
@@ -86,8 +87,9 @@ def test_wrap_tool_keeps_signature_and_counts():
     assert inspect.iscoroutinefunction(wrapped)
     out = asyncio.run(wrapped("x"))
     assert out["task"] == "x" and out["request"]
-    assert any(c["name"] == "unimem_tool_calls" and c["labels"]["tool"] == "retrieve"
-               for c in telemetry.metrics()["counters"])
+    assert any(
+        c["name"] == "unimem_tool_calls" and c["labels"]["tool"] == "retrieve" for c in telemetry.metrics()["counters"]
+    )
 
 
 def test_otel_disabled_by_default(monkeypatch):
@@ -121,9 +123,24 @@ def test_cli_emits_json_logs_when_configured(tmp_path):
     import os
 
     env = {**os.environ, **env}
-    out = subprocess.run([sys.executable, "-m", "unimem.cli", "graph", "extract", "Redis TimeoutError",  # nosec
-                          "--spacy", "off", "--dest", str(tmp_path)], capture_output=True, text=True, env=env,
-                         check=False)
+    out = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "unimem.cli",
+            "graph",
+            "extract",
+            "Redis TimeoutError",  # nosec
+            "--spacy",
+            "off",
+            "--dest",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
     assert out.returncode == 0
     spans = [json.loads(line) for line in out.stderr.splitlines() if line.startswith("{")]
     assert any(s.get("span") == "cli.graph.extract" and s.get("command") == "graph" for s in spans)

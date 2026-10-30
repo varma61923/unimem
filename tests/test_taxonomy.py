@@ -10,15 +10,23 @@ from unimem.cli import main
 
 def _trace(id, title, context_text, tags=None, agent_type="support"):
     return distill.TraceCandidate(
-        id=id, path=f"/tmp/{id}.md", title=title, context_text=context_text,
-        solution_text="fix", tags=tags or [], agent_type=agent_type,
+        id=id,
+        path=f"/tmp/{id}.md",
+        title=title,
+        context_text=context_text,
+        solution_text="fix",
+        tags=tags or [],
+        agent_type=agent_type,
     )
 
 
 def _lesson(name, domain, source_traces, tags=None, status="active"):
     return {
-        "name": name, "domain": domain, "tags": tags or [],
-        "source_traces": source_traces, "status": status,
+        "name": name,
+        "domain": domain,
+        "tags": tags or [],
+        "source_traces": source_traces,
+        "status": status,
     }
 
 
@@ -72,14 +80,18 @@ class TestBuildTaxonomy:
         assert tax.n_traces_total == 0
 
     def test_two_distinct_patterns_are_both_reported_under_their_own_domains(self):
-        refund_a = _trace("r1", "Refund confusion A",
-                           "customer confused about refund timeline contradictory docs", tags=["refunds"])
-        refund_b = _trace("r2", "Refund confusion B",
-                           "customer confused about refund timeline contradictory docs", tags=["refunds"])
-        password_a = _trace("p1", "Password reset loop A",
-                             "user stuck in password reset loop link expired", tags=["troubleshooting"])
-        password_b = _trace("p2", "Password reset loop B",
-                             "user stuck in password reset loop link expired", tags=["troubleshooting"])
+        refund_a = _trace(
+            "r1", "Refund confusion A", "customer confused about refund timeline contradictory docs", tags=["refunds"]
+        )
+        refund_b = _trace(
+            "r2", "Refund confusion B", "customer confused about refund timeline contradictory docs", tags=["refunds"]
+        )
+        password_a = _trace(
+            "p1", "Password reset loop A", "user stuck in password reset loop link expired", tags=["troubleshooting"]
+        )
+        password_b = _trace(
+            "p2", "Password reset loop B", "user stuck in password reset loop link expired", tags=["troubleshooting"]
+        )
         tax = taxonomy.build_taxonomy([refund_a, refund_b, password_a, password_b], lessons=[])
         assert tax.n_patterns == 2
         assert len(tax.domains) == 2
@@ -106,10 +118,18 @@ class TestRenderMarkdown:
 
 class TestRenderHtml:
     def test_escapes_untrusted_trace_tags(self):
-        evil = _trace("evil1", "Shared pattern A", "shared payload words repeated words shared",
-                       tags=["<script>alert(1)</script>"])
-        evil2 = _trace("evil2", "Shared pattern B", "shared payload words repeated words shared",
-                        tags=["<script>alert(1)</script>"])
+        evil = _trace(
+            "evil1",
+            "Shared pattern A",
+            "shared payload words repeated words shared",
+            tags=["<script>alert(1)</script>"],
+        )
+        evil2 = _trace(
+            "evil2",
+            "Shared pattern B",
+            "shared payload words repeated words shared",
+            tags=["<script>alert(1)</script>"],
+        )
         tax = taxonomy.build_taxonomy([evil, evil2], lessons=[])
         html_out = taxonomy.render_html(tax, "2026-01-01T00:00:00")
         assert "<script>alert" not in html_out
@@ -167,30 +187,36 @@ class TestTaxonomyCLI:
         assert "nothing to map" in capsys.readouterr().out
 
     def test_reports_a_pattern_from_written_traces(self, store, capsys):
-        _write_trace_file(store, "t1", "Refund confusion A",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
-        _write_trace_file(store, "t2", "Refund confusion B",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
+        _write_trace_file(
+            store, "t1", "Refund confusion A", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
+        _write_trace_file(
+            store, "t2", "Refund confusion B", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
         capsys.readouterr()
         assert main(["taxonomy", "--dest", str(store)]) == 0
         out = capsys.readouterr().out
         assert "Recurring patterns found: **1**" in out
 
     def test_json_output_round_trips(self, store, capsys):
-        _write_trace_file(store, "t1", "Refund confusion A",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
-        _write_trace_file(store, "t2", "Refund confusion B",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
+        _write_trace_file(
+            store, "t1", "Refund confusion A", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
+        _write_trace_file(
+            store, "t2", "Refund confusion B", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
         capsys.readouterr()
         assert main(["taxonomy", "--dest", str(store), "--json"]) == 0
         data = json.loads(capsys.readouterr().out)
         assert data["n_patterns"] == 1
 
     def test_html_writes_a_report_file(self, store, capsys):
-        _write_trace_file(store, "t1", "Refund confusion A",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
-        _write_trace_file(store, "t2", "Refund confusion B",
-                           "customer confused about refund timeline contradictory docs", ["refunds"])
+        _write_trace_file(
+            store, "t1", "Refund confusion A", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
+        _write_trace_file(
+            store, "t2", "Refund confusion B", "customer confused about refund timeline contradictory docs", ["refunds"]
+        )
         capsys.readouterr()
         assert main(["taxonomy", "--dest", str(store), "--html"]) == 0
         out = capsys.readouterr().out

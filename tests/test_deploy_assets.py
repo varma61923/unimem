@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -23,6 +24,7 @@ def test_the_burn_rate_alerts_use_the_objectives_they_name():
     assert rules["HubAvailabilityFastBurn"]["labels"]["slo"] == "availability-99.9"
     pytest.importorskip("hub.observability")
     from hub.observability import Metrics
+
     assert 250 in Metrics.BUCKETS_MS
     assert "6 * 0.05" in rules["HubLatencyBurn"]["expr"]
     for alert in rules.values():
@@ -32,17 +34,23 @@ def test_the_burn_rate_alerts_use_the_objectives_they_name():
 
 def test_every_metric_the_alerts_use_is_one_the_hub_exports():
     import re
-    source = open(os.path.join(ROOT, "hub", "observability.py"), encoding="utf-8").read()
+
+    source = Path(os.path.join(ROOT, "hub", "observability.py")).read_text(encoding="utf-8")
     with open(os.path.join(CHART, "files", "slo-alerts.yaml"), encoding="utf-8") as fh:
         used = set(re.findall(r"unimem_hub_[a-z_]+", fh.read()))
     exported = set(re.findall(r"unimem_hub_[a-z_]+", source))
-    missing = {m for m in used if not m.startswith("unimem_hub:") and
-               re.sub(r"_(bucket|count|sum)$", "", m) not in exported and m not in exported}
+    missing = {
+        m
+        for m in used
+        if not m.startswith("unimem_hub:")
+        and re.sub(r"_(bucket|count|sum)$", "", m) not in exported
+        and m not in exported
+    }
     assert not missing, missing
 
 
 def test_terraform_state_and_variable_files_are_ignored():
-    gi = open(os.path.join(ROOT, "deploy", "terraform", ".gitignore"), encoding="utf-8").read()
+    gi = Path(os.path.join(ROOT, "deploy", "terraform", ".gitignore")).read_text(encoding="utf-8")
     assert "*.tfstate" in gi and "*.tfvars" in gi and ".terraform/" in gi
 
 
@@ -52,19 +60,33 @@ class TestChart:
         return subprocess.run(["helm", "template", "t", CHART, *ARGS, *extra], capture_output=True, text=True)
 
     def test_it_renders_with_every_optional_template_on(self):
-        r = self._template("--set", "metrics.alerts=true", "--set", "metrics.serviceMonitor=true",
-                           "--set", "networkPolicy.enabled=true", "--set", "ingress.enabled=true",
-                           "--set", "ingress.host=h.example", "--set", "autoscaling.enabled=true")
+        r = self._template(
+            "--set",
+            "metrics.alerts=true",
+            "--set",
+            "metrics.serviceMonitor=true",
+            "--set",
+            "networkPolicy.enabled=true",
+            "--set",
+            "ingress.enabled=true",
+            "--set",
+            "ingress.host=h.example",
+            "--set",
+            "autoscaling.enabled=true",
+        )
         assert r.returncode == 0, r.stderr
         kinds = {d["kind"] for d in yaml.safe_load_all(r.stdout) if d}
         assert {"Deployment", "Job", "Ingress", "NetworkPolicy", "PrometheusRule", "ServiceMonitor"} <= kinds
 
-    @pytest.mark.parametrize("flag,message", [
-        (["--set", "image.tag=latest"], "must not be latest"),
-        (["--set", "existingSecret="], "existingSecret is required"),
-        (["--set", "config.HUB_RATE_LIMIT_BACKEND=memory"], "HUB_RATE_LIMIT_BACKEND=postgres"),
-        (["--set", "postgres.maxConnections=30"], "exceeds postgres.maxConnections"),
-    ])
+    @pytest.mark.parametrize(
+        "flag,message",
+        [
+            (["--set", "image.tag=latest"], "must not be latest"),
+            (["--set", "existingSecret="], "existingSecret is required"),
+            (["--set", "config.HUB_RATE_LIMIT_BACKEND=memory"], "HUB_RATE_LIMIT_BACKEND=postgres"),
+            (["--set", "postgres.maxConnections=30"], "exceeds postgres.maxConnections"),
+        ],
+    )
     def test_it_refuses_unsafe_combinations(self, flag, message):
         r = self._template(*flag)
         assert r.returncode != 0 and message in r.stderr
@@ -85,6 +107,9 @@ class TestChart:
 @pytest.mark.skipif(shutil.which("terraform") is None, reason="terraform not installed")
 @pytest.mark.parametrize("cloud", ["aws", "gcp"])
 def test_terraform_is_formatted(cloud):
-    r = subprocess.run(["terraform", f"-chdir={os.path.join(ROOT, 'deploy', 'terraform', cloud)}", "fmt",
-                        "-check"], capture_output=True, text=True)
+    r = subprocess.run(
+        ["terraform", f"-chdir={os.path.join(ROOT, 'deploy', 'terraform', cloud)}", "fmt", "-check"],
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 0, r.stdout

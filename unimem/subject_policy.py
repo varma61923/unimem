@@ -4,6 +4,7 @@ These conservative operational rules are not a legal compliance certificate.
 Subject class and deployment context come from operator configuration, never
 from the proposed memory. Modality is an ingestion assertion, not sensor proof.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,20 @@ from unimem import frontier_protocol as fp
 
 CLASSES = ("child-under-13", "adult", "care-resident")
 CONTEXTS = ("workplace", "education", "home", "clinical")
-MODALITIES = ("text", "voice", "face", "physiology", "image", "video", "tactile", "force", "position",
-              "temperature", "system", "unknown")
+MODALITIES = (
+    "text",
+    "voice",
+    "face",
+    "physiology",
+    "image",
+    "video",
+    "tactile",
+    "force",
+    "position",
+    "temperature",
+    "system",
+    "unknown",
+)
 BIOMETRIC = frozenset({"voice", "face", "physiology"})
 NATIVE_KINDS = frozenset({"episode", "fact", "entity", "observation", "profile", "lesson", "directive"})
 EMOTIONS = frozenset({"emotion", "emotional-state", "arousal", "valence", "happy", "sad", "angry", "stressed"})
@@ -43,7 +56,7 @@ def enabled(root: str) -> bool:
 @lru_cache(maxsize=8)
 def _load(root: str, stamp: Any, pins: Any) -> dict[str, Any]:
     with open(fp.filename(root, "subject-policy.json"), "rb") as stream:
-        raw = stream.read(fp.MAX_BYTES+1)
+        raw = stream.read(fp.MAX_BYTES + 1)
     if len(raw) > fp.MAX_BYTES:
         raise PermissionError("UniMem subject policy exceeds its bound")
     signed = json.loads(raw)
@@ -69,11 +82,22 @@ def compile(root: str, bindings: list[dict[str, Any]]) -> dict[str, Any]:
     fp.count(len(bindings), 1, 64)
     cleaned = []
     for item in bindings:
-        if set(item) - {"id", "scopes", "subject_class", "context", "retention_days", "retention_purpose",
-                        "parental_consent"} or not {"id", "scopes", "subject_class", "context"} <= set(item):
+        if set(item) - {
+            "id",
+            "scopes",
+            "subject_class",
+            "context",
+            "retention_days",
+            "retention_purpose",
+            "parental_consent",
+        } or not {"id", "scopes", "subject_class", "context"} <= set(item):
             raise ValueError("UniMem subject policy binding has unknown or missing fields")
-        row = {"id": fp.text(item["id"], "rule binding", 128), "scopes": _labels(item["scopes"]),
-               "subject_class": item["subject_class"], "context": item["context"]}
+        row = {
+            "id": fp.text(item["id"], "rule binding", 128),
+            "scopes": _labels(item["scopes"]),
+            "subject_class": item["subject_class"],
+            "context": item["context"],
+        }
         if row["subject_class"] not in CLASSES or row["context"] not in CONTEXTS:
             raise ValueError("UniMem unsupported subject class or deployment context")
         if row["subject_class"] == "child-under-13":
@@ -83,17 +107,24 @@ def compile(root: str, bindings: list[dict[str, Any]]) -> dict[str, Any]:
             if consent is not None:
                 if not isinstance(consent, dict) or set(consent) != {"reference", "expires_at", "verification_method"}:
                     raise ValueError("UniMem parental consent needs a reference, expiry and verification method")
-                row["parental_consent"] = {"reference": fp.text(consent["reference"], "consent reference", 256),
+                row["parental_consent"] = {
+                    "reference": fp.text(consent["reference"], "consent reference", 256),
                     "expires_at": fp.moment(consent["expires_at"]),
-                    "verification_method": fp.text(consent["verification_method"], "parental verification", 256)}
+                    "verification_method": fp.text(consent["verification_method"], "parental verification", 256),
+                }
             else:
                 row["parental_consent"] = None  # Compiling does not fabricate parental consent.
         cleaned.append(row)
     if len({row["id"] for row in cleaned}) != len(cleaned):
         raise ValueError("UniMem subject rule IDs must be distinct")
-    body = {"schema": "unimem.subject-policy.v1", "packs": list(PACKS), "bindings": cleaned,
-            "recorded_by": list(memory_authority.bound_writer()), "issued_at": fp.now(),
-            "assertion": "operator enrollment; parental verification evidence remains external"}
+    body = {
+        "schema": "unimem.subject-policy.v1",
+        "packs": list(PACKS),
+        "bindings": cleaned,
+        "recorded_by": list(memory_authority.bound_writer()),
+        "issued_at": fp.now(),
+        "assertion": "operator enrollment; parental verification evidence remains external",
+    }
     with incident.protect(root), _jsonl.locked(fp.filename(root, "subject-policy.json")):
         signed = fp.sign(root, body)
         _jsonl.write_json(fp.filename(root, "subject-policy.json"), signed)
@@ -109,8 +140,11 @@ def ingest(root: str, source: Mapping[str, Any] | None = None) -> Iterator[None]
         modality = source.get("modality", "unknown")
         if modality not in MODALITIES or type(source.get("inferred", False)) is not bool:
             raise ValueError("UniMem invalid source modality or inference tag")
-        value = {"modality": modality, "labels": _labels(source.get("labels", [])),
-                 "inferred": source.get("inferred", False)}
+        value = {
+            "modality": modality,
+            "labels": _labels(source.get("labels", [])),
+            "inferred": source.get("inferred", False),
+        }
         if not set(value["labels"]) <= EMOTIONS | {"observation", "preference", "profile", "procedure", "other"}:
             raise ValueError("UniMem semantic source tags must use the bounded profile")
     else:
@@ -136,18 +170,26 @@ def _source(record: Mapping[str, Any]) -> dict[str, Any]:
         labels &= EMOTIONS
     if record.get("category") in EMOTIONS:
         labels.add(record["category"])
-    return {"modality": modality if modality in MODALITIES else "unknown", "labels": sorted(labels),
-            "inferred": bool(source.get("inferred", False)) or bool(labels & EMOTIONS and modality in BIOMETRIC)}
+    return {
+        "modality": modality if modality in MODALITIES else "unknown",
+        "labels": sorted(labels),
+        "inferred": bool(source.get("inferred", False)) or bool(labels & EMOTIONS and modality in BIOMETRIC),
+    }
 
 
-def evaluate(policy: Mapping[str, Any], record: Mapping[str, Any], *, purpose: str, at: str,
-             source: Mapping[str, Any]) -> dict[str, Any]:
+def evaluate(
+    policy: Mapping[str, Any], record: Mapping[str, Any], *, purpose: str, at: str, source: Mapping[str, Any]
+) -> dict[str, Any]:
     fp.wire(record)
     labels = set(record.get("scopes", []))
     matching = [row for row in policy["bindings"] if set(row["scopes"]) <= labels]
-    result: dict[str, Any] = {"decision": "allow", "reasons": [],
-                              "bindings": [fp.digest(row["id"]) for row in matching],
-                              "biometric_personal_information": False, "retention_deadline": None}
+    result: dict[str, Any] = {
+        "decision": "allow",
+        "reasons": [],
+        "bindings": [fp.digest(row["id"]) for row in matching],
+        "biometric_personal_information": False,
+        "retention_deadline": None,
+    }
     if not matching:
         result["reasons"] = ["outside-enrolled-context"]
         return result
@@ -157,8 +199,12 @@ def evaluate(policy: Mapping[str, Any], record: Mapping[str, Any], *, purpose: s
             decisions.append("review")
             result["reasons"].append("unknown-source-modality")
         emotion = bool(set(source["labels"]) & EMOTIONS) and source["inferred"]
-        if (row["context"] in {"workplace", "education"} and source["modality"] in BIOMETRIC and emotion
-                and purpose not in {MEDICAL, SAFETY}):
+        if (
+            row["context"] in {"workplace", "education"}
+            and source["modality"] in BIOMETRIC
+            and emotion
+            and purpose not in {MEDICAL, SAFETY}
+        ):
             decisions.append("quarantine")
             result["reasons"].append("eu-ai-act-biometric-emotion")
         if row["subject_class"] == "child-under-13":
@@ -170,7 +216,7 @@ def evaluate(policy: Mapping[str, Any], record: Mapping[str, Any], *, purpose: s
             if purpose != row["retention_purpose"]:
                 decisions.append("deny")
                 result["reasons"].append("child-retention-purpose-mismatch")
-            deadline = (datetime.fromisoformat(fp.moment(at))+timedelta(days=row["retention_days"])).isoformat()
+            deadline = (datetime.fromisoformat(fp.moment(at)) + timedelta(days=row["retention_days"])).isoformat()
             if parent is not None:
                 deadline = min(deadline, fp.moment(parent["expires_at"]))
             result["retention_deadline"] = min(result["retention_deadline"] or deadline, deadline)
@@ -180,8 +226,9 @@ def evaluate(policy: Mapping[str, Any], record: Mapping[str, Any], *, purpose: s
     return result
 
 
-def check(root: str, record: dict[str, Any], *, source: dict[str, Any] | None = None,
-          purpose: str | None = None) -> dict[str, Any]:
+def check(
+    root: str, record: dict[str, Any], *, source: dict[str, Any] | None = None, purpose: str | None = None
+) -> dict[str, Any]:
     """Operator-only dry run; no canonical bytes or decision event are written."""
     from unimem import nextwave_store
     from unimem import purpose as purpose_io
@@ -202,23 +249,43 @@ def assert_write(root: str, record: Mapping[str, Any]) -> None:
     if not permits(root, record):
         decision["decision"] = "deny"
         decision["reasons"] = sorted(set(decision["reasons"]) | {"retention-deadline-ended"})
-    commitment = {"record_digest": fp.digest(record), "policy_digest": fp.digest(policy),
-                  "source_digest": fp.digest(tags), "purpose_digest": fp.digest(purpose.current(root)),
-                  "actor_digest": fp.digest(memory_authority.bound_writer()), "issued_at": fp.now(), **decision}
+    commitment = {
+        "record_digest": fp.digest(record),
+        "policy_digest": fp.digest(policy),
+        "source_digest": fp.digest(tags),
+        "purpose_digest": fp.digest(purpose.current(root)),
+        "actor_digest": fp.digest(memory_authority.bound_writer()),
+        "issued_at": fp.now(),
+        **decision,
+    }
     signed = fp.append(root, "subject-decisions.jsonl", commitment)
     transparency_log.append(root, "subject-write-decision", {"decision_digest": fp.digest(signed)})
     if decision["decision"] != "allow":
-        raise HeldForReview("UniMem subject policy "+decision["decision"]+": "+",".join(decision["reasons"])+
-                            "; decision "+fp.digest(signed))
+        raise HeldForReview(
+            "UniMem subject policy "
+            + decision["decision"]
+            + ": "
+            + ",".join(decision["reasons"])
+            + "; decision "
+            + fp.digest(signed)
+        )
     from unimem import nextwave_store
 
     identity = _identity(root, record)
     if identity and decision["bindings"]:
         prior = nextwave_store.latest(root, "subject-sources")
         if identity not in prior:
-            fp.count(len(prior), 0, nextwave_store.MAX_OBJECTS-1, "regulated source tags")
-        nextwave_store.event(root, "subject-sources", identity, {"source": tags,
-            "record_digest": commitment["record_digest"], "policy_digest": commitment["policy_digest"]})
+            fp.count(len(prior), 0, nextwave_store.MAX_OBJECTS - 1, "regulated source tags")
+        nextwave_store.event(
+            root,
+            "subject-sources",
+            identity,
+            {
+                "source": tags,
+                "record_digest": commitment["record_digest"],
+                "policy_digest": commitment["policy_digest"],
+            },
+        )
     if decision["retention_deadline"] is not None:
         _schedule(root, record, decision["retention_deadline"])
 
@@ -255,10 +322,14 @@ def _schedule_locked(root: str, record: Mapping[str, Any], deadline: str) -> Non
         namespace = "records"
     else:
         namespace = {"fact": "facts", "trace": "traces"}.get(memory_authority.record_class(dict(record)), "lessons")
-    value = {"expires_at": deadline, "namespace": namespace, "scopes": record.get("scopes", []),
-             "native_id": record["id"] if namespace == "records" else None}
+    value = {
+        "expires_at": deadline,
+        "namespace": namespace,
+        "scopes": record.get("scopes", []),
+        "native_id": record["id"] if namespace == "records" else None,
+    }
     if previous is None or any(previous.get(key) != item for key, item in value.items()):
-        fp.count(len(_retentions(root))+(previous is None), 1, nextwave_store.MAX_OBJECTS, "retention schedules")
+        fp.count(len(_retentions(root)) + (previous is None), 1, nextwave_store.MAX_OBJECTS, "retention schedules")
         fp.append(root, RETENTION, {"id": identity, **value})
 
 
@@ -288,8 +359,11 @@ def explain(root: str, decision_id: str | None = None) -> dict[str, Any]:
     nextwave_store.operator()
     rows = fp.journal(root, "subject-decisions.jsonl")
     if decision_id:
-        rows = [row for index, row in enumerate(rows)
-                if fp.digest(fp.signed_at(root, "subject-decisions.jsonl", index)) == decision_id]
+        rows = [
+            row
+            for index, row in enumerate(rows)
+            if fp.digest(fp.signed_at(root, "subject-decisions.jsonl", index)) == decision_id
+        ]
     return {"decisions": rows[-64:], "evidence": "hash-only write decisions; not a legal certification"}
 
 
@@ -307,9 +381,15 @@ def _reap(root: str) -> list[dict[str, Any]]:
     results = []
     for identity, row in _retentions(root).items():
         if fp.moment(row["expires_at"]) <= fp.now():
-            receipt = {"id": "regulated-"+fp.digest(identity), "issued_at": row["recorded_at"],
-                "expires_at": row["expires_at"], "status": "expired", "vault_directory": None,
-                "sources": {identity: {"namespace": row["namespace"], "scopes": row["scopes"],
-                                       "native_id": row["native_id"]}}}
+            receipt = {
+                "id": "regulated-" + fp.digest(identity),
+                "issued_at": row["recorded_at"],
+                "expires_at": row["expires_at"],
+                "status": "expired",
+                "vault_directory": None,
+                "sources": {
+                    identity: {"namespace": row["namespace"], "scopes": row["scopes"], "native_id": row["native_id"]}
+                },
+            }
             results.append(retention.expire_consent(root, receipt))
     return results

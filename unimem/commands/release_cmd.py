@@ -1,4 +1,5 @@
 """`unimem release` -- what the fleet is running, as one named thing."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,16 +16,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     sub = p.add_subparsers(dest="release_cmd", required=True)
 
-    cut = sub.add_parser(
-        "cut", help="Record the currently active lessons as an immutable release."
-    )
+    cut = sub.add_parser("cut", help="Record the currently active lessons as an immutable release.")
     cut.add_argument("--reason", default="", help="Why this set is being deployed.")
     cut.add_argument(
         "--base",
         default=None,
         help="The release you believe you are building on. Defaults to the current "
-             "one. Given explicitly, a release cut from a store that has moved since "
-             "is refused rather than overwriting someone else's deployment decision.",
+        "one. Given explicitly, a release cut from a store that has moved since "
+        "is refused rather than overwriting someone else's deployment decision.",
     )
     cut.add_argument("--dest", default=None)
     cut.set_defaults(func=run_cut)
@@ -41,26 +40,27 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     diff = sub.add_parser("diff", help="What changed between two releases.")
     diff.add_argument("before")
     diff.add_argument(
-        "after", nargs="?", default="",
-        help="Default: the live active set, so `diff <id>` answers 'what has changed "
-             "since that release'.",
+        "after",
+        nargs="?",
+        default="",
+        help="Default: the live active set, so `diff <id>` answers 'what has changed since that release'.",
     )
     diff.add_argument("--dest", default=None)
     diff.set_defaults(func=run_diff)
 
-    rollback = sub.add_parser(
-        "rollback", help="Return to an earlier release, and record having done so."
-    )
+    rollback = sub.add_parser("rollback", help="Return to an earlier release, and record having done so.")
     rollback.add_argument("release_id")
     rollback.add_argument(
-        "--apply", action="store_true",
+        "--apply",
+        action="store_true",
         help="Actually do it. Without this, prints the plan and changes nothing.",
     )
     rollback.add_argument(
-        "--allow-partial", action="store_true",
+        "--allow-partial",
+        action="store_true",
         help="Proceed even when some lessons cannot be restored because their text "
-             "has been rewritten since. Refused by default: flipping a status would "
-             "put back a different rule under the same name.",
+        "has been rewritten since. Refused by default: flipping a status would "
+        "put back a different rule under the same name.",
     )
     rollback.add_argument("--dest", default=None)
     rollback.set_defaults(func=run_rollback)
@@ -73,23 +73,26 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     promote.add_argument("environment", choices=environments.ENVIRONMENTS)
     promote.add_argument("--reason", default="")
     promote.add_argument(
-        "--at", default=None,
+        "--at",
+        default=None,
         help="ISO-8601 timestamp to schedule this for, instead of immediately. "
-             "Needs no separate activation step: `release current` simply starts "
-             "returning this release once that moment arrives.",
+        "Needs no separate activation step: `release current` simply starts "
+        "returning this release once that moment arrives.",
     )
     promote.add_argument("--dest", default=None)
     promote.set_defaults(func=run_promote)
 
     env_current = sub.add_parser(
-        "current", help="The release one environment is running right now.",
+        "current",
+        help="The release one environment is running right now.",
     )
     env_current.add_argument("environment", choices=environments.ENVIRONMENTS)
     env_current.add_argument("--dest", default=None)
     env_current.set_defaults(func=run_env_current)
 
     env_pending = sub.add_parser(
-        "pending", help="Promotions scheduled for the future, for one environment.",
+        "pending",
+        help="Promotions scheduled for the future, for one environment.",
     )
     env_pending.add_argument("environment", choices=environments.ENVIRONMENTS)
     env_pending.add_argument("--dest", default=None)
@@ -126,8 +129,7 @@ def run_cut(args: argparse.Namespace) -> int:
     if len(history) > 1:
         previous = history[-2]
     changes = release.diff(previous, cut)
-    print(f"[unimem] release {_short(cut.release_id)} "
-          f"({len(cut.entries)} active lesson(s), {changes.summary()})")
+    print(f"[unimem] release {_short(cut.release_id)} ({len(cut.entries)} active lesson(s), {changes.summary()})")
     for entry in changes.added:
         print(f"  + {entry.slug}")
     for entry in changes.removed:
@@ -141,16 +143,16 @@ def run_list(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     history = release.read_all(root)
     if not history:
-        print("[unimem] no releases yet. `unimem release cut` records the "
-              "currently active lessons as one.")
+        print("[unimem] no releases yet. `unimem release cut` records the currently active lessons as one.")
         return 0
     previous = None
     for item in history:
         changes = release.diff(previous, item)
         marker = "*" if item is history[-1] else " "
-        print(f"{marker} {_short(item.release_id)}  {item.created_at}  "
-              f"{len(item.entries):3d} lesson(s)  {changes.summary()}"
-              + (f"  -- {item.reason}" if item.reason else ""))
+        print(
+            f"{marker} {_short(item.release_id)}  {item.created_at}  "
+            f"{len(item.entries):3d} lesson(s)  {changes.summary()}" + (f"  -- {item.reason}" if item.reason else "")
+        )
         previous = item
     return 0
 
@@ -158,10 +160,7 @@ def run_list(args: argparse.Namespace) -> int:
 def run_show(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
-        item = (
-            release.find(root, args.release_id) if args.release_id
-            else release.current(root)
-        )
+        item = release.find(root, args.release_id) if args.release_id else release.current(root)
     except release.ReleaseError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -194,8 +193,12 @@ def run_diff(args: argparse.Namespace) -> int:
                 return 1
         else:
             after = release.Release(
-                release_id="(live)", parent_id=before.release_id,
-                entries=release.active_entries(root), created_at="", actor="", reason="",
+                release_id="(live)",
+                parent_id=before.release_id,
+                entries=release.active_entries(root),
+                created_at="",
+                actor="",
+                reason="",
             )
     except release.ReleaseError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
@@ -225,8 +228,7 @@ def run_rollback(args: argparse.Namespace) -> int:
         return 1
 
     plan = release.plan_rollback(root, target)
-    print(f"[unimem] rollback to {_short(target.release_id)} "
-          f"({target.created_at}) would:")
+    print(f"[unimem] rollback to {_short(target.release_id)} ({target.created_at}) would:")
     if plan.empty:
         print("  change nothing -- the active set already matches it.")
     for slug in plan.deactivate:
@@ -234,23 +236,21 @@ def run_rollback(args: argparse.Namespace) -> int:
     for slug in plan.reactivate:
         print(f"  + reactivate {slug}")
     for slug, revision in plan.unrestorable:
-        print(f"  ! {slug} cannot be restored: it was active at @{revision[:12]}, "
-              "and its text has been rewritten since")
+        print(
+            f"  ! {slug} cannot be restored: it was active at @{revision[:12]}, and its text has been rewritten since"
+        )
 
     if not args.apply:
         print("\n  Nothing changed. Re-run with --apply to do it.")
         return 0
 
     try:
-        cut = release.apply_rollback(
-            root, plan, actor=_actor(), allow_partial=args.allow_partial
-        )
+        cut = release.apply_rollback(root, plan, actor=_actor(), allow_partial=args.allow_partial)
     except release.ReleaseError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
     print(f"\n[unimem] rolled back; recorded as release {_short(cut.release_id)}")
-    print("  History is append-only: returning to an earlier state is itself a "
-          "deployment, and is recorded as one.")
+    print("  History is append-only: returning to an earlier state is itself a deployment, and is recorded as one.")
     return 0
 
 
@@ -261,13 +261,16 @@ def run_promote(args: argparse.Namespace) -> int:
         try:
             activate_at = datetime.datetime.fromisoformat(args.at)
         except ValueError:
-            print(f"[unimem] --at must be an ISO-8601 timestamp, got {args.at!r}",
-                  file=sys.stderr)
+            print(f"[unimem] --at must be an ISO-8601 timestamp, got {args.at!r}", file=sys.stderr)
             return 1
     try:
         record = environments.promote(
-            root, args.release_id, args.environment,
-            actor=_actor(), reason=args.reason, activate_at=activate_at,
+            root,
+            args.release_id,
+            args.environment,
+            actor=_actor(),
+            reason=args.reason,
+            activate_at=activate_at,
         )
     except (environments.EnvironmentError, approval.ApprovalDenied) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
@@ -294,6 +297,8 @@ def run_env_pending(args: argparse.Namespace) -> int:
         print(f"[unimem] nothing scheduled for {args.environment!r}.")
         return 0
     for record in upcoming:
-        print(f"  {record['activate_at']}  -> {_short(record['release_id'])}"
-              + (f"  -- {record['reason']}" if record["reason"] else ""))
+        print(
+            f"  {record['activate_at']}  -> {_short(record['release_id'])}"
+            + (f"  -- {record['reason']}" if record["reason"] else "")
+        )
     return 0

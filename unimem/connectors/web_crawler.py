@@ -1,4 +1,5 @@
 """Web connector: fetch seed pages (robots.txt honoured) into facts with provenance."""
+
 from __future__ import annotations
 
 import html as _html
@@ -60,12 +61,18 @@ def _redirect_target_is_public(url: str) -> bool:
     try:
         addresses = [ipaddress.ip_address(host)]
     except ValueError:
-        answers = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80),
-                                     type=socket.SOCK_STREAM)
-        addresses = [ipaddress.ip_address(answer[4][0].split("%", 1)[0]) for answer in answers]
+        answers = socket.getaddrinfo(
+            host, parts.port or (443 if parts.scheme == "https" else 80), type=socket.SOCK_STREAM
+        )
+        addresses = []
+        for answer in answers:
+            address = answer[4][0]
+            if not isinstance(address, str):
+                return False
+            addresses.append(ipaddress.ip_address(address.split("%", 1)[0]))
     return bool(addresses) and all(
-        address.is_global and not address.is_multicast
-        and not getattr(address, "is_site_local", False) for address in addresses
+        address.is_global and not address.is_multicast and not getattr(address, "is_site_local", False)
+        for address in addresses
     )
 
 
@@ -101,12 +108,17 @@ def _get(url: str, user_agent: str, timeout: float, limit: int) -> tuple[str, by
     if limit <= 0:
         raise ValueError("web crawling response size limit must be positive")
     req = urllib.request.Request(url, headers={"User-Agent": user_agent})
-    with _OPENER.open(req, timeout=timeout) as resp:  # nosec B310 - http(s) only, checked above
-        ctype = str(resp.headers.get("Content-Type", "") or "")
-        raw = resp.read(limit + 1)
-        if len(raw) > limit:
-            raise ValueError("web crawling response exceeds size limit")
-        return ctype, raw
+    try:
+        with _OPENER.open(req, timeout=timeout) as resp:  # nosec B310 - http(s) only, checked above
+            ctype = str(resp.headers.get("Content-Type", "") or "")
+            raw = resp.read(limit + 1)
+            if len(raw) > limit:
+                raise ValueError("web crawling response exceeds size limit")
+            return ctype, raw
+    except urllib.error.HTTPError as exc:
+        # The fetch boundary owns the body; callers may retain status metadata.
+        exc.close()
+        raise
 
 
 def _robots_allowed(url: str, user_agent: str, timeout: float) -> bool:
@@ -273,13 +285,15 @@ class WebCrawlerConnector(Connector):
         body = text.strip()
         if len(body) < 50:
             return []
-        return [Chunk(
-            content=body[:2000],
-            source_path=url,
-            chunk_id="%s_page" % _fingerprint(url),
-            breadcrumb=urllib.parse.urlsplit(url).path or url,
-            chunk_type="web_page",
-        )]
+        return [
+            Chunk(
+                content=body[:2000],
+                source_path=url,
+                chunk_id="%s_page" % _fingerprint(url),
+                breadcrumb=urllib.parse.urlsplit(url).path or url,
+                chunk_type="web_page",
+            )
+        ]
 
     def sync(
         self,
@@ -295,9 +309,7 @@ class WebCrawlerConnector(Connector):
         timeout: int | None = None,
         **kwargs: Any,
     ) -> SyncResult:
-        seeds = list(dict.fromkeys(
-            str(u).strip() for u in [*(urls or []), *([url] if url else [])] if str(u).strip()
-        ))
+        seeds = list(dict.fromkeys(str(u).strip() for u in [*(urls or []), *([url] if url else [])] if str(u).strip()))
         rid = run_id or new_run_id()
         active_scope = scope or self.scope
         state_key = scoped_key(STATE_KEY, active_scope)
@@ -331,8 +343,15 @@ class WebCrawlerConnector(Connector):
         completed = [t for t, _c in fetched] if dry_run else []
         if not dry_run:
             for target, page_chunks in fetched:
-                if record_chunks(root, page_chunks, source_id=f"web:{target}",
-                                 scope=active_scope, run_id=rid, connector=self.name, result=result):
+                if record_chunks(
+                    root,
+                    page_chunks,
+                    source_id=f"web:{target}",
+                    scope=active_scope,
+                    run_id=rid,
+                    connector=self.name,
+                    result=result,
+                ):
                     completed.append(target)
         new_visited = (visited + completed)[-MAX_VISITED:]
         new_cursor = {"visited": new_visited, "scope": active_scope, "connector_key": state_key}
@@ -342,5 +361,12 @@ class WebCrawlerConnector(Connector):
                 save_connector_state(root, state_key, new_token, new_cursor)
             except OSError as exc:
                 result.errors.append("state persist error: %s" % exc)
-        return SyncResult(connector=self.name, chunks=chunks, result=result, new_state_token=new_token,
-                          run_id=rid, dry_run=dry_run, pending=max(0, len(pending) - len(completed)))
+        return SyncResult(
+            connector=self.name,
+            chunks=chunks,
+            result=result,
+            new_state_token=new_token,
+            run_id=rid,
+            dry_run=dry_run,
+            pending=max(0, len(pending) - len(completed)),
+        )

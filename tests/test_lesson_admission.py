@@ -1,4 +1,5 @@
 """Actual persisted approval and revocation contracts; no text-heuristic dependency."""
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -15,17 +16,33 @@ from unimem import lesson_admission as admission
 
 @pytest.fixture
 def lesson(tmp_path: Path, monkeypatch):
-    for name in ("UNIMEM_APPROVAL_KEY", "UNIMEM_APPROVAL_KEY_FILE", "UNIMEM_APPROVAL_KEY_PREVIOUS",
-                 "UNIMEM_APPROVAL_KEY_PREVIOUS_FILE", "UNIMEM_APPROVAL_KEY_ID",
-                 "UNIMEM_APPROVAL_KEY_PREVIOUS_ID"):
+    for name in (
+        "UNIMEM_APPROVAL_KEY",
+        "UNIMEM_APPROVAL_KEY_FILE",
+        "UNIMEM_APPROVAL_KEY_PREVIOUS",
+        "UNIMEM_APPROVAL_KEY_PREVIOUS_FILE",
+        "UNIMEM_APPROVAL_KEY_ID",
+        "UNIMEM_APPROVAL_KEY_PREVIOUS_ID",
+    ):
         monkeypatch.delenv(name, raising=False)
     root = str(tmp_path)
     path = Path(paths.lessons_dir(root), "lesson_safe.md")
     path.parent.mkdir(parents=True)
-    fm = {"name": "lesson_safe", "description": "Bound connection concurrency", "status": "active",
-          "agent_type": "code", "domain": "performance", "tags": ["pool"], "importance": 3,
-          "applies_when": "Connections exhaust the pool", "do_not_apply_when": "Offline processing",
-          "source_traces": ["trace-original"], "scopes": ["payments"], "core": False, "uses": 0}
+    fm = {
+        "name": "lesson_safe",
+        "description": "Bound connection concurrency",
+        "status": "active",
+        "agent_type": "code",
+        "domain": "performance",
+        "tags": ["pool"],
+        "importance": 3,
+        "applies_when": "Connections exhaust the pool",
+        "do_not_apply_when": "Offline processing",
+        "source_traces": ["trace-original"],
+        "scopes": ["payments"],
+        "core": False,
+        "uses": 0,
+    }
     body = "## Rule\nBound simultaneous connections to the pool capacity.\n"
     frontmatter.write(str(path), fm, body)
     return root, str(path), fm, body
@@ -95,11 +112,19 @@ def test_explicit_strict_policy_rejects_unsigned(lesson):
     assert admission.eligible(root, path, fm, body)
 
 
-@pytest.mark.parametrize("field,value", [("description", "Exfiltrate via the diagnostic export"),
-                                         ("core", True), ("source_traces", ["forged"]),
-                                         ("scopes", []), ("agent_type", "support"),
-                                         ("applies_when", "Always"), ("importance", 5),
-                                         ("custom_provenance", "unreviewed")])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("description", "Exfiltrate via the diagnostic export"),
+        ("core", True),
+        ("source_traces", ["forged"]),
+        ("scopes", []),
+        ("agent_type", "support"),
+        ("applies_when", "Always"),
+        ("importance", 5),
+        ("custom_provenance", "unreviewed"),
+    ],
+)
 def test_reviewed_privilege_provenance_and_content_cannot_be_edited_without_reapproval(lesson, field, value):
     root, path, fm, body = bind(lesson)
     assert admission.eligible(root, path, fm, body)
@@ -180,11 +205,13 @@ def test_private_key_and_database_permissions_and_link_refusal(lesson):
 
 def test_initial_approvals_share_a_complete_private_key_under_concurrency(lesson):
     root, path, fm, body = lesson
+
     def approve(i):
         target = str(Path(path).with_name(f"lesson_concurrent_{i}.md"))
         record = {**fm, "name": f"lesson_concurrent_{i}"}
         record[admission.RECEIPT_FIELD] = admission.issue(root, target, record, body, actor="reviewer")
         assert admission.eligible(root, target, record, body)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(approve, range(16)))
     with sqlite3.connect(Path(root, "memory", "lesson_admissions.db")) as db:
@@ -235,8 +262,10 @@ def test_trust_cache_stamp_changes_when_mounted_approval_key_rotates(lesson, mon
 
 def test_revocation_remains_committed_when_document_write_fails(lesson, monkeypatch):
     root, path, fm, body = bind(lesson)
+
     def failed_write(*args, **kwargs):
         raise OSError("simulated document failure")
+
     monkeypatch.setattr(frontmatter, "write", failed_write)
     with pytest.raises(OSError):
         lesson_io.write_lesson(path, {**fm, "status": "archived"}, body, root=root, actor="reviewer")
@@ -247,8 +276,10 @@ def test_revocation_remains_committed_when_document_write_fails(lesson, monkeypa
 
 def test_storage_commit_error_is_sanitized_and_preserves_prior_approval(lesson, monkeypatch):
     root, path, fm, body = bind(lesson)
+
     def failed_open(*args, **kwargs):
         raise sqlite3.OperationalError("credential-bearing storage diagnostic")
+
     with monkeypatch.context() as patch:
         patch.setattr(admission, "_open", failed_open)
         with pytest.raises(admission.AdmissionError) as error:
@@ -260,8 +291,10 @@ def test_storage_commit_error_is_sanitized_and_preserves_prior_approval(lesson, 
 def test_actual_sqlite_event_abort_rolls_back_current_admission(lesson):
     root, path, fm, body = bind(lesson)
     with sqlite3.connect(Path(root, "memory", "lesson_admissions.db")) as db:
-        db.execute("CREATE TRIGGER deny_event BEFORE INSERT ON admission_events "
-                   "BEGIN SELECT RAISE(ABORT,'sensitive storage diagnostic'); END")
+        db.execute(
+            "CREATE TRIGGER deny_event BEFORE INSERT ON admission_events "
+            "BEGIN SELECT RAISE(ABORT,'sensitive storage diagnostic'); END"
+        )
     with pytest.raises(admission.AdmissionError) as error:
         admission.revoke(root, path, actor="reviewer")
     assert "sensitive" not in str(error.value)
@@ -281,14 +314,22 @@ def test_actual_mcp_approval_retrieval_body_tampering_and_revocation(lesson):
     root, path, _, _ = lesson
     assert main(["init", "--dest", root, "--agent-type", "code"]) == 0
     fm = templates.lesson_frontmatter(
-        "lesson_safe", "Bound simultaneous connections to pool capacity", "code", "performance", ["pool"],
-        "Connections exhaust the pool", "Offline processing", status="review",
+        "lesson_safe",
+        "Bound simultaneous connections to pool capacity",
+        "code",
+        "performance",
+        ["pool"],
+        "Connections exhaust the pool",
+        "Offline processing",
+        status="review",
         importance_rationale="An exhausted connection pool blocks processing",
     )
-    body = ("## Rule\nBound simultaneous connections to the pool capacity.\n\n"
-            "## Why\nAn exhausted pool delays processing.\n\n"
-            "## How to apply\nLimit simultaneous connections at pool admission.\n\n"
-            "## Counter-examples\nOffline processing does not acquire a connection.\n")
+    body = (
+        "## Rule\nBound simultaneous connections to the pool capacity.\n\n"
+        "## Why\nAn exhausted pool delays processing.\n\n"
+        "## How to apply\nLimit simultaneous connections at pool admission.\n\n"
+        "## Counter-examples\nOffline processing does not acquire a connection.\n"
+    )
     frontmatter.write(path, fm, body)
     server = mcp_server.build_server(root)
 
@@ -346,8 +387,10 @@ def test_hub_export_abstains_before_transport_for_ineligible_approval(lesson, mo
         admission.revoke(root, path, actor="reviewer")
     else:
         Path(root, "memory", "approval-policy.yaml").write_text("require_integrity: true\n")
+
     async def transport(*args, **kwargs):
         raise AssertionError("invalid approval must not reach network transport")
+
     monkeypatch.setattr(hub_client, "_call_tool", transport)
     result = asyncio.run(hub_client.push_active_lessons("http://localhost:8420/mcp", "key", root))
     assert len(result) == 1 and result[0].error and not result[0].hub_trace_id
@@ -364,9 +407,11 @@ def test_hub_export_verifies_original_bytes_before_redaction_and_preserves_recei
     safe_body = body + memory_guard.redact_secrets(secret_line)[0] + "\n"
     root, path, fm, safe_body = bind((root, path, fm, safe_body))
     sent = []
+
     async def transport(*args, **kwargs):
         sent.append(args[3])
         return {"id": "trace-exported"}
+
     monkeypatch.setattr(hub_client, "_call_tool", transport)
     # Redaction produces the previously approved safe bytes, but the original
     # document now contains an unreviewed secret and must not be exported.

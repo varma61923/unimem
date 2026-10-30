@@ -22,9 +22,7 @@ class TestHubClientPathTraversalProtection:
             "....//....//nested_traversal",
         ],
     )
-    def test_pull_search_results_sanitizes_malicious_trace_ids(
-        self, tmp_path, malicious_id
-    ):
+    def test_pull_search_results_sanitizes_malicious_trace_ids(self, tmp_path, malicious_id):
         traces_dir = paths.traces_dir(str(tmp_path))
         os.makedirs(traces_dir, exist_ok=True)
         tdir_abs = os.path.abspath(traces_dir)
@@ -44,9 +42,7 @@ class TestHubClientPathTraversalProtection:
 
         async def _run():
             with patch.object(hub_client, "_call_tool", AsyncMock(return_value=mock_payload)):
-                return await hub_client.pull_search_results(
-                    "http://hub.example.com", "fake_key", str(tmp_path)
-                )
+                return await hub_client.pull_search_results("http://hub.example.com", "fake_key", str(tmp_path))
 
         result = asyncio.run(_run())
 
@@ -54,9 +50,7 @@ class TestHubClientPathTraversalProtection:
         written = result.written_paths[0]
         written_abs = os.path.abspath(written)
 
-        assert written_abs.startswith(tdir_abs + os.sep), (
-            f"File {written_abs} escaped directory {tdir_abs}"
-        )
+        assert written_abs.startswith(tdir_abs + os.sep), f"File {written_abs} escaped directory {tdir_abs}"
         assert os.path.exists(written_abs)
 
         fm, body = frontmatter.read(written_abs)
@@ -80,16 +74,13 @@ class TestHubClientPathTraversalProtection:
                     "context_text": None,
                     "solution_text": None,
                 },
-                {
-                },
+                {},
             ]
         }
 
         async def _run():
             with patch.object(hub_client, "_call_tool", AsyncMock(return_value=mock_payload)):
-                return await hub_client.pull_search_results(
-                    "http://hub.example.com", "fake_key", str(tmp_path)
-                )
+                return await hub_client.pull_search_results("http://hub.example.com", "fake_key", str(tmp_path))
 
         result = asyncio.run(_run())
 
@@ -167,9 +158,7 @@ class TestSubprocessScriptLookupIsolation:
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text("# Valid repo script\n", encoding="utf-8")
 
-        resolved = _shellout.find_reference_script(
-            str(clean_root), os.path.join("benchmark", "my_script.py")
-        )
+        resolved = _shellout.find_reference_script(str(clean_root), os.path.join("benchmark", "my_script.py"))
         assert resolved is not None
         assert os.path.abspath(resolved) == os.path.abspath(str(script_path))
 
@@ -177,9 +166,7 @@ class TestSubprocessScriptLookupIsolation:
         clean_root = tmp_path / "repo_root"
         clean_root.mkdir()
 
-        resolved = _shellout.find_reference_script(
-            str(clean_root), os.path.join("benchmark", "measure_performance.py")
-        )
+        resolved = _shellout.find_reference_script(str(clean_root), os.path.join("benchmark", "measure_performance.py"))
         assert resolved is not None
         assert os.path.exists(resolved)
         assert os.path.basename(resolved) == "measure_performance.py"
@@ -192,9 +179,7 @@ class TestSubprocessScriptLookupIsolation:
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text("# Planted script\n", encoding="utf-8")
 
-        resolved = _shellout.find_reference_script(
-            str(clean_root), os.path.join("benchmark", "my_script.py")
-        )
+        resolved = _shellout.find_reference_script(str(clean_root), os.path.join("benchmark", "my_script.py"))
         assert resolved is None
 
     def test_opted_in_store_copy_wins_over_an_existing_packaged_copy(self, tmp_path, monkeypatch):
@@ -204,9 +189,7 @@ class TestSubprocessScriptLookupIsolation:
         script_path.parent.mkdir(parents=True, exist_ok=True)
         script_path.write_text("# Contributor's locally edited copy\n", encoding="utf-8")
 
-        resolved = _shellout.find_reference_script(
-            str(repo_root), os.path.join("benchmark", "measure_performance.py")
-        )
+        resolved = _shellout.find_reference_script(str(repo_root), os.path.join("benchmark", "measure_performance.py"))
         assert resolved is not None
         assert os.path.abspath(resolved) == os.path.abspath(str(script_path))
 
@@ -251,9 +234,7 @@ class TestTagTypeConfusionResilience:
             ["alpha", 99, None, False],
         ],
     )
-    def test_reliability_find_contradictions_handles_arbitrary_tag_types(
-        self, malformed_tags
-    ):
+    def test_reliability_find_contradictions_handles_arbitrary_tag_types(self, malformed_tags):
         fm1 = {
             "name": "lesson_1",
             "domain": "refactor",

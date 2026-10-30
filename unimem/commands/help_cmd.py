@@ -1,12 +1,34 @@
 """Grouped command discovery without importing every command implementation."""
+
 from __future__ import annotations
 
 import argparse
 import json
 import re
 
-_STOP = frozenset({"how", "do", "i", "to", "the", "for", "a", "an", "and", "can", "me", "what", "with",
-                   "my", "is", "command", "commands", "use", "please"})
+_STOP = frozenset(
+    {
+        "how",
+        "do",
+        "i",
+        "to",
+        "the",
+        "for",
+        "a",
+        "an",
+        "and",
+        "can",
+        "me",
+        "what",
+        "with",
+        "my",
+        "is",
+        "command",
+        "commands",
+        "use",
+        "please",
+    }
+)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:

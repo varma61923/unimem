@@ -3,6 +3,7 @@
 Core installs may omit Playwright. The dedicated CI browser job installs its
 pinned browser and requires every contract here; screenshots are not persisted.
 """
+
 from __future__ import annotations
 
 import os
@@ -72,10 +73,16 @@ def browser() -> Iterator[Browser]:
 def console(tmp_path: Path) -> Iterator[Console]:
     root = str(tmp_path / "store")
     first, _ = hierarchical.add_fact(root, SOURCE)
-    second, _ = hierarchical.add_fact(root, "Aster billing workers preserve the payment request identifier across timeouts.")
+    second, _ = hierarchical.add_fact(
+        root, "Aster billing workers preserve the payment request identifier across timeouts."
+    )
     receipts = [bind_evidence(root, "fact", source.id) for source in (first, second)]
-    hierarchical.add_fact(root, "Aster payment retries reuse a stable idempotency key. Literal evidence " + MARKUP + ".",
-                          evidence=receipts, min_support=2)
+    hierarchical.add_fact(
+        root,
+        "Aster payment retries reuse a stable idempotency key. Literal evidence " + MARKUP + ".",
+        evidence=receipts,
+        min_support=2,
+    )
     credential = ["browser-contract-credential-first"]
     app = gateway.Gateway(root, token_provider=lambda: credential[0], allow_approval=True, durable=False)
     server = gateway.make_http_server(app, "127.0.0.1", 0)
@@ -116,12 +123,23 @@ def navigate(page: Page, label: str) -> None:
 
 def draft(console: Console, slug: str, description: str = "Prevent duplicate payment charges after a timeout") -> None:
     fm = templates.lesson_frontmatter(
-        slug=slug, description=description, agent_type="support", domain="payments", tags=["pay"],
-        applies_when="Payments are retried after a timeout.", do_not_apply_when="The call is naturally idempotent.",
-        importance=3, importance_rationale="Prevent duplicate customer charges", source_traces=["trace-1", "trace-2"], status="review")
-    body = ("## Rule\nSend an idempotency key on every payment request.\n\n## Why\nPrevent duplicate charges.\n\n"
-            "## How to apply\nPersist a stable request identifier before retrying.\n\n"
-            "## Counter-examples\nThe call is naturally idempotent.\n")
+        slug=slug,
+        description=description,
+        agent_type="support",
+        domain="payments",
+        tags=["pay"],
+        applies_when="Payments are retried after a timeout.",
+        do_not_apply_when="The call is naturally idempotent.",
+        importance=3,
+        importance_rationale="Prevent duplicate customer charges",
+        source_traces=["trace-1", "trace-2"],
+        status="review",
+    )
+    body = (
+        "## Rule\nSend an idempotency key on every payment request.\n\n## Why\nPrevent duplicate charges.\n\n"
+        "## How to apply\nPersist a stable request identifier before retrying.\n\n"
+        "## Counter-examples\nThe call is naturally idempotent.\n"
+    )
     frontmatter.write(os.path.join(paths.lessons_dir(console.root), slug + ".md"), fm, body)
 
 
@@ -210,7 +228,9 @@ def test_changed_backend_refresh_preserves_keyboard_navigation_focus(page: Page,
 
 
 @pytest.mark.parametrize("width", [390, 1440])
-def test_explorer_retrieves_real_evidence_and_preserves_literal_markup(page: Page, console: Console, width: int) -> None:
+def test_explorer_retrieves_real_evidence_and_preserves_literal_markup(
+    page: Page, console: Console, width: int
+) -> None:
     page.set_viewport_size({"width": width, "height": 1000})
     connect(page, console)
     navigate(page, "Explore memory")
@@ -242,8 +262,9 @@ def test_explorer_form_survives_changed_backend_poll_and_route_return(page: Page
     page.get_by_label("Include conversations", exact=True).check()
     page.get_by_label("Conversation space", exact=True).fill("billing-agent")
     page.get_by_role("heading", name="Explore memory", exact=True).click()
-    response = page.request.post(console.url + "/v1/recall", headers=console.headers,
-                                 data={"occasion_id": "browser-poll", "items": []})
+    response = page.request.post(
+        console.url + "/v1/recall", headers=console.headers, data={"occasion_id": "browser-poll", "items": []}
+    )
     assert response.status == 200
     page.wait_for_event("response", predicate=lambda r: r.url.endswith("/v1/status"), timeout=12_000)
     pw.expect(page.get_by_label("Your question", exact=True)).to_have_value("Unsubmitted Aster payment investigation")
@@ -258,7 +279,9 @@ def test_explorer_form_survives_changed_backend_poll_and_route_return(page: Page
 
 @pytest.mark.parametrize("width", [390, 1440])
 def test_fact_ranking_selection_uses_actual_response_profile_without_relabelling_old_results(
-    page: Page, console: Console, width: int,
+    page: Page,
+    console: Console,
+    width: int,
 ) -> None:
     page.set_viewport_size({"width": width, "height": 1000})
     connect(page, console)
@@ -296,7 +319,9 @@ def test_fact_ranking_selection_uses_actual_response_profile_without_relabelling
 
 @pytest.mark.parametrize("replacement", [False, True])
 def test_pending_exploration_cannot_reappear_after_navigation_or_credential_replacement(
-    page: Page, console: Console, replacement: bool,
+    page: Page,
+    console: Console,
+    replacement: bool,
 ) -> None:
     held: list[tuple[Route, APIResponse]] = []
 
@@ -348,9 +373,15 @@ def test_review_pagination_and_stale_approval_use_real_revision_preconditions(pa
     pw.expect(queue.locator("li")).to_have_count(50)
     page.get_by_label("Select lesson_retry_000", exact=True).check()
     details = page.request.get(console.url + "/v1/lesson?slug=lesson_retry_000", headers=console.headers).json()
-    changed = page.request.post(console.url + "/v1/lesson/edit", headers=console.headers,
-                                data={"slug": "lesson_retry_000", "expected_revision": details["revision"],
-                                      "rule": "Persist a unique idempotency key before submitting each payment retry."})
+    changed = page.request.post(
+        console.url + "/v1/lesson/edit",
+        headers=console.headers,
+        data={
+            "slug": "lesson_retry_000",
+            "expected_revision": details["revision"],
+            "rule": "Persist a unique idempotency key before submitting each payment retry.",
+        },
+    )
     assert changed.status == 200
     with page.expect_response(lambda response: response.url.endswith("/v1/lesson/approve")) as approved:
         page.get_by_role("button", name="Approve selected (1)", exact=True).click()
@@ -371,8 +402,11 @@ def test_unsaved_review_edits_survive_a_real_save_conflict_until_explicit_reload
     user_text = "Keep my unsaved request identifier policy intact while I review conflicting edits."
     latest_text = "Persist the verified account identifier before retrying a timed-out payment."
     rule.fill(user_text)
-    changed = page.request.post(console.url + "/v1/lesson/edit", headers=console.headers,
-                                data={"slug": "lesson_retry", "expected_revision": original["revision"], "rule": latest_text})
+    changed = page.request.post(
+        console.url + "/v1/lesson/edit",
+        headers=console.headers,
+        data={"slug": "lesson_retry", "expected_revision": original["revision"], "rule": latest_text},
+    )
     assert changed.status == 200
     with page.expect_response(lambda response: response.url.endswith("/v1/lesson/edit")) as saved:
         page.get_by_role("button", name="Save changes", exact=True).click()
@@ -383,7 +417,10 @@ def test_unsaved_review_edits_survive_a_real_save_conflict_until_explicit_reload
     pw.expect(rule).to_have_value(user_text)
     page.get_by_role("button", name="Reload latest draft", exact=True).click()
     pw.expect(rule).to_have_value(latest_text)
-    assert page.request.get(console.url + "/v1/lesson?slug=lesson_retry", headers=console.headers).json()["status"] == "review"
+    assert (
+        page.request.get(console.url + "/v1/lesson?slug=lesson_retry", headers=console.headers).json()["status"]
+        == "review"
+    )
 
 
 def test_disconnect_erases_visible_evidence_and_tab_credential_then_reconnects(page: Page, console: Console) -> None:
@@ -409,12 +446,22 @@ def test_disconnect_erases_visible_evidence_and_tab_credential_then_reconnects(p
 
 def test_compromised_real_experiment_does_not_render_causal_effect_claims(page: Page, console: Console) -> None:
     proof.start_demo(console.root, functions.builtin_kits()["support"])
-    response = page.request.post(console.url + "/v1/recall", headers=console.headers,
-                                 data={"occasion_id": "changed-measurement", "items": [
-                                     {"id": "demo-helpful-memory", "text": "A changed memory revision outside the registered demonstration."}]})
+    response = page.request.post(
+        console.url + "/v1/recall",
+        headers=console.headers,
+        data={
+            "occasion_id": "changed-measurement",
+            "items": [
+                {"id": "demo-helpful-memory", "text": "A changed memory revision outside the registered demonstration."}
+            ],
+        },
+    )
     assert response.status == 200
-    response = page.request.post(console.url + "/v1/outcome", headers=console.headers,
-                                 data={"occasion_id": "changed-measurement", "succeeded": True})
+    response = page.request.post(
+        console.url + "/v1/outcome",
+        headers=console.headers,
+        data={"occasion_id": "changed-measurement", "succeeded": True},
+    )
     assert response.status == 200
     memories = page.request.get(console.url + "/v1/memories", headers=console.headers).json()
     assert memories["integrity"]["verdict"] == "COMPROMISED"
@@ -432,7 +479,9 @@ def test_malformed_hash_cannot_crash_the_console(page: Page, console: Console) -
     connect(page, console)
     page.goto(console.url + "/#/lesson?slug=%", wait_until="domcontentloaded")
     pw.expect(page.locator("main")).to_be_visible()
-    page.get_by_role("navigation", name="Console sections").get_by_role("link", name="Explore memory", exact=True).click()
+    page.get_by_role("navigation", name="Console sections").get_by_role(
+        "link", name="Explore memory", exact=True
+    ).click()
     pw.expect(page.get_by_label("Your question", exact=True)).to_be_visible()
     assert not errors
 
@@ -458,7 +507,9 @@ def test_learning_ledger_value_design_forensics_and_digest(page: Page, console: 
     page.get_by_role("link", name="What changed").first.click()
     pw.expect(page.locator("main pre")).to_contain_text("+Send a stable idempotency key")
 
-    page.get_by_role("navigation", name="Ledger sections").get_by_role("link", name="Experiment designer", exact=True).click()
+    page.get_by_role("navigation", name="Ledger sections").get_by_role(
+        "link", name="Experiment designer", exact=True
+    ).click()
     page.get_by_label("Holdout rate", exact=True).fill("0.2")
     page.get_by_label("Occasions per day (optional)", exact=True).fill("100")
     page.get_by_role("button", name="Plan", exact=True).click()
@@ -480,7 +531,9 @@ def test_learning_ledger_value_design_forensics_and_digest(page: Page, console: 
 
 
 @pytest.mark.parametrize("width", [390, 1440])
-def test_lesson_trace_and_benchmark_history_are_real_redacted_and_accessible(page: Page, console: Console, width: int) -> None:
+def test_lesson_trace_and_benchmark_history_are_real_redacted_and_accessible(
+    page: Page, console: Console, width: int
+) -> None:
     import json
     from pathlib import Path
 
@@ -493,7 +546,7 @@ def test_lesson_trace_and_benchmark_history_are_real_redacted_and_accessible(pag
     trace_io.write_new(console.root, title=MARKUP, context="Payment timeout", solution=SOURCE, tags=["payments"])
     reports = Path(console.root) / "memory" / "benchmark_reports"
     reports.mkdir(parents=True)
-    for index, value in enumerate((.5, .75)):
+    for index, value in enumerate((0.5, 0.75)):
         (reports / f"2026-10-14_00000{index}.json").write_text(json.dumps({"lesson_quality": {"value": value}}))
     connect(page, console)
     navigate(page, "Lesson library")

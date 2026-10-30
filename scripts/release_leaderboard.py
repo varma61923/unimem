@@ -37,8 +37,13 @@ Private transcripts and signing keys are excluded.</p></main></html>"""
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", required=True)
-    parser.add_argument("--public-key", "--trusted-key", dest="public_key", required=True,
-                        help="Ed25519 public key (verification key) to verify and export")
+    parser.add_argument(
+        "--public-key",
+        "--trusted-key",
+        dest="public_key",
+        required=True,
+        help="Ed25519 public key (verification key) to verify and export",
+    )
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
     with open(args.report, encoding="utf-8") as stream:

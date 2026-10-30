@@ -116,9 +116,7 @@ def _load(mode: str = DEFAULT_MODE, *, local_files_only: bool = False):
                     f"offline mode: local reranker model {MODELS[mode][0]!r} is not available in the cache"
                 ) from exc
             if local_files_only:
-                raise RuntimeError(
-                    f"local reranker model {MODELS[mode][0]!r} is not available in the cache"
-                ) from exc
+                raise RuntimeError(f"local reranker model {MODELS[mode][0]!r} is not available in the cache") from exc
             _LOADED[mode] = CrossEncoder(MODELS[mode][0], device="cpu")
     return _LOADED[mode]
 
@@ -173,7 +171,9 @@ def gate_threshold(mode: str, embedder: str = "") -> float:
 
 
 def admit_gated(
-    floor_cleared: set[str], mode: str = DEFAULT_MODE, embedder: str = "",
+    floor_cleared: set[str],
+    mode: str = DEFAULT_MODE,
+    embedder: str = "",
 ) -> Callable[[str, float], bool]:
     threshold = gate_threshold(mode, embedder)
     return lambda slug, score: slug in floor_cleared or score >= threshold
@@ -206,7 +206,7 @@ def rerank(
     order = sorted(range(len(scored)), key=lambda i: (-scored[i][1], i))
     page = [scored[i] for i in order[:want]]
     on_page = []
-    for slug, score in zip(extra, scores[len(candidates):]):
+    for slug, score in zip(extra, scores[len(candidates) :]):
         if admit is not None and not admit(slug, float(score)):
             continue
         above = sum(1 for _s, x in scored if x > float(score))

@@ -69,10 +69,7 @@ def _split_bounded(
         start = end
         if start < len(text) and text[start] == " ":
             start += 1
-    return [
-        _make_chunk(block, path, modality, chunk_type, breadcrumb, i)
-        for i, block in enumerate(blocks)
-    ]
+    return [_make_chunk(block, path, modality, chunk_type, breadcrumb, i) for i, block in enumerate(blocks)]
 
 
 _PDF_HEX_RE = re.compile(r"<([0-9A-Fa-f\s]+)>")
@@ -91,7 +88,7 @@ def _pdf_string_tokens(region: str):
             # Retain the extractor's flat-string behavior for nested input.
             start = position
         elif char == ")" and start is not None:
-            yield region[start:position + 1]
+            yield region[start : position + 1]
             start = None
         position += 1
 
@@ -104,8 +101,7 @@ def _unescape_pdf_string(token: str) -> str:
         c = inner[i]
         if c == "\\" and i + 1 < len(inner):
             nxt = inner[i + 1]
-            mapping = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f",
-                       "(": "(", ")": ")", "\\": "\\"}
+            mapping = {"n": "\n", "r": "\r", "t": "\t", "b": "\b", "f": "\f", "(": "(", ")": ")", "\\": "\\"}
             if nxt in mapping:
                 out.append(mapping[nxt])
                 i += 2
@@ -161,7 +157,7 @@ def _pdf_streams(raw: bytes):
         end = raw.find(b"endstream", match.end())
         if end < 0:
             return
-        yield match.group(1), raw[match.end():end].rstrip(b"\r\n")
+        yield match.group(1), raw[match.end() : end].rstrip(b"\r\n")
         position = end + len(b"endstream")
 
 
@@ -196,7 +192,7 @@ def extract_pdf_text(path: str) -> str:
         end = text.find("ET", start + 2)
         if end < 0:
             break
-        regions.append(text[start + 2:end])
+        regions.append(text[start + 2 : end])
         position = end + 2
     if not regions:
         regions = [text]
@@ -223,10 +219,16 @@ def chunk_pdf(path: str) -> list[Chunk]:
     text = extract_pdf_text(path)
     base = os.path.basename(path)
     if not text.strip():
-        return [_make_chunk(
-            f"[PDF] No extractable text in {base}.",
-            path, "pdf", "pdf_text", base, 0,
-        )]
+        return [
+            _make_chunk(
+                f"[PDF] No extractable text in {base}.",
+                path,
+                "pdf",
+                "pdf_text",
+                base,
+                0,
+            )
+        ]
     return _split_bounded(text, path, "pdf", "pdf_text", base)
 
 
@@ -309,10 +311,16 @@ def chunk_docx(path: str) -> list[Chunk]:
     paras = extract_docx_paragraphs(path)
     base = os.path.basename(path)
     if not paras:
-        return [_make_chunk(
-            f"[DOCX] No extractable text in {base}.",
-            path, "docx", "docx_text", base, 0,
-        )]
+        return [
+            _make_chunk(
+                f"[DOCX] No extractable text in {base}.",
+                path,
+                "docx",
+                "docx_text",
+                base,
+                0,
+            )
+        ]
     chunks: list[Chunk] = []
     buf = ""
     idx = 0
@@ -339,6 +347,7 @@ def chunk_docx(path: str) -> list[Chunk]:
 
 class _HTMLTextParser(HTMLParser):
     """Linear HTML extraction, including unclosed script/style blocks."""
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.parts: list[str] = []
@@ -368,14 +377,17 @@ class _HTMLTextParser(HTMLParser):
             return
         if tag == "title":
             self.in_title = False
-        self.parts.append("\n" if tag in {"p", "div", "br", "li", "tr", "h1", "h2", "h3",
-                                              "h4", "h5", "h6", "section", "article"} else " ")
+        self.parts.append(
+            "\n"
+            if tag in {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "section", "article"}
+            else " "
+        )
 
     def handle_data(self, data):
         if not self.ignored:
             self.parts.append(data)
             if self.in_title and len(self.title) < 200:
-                self.title += data[:200 - len(self.title)]
+                self.title += data[: 200 - len(self.title)]
 
 
 def extract_html_text(path: str) -> tuple[str, str]:
@@ -396,10 +408,16 @@ def chunk_html(path: str) -> list[Chunk]:
     base = os.path.basename(path)
     breadcrumb = f"{base} :: {title}" if title else base
     if not text.strip():
-        return [_make_chunk(
-            f"[HTML] No extractable text in {base}.",
-            path, "html", "html_text", breadcrumb, 0,
-        )]
+        return [
+            _make_chunk(
+                f"[HTML] No extractable text in {base}.",
+                path,
+                "html",
+                "html_text",
+                breadcrumb,
+                0,
+            )
+        ]
     return _split_bounded(text, path, "html", "html_text", breadcrumb)
 
 
@@ -412,17 +430,18 @@ def _parse_png(data: bytes) -> tuple[int | None, int | None, dict]:
     width = height = None
     offset = 8
     while offset + 8 <= len(data):
-        (length,) = struct.unpack(">I", data[offset:offset + 4])
-        ctype = data[offset + 4:offset + 8]
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        ctype = data[offset + 4 : offset + 8]
         offset += 8
-        chunk_data = data[offset:offset + length]
+        chunk_data = data[offset : offset + length]
         if ctype == b"IHDR" and length >= 13:
-            width, height, bit_depth, color_type, comp, filt, inter = struct.unpack(
-                ">IIBBBBB", chunk_data[:13]
-            )
+            width, height, bit_depth, color_type, comp, filt, inter = struct.unpack(">IIBBBBB", chunk_data[:13])
             info.update(
-                bit_depth=bit_depth, color_type=color_type,
-                compression=comp, filter=filt, interlace=inter,
+                bit_depth=bit_depth,
+                color_type=color_type,
+                compression=comp,
+                filter=filt,
+                interlace=inter,
             )
             break
         offset += length + 4
@@ -441,8 +460,7 @@ def _parse_jpeg(data: bytes) -> tuple[int | None, int | None, dict]:
     info["exif_present"] = False
     info["app_segments"] = []
     width = height = None
-    sof_markers = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
-                   0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+    sof_markers = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
     pos = 2
     n = len(data)
     while pos + 4 <= n:
@@ -461,10 +479,10 @@ def _parse_jpeg(data: bytes) -> tuple[int | None, int | None, dict]:
             continue
         if pos + 2 > n:
             break
-        (seg_len,) = struct.unpack(">H", data[pos:pos + 2])
+        (seg_len,) = struct.unpack(">H", data[pos : pos + 2])
         if seg_len < 2:
             break
-        seg = data[pos + 2:pos + seg_len]
+        seg = data[pos + 2 : pos + seg_len]
         if marker == 0xE0 and seg[:5] == b"JFIF\x00":
             try:
                 major, minor = seg[5], seg[6]
@@ -524,10 +542,16 @@ def _describe_image(path: str) -> tuple[str, str, dict]:
 def chunk_image(path: str) -> list[Chunk]:
     label, description, _info = _describe_image(path)
     base = os.path.basename(path)
-    return [_make_chunk(
-        description, path, "image", "image_description",
-        f"{base} [{label} {os.path.getsize(path)}B]", 0,
-    )]
+    return [
+        _make_chunk(
+            description,
+            path,
+            "image",
+            "image_description",
+            f"{base} [{label} {os.path.getsize(path)}B]",
+            0,
+        )
+    ]
 
 
 _WAV_FORMAT_NAMES = {
@@ -548,13 +572,13 @@ def _parse_wav(data: bytes) -> dict:
     pos = 12
     n = len(data)
     while pos + 8 <= n:
-        cid = data[pos:pos + 4]
-        (size,) = struct.unpack("<I", data[pos + 4:pos + 8])
+        cid = data[pos : pos + 4]
+        (size,) = struct.unpack("<I", data[pos + 4 : pos + 8])
         body_off = pos + 8
         avail = max(0, n - body_off)
         if cid == b"fmt " and avail >= 16:
             audio_fmt, channels, sample_rate, byte_rate, _align, bits = struct.unpack(
-                "<HHIIHH", data[body_off:body_off + 16]
+                "<HHIIHH", data[body_off : body_off + 16]
             )
         elif cid == b"data" and data_size is None:
             data_size = min(size, avail)
@@ -590,7 +614,7 @@ _MPEG_MODE_LABEL = {0: "stereo", 1: "joint stereo", 2: "dual channel", 3: "mono"
 def _mpeg_header_at(data: bytes, pos: int) -> dict | None:
     if pos + 4 > len(data):
         return None
-    b0, b1, b2, b3 = data[pos:pos + 4]
+    b0, b1, b2, b3 = data[pos : pos + 4]
     if b0 != 0xFF or (b1 & 0xE0) != 0xE0:
         return None
     ver = (b1 >> 3) & 0x03
@@ -681,15 +705,15 @@ def _parse_ogg(data: bytes) -> dict:
     max_granule = -1
     bos = eos = False
     while pos + 27 <= n:
-        if data[pos:pos + 4] != b"OggS":
+        if data[pos : pos + 4] != b"OggS":
             break
         htype = data[pos + 5]
-        (granule,) = struct.unpack("<q", data[pos + 6:pos + 14])
-        (serial,) = struct.unpack("<I", data[pos + 14:pos + 18])
+        (granule,) = struct.unpack("<q", data[pos + 6 : pos + 14])
+        (serial,) = struct.unpack("<I", data[pos + 14 : pos + 18])
         seg_count = data[pos + 26]
         if pos + 27 + seg_count > n:
             break
-        payload = sum(data[pos + 27:pos + 27 + seg_count])
+        payload = sum(data[pos + 27 : pos + 27 + seg_count])
         pages += 1
         serials.add(serial)
         max_granule = max(max_granule, granule)
@@ -736,8 +760,8 @@ def _parse_flac(data: bytes) -> dict:
         b0 = data[pos]
         last = bool(b0 & 0x80)
         btype = b0 & 0x7F
-        length = int.from_bytes(data[pos + 1:pos + 4], "big")
-        body = data[pos + 4:pos + 4 + length]
+        length = int.from_bytes(data[pos + 1 : pos + 4], "big")
+        body = data[pos + 4 : pos + 4 + length]
         if len(body) < length:
             raise ValueError("truncated FLAC metadata block")
         blocks.append(_FLAC_BLOCK_NAMES.get(btype, f"BLOCK{btype}"))
@@ -822,10 +846,16 @@ def _describe_audio(path: str) -> tuple[str, str]:
 def _chunk_audio(path: str) -> list[Chunk]:
     label, description = _describe_audio(path)
     base = os.path.basename(path)
-    return [_make_chunk(
-        description, path, "audio", "audio_metadata",
-        f"{base} [{label} {os.path.getsize(path)}B]", 0,
-    )]
+    return [
+        _make_chunk(
+            description,
+            path,
+            "audio",
+            "audio_metadata",
+            f"{base} [{label} {os.path.getsize(path)}B]",
+            0,
+        )
+    ]
 
 
 def chunk_wav(path: str) -> list[Chunk]:
@@ -956,7 +986,7 @@ def _parse_srt_cues(text: str) -> list[tuple[float, float, str]]:
             end = _parse_sub_timestamp(end_tok)
         except (ValueError, IndexError):
             continue
-        cleaned = _clean_cue_lines(lines[ts_idx + 1:])
+        cleaned = _clean_cue_lines(lines[ts_idx + 1 :])
         if cleaned:
             cues.append((start, end, cleaned))
     return cues
@@ -969,10 +999,16 @@ def _chunk_subtitle_cues(
 ) -> list[Chunk]:
     base = os.path.basename(path)
     if not cues:
-        return [_make_chunk(
-            f"[Subtitle {kind}] No extractable cues in {base}.",
-            path, "subtitle", "subtitle_text", base, 0,
-        )]
+        return [
+            _make_chunk(
+                f"[Subtitle {kind}] No extractable cues in {base}.",
+                path,
+                "subtitle",
+                "subtitle_text",
+                base,
+                0,
+            )
+        ]
     chunks: list[Chunk] = []
     buf: list[str] = []
     buf_len = 0
@@ -982,14 +1018,17 @@ def _chunk_subtitle_cues(
     for start, end, cue_text in cues:
         line = f"[{_format_sub_timestamp(start)} --> {_format_sub_timestamp(end)}] {cue_text}"
         if buf and buf_len + len(line) + 1 > _SUB_CHUNK:
-            breadcrumb = (
-                f"{base} [{_format_sub_timestamp(chunk_start)} --> "
-                f"{_format_sub_timestamp(chunk_end)}]"
+            breadcrumb = f"{base} [{_format_sub_timestamp(chunk_start)} --> {_format_sub_timestamp(chunk_end)}]"
+            chunks.append(
+                _make_chunk(
+                    "\n".join(buf),
+                    path,
+                    "subtitle",
+                    "subtitle_text",
+                    breadcrumb,
+                    idx,
+                )
             )
-            chunks.append(_make_chunk(
-                "\n".join(buf), path, "subtitle", "subtitle_text",
-                breadcrumb, idx,
-            ))
             idx += 1
             buf = []
             buf_len = 0
@@ -998,14 +1037,17 @@ def _chunk_subtitle_cues(
         buf_len += len(line) + 1
         chunk_end = end
     if buf:
-        breadcrumb = (
-            f"{base} [{_format_sub_timestamp(chunk_start)} --> "
-            f"{_format_sub_timestamp(chunk_end)}]"
+        breadcrumb = f"{base} [{_format_sub_timestamp(chunk_start)} --> {_format_sub_timestamp(chunk_end)}]"
+        chunks.append(
+            _make_chunk(
+                "\n".join(buf),
+                path,
+                "subtitle",
+                "subtitle_text",
+                breadcrumb,
+                idx,
+            )
         )
-        chunks.append(_make_chunk(
-            "\n".join(buf), path, "subtitle", "subtitle_text",
-            breadcrumb, idx,
-        ))
     return chunks
 
 

@@ -4,6 +4,7 @@ Verifier tasks qualify candidates; only canonical randomized evidence can issue
 promotion certificates. A lexical screen is a heuristic, and the conformal harm
 bound requires exchangeability with its frozen, matched calibration traffic.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,17 +48,29 @@ def _sources(root: str, ids: Sequence[str], context: Sequence[str], *, succeeded
     for identity in ids:
         trace = traces.get(identity)
         receipt = (trace or {}).get("extensions", {}).get("profile", {}).get("origin", {})
-        if (trace is None or identity not in admitted or not receipt
-                or not memory_authority.verify(root, receipt, memory_authority.trace_record(trace))
-                or receipt.get("authority") not in ("user", "operator")
-                or not ttl.trace_is_live(trace) or trace.get("outcome", {}).get("resolved") is not succeeded):
+        if (
+            trace is None
+            or identity not in admitted
+            or not receipt
+            or not memory_authority.verify(root, receipt, memory_authority.trace_record(trace))
+            or receipt.get("authority") not in ("user", "operator")
+            or not ttl.trace_is_live(trace)
+            or trace.get("outcome", {}).get("resolved") is not succeeded
+        ):
             raise PermissionError("UniMem induction requires live, authenticated, scoped measured trajectories")
         result.append(trace)
     return result
 
 
-def induce(root: str, name: str, description: str, trace_ids: Sequence[str], *, context: Sequence[str] = (),
-           inducer: foundry.Inducer | None = None) -> dict[str, Any]:
+def induce(
+    root: str,
+    name: str,
+    description: str,
+    trace_ids: Sequence[str],
+    *,
+    context: Sequence[str] = (),
+    inducer: foundry.Inducer | None = None,
+) -> dict[str, Any]:
     store.operator()
     fp.count(len(trace_ids), 1, 32)
     safety.assert_mutable(root, trace_ids)
@@ -88,8 +101,14 @@ def _load(root: str, identity: str, context: Sequence[str]) -> dict[str, Any]:
     return value
 
 
-def screen(root: str, identity: str, tasks: Sequence[dict[str, Any]], *, context: Sequence[str] = (),
-           sandbox: foundry.Sandbox | None = None) -> dict[str, Any]:
+def screen(
+    root: str,
+    identity: str,
+    tasks: Sequence[dict[str, Any]],
+    *,
+    context: Sequence[str] = (),
+    sandbox: foundry.Sandbox | None = None,
+) -> dict[str, Any]:
     store.operator()
     fp.count(len(tasks), 1, 64)
     value = _load(root, identity, context)
@@ -101,17 +120,35 @@ def screen(root: str, identity: str, tasks: Sequence[dict[str, Any]], *, context
     _sources(root, sorted({t["trace_id"] for t in tasks}), context, succeeded=False)
     result = foundry.prescreen(value, tasks, sandbox=sandbox)
     report = {"id": identity, "screen": result, "tasks_digest": fp.digest(list(tasks))}
-    store.put(root, "skill-screens", identity, report,
-              scopes=value["scopes"], sources=sorted(set(value["source_digests"]) | {t["trace_id"] for t in tasks}),
-              immutable=True)
-    store.event(root, "skill-state", identity, {"state": "screened" if result["passed"] else "rejected",
-                                               "artifact_hash": value["content_hash"]})
+    store.put(
+        root,
+        "skill-screens",
+        identity,
+        report,
+        scopes=value["scopes"],
+        sources=sorted(set(value["source_digests"]) | {t["trace_id"] for t in tasks}),
+        immutable=True,
+    )
+    store.event(
+        root,
+        "skill-state",
+        identity,
+        {"state": "screened" if result["passed"] else "rejected", "artifact_hash": value["content_hash"]},
+    )
     return result
 
 
-def trial(root: str, identity: str, *, context: Sequence[str] = (), alpha: float = .05,
-          rate: float = .5, training_size: int = 100, minimum_support: int = 10,
-          bundle_ids: Sequence[str] = ()) -> dict[str, Any]:
+def trial(
+    root: str,
+    identity: str,
+    *,
+    context: Sequence[str] = (),
+    alpha: float = 0.05,
+    rate: float = 0.5,
+    training_size: int = 100,
+    minimum_support: int = 10,
+    bundle_ids: Sequence[str] = (),
+) -> dict[str, Any]:
     store.operator()
     fp.count(len(bundle_ids), 0, 64)
     value = _load(root, identity, context)
@@ -134,18 +171,45 @@ def trial(root: str, identity: str, *, context: Sequence[str] = (), alpha: float
     bundle_hash = fp.digest(members) if bundle_ids else ""
     bundle_unit = "bundle:" + bundle_hash if bundle_ids else ""
     if bundle_unit:
-        trials.register(root, bundle_unit, bundle_hash, alpha=alpha, rate=.5,
-                        training_size=training_size, minimum_support=minimum_support)
+        trials.register(
+            root,
+            bundle_unit,
+            bundle_hash,
+            alpha=alpha,
+            rate=0.5,
+            training_size=training_size,
+            minimum_support=minimum_support,
+        )
     result: dict[str, Any] = {}
     for member in values:
         identity = member["id"]
-        result = trials.register(root, identity, member["content_hash"], alpha=alpha, rate=rate,
-                                 training_size=training_size, minimum_support=minimum_support)
-        settings = {"id": identity, "gate_hash": fp.digest(gate), "bundle_unit": bundle_unit,
-                    "members": members, "design": "bundle size then nested skill" if bundle_unit else "single factor",
-                    "harm_scorer": "unimem-skill", "harm_score": 1.0}
-        store.put(root, "skill-settings", identity, settings, scopes=member["scopes"],
-                  sources=list(member["source_digests"]), immutable=True)
+        result = trials.register(
+            root,
+            identity,
+            member["content_hash"],
+            alpha=alpha,
+            rate=rate,
+            training_size=training_size,
+            minimum_support=minimum_support,
+        )
+        settings = {
+            "id": identity,
+            "gate_hash": fp.digest(gate),
+            "bundle_unit": bundle_unit,
+            "members": members,
+            "design": "bundle size then nested skill" if bundle_unit else "single factor",
+            "harm_scorer": "unimem-skill",
+            "harm_score": 1.0,
+        }
+        store.put(
+            root,
+            "skill-settings",
+            identity,
+            settings,
+            scopes=member["scopes"],
+            sources=list(member["source_digests"]),
+            immutable=True,
+        )
         store.event(root, "skill-state", identity, {"state": "trial", "artifact_hash": member["content_hash"]})
     return {**result, "bundle_unit": bundle_unit, "members": members}
 
@@ -154,8 +218,9 @@ def _settings(root: str, value: dict[str, Any], context: Sequence[str]) -> dict[
     return store.get(root, "skill-settings", value["id"], context=context)
 
 
-def catalog(root: str, occasion: str, *, context: Sequence[str] = (), segment: str = "default",
-            identities: Sequence[str] = ()) -> dict[str, Any]:
+def catalog(
+    root: str, occasion: str, *, context: Sequence[str] = (), segment: str = "default", identities: Sequence[str] = ()
+) -> dict[str, Any]:
     """Return only actual eligible arms; no hidden skill text enters the response."""
     fp.text(occasion)
     segment = holdout_io.context_label(segment) or "default"
@@ -171,7 +236,9 @@ def catalog(root: str, occasion: str, *, context: Sequence[str] = (), segment: s
         if requested and identity not in requested:
             continue
         if not store.visible(row.get("scopes", []), context) or states.get(identity, {}).get("state") not in (
-                "trial", "promoted"):
+            "trial",
+            "promoted",
+        ):
             continue
         considered += 1
         fp.count(considered, 1, 64, "UniMem eligible catalog candidates; specify identities to narrow the catalog")
@@ -193,7 +260,8 @@ def catalog(root: str, occasion: str, *, context: Sequence[str] = (), segment: s
                 raise ValueError("UniMem bundle trials require the full preregistered candidate catalog")
             if settings["bundle_unit"] not in bundles:
                 bundles[settings["bundle_unit"]] = trials.assign(
-                    root, settings["bundle_unit"], occasion, context=segment)
+                    root, settings["bundle_unit"], occasion, context=segment
+                )
             bundle_arm = bundles[settings["bundle_unit"]]
             # Size is chosen before the skill arm; masked skills have no memory-level assignment.
             size_limit = 64 if bundle_arm["injected"] else 3
@@ -203,18 +271,31 @@ def catalog(root: str, occasion: str, *, context: Sequence[str] = (), segment: s
         if not conformal_gate.admit(gate, settings["harm_score"], context=segment, scorer=settings["harm_scorer"]):
             trials.excluded(root, identity, occasion, "conformal harm gate", parent="harm-gate")
             continue
-        trial_context = (segment + ("|bundle:large" if bundle_arm["injected"] else "|bundle:small")
-                         if bundle_arm else segment)
+        trial_context = (
+            segment + ("|bundle:large" if bundle_arm["injected"] else "|bundle:small") if bundle_arm else segment
+        )
         arm = trials.assign(root, identity, occasion, context=trial_context)
-        design = {"unit": identity, "occasion": occasion, "skill_injected": arm["injected"],
-                  "bundle_injected": bundle_arm["injected"] if bundle_arm else None,
-                  "nesting": settings["design"], "context": trial_context, "gate_hash": settings["gate_hash"]}
+        design = {
+            "unit": identity,
+            "occasion": occasion,
+            "skill_injected": arm["injected"],
+            "bundle_injected": bundle_arm["injected"] if bundle_arm else None,
+            "nesting": settings["design"],
+            "context": trial_context,
+            "gate_hash": settings["gate_hash"],
+        }
         store.event(root, "skill-exposures", fp.digest([identity, occasion]), design)
         design_log.append(design)
         result.extend(foundry.exposed({**value, "presentation": "quoted-data", "trial": True}, arm["injected"]))
-    return {"skills": result, "design": design_log, "classification": "estimate",
-            "assumptions": ["catalog is the delivered treatment; caller must honor it",
-                            "harm calibration and future catalog traffic are exchangeable"]}
+    return {
+        "skills": result,
+        "design": design_log,
+        "classification": "estimate",
+        "assumptions": [
+            "catalog is the delivered treatment; caller must honor it",
+            "harm calibration and future catalog traffic are exchangeable",
+        ],
+    }
 
 
 def status(root: str, identity: str, *, context: Sequence[str] = (), pooled: bool = False) -> dict[str, Any]:
@@ -230,6 +311,7 @@ def status(root: str, identity: str, *, context: Sequence[str] = (), pooled: boo
             result["bundle_size_effect"] = trials.report(root, settings["bundle_unit"])
         if pooled:
             from unimem import pooled_io
+
             result["pooled"] = pooled_io.report(root, value["content_hash"])
     return result
 
@@ -256,21 +338,39 @@ def publish(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[st
     certificate = trials.certify(root, identity)
     report = trials.report(root, identity)
     rows = trials.rows(root, identity)
-    failures = sum(bool(r["injected"] and not r["outcome"]) / (1-r["rate"]) for r in rows)
+    failures = sum(bool(r["injected"] and not r["outcome"]) / (1 - r["rate"]) for r in rows)
     expiry = (datetime.fromisoformat(fp.now()) + timedelta(days=30)).isoformat()
-    signed = fp.sign(root, {"type": "unimem.skill-evidence", "version": 1, "id": identity,
-        "artifact_hash": value["content_hash"], "effect": report["estimate"],
-        "skill": {**foundry.metadata(value["name"], value["description"]), "format": value["format"]},
-        "artifact_encoding": "SHA256 of the canonical JSON candidate-body string",
-        "published_body_digest": fp.digest(foundry.document(value)),
-        "signature_scope": ("public verifier with pinned Ed25519 key"
-                            if memory_authority.signing_config(root)["algorithm"] == "ed25519"
-                            else "shared-secret verifier; not public verification"),
-        "interval": report["confidence_sequence"], "segments": sorted({r["context"] for r in rows}),
-        "harm_budget": {"alpha": gate["alpha"], "observed_ipw_failure": failures / max(1, len(rows)),
-                        "classification": "estimate", "calibration_hash": settings["gate_hash"]},
-        "certificate_id": fp.digest(certificate["certificate"]), "certificate": certificate,
-        "issued_at": fp.now(), "expires_at": expiry, "classification": "guarantee under trial assumptions"})
+    signed = fp.sign(
+        root,
+        {
+            "type": "unimem.skill-evidence",
+            "version": 1,
+            "id": identity,
+            "artifact_hash": value["content_hash"],
+            "effect": report["estimate"],
+            "skill": {**foundry.metadata(value["name"], value["description"]), "format": value["format"]},
+            "artifact_encoding": "SHA256 of the canonical JSON candidate-body string",
+            "published_body_digest": fp.digest(foundry.document(value)),
+            "signature_scope": (
+                "public verifier with pinned Ed25519 key"
+                if memory_authority.signing_config(root)["algorithm"] == "ed25519"
+                else "shared-secret verifier; not public verification"
+            ),
+            "interval": report["confidence_sequence"],
+            "segments": sorted({r["context"] for r in rows}),
+            "harm_budget": {
+                "alpha": gate["alpha"],
+                "observed_ipw_failure": failures / max(1, len(rows)),
+                "classification": "estimate",
+                "calibration_hash": settings["gate_hash"],
+            },
+            "certificate_id": fp.digest(certificate["certificate"]),
+            "certificate": certificate,
+            "issued_at": fp.now(),
+            "expires_at": expiry,
+            "classification": "guarantee under trial assumptions",
+        },
+    )
     anchor = log.append(root, "unimem-skill-evidence-v1", {"digest": fp.digest(signed)})
     bundle = {"signed": signed, "anchor": anchor}
     store.put(root, "skill-evidence", identity, bundle, scopes=value["scopes"], sources=list(value["source_digests"]))
@@ -278,8 +378,9 @@ def publish(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[st
     paths.enforce_boundary(root, directory)
     skill_path = os.path.join(directory, "SKILL.md")
     evidence_path = os.path.join(directory, "EVIDENCE.json")
-    store.event(root, "skill-exports", value["name"], {"skill_id": identity,
-                "sources": [identity], "scopes": value["scopes"]})
+    store.event(
+        root, "skill-exports", value["name"], {"skill_id": identity, "sources": [identity], "scopes": value["scopes"]}
+    )
     # One lock covers the two-file export. Readers verify the evidence commitment.
     with _jsonl.locked(directory):
         if os.path.isfile(evidence_path):
@@ -290,13 +391,20 @@ def publish(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[st
             prior = json.loads(raw)
             if prior.get("signed", {}).get("record", {}).get("id") != identity:
                 raise ValueError("UniMem skill folder already belongs to different content")
-        frontmatter.write(skill_path, foundry.metadata(value["name"], value["description"]),
-                          foundry.document(value))
+        frontmatter.write(skill_path, foundry.metadata(value["name"], value["description"]), foundry.document(value))
         _jsonl.write_json(evidence_path, bundle)
     old_state = store.latest(root, "skill-state").get(identity, {})
-    store.event(root, "skill-state", identity, {"state": "promoted", "artifact_hash": value["content_hash"],
-                "monitor_start": old_state.get("monitor_start", len(rows)),
-                "baseline_lower": old_state.get("baseline_lower", max(0, report["confidence_sequence"][0]))})
+    store.event(
+        root,
+        "skill-state",
+        identity,
+        {
+            "state": "promoted",
+            "artifact_hash": value["content_hash"],
+            "monitor_start": old_state.get("monitor_start", len(rows)),
+            "baseline_lower": old_state.get("baseline_lower", max(0, report["confidence_sequence"][0])),
+        },
+    )
     return {"folder": directory, **bundle}
 
 
@@ -309,10 +417,15 @@ def evidence(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[s
         raise PermissionError("UniMem skill harm calibration changed after publication")
     signed, anchor = result["signed"], result["anchor"]
     body = signed["record"]
-    if (not fp.verify(root, signed) or body["type"] != "unimem.skill-evidence" or body["version"] != 1
-            or fp.moment(body["expires_at"]) <= fp.now()
-            or not log.verify(root, anchor) or anchor["statement"]["record"]["statement"]["digest"] != fp.digest(signed)
-            or not promotion.verify(root, body["certificate"], artifact_hash=value["content_hash"])):
+    if (
+        not fp.verify(root, signed)
+        or body["type"] != "unimem.skill-evidence"
+        or body["version"] != 1
+        or fp.moment(body["expires_at"]) <= fp.now()
+        or not log.verify(root, anchor)
+        or anchor["statement"]["record"]["statement"]["digest"] != fp.digest(signed)
+        or not promotion.verify(root, body["certificate"], artifact_hash=value["content_hash"])
+    ):
         raise PermissionError("UniMem skill evidence is expired, revoked or invalid")
     return result
 
@@ -323,15 +436,22 @@ def retirement_signal(root: str, identity: str, *, context: Sequence[str] = ()) 
     state = store.latest(root, "skill-state").get(identity, {})
     decay = 1.0
     if state.get("state") == "promoted":
-        future = trials.rows(root, identity)[state["monitor_start"]:]
+        future = trials.rows(root, identity)[state["monitor_start"] :]
         observations = [aipw.Observation(r["injected"], bool(r["outcome"]), r["rate"]) for r in future]
         decay = eprocess.process(observations, direction="hurts", delta=-state["baseline_lower"]).maximum
-    return {"retire": max(decay, result["harm_e_value"]) >= 2/result["alpha"],
-            "harm_e_value": result["harm_e_value"], "decay_e_value": decay,
-            "alpha": result["alpha"], "alarm_threshold": 2/result["alpha"],
-            "classification": "guarantee under conditional directional null and exact propensities",
-            "assumptions": ["post-promotion monitoring split fixed at publication", "complete canonical outcomes",
-                            "Bonferroni allocation over harm and decay alarms"]}
+    return {
+        "retire": max(decay, result["harm_e_value"]) >= 2 / result["alpha"],
+        "harm_e_value": result["harm_e_value"],
+        "decay_e_value": decay,
+        "alpha": result["alpha"],
+        "alarm_threshold": 2 / result["alpha"],
+        "classification": "guarantee under conditional directional null and exact propensities",
+        "assumptions": [
+            "post-promotion monitoring split fixed at publication",
+            "complete canonical outcomes",
+            "Bonferroni allocation over harm and decay alarms",
+        ],
+    }
 
 
 def retire(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[str, Any]:
@@ -349,8 +469,12 @@ def retire(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[str
         target = Path(root) / "skills" / value["name"] / name
         paths.enforce_boundary(root, str(target))
         target.unlink(missing_ok=True)
-    return {"id": identity, "state": "retired", "e_value": max(result["harm_e_value"], result["decay_e_value"]),
-            "classification": "estimate"}
+    return {
+        "id": identity,
+        "state": "retired",
+        "e_value": max(result["harm_e_value"], result["decay_e_value"]),
+        "classification": "estimate",
+    }
 
 
 def visible_published(root: str, filename: str, *, context: Sequence[str] = ()) -> bool:
@@ -378,8 +502,10 @@ def visible_published(root: str, filename: str, *, context: Sequence[str] = ()) 
         if len(raw) > store.MAX_BLOB or fp.digest(json.loads(raw)) != fp.digest(certificate):
             return False
         fm, body = frontmatter.read(filename)
-        return (fm == foundry.metadata(value["name"], value["description"])
-                and fp.digest(body) == certificate["signed"]["record"]["published_body_digest"]
-                and body.strip() == foundry.document(value).strip())
+        return (
+            fm == foundry.metadata(value["name"], value["description"])
+            and fp.digest(body) == certificate["signed"]["record"]["published_body_digest"]
+            and body.strip() == foundry.document(value).strip()
+        )
     except (ValueError, PermissionError, OSError, KeyError, TypeError):
         return False

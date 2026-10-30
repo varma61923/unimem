@@ -1,4 +1,5 @@
 """Provenance lineage: derivation graph across provenance, facts, observations, proposals and lessons."""
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,13 @@ def _chain(root):
     provenance.append_provenance(root, "chunk", "chunk-1", source_path="docs/guide.md", run_id="r1")
     fact, _ = hierarchical.add_fact(root, "The guide says retries use backoff", source_trace_id="chunk-1")
     other, _ = hierarchical.add_fact(root, "Retries use exponential backoff", source_trace_id="chunk-1")
-    proposal = memory_control.put(root, "proposal", "Retries back off exponentially",
-                                  data={"status": "review", "sources": [fact.id, other.id]})
-    _jsonl.append_row(os.path.join(root, "memory", "observations", "observations.jsonl"),
-                      {"id": "obs-1", "statement": fact.statement, "source_fact_ids": [fact.id]})
+    proposal = memory_control.put(
+        root, "proposal", "Retries back off exponentially", data={"status": "review", "sources": [fact.id, other.id]}
+    )
+    _jsonl.append_row(
+        os.path.join(root, "memory", "observations", "observations.jsonl"),
+        {"id": "obs-1", "statement": fact.statement, "source_fact_ids": [fact.id]},
+    )
     return fact, other, proposal
 
 
@@ -90,8 +94,13 @@ def test_cli_lineage(root):
     fact, _other, proposal = _chain(root)
 
     def cli(*argv):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "graph", "provenance", *argv,
-                               "--dest", root], capture_output=True, text=True, cwd=REPO, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "graph", "provenance", *argv, "--dest", root],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            check=False,
+        )
 
     res = cli("--lineage", proposal["id"], "--up", "--json")
     assert res.returncode == 0, res.stderr

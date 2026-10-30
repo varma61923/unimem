@@ -1,4 +1,5 @@
 """Background ingestion: queue now, process durably, and drain cleanly on shutdown."""
+
 import json
 import os
 import signal
@@ -30,16 +31,19 @@ def test_background_ingest_queues_a_job_that_the_worker_completes(tmp_path, caps
 def test_background_refuses_preview_and_non_document_types(tmp_path, capsys):
     root = str(tmp_path)
     (tmp_path / "a.md").write_text("x")
-    assert main(["ingest", str(tmp_path / "a.md"), "--type", "docs", "--background", "--preview",
-                 "--dest", root]) == 2
+    assert main(["ingest", str(tmp_path / "a.md"), "--type", "docs", "--background", "--preview", "--dest", root]) == 2
     assert main(["ingest", str(tmp_path / "a.md"), "--type", "markdown", "--background", "--dest", root]) == 2
     assert main(["ingest", str(tmp_path / "missing"), "--type", "docs", "--background", "--dest", root]) == 2
 
 
 def test_watching_worker_drains_on_sigterm(tmp_path):
     env = {**os.environ, "PYTHONPATH": os.getcwd()}
-    proc = subprocess.Popen([sys.executable, "-m", "unimem.cli", "jobs", "run", "--watch", "--interval", "0.5",
-                             "--dest", str(tmp_path)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "unimem.cli", "jobs", "run", "--watch", "--interval", "0.5", "--dest", str(tmp_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
     time.sleep(3)
     proc.send_signal(signal.SIGTERM)
     out, err = proc.communicate(timeout=30)

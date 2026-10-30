@@ -1,4 +1,5 @@
 """Clear every replica's verified-key cache the moment a key stops being valid anywhere."""
+
 from __future__ import annotations
 
 import asyncio

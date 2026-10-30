@@ -3,6 +3,7 @@
 Quiesce callers before replacing files or forking. Idle handles are drained in
 the parent before fork, so children never use or close inherited SQLite handles.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -74,8 +75,9 @@ class ConnectionPool:
         self.generation = 0
         atexit.register(self.close)
         if hasattr(os, "register_at_fork"):
-            os.register_at_fork(before=self._before_fork, after_in_parent=self._after_fork_parent,
-                                after_in_child=self._after_fork_child)
+            os.register_at_fork(
+                before=self._before_fork, after_in_parent=self._after_fork_parent, after_in_child=self._after_fork_child
+            )
 
     def close(self, path: str | None = None) -> None:
         """Drain idle handles; checked-out handles close when their owner returns."""

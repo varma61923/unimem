@@ -150,6 +150,8 @@ def _follow_up(
         if reported and row.resolved_at is None:
             return None
         end = row.resolved_at if reported else now
+        if end is None:
+            return None
         duration = max(0.0, (end - row.at).total_seconds())
         paired.append((row, survival.Observation(duration=duration, event=reported)))
     return paired
@@ -161,22 +163,19 @@ def _mature_horizon(paired: list[tuple[Assignment, survival.Observation]]) -> fl
         arm = [obs for row, obs in paired if row.injected is injected]
         if not arm:
             continue
-        reached = survival.time_to_reported_fraction(
-            survival.kaplan_meier(arm), MATURITY_QUANTILE
-        )
+        reached = survival.time_to_reported_fraction(survival.kaplan_meier(arm), MATURITY_QUANTILE)
         if reached is not None:
             horizons.append(reached)
     return max(horizons) if horizons else None
 
 
-def check_censoring_hazard(
-    rows: list[Assignment], now: datetime.datetime | None = None
-) -> Finding:
+def check_censoring_hazard(rows: list[Assignment], now: datetime.datetime | None = None) -> Finding:
     """Are the two arms reporting on the same schedule -- and is it too early?"""
     paired = _follow_up(rows, now)
     if paired is None:
         return Finding(
-            "censoring_hazard", SEVERITY_OK,
+            "censoring_hazard",
+            SEVERITY_OK,
             "Reporting schedule not checkable.",
             "This log does not carry an assignment time and a resolution time for "
             "every row, so how long each occasion was watched is unknown. The "
@@ -187,13 +186,17 @@ def check_censoring_hazard(
     wit = [obs for row, obs in paired if not row.injected]
     pending = sum(1 for _, obs in paired if not obs.event)
     z, p = survival.log_rank_test(inj, wit)
-    numbers = {
-        "injected": len(inj), "withheld": len(wit),
-        "pending": pending, "z": z, "p": p,
+    numbers: dict[str, float | None] = {
+        "injected": len(inj),
+        "withheld": len(wit),
+        "pending": pending,
+        "z": z,
+        "p": p,
     }
     if not inj or not wit:
         return Finding(
-            "censoring_hazard", SEVERITY_OK,
+            "censoring_hazard",
+            SEVERITY_OK,
             "Reporting schedule not comparable yet.",
             "One arm has no assignments, so there are no two schedules to compare.",
             numbers,
@@ -207,10 +210,10 @@ def check_censoring_hazard(
 
     if p >= CENSORING_ALPHA:
         return Finding(
-            "censoring_hazard", SEVERITY_OK,
+            "censoring_hazard",
+            SEVERITY_OK,
             f"Both arms report on the same schedule (log-rank p={p:.3g}).",
-            "Outcomes arrive at the same rate in each arm, so reading the effect "
-            "now is not reading it mid-drain.",
+            "Outcomes arrive at the same rate in each arm, so reading the effect now is not reading it mid-drain.",
             numbers,
         )
 
@@ -218,7 +221,8 @@ def check_censoring_hazard(
     pending_share = pending / len(paired) if paired else 0.0
     if pending_share < 1.0 - MATURITY_QUANTILE:
         return Finding(
-            "censoring_hazard", SEVERITY_OK,
+            "censoring_hazard",
+            SEVERITY_OK,
             f"The {faster} arm reported faster than the {slower} arm "
             f"(log-rank p={p:.3g}), but the run has since caught up.",
             f"{_pct(pending_share)} of occasions are still waiting, so the speed "
@@ -228,7 +232,8 @@ def check_censoring_hazard(
             numbers,
         )
     return Finding(
-        "censoring_hazard", SEVERITY_WEAKENS,
+        "censoring_hazard",
+        SEVERITY_WEAKENS,
         f"The {faster} arm is reporting faster than the {slower} arm "
         f"(log-rank p={p:.3g}) and {_pct(pending_share)} of occasions are still "
         "waiting.",
@@ -243,9 +248,7 @@ def check_censoring_hazard(
     )
 
 
-def check_differential_attrition(
-    rows: list[Assignment], now: datetime.datetime | None = None
-) -> Finding:
+def check_differential_attrition(rows: list[Assignment], now: datetime.datetime | None = None) -> Finding:
     """Are the two arms equally likely to have an outcome recorded?"""
     judged = rows
     immature = 0
@@ -263,24 +266,25 @@ def check_differential_attrition(
     s_inj, n_inj = sum(r.succeeded is not None for r in inj), len(inj)
     s_wit, n_wit = sum(r.succeeded is not None for r in wit), len(wit)
     numbers = {
-        "injected_resolved": s_inj, "injected_total": n_inj,
-        "withheld_resolved": s_wit, "withheld_total": n_wit,
+        "injected_resolved": s_inj,
+        "injected_total": n_inj,
+        "withheld_resolved": s_wit,
+        "withheld_total": n_wit,
         "pending_too_young": immature,
         "maturity_horizon_seconds": horizon,
     }
     if not n_inj or not n_wit:
         return Finding(
-            "differential_attrition", SEVERITY_OK,
+            "differential_attrition",
+            SEVERITY_OK,
             "Attrition not checkable yet.",
-            "One arm has no assignments, so there is nothing to compare "
-            "outcome-recording rates between.",
+            "One arm has no assignments, so there is nothing to compare outcome-recording rates between.",
             numbers,
         )
 
     r_inj, r_wit = s_inj / n_inj, s_wit / n_wit
     _, p = experiment.two_proportion_test(s_inj, n_inj, s_wit, n_wit)
-    numbers |= {"injected_rate": r_inj, "withheld_rate": r_wit, "p": p,
-                "gap": r_inj - r_wit}
+    numbers |= {"injected_rate": r_inj, "withheld_rate": r_wit, "p": p, "gap": r_inj - r_wit}
 
     if p < VALIDITY_ALPHA:
         worse, better = ("withheld", "injected") if r_wit < r_inj else ("injected", "withheld")
@@ -288,13 +292,14 @@ def check_differential_attrition(
             "The surviving withheld occasions are therefore the ones that "
             "concluded cleanly enough to be recorded, which flatters the control "
             "arm and UNDERSTATES the lesson's effect."
-            if worse == "withheld" else
-            "The surviving injected occasions are the ones that concluded cleanly "
+            if worse == "withheld"
+            else "The surviving injected occasions are the ones that concluded cleanly "
             "enough to be recorded, which flatters the treated arm and OVERSTATES "
             "the lesson's effect."
         )
         return Finding(
-            "differential_attrition", SEVERITY_INVALIDATES,
+            "differential_attrition",
+            SEVERITY_INVALIDATES,
             f"The arms are not equally observed: {_pct(r_inj)} of injected occasions "
             f"have an outcome against {_pct(r_wit)} of withheld ones (p={p:.3g}).",
             f"Occasions are dropped when nothing reported how they went, and the "
@@ -308,7 +313,8 @@ def check_differential_attrition(
     missing = 1.0 - ((s_inj + s_wit) / (n_inj + n_wit))
     if missing >= ATTRITION_WEAKENS_AT:
         return Finding(
-            "differential_attrition", SEVERITY_WEAKENS,
+            "differential_attrition",
+            SEVERITY_WEAKENS,
             f"{_pct(missing)} of assignments never got an outcome, though both arms "
             f"lose them at a similar rate (p={p:.3g}).",
             "Losing them evenly does not bias the estimate, it shrinks it: the "
@@ -318,11 +324,10 @@ def check_differential_attrition(
             numbers,
         )
     return Finding(
-        "differential_attrition", SEVERITY_OK,
-        f"Both arms are observed at a similar rate ({_pct(r_inj)} injected, "
-        f"{_pct(r_wit)} withheld; p={p:.3g}).",
-        "Dropping unresolved occasions is unbiased when the two arms lose them "
-        "equally, which is what this measures.",
+        "differential_attrition",
+        SEVERITY_OK,
+        f"Both arms are observed at a similar rate ({_pct(r_inj)} injected, {_pct(r_wit)} withheld; p={p:.3g}).",
+        "Dropping unresolved occasions is unbiased when the two arms lose them equally, which is what this measures.",
         numbers,
     )
 
@@ -335,24 +340,25 @@ def check_arm_balance(rows: list[Assignment]) -> Finding:
     n = len(rows)
     k = sum(1 for r in rows if not r.injected)
     observed = k / n
-    numbers = {"withheld": k, "total": n, "observed_rate": observed,
-               "configured_rate": configured}
+    numbers = {"withheld": k, "total": n, "observed_rate": observed, "configured_rate": configured}
 
     if n < 30:
         return Finding(
-            "arm_balance", SEVERITY_OK,
+            "arm_balance",
+            SEVERITY_OK,
             f"{k} of {n} assignments withheld ({_pct(observed)} against a configured "
             f"{_pct(configured)}); too few to test yet.",
-            "Checked once there are 30 assignments.", numbers,
+            "Checked once there are 30 assignments.",
+            numbers,
         )
 
     p = _binomial_tail_p(k, n, configured)
     numbers["p"] = p
     if p < ARM_BALANCE_ALPHA:
         return Finding(
-            "arm_balance", SEVERITY_INVALIDATES,
-            f"Withheld share is {_pct(observed)} where {_pct(configured)} was configured "
-            f"(p={p:.3g}).",
+            "arm_balance",
+            SEVERITY_INVALIDATES,
+            f"Withheld share is {_pct(observed)} where {_pct(configured)} was configured (p={p:.3g}).",
             "Assignment is a deterministic hash of (lesson, occasion, salt), so this "
             "is not sampling noise -- something other than that hash decided these "
             "arms. Check that every retriever is using the same holdout rate and "
@@ -360,10 +366,11 @@ def check_arm_balance(rows: list[Assignment]) -> Finding:
             numbers,
         )
     return Finding(
-        "arm_balance", SEVERITY_OK,
-        f"Withheld share is {_pct(observed)}, consistent with the configured "
-        f"{_pct(configured)} (p={p:.3g}).",
-        "", numbers,
+        "arm_balance",
+        SEVERITY_OK,
+        f"Withheld share is {_pct(observed)}, consistent with the configured {_pct(configured)} (p={p:.3g}).",
+        "",
+        numbers,
     )
 
 
@@ -381,25 +388,30 @@ def check_assignment_drift(rows: list[Assignment], schedules: list | None = None
     numbers = {"salts": salts, "rates": rates}
     if len(salts) <= 1 and len(rates) <= 1:
         return Finding(
-            "assignment_drift", SEVERITY_OK,
+            "assignment_drift",
+            SEVERITY_OK,
             "One randomization throughout.",
-            "", numbers,
+            "",
+            numbers,
         )
     if len(salts) <= 1:
         from unimem import allocation_schedule as allocation
 
         if schedules:
-            free = [r for r in rows if r.at is None
-                    or allocation.in_force(schedules, r.salt, r.at) is None]
+            free = [r for r in rows if r.at is None or allocation.in_force(schedules, r.salt, r.at) is None]
             wrong = allocation.unscheduled([r for r in rows if r not in free], schedules)
         else:
             free = [r for r in rows if not r.schedule]
             wrong = []
         if not wrong and len({round(r.rate, 6) for r in free}) <= 1:
-            numbers["schedules"] = len({r.schedule for r in rows if r.schedule}) if not schedules else len(
-                [s for s in schedules if s.salt == salts[0]])
+            numbers["schedules"] = (
+                len({r.schedule for r in rows if r.schedule})
+                if not schedules
+                else len([s for s in schedules if s.salt == salts[0]])
+            )
             return Finding(
-                "assignment_drift", SEVERITY_OK,
+                "assignment_drift",
+                SEVERITY_OK,
                 "One randomization; rates set by published adaptive-allocation schedules.",
                 "Every rate change comes from a schedule fixed before the occasions it governs, and "
                 "lessons whose rate changed are estimated by inverse-propensity weighting.",
@@ -413,7 +425,8 @@ def check_assignment_drift(rows: list[Assignment], schedules: list | None = None
     if len(rates) > 1:
         changed.append(f"rate ({', '.join(_pct(r) for r in rates)})")
     return Finding(
-        "assignment_drift", SEVERITY_INVALIDATES,
+        "assignment_drift",
+        SEVERITY_INVALIDATES,
         f"The randomization changed mid-run: {' and '.join(changed)}.",
         "Every occasion is re-randomized when the salt or rate changes, so these "
         "assignments are two different experiments pooled into one comparison -- "
@@ -433,6 +446,7 @@ _FLOOR_GATED_SCORERS = frozenset(retrieval.LEXICAL_SCORERS)
 def _floor_decided(row: Assignment) -> bool:
     return row.scorer is None or row.scorer in _FLOOR_GATED_SCORERS
 
+
 _CONCENTRATION_MULTIPLE = 3.0
 
 
@@ -447,9 +461,9 @@ def check_marginal_eligibility(rows: list[Assignment]) -> Finding:
     }
     if not scored and recorded:
         return Finding(
-            "marginal_eligibility", SEVERITY_OK,
-            "Eligibility was decided by rank, not a relevance floor, so there is "
-            "no floor to have barely cleared.",
+            "marginal_eligibility",
+            SEVERITY_OK,
+            "Eligibility was decided by rank, not a relevance floor, so there is no floor to have barely cleared.",
             "These assignments come from fused or semantic retrieval, which admits "
             "the top-ranked lessons; the recorded floor gates only the lexical "
             "arm. Concentration and drift are still checked.",
@@ -457,7 +471,8 @@ def check_marginal_eligibility(rows: list[Assignment]) -> Finding:
         )
     if not scored:
         return Finding(
-            "marginal_eligibility", SEVERITY_OK,
+            "marginal_eligibility",
+            SEVERITY_OK,
             "No retrieval scores recorded, so eligibility strength cannot be assessed.",
             "Assignments logged before retrieval evidence was recorded carry no "
             "relevance score. Newer assignments will carry one; this check reports "
@@ -474,9 +489,9 @@ def check_marginal_eligibility(rows: list[Assignment]) -> Finding:
     shares: dict[str, float] = {}
     for slug, group in sorted(by_lesson.items()):
         marginal = sum(
-            1 for r in group
-            if r.relevance is not None and r.floor is not None
-            and r.relevance < r.floor + MARGINAL_BAND
+            1
+            for r in group
+            if r.relevance is not None and r.floor is not None and r.relevance < r.floor + MARGINAL_BAND
         )
         share = marginal / len(group)
         shares[slug] = round(share, 4)
@@ -505,16 +520,19 @@ def check_marginal_eligibility(rows: list[Assignment]) -> Finding:
         )
     else:
         return Finding(
-            "marginal_eligibility", SEVERITY_OK,
+            "marginal_eligibility",
+            SEVERITY_OK,
             "Assignments come from lessons that matched their occasions solidly.",
-            "", numbers,
+            "",
+            numbers,
         )
 
     return Finding(
-        "marginal_eligibility", severity,
-        f"{worst_share:.0%} of {worst_slug!r}'s assignments only just cleared the "
-        "retrieval floor.",
-        detail, numbers,
+        "marginal_eligibility",
+        severity,
+        f"{worst_share:.0%} of {worst_slug!r}'s assignments only just cleared the retrieval floor.",
+        detail,
+        numbers,
     )
 
 
@@ -528,9 +546,11 @@ def check_assignment_concentration(rows: list[Assignment]) -> Finding:
         by_lesson.setdefault(r.lesson, []).append(r)
     if len(by_lesson) < 3:
         return Finding(
-            "assignment_concentration", SEVERITY_OK,
+            "assignment_concentration",
+            SEVERITY_OK,
             "Too few lessons under test to compare assignment counts.",
-            "", {"n_lessons": len(by_lesson)},
+            "",
+            {"n_lessons": len(by_lesson)},
         )
 
     counts = {slug: len(group) for slug, group in by_lesson.items()}
@@ -559,14 +579,17 @@ def check_assignment_concentration(rows: list[Assignment]) -> Finding:
     }
     if not flagged:
         return Finding(
-            "assignment_concentration", SEVERITY_OK,
+            "assignment_concentration",
+            SEVERITY_OK,
             "No lesson is absorbing a disproportionate share of occasions.",
-            "", numbers,
+            "",
+            numbers,
         )
 
     slug, count, rel = flagged[0]
     return Finding(
-        "assignment_concentration", SEVERITY_WEAKENS,
+        "assignment_concentration",
+        SEVERITY_WEAKENS,
         f"{slug!r} was eligible on {count} occasions against a median of "
         f"{median_count:.0f}, and matched them less strongly than other lessons match theirs.",
         "A lesson that is both far more frequent and weaker than its peers is being "
@@ -584,9 +607,11 @@ def check_scorer_drift(rows: list[Assignment]) -> Finding:
     numbers = {"scorers": scorers, "floors": floors}
     if len(scorers) <= 1 and len(floors) <= 1:
         return Finding(
-            "scorer_drift", SEVERITY_OK,
+            "scorer_drift",
+            SEVERITY_OK,
             "One retrieval configuration throughout.",
-            "", numbers,
+            "",
+            numbers,
         )
     changed = []
     if len(scorers) > 1:
@@ -594,7 +619,8 @@ def check_scorer_drift(rows: list[Assignment]) -> Finding:
     if len(floors) > 1:
         changed.append(f"floor ({', '.join(str(f) for f in floors)})")
     return Finding(
-        "scorer_drift", SEVERITY_INVALIDATES,
+        "scorer_drift",
+        SEVERITY_INVALIDATES,
         f"Retrieval changed mid-run: {' and '.join(changed)}.",
         "The scorer and floor decide which lessons are eligible on an occasion, so "
         "these assignments describe two different treatments pooled into one "
@@ -611,15 +637,18 @@ def check_inconsistent_arms(rows: list[Assignment], unit: str = UNIT_LESSON) -> 
     for r in rows:
         arms.setdefault((r.lesson, r.occasion_id), set()).add(r.injected)
     conflicted = sorted(k for k, v in arms.items() if len(v) > 1)
-    numbers = {"conflicted": len(conflicted),
-               "examples": [f"{item} @ {occ}" for item, occ in conflicted[:5]]}
+    numbers = {"conflicted": len(conflicted), "examples": [f"{item} @ {occ}" for item, occ in conflicted[:5]]}
     if not conflicted:
         return Finding(
-            "consistent_arms", SEVERITY_OK,
-            f"Every ({unit}, occasion) sits in exactly one arm.", "", numbers,
+            "consistent_arms",
+            SEVERITY_OK,
+            f"Every ({unit}, occasion) sits in exactly one arm.",
+            "",
+            numbers,
         )
     return Finding(
-        "consistent_arms", SEVERITY_INVALIDATES,
+        "consistent_arms",
+        SEVERITY_INVALIDATES,
         f"{len(conflicted)} ({unit}, occasion) pair(s) appear in BOTH arms.",
         "Assignment is deterministic, so within one randomization this is "
         "impossible -- it means the salt or rate changed (see the drift check) or "
@@ -642,8 +671,7 @@ def check_treatment_stability(rows: list[Assignment], unit: str = UNIT_LESSON) -
             seen.append(r.revision)
 
     if not rows:
-        return Finding("treatment_stability", SEVERITY_OK, "No assignments yet.", "",
-                       {"lessons_tracked": 0})
+        return Finding("treatment_stability", SEVERITY_OK, "No assignments yet.", "", {"lessons_tracked": 0})
 
     changed = {slug: revs for slug, revs in by_lesson.items() if len(revs) > 1}
     numbers = {
@@ -653,15 +681,11 @@ def check_treatment_stability(rows: list[Assignment], unit: str = UNIT_LESSON) -
     }
 
     if changed:
-        named = "; ".join(
-            f"`{slug}` ({' -> '.join(revs)})" for slug, revs in sorted(changed.items())
-        )
-        how_to_inspect = (
-            " `unimem lesson history <slug>` shows what changed and when."
-            if unit == UNIT_LESSON else ""
-        )
+        named = "; ".join(f"`{slug}` ({' -> '.join(revs)})" for slug, revs in sorted(changed.items()))
+        how_to_inspect = " `unimem lesson history <slug>` shows what changed and when." if unit == UNIT_LESSON else ""
         return Finding(
-            "treatment_stability", SEVERITY_INVALIDATES,
+            "treatment_stability",
+            SEVERITY_INVALIDATES,
             f"{len(changed)} {unit}(s) were edited while the experiment was running: {named}.",
             "Occasions before and after the edit were treated with different "
             "instructions, and both arms pool them into one comparison -- so the "
@@ -672,7 +696,8 @@ def check_treatment_stability(rows: list[Assignment], unit: str = UNIT_LESSON) -
         )
     if not by_lesson:
         return Finding(
-            "treatment_stability", SEVERITY_WEAKENS,
+            "treatment_stability",
+            SEVERITY_WEAKENS,
             f"No assignment recorded which revision of a {unit} it used, so whether "
             "the treatment held still cannot be checked.",
             "Assignments written before revisions were recorded do not carry one. "
@@ -682,15 +707,19 @@ def check_treatment_stability(rows: list[Assignment], unit: str = UNIT_LESSON) -
         )
     if unknown:
         return Finding(
-            "treatment_stability", SEVERITY_OK,
+            "treatment_stability",
+            SEVERITY_OK,
             f"No {unit} changed while the experiment ran ({unknown} older "
             "assignment(s) carry no revision and were not checked).",
-            "", numbers,
+            "",
+            numbers,
         )
     return Finding(
-        "treatment_stability", SEVERITY_OK,
+        "treatment_stability",
+        SEVERITY_OK,
         f"All {len(by_lesson)} {unit}(s) held the same text throughout.",
-        "", numbers,
+        "",
+        numbers,
     )
 
 
@@ -701,12 +730,12 @@ def check_outcome_variation(rows: list[Assignment]) -> Finding:
     wins = sum(1 for r in resolved if r.succeeded)
     numbers = {"resolved": n, "succeeded": wins}
     if n < 20:
-        return Finding("outcome_variation", SEVERITY_OK,
-                       f"{n} recorded outcome(s); too few to judge.", "", numbers)
+        return Finding("outcome_variation", SEVERITY_OK, f"{n} recorded outcome(s); too few to judge.", "", numbers)
     if wins in (0, n):
         state = "succeeded" if wins else "failed"
         return Finding(
-            "outcome_variation", SEVERITY_INVALIDATES,
+            "outcome_variation",
+            SEVERITY_INVALIDATES,
             f"All {n} recorded occasions {state}.",
             "With no variation in the outcome there is nothing for a lesson to move, "
             "and the resulting difference of zero will read as a confident null. "
@@ -715,8 +744,7 @@ def check_outcome_variation(rows: list[Assignment]) -> Finding:
             "before running this again.",
             numbers,
         )
-    return Finding("outcome_variation", SEVERITY_OK,
-                   f"{wins} of {n} recorded occasions succeeded.", "", numbers)
+    return Finding("outcome_variation", SEVERITY_OK, f"{wins} of {n} recorded occasions succeeded.", "", numbers)
 
 
 def project(rows: list[Assignment], min_arm: int = experiment.DEFAULT_MIN_ARM) -> list[Projection]:
@@ -762,11 +790,20 @@ def project(rows: list[Assignment], min_arm: int = experiment.DEFAULT_MIN_ARM) -
                 f"The treated arm binds, which is unusual -- it normally means this "
                 f"lesson matched few occasions. It needs {still} more."
             )
-        out.append(Projection(
-            lesson=lesson, n_injected=n_inj, n_withheld=n_wit, needed_per_arm=min_arm,
-            binding_arm=binding, still_needed=still, per_day=per_day,
-            days_remaining=days, eta=eta, advice=advice,
-        ))
+        out.append(
+            Projection(
+                lesson=lesson,
+                n_injected=n_inj,
+                n_withheld=n_wit,
+                needed_per_arm=min_arm,
+                binding_arm=binding,
+                still_needed=still,
+                per_day=per_day,
+                days_remaining=days,
+                eta=eta,
+                advice=advice,
+            )
+        )
     return out
 
 
@@ -799,11 +836,17 @@ def audit(
         from unimem import interference
 
         result = interference.symbiosis_bias(**cluster_comparison)
-        findings.append(Finding("symbiosis_bias", SEVERITY_WEAKENS if result["flagged"] else SEVERITY_OK,
-                                "Task and cluster estimates disagree" if result["flagged"] else
-                                "Task and cluster estimates are compatible",
-                                "Diagnostic only; investigate write-back contamination and cluster boundaries.",
-                                result))
+        findings.append(
+            Finding(
+                "symbiosis_bias",
+                SEVERITY_WEAKENS if result["flagged"] else SEVERITY_OK,
+                "Task and cluster estimates disagree"
+                if result["flagged"]
+                else "Task and cluster estimates are compatible",
+                "Diagnostic only; investigate write-back contamination and cluster boundaries.",
+                result,
+            )
+        )
     worst = max((_SEVERITY_RANK[f.severity] for f in findings), default=0)
     return IntegrityReport(
         verdict=_VERDICT_FOR[worst],
@@ -817,13 +860,12 @@ def audit(
 
 
 _VERDICT_LINE = {
-    VERDICT_SOUND: "**Sound.** Nothing in the assignment record undermines the "
-                   "comparison below.",
+    VERDICT_SOUND: "**Sound.** Nothing in the assignment record undermines the comparison below.",
     VERDICT_WEAKENED: "**Weakened.** The comparison below is still an estimate, but "
-                      "less sits behind it than its confidence interval implies.",
+    "less sits behind it than its confidence interval implies.",
     VERDICT_COMPROMISED: "**Compromised. Do not quote the effect sizes below.** A "
-                         "specific mechanism is biasing them, named beneath. This is "
-                         "not a power problem and more data will not fix it.",
+    "specific mechanism is biasing them, named beneath. This is "
+    "not a power problem and more data will not fix it.",
 }
 
 
@@ -833,13 +875,11 @@ def render(report: IntegrityReport) -> str:
     lines.append(
         f"{report.n_resolved} of {report.n_assignments} assignment(s) have a recorded "
         "outcome. Only those enter the comparison."
-        + (f" {report.n_duplicates} retry/retries were collapsed."
-           if report.n_duplicates else "")
+        + (f" {report.n_duplicates} retry/retries were collapsed." if report.n_duplicates else "")
     )
     lines.append("")
     for f in report.findings:
-        mark = {SEVERITY_OK: "OK", SEVERITY_WEAKENS: "WEAKENS",
-                SEVERITY_INVALIDATES: "INVALIDATES"}[f.severity]
+        mark = {SEVERITY_OK: "OK", SEVERITY_WEAKENS: "WEAKENS", SEVERITY_INVALIDATES: "INVALIDATES"}[f.severity]
         lines.append(f"- **[{mark}] {f.headline}**")
         if f.detail:
             lines.append(f"  {f.detail}")
@@ -859,11 +899,12 @@ def render(report: IntegrityReport) -> str:
         for p in pending:
             when = ""
             if p.eta is not None:
-                when = (f" At the current rate ({p.per_day:.2f}/day into that arm) "
-                        f"that is about {p.days_remaining:.0f} more days -- around {p.eta}.")
+                when = (
+                    f" At the current rate ({p.per_day:.2f}/day into that arm) "
+                    f"that is about {p.days_remaining:.0f} more days -- around {p.eta}."
+                )
             elif p.per_day is None:
-                when = (" No dated assignments yet, so there is no accrual rate to "
-                        "project from.")
+                when = " No dated assignments yet, so there is no accrual rate to project from."
             else:
                 when = " Nothing is currently accruing into that arm."
             lines.append(

@@ -25,7 +25,9 @@ def _explode(*a, **kw):
 def _app(token: str = "s3cret", session_factory=_explode, config: HubConfig | None = None) -> Starlette:
     app = Starlette()
     admin.add_admin_routes(
-        app, session_factory, admin_token=token,
+        app,
+        session_factory,
+        admin_token=token,
         rate_limiter=RateLimiter(per_minute=10_000, burst=10_000),
         config=config,
     )
@@ -96,8 +98,7 @@ class TestConsoleAuthentication:
 
     async def test_rate_limited_before_the_credential_is_even_checked(self):
         app = Starlette()
-        admin.add_admin_routes(app, _explode, admin_token="s3cret",
-                               rate_limiter=RateLimiter(per_minute=60, burst=2))
+        admin.add_admin_routes(app, _explode, admin_token="s3cret", rate_limiter=RateLimiter(per_minute=60, burst=2))
         async with _client(app) as c:
             first = [await c.get("/admin") for _ in range(2)]
             limited = await c.get("/admin")
@@ -112,12 +113,15 @@ class _FakeRequest:
 
 
 class TestEscaping:
-    @pytest.mark.parametrize("payload,must_not_appear", [
-        ("<script>alert(1)</script>", "<script>alert(1)</script>"),
-        ('"><img src=x onerror=alert(1)>', "<img src=x"),
-        ("</td></tr><script>x</script>", "<script>x</script>"),
-        ("javascript:alert(1)", None),
-    ])
+    @pytest.mark.parametrize(
+        "payload,must_not_appear",
+        [
+            ("<script>alert(1)</script>", "<script>alert(1)</script>"),
+            ('"><img src=x onerror=alert(1)>', "<img src=x"),
+            ("</td></tr><script>x</script>", "<script>x</script>"),
+            ("javascript:alert(1)", None),
+        ],
+    )
     async def test_hostile_text_is_neutralised(self, payload, must_not_appear):
         rendered = admin.h(payload)
         assert "<" not in rendered and ">" not in rendered
@@ -144,11 +148,19 @@ class TestRendering:
             session.add(org)
             await session.flush()
             org_id = org.id
-            session.add(Trace(
-                org_id=org_id, title=title, context_text="c", solution_text="s",
-                tags=["refunds"], agent_type="support", agent_id="w1",
-                quarantined=True, quarantine_reason="looks like <spam>",
-            ))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title=title,
+                    context_text="c",
+                    solution_text="s",
+                    tags=["refunds"],
+                    agent_type="support",
+                    agent_id="w1",
+                    quarantined=True,
+                    quarantine_reason="looks like <spam>",
+                )
+            )
             await hub_auth.issue_api_key(session, org_id, expires_days=90)
         return org_id, _Cfg(database_url="postgresql+asyncpg://unused/db")
 
@@ -178,9 +190,7 @@ class TestRendering:
         assert "Quarantined traces" in r.text
         assert "looks like &lt;spam&gt;" in r.text
 
-    async def test_overview_totals_cover_every_org_not_just_the_rendered_page(
-        self, session_factory, monkeypatch
-    ):
+    async def test_overview_totals_cover_every_org_not_just_the_rendered_page(self, session_factory, monkeypatch):
         from hub import auth as hub_auth
         from hub.db import session_scope
         from hub.models import Organization, Trace
@@ -193,11 +203,19 @@ class TestRendering:
             session.add_all([org_a, org_b])
             await session.flush()
             for org in (org_a, org_b):
-                session.add(Trace(
-                    org_id=org.id, title="t", context_text="c", solution_text="s",
-                    tags=[], agent_type="support", agent_id="w1",
-                    quarantined=True, quarantine_reason="spam",
-                ))
+                session.add(
+                    Trace(
+                        org_id=org.id,
+                        title="t",
+                        context_text="c",
+                        solution_text="s",
+                        tags=[],
+                        agent_type="support",
+                        agent_id="w1",
+                        quarantined=True,
+                        quarantine_reason="spam",
+                    )
+                )
                 await hub_auth.issue_api_key(session, org.id, expires_days=90)
 
         async with session_scope(session_factory) as session:
@@ -211,8 +229,7 @@ class TestRendering:
 
     async def test_an_unknown_org_id_is_a_page_not_a_crash(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
-            r = await c.get("/admin/org/00000000-0000-0000-0000-000000000000",
-                            headers=_basic("op", "s3cret"))
+            r = await c.get("/admin/org/00000000-0000-0000-0000-000000000000", headers=_basic("op", "s3cret"))
         assert r.status_code == 200
         assert "No such organization" in r.text
 
@@ -228,17 +245,13 @@ class TestRendering:
         assert "no-store" in r.headers["cache-control"].split(", ")
         assert "script-src" in r.headers["content-security-policy"]
 
-    async def test_the_console_states_which_actions_it_will_and_will_not_take(
-        self, session_factory
-    ):
+    async def test_the_console_states_which_actions_it_will_and_will_not_take(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.get("/admin", headers=_basic("op", "s3cret"))
         assert "reversibility" in r.text
         assert "retyping the exact id/name being destroyed" in r.text
 
-    async def test_the_overview_page_offers_org_creation_and_key_generation(
-        self, session_factory
-    ):
+    async def test_the_overview_page_offers_org_creation_and_key_generation(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.get("/admin", headers=_basic("op", "s3cret"))
         assert r.status_code == 200
@@ -248,32 +261,47 @@ class TestRendering:
         for forbidden in ("fetch(", "xmlhttprequest"):
             assert forbidden not in lowered, f"{forbidden} on the overview page"
 
-    async def test_the_org_page_offers_its_full_reversible_and_confirmed_action_set(
-        self, session_factory
-    ):
+    async def test_the_org_page_offers_its_full_reversible_and_confirmed_action_set(self, session_factory):
         from hub import retention as retention_module
         from hub.db import session_scope
         from hub.models import User
 
         org_id, _ = await self._seed(session_factory)
         async with session_scope(session_factory) as session:
-            await retention_module.place_hold(
-                session, org_id, reason="litigation", placed_by="test-setup")
+            await retention_module.place_hold(session, org_id, reason="litigation", placed_by="test-setup")
             await retention_module.set_policy(session, org_id, "trace", 90)
-            session.add(User(
-                org_id=org_id, email="linked@example.com", role="viewer",
-                issuer="https://idp.example", external_subject="sub-1",
-            ))
+            session.add(
+                User(
+                    org_id=org_id,
+                    email="linked@example.com",
+                    role="viewer",
+                    issuer="https://idp.example",
+                    external_subject="sub-1",
+                )
+            )
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.get(f"/admin/org/{org_id}", headers=_basic("op", "s3cret"))
         assert r.status_code == 200
         lowered = r.text.lower()
         for allowed_action in (
-            "quarantine/release", "legal-hold/place", "legal-hold/release",
-            "retention/set", "retention/clear", "set-plan",
-            "users/create", "users/set-role", "users/disable", "users/unlink-sso",
-            "tag-subjects", "amend-trace", "keys/issue", "keys/rotate", "keys/revoke",
-            "purge-trace", "purge", "purge-subject-traces",
+            "quarantine/release",
+            "legal-hold/place",
+            "legal-hold/release",
+            "retention/set",
+            "retention/clear",
+            "set-plan",
+            "users/create",
+            "users/set-role",
+            "users/disable",
+            "users/unlink-sso",
+            "tag-subjects",
+            "amend-trace",
+            "keys/issue",
+            "keys/rotate",
+            "keys/revoke",
+            "purge-trace",
+            "purge",
+            "purge-subject-traces",
         ):
             assert f'action="/admin/org/{org_id}/{allowed_action}"'.lower() in lowered
         for confirm_field in ("confirm_trace_id", "confirm_name", "confirm_subject_id"):
@@ -323,7 +351,9 @@ class TestRendering:
 def _kb_app(session_factory, *, operator_org_id: str = "", token: str = "s3cret") -> Starlette:
     app = Starlette()
     admin.add_admin_routes(
-        app, session_factory, admin_token=token,
+        app,
+        session_factory,
+        admin_token=token,
         rate_limiter=RateLimiter(per_minute=10_000, burst=10_000),
         operator_org_id=operator_org_id,
     )
@@ -341,10 +371,12 @@ class TestKnowledgeBaseIsTheOnlyExchange:
             session.add_all([submitter, operator])
             await session.flush()
             sub = KnowledgeBaseSubmission(
-                org_id=submitter.id, title=title,
+                org_id=submitter.id,
+                title=title,
                 context_text="A webhook is delivered more than once.",
                 solution_text="Key the handler on the event id.",
-                tags=["webhooks"], agent_type="code",
+                tags=["webhooks"],
+                agent_type="code",
                 rationale="Vendor behaviour, not our business logic.",
                 status="pending",
             )
@@ -367,9 +399,7 @@ class TestKnowledgeBaseIsTheOnlyExchange:
         assert submitter_id in r.text
         assert sub_id in r.text
 
-    async def test_accepting_publishes_under_the_operator_org_never_the_submitter(
-        self, session_factory
-    ):
+    async def test_accepting_publishes_under_the_operator_org_never_the_submitter(self, session_factory):
         from sqlalchemy import select
 
         from hub.db import session_scope
@@ -378,16 +408,19 @@ class TestKnowledgeBaseIsTheOnlyExchange:
         sub_id, submitter_id, operator_id = await self._submit(session_factory)
         app = _kb_app(session_factory, operator_org_id=operator_id)
         async with _client(app) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"), data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "approve", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "approve", sub_id),
+                },
+            )
         assert r.status_code == 303
 
         async with session_scope(session_factory) as session:
-            published = (await session.execute(
-                select(Trace).where(Trace.commons_source == "seed")
-            )).scalars().all()
+            published = (await session.execute(select(Trace).where(Trace.commons_source == "seed"))).scalars().all()
         assert len(published) == 1
         assert published[0].org_id == operator_id
         assert published[0].org_id != submitter_id
@@ -395,10 +428,15 @@ class TestKnowledgeBaseIsTheOnlyExchange:
     async def test_accepting_fails_closed_without_an_operator_org(self, session_factory):
         sub_id, _, _ = await self._submit(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="")) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"), data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "approve", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "approve", sub_id),
+                },
+            )
         assert r.status_code == 409
         assert "HUB_OPERATOR_ORG_ID" in r.text
 
@@ -410,15 +448,25 @@ class TestKnowledgeBaseIsTheOnlyExchange:
 
         sub_id, submitter_id, operator_id = await self._submit(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id=operator_id)) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"), data={
-                "submission_id": sub_id, "decision": "reject", "reason": "too specific",
-                "csrf": admin._csrf_token("s3cret", "reject", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "submission_id": sub_id,
+                    "decision": "reject",
+                    "reason": "too specific",
+                    "csrf": admin._csrf_token("s3cret", "reject", sub_id),
+                },
+            )
         assert r.status_code == 303
         async with session_scope(session_factory) as session:
-            assert int(await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.commons_source == "seed")
-            ) or 0) == 0
+            assert (
+                int(
+                    await session.scalar(select(func.count()).select_from(Trace).where(Trace.commons_source == "seed"))
+                    or 0
+                )
+                == 0
+            )
             submitter = await session.get(Organization, submitter_id)
             assert submitter.bonus_commons_queries == 0
 
@@ -433,8 +481,14 @@ class TestModerationIsCsrfProtected:
             session.add(org)
             await session.flush()
             sub = KnowledgeBaseSubmission(
-                org_id=org.id, title="t", context_text="c", solution_text="s",
-                tags=[], agent_type="code", rationale="r", status="pending",
+                org_id=org.id,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                rationale="r",
+                status="pending",
             )
             session.add(sub)
             await session.flush()
@@ -443,52 +497,72 @@ class TestModerationIsCsrfProtected:
     async def test_a_post_without_a_token_is_refused(self, session_factory):
         sub_id = await self._pending(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"),
-                             data={"submission_id": sub_id, "decision": "approve"})
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={"submission_id": sub_id, "decision": "approve"},
+            )
         assert r.status_code == 403
 
     async def test_a_token_for_one_action_cannot_be_replayed_as_another(self, session_factory):
         sub_id = await self._pending(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"), data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "reject", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "reject", sub_id),
+                },
+            )
         assert r.status_code == 403
 
     async def test_a_token_for_one_target_cannot_be_replayed_on_another(self, session_factory):
         sub_id = await self._pending(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/review", headers=_basic("op", "s3cret"), data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "approve", "some-other-id"),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "approve", "some-other-id"),
+                },
+            )
         assert r.status_code == 403
 
     async def test_a_cross_site_post_is_refused_before_anything_else(self, session_factory):
         sub_id = await self._pending(session_factory)
         headers = {**_basic("op", "s3cret"), "Sec-Fetch-Site": "cross-site"}
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/review", headers=headers, data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "approve", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                headers=headers,
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "approve", sub_id),
+                },
+            )
         assert r.status_code == 403
 
     async def test_an_unauthenticated_post_is_challenged_not_executed(self, session_factory):
         sub_id = await self._pending(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/review", data={
-                "submission_id": sub_id, "decision": "approve",
-                "csrf": admin._csrf_token("s3cret", "approve", sub_id),
-            })
+            r = await c.post(
+                "/admin/kb/review",
+                data={
+                    "submission_id": sub_id,
+                    "decision": "approve",
+                    "csrf": admin._csrf_token("s3cret", "approve", sub_id),
+                },
+            )
         assert r.status_code == 401
 
     async def test_the_token_is_unforgeable_without_the_admin_secret(self):
-        assert admin._csrf_token("secret-a", "approve", "x") != admin._csrf_token(
-            "secret-b", "approve", "x")
-        assert not admin._csrf_ok("secret-a", "approve", "x",
-                                  admin._csrf_token("secret-b", "approve", "x"))
+        assert admin._csrf_token("secret-a", "approve", "x") != admin._csrf_token("secret-b", "approve", "x")
+        assert not admin._csrf_ok("secret-a", "approve", "x", admin._csrf_token("secret-b", "approve", "x"))
         assert not admin._csrf_ok("secret-a", "approve", "x", "")
 
 
@@ -502,8 +576,14 @@ class TestRetractionIsReversible:
             session.add(op)
             await session.flush()
             t = Trace(
-                org_id=op.id, title="Published entry", context_text="c", solution_text="s",
-                tags=[], agent_type="code", shared_with_commons=True, commons_source="seed",
+                org_id=op.id,
+                title="Published entry",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                shared_with_commons=True,
+                commons_source="seed",
             )
             session.add(t)
             await session.flush()
@@ -517,18 +597,27 @@ class TestRetractionIsReversible:
         app = _kb_app(session_factory, operator_org_id="x")
 
         async with _client(app) as c:
-            r = await c.post("/admin/kb/retract", headers=_basic("op", "s3cret"), data={
-                "trace_id": trace_id, "reason": "superseded",
-                "csrf": admin._csrf_token("s3cret", "retract", trace_id),
-            })
+            r = await c.post(
+                "/admin/kb/retract",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "trace_id": trace_id,
+                    "reason": "superseded",
+                    "csrf": admin._csrf_token("s3cret", "retract", trace_id),
+                },
+            )
             assert r.status_code == 303
             async with session_scope(session_factory) as session:
                 assert (await session.get(Trace, trace_id)).commons_retracted_at is not None
 
-            r = await c.post("/admin/kb/restore", headers=_basic("op", "s3cret"), data={
-                "trace_id": trace_id,
-                "csrf": admin._csrf_token("s3cret", "restore", trace_id),
-            })
+            r = await c.post(
+                "/admin/kb/restore",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "trace_id": trace_id,
+                    "csrf": admin._csrf_token("s3cret", "restore", trace_id),
+                },
+            )
             assert r.status_code == 303
             async with session_scope(session_factory) as session:
                 assert (await session.get(Trace, trace_id)).commons_retracted_at is None
@@ -536,17 +625,22 @@ class TestRetractionIsReversible:
     async def test_a_decision_redirects_so_a_reload_cannot_repeat_it(self, session_factory):
         trace_id = await self._published(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            r = await c.post("/admin/kb/retract", headers=_basic("op", "s3cret"), data={
-                "trace_id": trace_id,
-                "csrf": admin._csrf_token("s3cret", "retract", trace_id),
-            })
+            r = await c.post(
+                "/admin/kb/retract",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "trace_id": trace_id,
+                    "csrf": admin._csrf_token("s3cret", "retract", trace_id),
+                },
+            )
         assert r.status_code == 303
         assert r.headers["location"].startswith("/admin/kb?done=")
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
             shown = await c.get(r.headers["location"], headers=_basic("op", "s3cret"))
             assert '<div class="flash">Withdrawn.' in shown.text
-            forged = await c.get("/admin/kb", params={"done": "Call +1-555-0100 now", "sig": "0" * 32},
-                                 headers=_basic("op", "s3cret"))
+            forged = await c.get(
+                "/admin/kb", params={"done": "Call +1-555-0100 now", "sig": "0" * 32}, headers=_basic("op", "s3cret")
+            )
             assert "555-0100" not in forged.text
             unsigned = await c.get("/admin/kb", params={"done": "Withdrawn."}, headers=_basic("op", "s3cret"))
             assert '<div class="flash">' not in unsigned.text
@@ -559,10 +653,15 @@ class TestRetractionIsReversible:
 
         trace_id = await self._published(session_factory)
         async with _client(_kb_app(session_factory, operator_org_id="x")) as c:
-            await c.post("/admin/kb/retract", headers=_basic("op", "s3cret"), data={
-                "trace_id": trace_id, "reason": "bad advice",
-                "csrf": admin._csrf_token("s3cret", "retract", trace_id),
-            })
+            await c.post(
+                "/admin/kb/retract",
+                headers=_basic("op", "s3cret"),
+                data={
+                    "trace_id": trace_id,
+                    "reason": "bad advice",
+                    "csrf": admin._csrf_token("s3cret", "retract", trace_id),
+                },
+            )
         async with session_scope(session_factory) as session:
             actors = (await session.execute(select(AuditLogEntry.actor))).scalars().all()
         assert admin._ADMIN_ACTOR in actors
@@ -578,9 +677,15 @@ class TestOrgScopedMutationsAreReversible:
             session.add(org)
             await session.flush()
             trace = Trace(
-                org_id=org.id, title="A trace", context_text="c", solution_text="s",
-                tags=[], agent_type="support", agent_id="w1",
-                quarantined=True, quarantine_reason="looked like spam",
+                org_id=org.id,
+                title="A trace",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="support",
+                agent_id="w1",
+                quarantined=True,
+                quarantine_reason="looked like spam",
             )
             session.add(trace)
             await session.flush()
@@ -593,7 +698,8 @@ class TestOrgScopedMutationsAreReversible:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/quarantine/release", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/quarantine/release",
+                headers=_basic("op", "s3cret"),
                 data={
                     "trace_id": trace_id,
                     "csrf": admin._csrf_token("s3cret", "release_quarantine", trace_id),
@@ -613,7 +719,8 @@ class TestOrgScopedMutationsAreReversible:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/quarantine/release", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/quarantine/release",
+                headers=_basic("op", "s3cret"),
                 data={"trace_id": trace_id, "csrf": "wrong"},
             )
         assert r.status_code == 403
@@ -628,9 +735,11 @@ class TestOrgScopedMutationsAreReversible:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/legal-hold/place", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/legal-hold/place",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "reason": "litigation hold",
+                    "org_id": org_id,
+                    "reason": "litigation hold",
                     "csrf": admin._csrf_token("s3cret", "place_hold", org_id),
                 },
             )
@@ -641,7 +750,8 @@ class TestOrgScopedMutationsAreReversible:
             hold_id = holds[0].id
 
             r = await c.post(
-                f"/admin/org/{org_id}/legal-hold/release", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/legal-hold/release",
+                headers=_basic("op", "s3cret"),
                 data={
                     "hold_id": hold_id,
                     "csrf": admin._csrf_token("s3cret", "release_hold", hold_id),
@@ -658,28 +768,37 @@ class TestOrgScopedMutationsAreReversible:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/retention/set", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/set",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "object_type": "trace", "status": "any", "days": "90",
+                    "org_id": org_id,
+                    "object_type": "trace",
+                    "status": "any",
+                    "days": "90",
                     "csrf": admin._csrf_token("s3cret", "set_retention", org_id),
                 },
             )
             assert r.status_code == 303
             from hub.db import session_scope
+
             async with session_scope(session_factory) as session:
                 policies = await retention_module.policies_for(session, org_id)
             assert len(policies) == 1 and policies[0].max_age_days == 90
 
             r = await c.post(
-                f"/admin/org/{org_id}/retention/clear", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/clear",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "object_type": "trace", "status": "any",
+                    "org_id": org_id,
+                    "object_type": "trace",
+                    "status": "any",
                     "target": "trace/any",
                     "csrf": admin._csrf_token("s3cret", f"clear_retention:{org_id}", "trace/any"),
                 },
             )
             assert r.status_code == 303
         from hub.db import session_scope
+
         async with session_scope(session_factory) as session:
             policies = await retention_module.policies_for(session, org_id)
         assert policies == []
@@ -690,9 +809,12 @@ class TestOrgScopedMutationsAreReversible:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/retention/set", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/set",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "object_type": "not-a-real-kind", "days": "90",
+                    "org_id": org_id,
+                    "object_type": "not-a-real-kind",
+                    "days": "90",
                     "csrf": admin._csrf_token("s3cret", "set_retention", org_id),
                 },
             )
@@ -708,7 +830,8 @@ class TestOrgScopedMutationsAreReversible:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                f"/admin/org/{org_id}/quarantine/release", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/quarantine/release",
+                headers=_basic("op", "s3cret"),
                 data={
                     "trace_id": trace_id,
                     "csrf": admin._csrf_token("s3cret", "release_quarantine", trace_id),
@@ -716,10 +839,10 @@ class TestOrgScopedMutationsAreReversible:
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "release_quarantine")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "release_quarantine")))
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor == admin._ADMIN_ACTOR
 
@@ -727,7 +850,8 @@ class TestOrgScopedMutationsAreReversible:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/quarantine/release", headers=_basic("op", "wrong"),
+                f"/admin/org/{org_id}/quarantine/release",
+                headers=_basic("op", "wrong"),
                 data={
                     "trace_id": trace_id,
                     "csrf": admin._csrf_token("s3cret", "release_quarantine", trace_id),
@@ -742,9 +866,11 @@ class TestOrgScopedMutationsAreReversible:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/set-plan", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/set-plan",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "plan_name": "team",
+                    "org_id": org_id,
+                    "plan_name": "team",
                     "csrf": admin._csrf_token("s3cret", "set_plan", org_id),
                 },
             )
@@ -762,9 +888,11 @@ class TestOrgScopedMutationsAreReversible:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/set-plan", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/set-plan",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "plan_name": "not-a-real-plan",
+                    "org_id": org_id,
+                    "plan_name": "not-a-real-plan",
                     "csrf": admin._csrf_token("s3cret", "set_plan", org_id),
                 },
             )
@@ -784,17 +912,21 @@ class TestCreateOrgFromTheConsole:
 
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/create-org", headers=_basic("op", "s3cret"),
+                "/admin/create-org",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "name": "Brand New Org", "target": "new",
+                    "name": "Brand New Org",
+                    "target": "new",
                     "csrf": admin._csrf_token("s3cret", "create_org", "new"),
                 },
             )
         assert r.status_code == 303
         async with session_scope(session_factory) as session:
             org = (
-                await session.execute(select(Organization).where(Organization.name == "Brand New Org"))
-            ).scalars().first()
+                (await session.execute(select(Organization).where(Organization.name == "Brand New Org")))
+                .scalars()
+                .first()
+            )
         assert org is not None
         assert r.headers["location"].startswith(f"/admin/org/{org.id}")
 
@@ -806,7 +938,8 @@ class TestCreateOrgFromTheConsole:
 
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/create-org", headers=_basic("op", "s3cret"),
+                "/admin/create-org",
+                headers=_basic("op", "s3cret"),
                 data={"name": "", "target": "new", "csrf": admin._csrf_token("s3cret", "create_org", "new")},
             )
         assert r.status_code == 303
@@ -822,18 +955,20 @@ class TestCreateOrgFromTheConsole:
 
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                "/admin/create-org", headers=_basic("op", "s3cret"),
+                "/admin/create-org",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "name": "Audited Org", "target": "new",
+                    "name": "Audited Org",
+                    "target": "new",
                     "csrf": admin._csrf_token("s3cret", "create_org", "new"),
                 },
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "create_org")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "create_org")))
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor == admin._ADMIN_ACTOR
 
@@ -845,7 +980,8 @@ class TestCreateOrgFromTheConsole:
 
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/create-org", headers=_basic("op", "s3cret"),
+                "/admin/create-org",
+                headers=_basic("op", "s3cret"),
                 data={"name": "Should Not Exist", "target": "new", "csrf": "wrong"},
             )
         assert r.status_code == 403
@@ -864,8 +1000,14 @@ class TestUserAndSubjectRightsManagement:
             session.add(org)
             await session.flush()
             trace = Trace(
-                org_id=org.id, title="A trace", context_text="c", solution_text="s",
-                tags=[], agent_type="support", agent_id="w1", subject_ids=["cust-42"],
+                org_id=org.id,
+                title="A trace",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="support",
+                agent_id="w1",
+                subject_ids=["cust-42"],
             )
             user = User(org_id=org.id, email="person@example.com", role="viewer")
             session.add_all([trace, user])
@@ -881,17 +1023,18 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, _user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/create", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/create",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "email": "new@example.com", "role": "analyst",
+                    "org_id": org_id,
+                    "email": "new@example.com",
+                    "role": "analyst",
                     "csrf": admin._csrf_token("s3cret", "create_user", org_id),
                 },
             )
         assert r.status_code == 303
         async with session_scope(session_factory) as session:
-            created = (
-                await session.execute(select(User).where(User.email == "new@example.com"))
-            ).scalars().first()
+            created = (await session.execute(select(User).where(User.email == "new@example.com"))).scalars().first()
         assert created is not None
         assert created.role == "analyst"
         assert created.created_by == admin._ADMIN_ACTOR
@@ -900,9 +1043,12 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, _user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/create", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/create",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "email": "x@example.com", "role": "not-a-role",
+                    "org_id": org_id,
+                    "email": "x@example.com",
+                    "role": "not-a-role",
                     "csrf": admin._csrf_token("s3cret", "create_user", org_id),
                 },
             )
@@ -915,9 +1061,11 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/set-role", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/set-role",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "user_id": user_id, "role": "curator",
+                    "user_id": user_id,
+                    "role": "curator",
                     "csrf": admin._csrf_token("s3cret", "set_user_role", user_id),
                 },
             )
@@ -933,7 +1081,8 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/disable", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/disable",
+                headers=_basic("op", "s3cret"),
                 data={
                     "user_id": user_id,
                     "csrf": admin._csrf_token("s3cret", "disable_user", user_id),
@@ -945,7 +1094,8 @@ class TestUserAndSubjectRightsManagement:
             assert user.disabled_at is not None
 
             r = await c.post(
-                f"/admin/org/{org_id}/users/enable", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/enable",
+                headers=_basic("op", "s3cret"),
                 data={
                     "user_id": user_id,
                     "csrf": admin._csrf_token("s3cret", "enable_user", user_id),
@@ -963,9 +1113,12 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/link-sso", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/link-sso",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "user_id": user_id, "issuer": "https://idp.example", "external_subject": "sub-1",
+                    "user_id": user_id,
+                    "issuer": "https://idp.example",
+                    "external_subject": "sub-1",
                     "csrf": admin._csrf_token("s3cret", "link_sso", user_id),
                 },
             )
@@ -976,7 +1129,8 @@ class TestUserAndSubjectRightsManagement:
             assert user.external_subject == "sub-1"
 
             r = await c.post(
-                f"/admin/org/{org_id}/users/unlink-sso", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/unlink-sso",
+                headers=_basic("op", "s3cret"),
                 data={
                     "user_id": user_id,
                     "csrf": admin._csrf_token("s3cret", "unlink_sso", user_id),
@@ -994,15 +1148,21 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, user_id = await self._seed_with_user(session_factory)
         async with session_scope(session_factory) as session:
             other = User(
-                org_id=org_id, email="other@example.com", role="viewer",
-                issuer="https://idp.example", external_subject="taken",
+                org_id=org_id,
+                email="other@example.com",
+                role="viewer",
+                issuer="https://idp.example",
+                external_subject="taken",
             )
             session.add(other)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/users/link-sso", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/link-sso",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "user_id": user_id, "issuer": "https://idp.example", "external_subject": "taken",
+                    "user_id": user_id,
+                    "issuer": "https://idp.example",
+                    "external_subject": "taken",
                     "csrf": admin._csrf_token("s3cret", "link_sso", user_id),
                 },
             )
@@ -1015,7 +1175,8 @@ class TestUserAndSubjectRightsManagement:
         org_id, trace_id, _user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.get(
-                f"/admin/org/{org_id}", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}",
+                headers=_basic("op", "s3cret"),
                 params={"subject_id": "cust-42"},
             )
         assert r.status_code == 200
@@ -1028,9 +1189,12 @@ class TestUserAndSubjectRightsManagement:
         org_id, trace_id, _user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/tag-subjects", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/tag-subjects",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": trace_id, "subject_ids": "cust-99, cust-100",
+                    "org_id": org_id,
+                    "trace_id": trace_id,
+                    "subject_ids": "cust-99, cust-100",
                     "csrf": admin._csrf_token("s3cret", "tag_trace_subjects", org_id),
                 },
             )
@@ -1048,7 +1212,8 @@ class TestUserAndSubjectRightsManagement:
         org_id, _trace_id, user_id = await self._seed_with_user(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                f"/admin/org/{org_id}/users/disable", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/users/disable",
+                headers=_basic("op", "s3cret"),
                 data={
                     "user_id": user_id,
                     "csrf": admin._csrf_token("s3cret", "disable_user", user_id),
@@ -1056,10 +1221,10 @@ class TestUserAndSubjectRightsManagement:
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "disable_user")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "disable_user")))
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor == admin._ADMIN_ACTOR
 
@@ -1079,9 +1244,12 @@ class TestKeyIssuanceFromTheConsole:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "scopes": ["read", "write"], "expires_days": "90",
+                    "org_id": org_id,
+                    "scopes": ["read", "write"],
+                    "expires_days": "90",
                     "csrf": admin._csrf_token("s3cret", "issue_key", org_id),
                 },
             )
@@ -1100,9 +1268,12 @@ class TestKeyIssuanceFromTheConsole:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "scopes": ["read"], "expires_days": days,
+                    "org_id": org_id,
+                    "scopes": ["read"],
+                    "expires_days": days,
                     "csrf": admin._csrf_token("s3cret", "issue_key", org_id),
                 },
             )
@@ -1116,9 +1287,11 @@ class TestKeyIssuanceFromTheConsole:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "scopes": ["root"],
+                    "org_id": org_id,
+                    "scopes": ["root"],
                     "csrf": admin._csrf_token("s3cret", "issue_key", org_id),
                 },
             )
@@ -1134,13 +1307,12 @@ class TestKeyIssuanceFromTheConsole:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={"org_id": org_id, "csrf": admin._csrf_token("s3cret", "issue_key", org_id)},
             )
         async with session_scope(session_factory) as session:
-            keys = (
-                await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))
-            ).scalars().all()
+            keys = (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))).scalars().all()
         assert keys == []
 
     async def test_rotating_a_key_shows_the_new_one_once(self, session_factory):
@@ -1152,7 +1324,8 @@ class TestKeyIssuanceFromTheConsole:
             issued = await auth_module.issue_api_key(session, org_id)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/rotate", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/rotate",
+                headers=_basic("op", "s3cret"),
                 data={
                     "key_id": issued.key_id,
                     "csrf": admin._csrf_token("s3cret", "rotate_key", issued.key_id),
@@ -1176,7 +1349,8 @@ class TestKeyIssuanceFromTheConsole:
             issued = await auth_module.issue_api_key(session, org_id)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/revoke", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/revoke",
+                headers=_basic("op", "s3cret"),
                 data={
                     "key_id": issued.key_id,
                     "csrf": admin._csrf_token("s3cret", "revoke_key", issued.key_id),
@@ -1196,18 +1370,20 @@ class TestKeyIssuanceFromTheConsole:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "scopes": ["read"],
+                    "org_id": org_id,
+                    "scopes": ["read"],
                     "csrf": admin._csrf_token("s3cret", "issue_key", org_id),
                 },
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "issue_key")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "issue_key")))
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor == admin._ADMIN_ACTOR
 
@@ -1222,8 +1398,12 @@ class TestAmendingATraceFromTheConsole:
             session.add(org)
             await session.flush()
             trace = Trace(
-                org_id=org.id, title="Original title", context_text="original context",
-                solution_text="original solution", tags=["a"], agent_type="support",
+                org_id=org.id,
+                title="Original title",
+                context_text="original context",
+                solution_text="original solution",
+                tags=["a"],
+                agent_type="support",
             )
             session.add(trace)
             await session.flush()
@@ -1238,9 +1418,12 @@ class TestAmendingATraceFromTheConsole:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory, config=config)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/amend-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/amend-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": trace_id, "title": "Corrected title",
+                    "org_id": org_id,
+                    "trace_id": trace_id,
+                    "title": "Corrected title",
                     "csrf": admin._csrf_token("s3cret", "amend_trace", org_id),
                 },
             )
@@ -1248,15 +1431,13 @@ class TestAmendingATraceFromTheConsole:
         async with session_scope(session_factory) as session:
             original = await session.get(Trace, trace_id)
             amended = (
-                await session.execute(
-                    select(Trace).where(Trace.supersedes_trace_id == trace_id)
-                )
-            ).scalars().one()
+                (await session.execute(select(Trace).where(Trace.supersedes_trace_id == trace_id))).scalars().one()
+            )
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "amend_trace")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "amend_trace")))
+                .scalars()
+                .first()
+            )
         assert original.superseded_at is not None
         assert original.superseded_by_trace_id == amended.id
         assert amended.title == "Corrected title"
@@ -1269,10 +1450,13 @@ class TestAmendingATraceFromTheConsole:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory, config=config)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/amend-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/amend-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": "00000000-0000-0000-0000-000000000000",
-                    "title": "x", "csrf": admin._csrf_token("s3cret", "amend_trace", org_id),
+                    "org_id": org_id,
+                    "trace_id": "00000000-0000-0000-0000-000000000000",
+                    "title": "x",
+                    "csrf": admin._csrf_token("s3cret", "amend_trace", org_id),
                 },
             )
         assert r.status_code == 303
@@ -1282,9 +1466,12 @@ class TestAmendingATraceFromTheConsole:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory, config=config)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/amend-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/amend-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": "not-a-real-id", "title": "x",
+                    "org_id": org_id,
+                    "trace_id": "not-a-real-id",
+                    "title": "x",
                     "csrf": admin._csrf_token("s3cret", "amend_trace", org_id),
                 },
             )
@@ -1295,7 +1482,8 @@ class TestAmendingATraceFromTheConsole:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/amend-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/amend-trace",
+                headers=_basic("op", "s3cret"),
                 data={"org_id": org_id, "trace_id": trace_id, "title": "x", "csrf": "wrong"},
             )
         assert r.status_code == 403
@@ -1305,7 +1493,8 @@ class TestGeneratingAnEncryptionKey:
     async def test_generating_a_key(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/generate-encryption-key", headers=_basic("op", "s3cret"),
+                "/admin/generate-encryption-key",
+                headers=_basic("op", "s3cret"),
                 data={"target": "new", "csrf": admin._csrf_token("s3cret", "generate_encryption_key", "new")},
             )
         assert r.status_code == 200
@@ -1315,7 +1504,8 @@ class TestGeneratingAnEncryptionKey:
     async def test_wrong_csrf_token_is_refused(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/generate-encryption-key", headers=_basic("op", "s3cret"),
+                "/admin/generate-encryption-key",
+                headers=_basic("op", "s3cret"),
                 data={"target": "new", "csrf": "wrong"},
             )
         assert r.status_code == 403
@@ -1331,8 +1521,14 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
             session.add(org)
             await session.flush()
             trace = Trace(
-                org_id=org.id, title="A trace", context_text="c", solution_text="s",
-                tags=[], agent_type="support", agent_id="w1", subject_ids=["cust-1"],
+                org_id=org.id,
+                title="A trace",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="support",
+                agent_id="w1",
+                subject_ids=["cust-1"],
             )
             session.add(trace)
             await session.flush()
@@ -1345,9 +1541,12 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": trace_id, "confirm_trace_id": trace_id,
+                    "org_id": org_id,
+                    "trace_id": trace_id,
+                    "confirm_trace_id": trace_id,
                     "csrf": admin._csrf_token("s3cret", "purge_trace", org_id),
                 },
             )
@@ -1356,9 +1555,7 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
             row = await session.get(Trace, trace_id)
         assert row is None
 
-    async def test_purging_a_trace_with_a_mismatched_confirmation_is_refused(
-        self, session_factory
-    ):
+    async def test_purging_a_trace_with_a_mismatched_confirmation_is_refused(self, session_factory):
         from urllib.parse import unquote
 
         from hub.db import session_scope
@@ -1367,9 +1564,12 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": trace_id, "confirm_trace_id": "not-the-id",
+                    "org_id": org_id,
+                    "trace_id": trace_id,
+                    "confirm_trace_id": "not-the-id",
                     "csrf": admin._csrf_token("s3cret", "purge_trace", org_id),
                 },
             )
@@ -1386,9 +1586,11 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "confirm_name": "Acme Corp",
+                    "org_id": org_id,
+                    "confirm_name": "Acme Corp",
                     "csrf": admin._csrf_token("s3cret", "purge_org", org_id),
                 },
             )
@@ -1397,9 +1599,7 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
             row = await session.get(Organization, org_id)
         assert row is None
 
-    async def test_purging_an_org_with_a_mismatched_confirmation_is_refused(
-        self, session_factory
-    ):
+    async def test_purging_an_org_with_a_mismatched_confirmation_is_refused(self, session_factory):
         from urllib.parse import unquote
 
         from hub.db import session_scope
@@ -1408,9 +1608,11 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, _trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "confirm_name": "wrong name",
+                    "org_id": org_id,
+                    "confirm_name": "wrong name",
                     "csrf": admin._csrf_token("s3cret", "purge_org", org_id),
                 },
             )
@@ -1427,9 +1629,12 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge-subject-traces", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge-subject-traces",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "subject_id": "cust-1", "confirm_subject_id": "cust-1",
+                    "org_id": org_id,
+                    "subject_id": "cust-1",
+                    "confirm_subject_id": "cust-1",
                     "csrf": admin._csrf_token("s3cret", "purge_subject_traces", org_id),
                 },
             )
@@ -1438,9 +1643,7 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
             row = await session.get(Trace, trace_id)
         assert row is None
 
-    async def test_purging_subject_traces_with_a_mismatched_confirmation_is_refused(
-        self, session_factory
-    ):
+    async def test_purging_subject_traces_with_a_mismatched_confirmation_is_refused(self, session_factory):
         from urllib.parse import unquote
 
         from hub.db import session_scope
@@ -1449,9 +1652,12 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/purge-subject-traces", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge-subject-traces",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "subject_id": "cust-1", "confirm_subject_id": "cust-2",
+                    "org_id": org_id,
+                    "subject_id": "cust-1",
+                    "confirm_subject_id": "cust-2",
                     "csrf": admin._csrf_token("s3cret", "purge_subject_traces", org_id),
                 },
             )
@@ -1470,18 +1676,21 @@ class TestTheDangerZoneRequiresRetypedConfirmation:
         org_id, trace_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             await c.post(
-                f"/admin/org/{org_id}/purge-trace", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/purge-trace",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "trace_id": trace_id, "confirm_trace_id": trace_id,
+                    "org_id": org_id,
+                    "trace_id": trace_id,
+                    "confirm_trace_id": trace_id,
                     "csrf": admin._csrf_token("s3cret", "purge_trace", org_id),
                 },
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "purge_trace")
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "purge_trace")))
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor == admin._ADMIN_ACTOR
 
@@ -1499,8 +1708,14 @@ class TestRetentionApplyFromTheConsole:
             await session.flush()
             old = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=400)
             trace = Trace(
-                org_id=org.id, title="Stale", context_text="c", solution_text="s",
-                tags=[], agent_type="support", agent_id="w1", created_at=old,
+                org_id=org.id,
+                title="Stale",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="support",
+                agent_id="w1",
+                created_at=old,
             )
             session.add(trace)
             await session.flush()
@@ -1519,14 +1734,17 @@ class TestRetentionApplyFromTheConsole:
         digest = plan.digest
         async with _client(_app(session_factory=session_factory)) as c:
             preview = await c.get(
-                f"/admin/org/{org_id}", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}",
+                headers=_basic("op", "s3cret"),
                 params={"preview_retention": "1"},
             )
             assert digest in preview.text
             r = await c.post(
-                f"/admin/org/{org_id}/retention/apply", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/apply",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "digest": digest, "confirm_digest": digest,
+                    "digest": digest,
+                    "confirm_digest": digest,
                     "csrf": admin._csrf_token("s3cret", "retention_apply", digest),
                 },
             )
@@ -1549,9 +1767,11 @@ class TestRetentionApplyFromTheConsole:
         digest = plan.digest
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/retention/apply", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/apply",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "digest": digest, "confirm_digest": "not-the-digest",
+                    "digest": digest,
+                    "confirm_digest": "not-the-digest",
                     "csrf": admin._csrf_token("s3cret", "retention_apply", digest),
                 },
             )
@@ -1575,15 +1795,25 @@ class TestRetentionApplyFromTheConsole:
             import datetime
 
             old = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=400)
-            session.add(Trace(
-                org_id=org_id, title="Another stale one", context_text="c", solution_text="s",
-                tags=[], agent_type="support", agent_id="w1", created_at=old,
-            ))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title="Another stale one",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="support",
+                    agent_id="w1",
+                    created_at=old,
+                )
+            )
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/retention/apply", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/retention/apply",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "digest": digest, "confirm_digest": digest,
+                    "digest": digest,
+                    "confirm_digest": digest,
                     "csrf": admin._csrf_token("s3cret", "retention_apply", digest),
                 },
             )
@@ -1625,9 +1855,11 @@ class TestAutoRefresh:
         org_id = await self._seed(session_factory)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/issue", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/issue",
+                headers=_basic("op", "s3cret"),
                 data={
-                    "org_id": org_id, "scopes": ["read"],
+                    "org_id": org_id,
+                    "scopes": ["read"],
                     "csrf": admin._csrf_token("s3cret", "issue_key", org_id),
                 },
             )
@@ -1643,7 +1875,8 @@ class TestAutoRefresh:
             issued = await auth_module.issue_api_key(session, org_id)
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                f"/admin/org/{org_id}/keys/rotate", headers=_basic("op", "s3cret"),
+                f"/admin/org/{org_id}/keys/rotate",
+                headers=_basic("op", "s3cret"),
                 data={
                     "key_id": issued.key_id,
                     "csrf": admin._csrf_token("s3cret", "rotate_key", issued.key_id),
@@ -1652,12 +1885,11 @@ class TestAutoRefresh:
         assert "shown once" in r.text
         assert "location.reload" not in r.text
 
-    async def test_a_freshly_generated_encryption_key_disables_auto_refresh(
-        self, session_factory
-    ):
+    async def test_a_freshly_generated_encryption_key_disables_auto_refresh(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as c:
             r = await c.post(
-                "/admin/generate-encryption-key", headers=_basic("op", "s3cret"),
+                "/admin/generate-encryption-key",
+                headers=_basic("op", "s3cret"),
                 data={
                     "target": "new",
                     "csrf": admin._csrf_token("s3cret", "generate_encryption_key", "new"),

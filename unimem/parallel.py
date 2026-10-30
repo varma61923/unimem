@@ -6,6 +6,7 @@ input order, first exception propagates after all workers settle. Use this
 instead of an unbounded ``ThreadPoolExecutor(max_workers=len(items))`` or a
 serial loop for per-space / per-batch fan-out.
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -16,9 +17,13 @@ from typing import Any
 DEFAULT_MAX_WORKERS = 4
 
 
-def bounded_map(fn: Callable[[Any], Any], items: Iterable[Any],
-                *, max_workers: int = DEFAULT_MAX_WORKERS,
-                max_pending: int | None = None) -> list[Any]:
+def bounded_map(
+    fn: Callable[[Any], Any],
+    items: Iterable[Any],
+    *,
+    max_workers: int = DEFAULT_MAX_WORKERS,
+    max_pending: int | None = None,
+) -> list[Any]:
     """Ordered results with bounded workers *and* bounded submission backlog.
 
     Consume lazy inputs incrementally. On an error, already running workers

@@ -1,4 +1,3 @@
-
 import pytest
 
 from benchmarks.injector_bench import SEMANTIC_EVENTS, poison_check
@@ -142,9 +141,7 @@ def test_native_event_normalization_and_claude_context_serializer(event, tmp_pat
         assert normalized_event == event
     assert normalized["session_id"] == "serializer"
     serialized = format_reply("claude", normalized_event, {"context": "fixture context"})
-    assert serialized == {
-        "hookSpecificOutput": {"hookEventName": event, "additionalContext": "fixture context"}
-    }
+    assert serialized == {"hookSpecificOutput": {"hookEventName": event, "additionalContext": "fixture context"}}
 
 
 def test_codex_failed_tool_result_is_admitted_as_post_tool_failure():

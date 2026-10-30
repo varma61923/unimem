@@ -17,9 +17,7 @@ class TestKaplanMeier:
         assert [round(s.survival, 3) for s in curve] == [0.75, 0.5, 0.25, 0.0]
 
     def test_censored_occasions_leave_the_risk_set_without_counting_as_events(self):
-        curve = survival.kaplan_meier(
-            [_obs(1, True), _obs(2, True), _obs(9, False), _obs(9, False)]
-        )
+        curve = survival.kaplan_meier([_obs(1, True), _obs(2, True), _obs(9, False), _obs(9, False)])
         assert round(curve[-1].survival, 3) == 0.5
         assert survival.time_to_reported_fraction(curve, 0.9) is None
 
@@ -73,9 +71,12 @@ def _fleet(treated_takes_min, control_takes_min, n=120, span_min=180, lost_contr
             went_well = (i % 10 < 8) if injected else (i % 10 < 5)
             rows.append(
                 integrity.Assignment(
-                    lesson="L", occasion_id=f"{tag}{i}", injected=injected,
+                    lesson="L",
+                    occasion_id=f"{tag}{i}",
+                    injected=injected,
                     rate=0.5,
-                    succeeded=went_well if reported else None, at=at,
+                    succeeded=went_well if reported else None,
+                    at=at,
                     resolved_at=at + dt.timedelta(minutes=takes) if reported else None,
                 )
             )
@@ -95,29 +96,23 @@ class TestTheRunThatWasPunishedForWorking:
         rows = _fleet(treated_takes_min=5, control_takes_min=90)
         untimed = [
             integrity.Assignment(
-                lesson=r.lesson, occasion_id=r.occasion_id,
-                injected=r.injected, succeeded=r.succeeded,
+                lesson=r.lesson,
+                occasion_id=r.occasion_id,
+                injected=r.injected,
+                succeeded=r.succeeded,
             )
             for r in rows
         ]
-        assert (
-            integrity.check_differential_attrition(untimed).severity
-            == integrity.SEVERITY_INVALIDATES
-        )
+        assert integrity.check_differential_attrition(untimed).severity == integrity.SEVERITY_INVALIDATES
 
     def test_genuine_loss_is_still_caught(self):
-        rows = _fleet(
-            treated_takes_min=5, control_takes_min=6, span_min=600, lost_control=40
-        )
+        rows = _fleet(treated_takes_min=5, control_takes_min=6, span_min=600, lost_control=40)
         finding = integrity.check_differential_attrition(rows, now=NOW)
         assert finding.severity == integrity.SEVERITY_INVALIDATES, finding.headline
 
     def test_a_healthy_run_stays_ok(self):
         rows = _fleet(treated_takes_min=5, control_takes_min=6, span_min=600)
-        assert (
-            integrity.check_differential_attrition(rows, now=NOW).severity
-            == integrity.SEVERITY_OK
-        )
+        assert integrity.check_differential_attrition(rows, now=NOW).severity == integrity.SEVERITY_OK
 
 
 class TestTheHorizonTakesTheSlowerArm:
@@ -133,10 +128,7 @@ class TestTheHorizonTakesTheSlowerArm:
 class TestCensoringHazard:
     def test_a_matched_schedule_is_ok(self):
         rows = _fleet(treated_takes_min=5, control_takes_min=5, span_min=600)
-        assert (
-            integrity.check_censoring_hazard(rows, now=NOW).severity
-            == integrity.SEVERITY_OK
-        )
+        assert integrity.check_censoring_hazard(rows, now=NOW).severity == integrity.SEVERITY_OK
 
     def test_a_speed_gap_with_work_still_pending_says_wait_not_biased(self):
         rows = _fleet(treated_takes_min=5, control_takes_min=90)
@@ -151,10 +143,7 @@ class TestCensoringHazard:
         assert "injected arm is reporting faster" in finding.headline
 
     def test_an_untimed_log_is_not_checkable_rather_than_wrong(self):
-        rows = [
-            integrity.Assignment(lesson="L", occasion_id=f"o{i}", injected=i % 2 == 0)
-            for i in range(10)
-        ]
+        rows = [integrity.Assignment(lesson="L", occasion_id=f"o{i}", injected=i % 2 == 0) for i in range(10)]
         finding = integrity.check_censoring_hazard(rows)
         assert finding.severity == integrity.SEVERITY_OK
         assert "not checkable" in finding.headline

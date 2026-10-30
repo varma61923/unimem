@@ -1,4 +1,5 @@
 """`unimem proof`: the Agent Learning Proof (see unimem/proof.py)."""
+
 from __future__ import annotations
 
 import argparse
@@ -14,7 +15,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "proof",
         help="The Agent Learning Proof: plan, run, report and independently verify a randomized "
-             "holdout on your own memory.",
+        "holdout on your own memory.",
     )
     sub = p.add_subparsers(dest="proof_cmd", required=True)
 
@@ -22,14 +23,19 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     st.add_argument("function", nargs="?", help="A kit key or kit file (default: this store's kit).")
     st.add_argument("--label", required=True, help="Whose proof this is, e.g. the customer or fleet.")
     st.add_argument("--daily", type=float, required=True, help="Occasions per day.")
-    st.add_argument("--value-per-occasion", type=float, default=None,
-                    help="What one improved occasion is worth to you; adds a value ledger.")
+    st.add_argument(
+        "--value-per-occasion",
+        type=float,
+        default=None,
+        help="What one improved occasion is worth to you; adds a value ledger.",
+    )
     st.add_argument("--baseline", type=float, default=None, help="Your current success rate.")
     st.add_argument("--effect", type=float, default=None, help="Smallest effect worth detecting.")
     st.add_argument("--rate", type=float, default=None, help="Holdout rate.")
     st.add_argument("--max-days", type=int, default=proof.MAX_DAYS)
-    st.add_argument("--force", action="store_true",
-                    help="Start even if it cannot answer in time, or replace a proof in progress.")
+    st.add_argument(
+        "--force", action="store_true", help="Start even if it cannot answer in time, or replace a proof in progress."
+    )
     st.add_argument("--dest", default=None)
     st.set_defaults(func=run_start)
 
@@ -50,16 +56,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     vf.add_argument("--key-file", default=None, help="The issuer's key, to check the signature.")
     vf.set_defaults(func=run_verify)
 
-    wz = sub.add_parser(
-        "wizard", help="Plan, confirm, start and (optionally) rehearse a proof in one guided flow.")
+    wz = sub.add_parser("wizard", help="Plan, confirm, start and (optionally) rehearse a proof in one guided flow.")
     wz.add_argument("function", nargs="?", help="A kit key or kit file (default: this store's kit).")
     wz.add_argument("--label", default=None, help="Whose proof this is.")
     wz.add_argument("--daily", type=float, default=None, help="Occasions per day.")
     wz.add_argument("--value-per-occasion", type=float, default=None)
     wz.add_argument("--yes", action="store_true", help="Do not ask for confirmation.")
-    wz.add_argument("--simulate", action="store_true",
-                    help="Rehearse on a simulated fleet in a FRESH store: start, run planted memories "
-                         "through the real path, report, verify, and say whether the verdicts match.")
+    wz.add_argument(
+        "--simulate",
+        action="store_true",
+        help="Rehearse on a simulated fleet in a FRESH store: start, run planted memories "
+        "through the real path, report, verify, and say whether the verdicts match.",
+    )
     wz.add_argument("--seed", type=int, default=0)
     wz.add_argument("--dest", default=None)
     wz.set_defaults(func=run_wizard)
@@ -79,6 +87,7 @@ def _guard(fn):
         except ValueError as exc:
             print(f"[unimem] error: {exc}", file=sys.stderr)
             return 2
+
     return wrapped
 
 
@@ -87,8 +96,7 @@ def _kit(args: argparse.Namespace, root: str):
         return functions.resolve(args.function)
     kit = functions.store_kit(root)
     if kit is None:
-        raise proof.ProofError("name a function (`unimem function list`) or "
-                               "`unimem init --function <name>` first")
+        raise proof.ProofError("name a function (`unimem function list`) or `unimem init --function <name>` first")
     return kit
 
 
@@ -102,15 +110,25 @@ def run_start(args: argparse.Namespace) -> int:
     paths.warn_if_implicit_cwd_store(args.dest)
     kit = _kit(args, root)
     state, fc = proof.start(
-        root, kit, label=args.label, daily=args.daily, value_per_occasion=args.value_per_occasion,
-        baseline=args.baseline, effect=args.effect, rate=args.rate, max_days=args.max_days,
-        force=args.force)
+        root,
+        kit,
+        label=args.label,
+        daily=args.daily,
+        value_per_occasion=args.value_per_occasion,
+        baseline=args.baseline,
+        effect=args.effect,
+        rate=args.rate,
+        max_days=args.max_days,
+        force=args.force,
+    )
     print(functions.render_forecast(fc))
     reg = state["preregistration"]
     print(f"\n[unimem] proof started for {state['label']!r}. Registered before any data:")
     print(f"  outcome:  {reg['primary_outcome']}")
-    print(f"  smallest effect that matters {reg['minimum_practical_effect']:.0%}, holdout "
-          f"{reg['holdout_rate']:.0%}, {reg['planned_occasions']:,} occasions, stopping rule {reg['stopping_rule']}")
+    print(
+        f"  smallest effect that matters {reg['minimum_practical_effect']:.0%}, holdout "
+        f"{reg['holdout_rate']:.0%}, {reg['planned_occasions']:,} occasions, stopping rule {reg['stopping_rule']}"
+    )
     print("  Retrieve with an occasion id and report each outcome under the same id; then:")
     print("    unimem proof status     # progress, validity, verdicts so far")
     print("    unimem proof report     # the signed, verifiable package")
@@ -123,6 +141,7 @@ def run_status(args: argparse.Namespace) -> int:
     s = proof.status(root)
     if args.json:
         import dataclasses
+
         print(json.dumps(dataclasses.asdict(s), indent=2))
     else:
         print(proof.render_status(s))
@@ -138,11 +157,15 @@ def run_report(args: argparse.Namespace) -> int:
     key = proof.read_key(args.key_file) if args.key_file else None
     out = args.out or f"proof-{_slug(state['label'])}"
     record = proof.build(root, out, key=key, org_id=args.org)
-    print(f"[unimem] wrote {os.path.join(out, proof.PAGE_NAME)} (open or send this), "
-          f"{proof.MARKDOWN_NAME}, {proof.RECORD_NAME} and {proof.DATA_NAME}")
-    print(f"  {'FINAL' if record['final'] else 'INTERIM'}; integrity {record['integrity']['verdict']}; "
-          f"{'signed' if record['signature'] else 'NOT signed (--key-file)'}"
-          + ("; SYNTHETIC DEMO DATA" if record["synthetic"] else ""))
+    print(
+        f"[unimem] wrote {os.path.join(out, proof.PAGE_NAME)} (open or send this), "
+        f"{proof.MARKDOWN_NAME}, {proof.RECORD_NAME} and {proof.DATA_NAME}"
+    )
+    print(
+        f"  {'FINAL' if record['final'] else 'INTERIM'}; integrity {record['integrity']['verdict']}; "
+        f"{'signed' if record['signature'] else 'NOT signed (--key-file)'}"
+        + ("; SYNTHETIC DEMO DATA" if record["synthetic"] else "")
+    )
     print(f"  check it:  unimem proof verify {out}" + (" --key-file KEY" if record["signature"] else ""))
     return 0
 
@@ -153,8 +176,14 @@ def run_verify(args: argparse.Namespace) -> int:
     checks = proof.verify(args.directory, key=key)
     print(proof.render_checks(checks))
     ok = proof.verified(checks)
-    print("\n" + ("verified: every check that could run passed." if ok else
-                  "NOT VERIFIED: the package does not match its own data."))
+    print(
+        "\n"
+        + (
+            "verified: every check that could run passed."
+            if ok
+            else "NOT VERIFIED: the package does not match its own data."
+        )
+    )
     return 0 if ok else 1
 
 
@@ -207,12 +236,20 @@ def run_wizard(args: argparse.Namespace) -> int:
     if interactive and _ask("Start this proof? (y/n)", "y").lower() not in ("y", "yes"):
         print("[unimem] nothing was started.")
         return 0
-    state, _ = proof.start(root, kit, label=label, daily=daily, value_per_occasion=vpo,
-                           force=args.simulate,
-                           salt=f"sim-{kit.key}-{args.seed}" if args.simulate else None)
+    state, _ = proof.start(
+        root,
+        kit,
+        label=label,
+        daily=daily,
+        value_per_occasion=vpo,
+        force=args.simulate,
+        salt=f"sim-{kit.key}-{args.seed}" if args.simulate else None,
+    )
     reg = state["preregistration"]
-    print(f"\n[unimem] proof started for {state['label']!r}; registered before any data: "
-          f"{reg['planned_occasions']:,} occasions, stopping rule {reg['stopping_rule']}.")
+    print(
+        f"\n[unimem] proof started for {state['label']!r}; registered before any data: "
+        f"{reg['planned_occasions']:,} occasions, stopping rule {reg['stopping_rule']}."
+    )
     if not args.simulate:
         print("  Point your agents at the gateway and report each outcome under the same occasion id:")
         print("    unimem gateway          # any language, any robot (HTTP + JSON or --stdio)")
@@ -225,8 +262,11 @@ def run_wizard(args: argparse.Namespace) -> int:
     record = proof.build(root, out)
     checks = proof.verify(out)
     found = {m["lesson_slug"]: m["verdict"] for m in record["memories"]}
-    wrong = {slug: (f"{effect:+.0%}", found.get(slug))
-             for slug, effect in sim["planted"].items() if not proof.verdict_matches(effect, found.get(slug))}
+    wrong = {
+        slug: (f"{effect:+.0%}", found.get(slug))
+        for slug, effect in sim["planted"].items()
+        if not proof.verdict_matches(effect, found.get(slug))
+    }
     print(f"\n[unimem] rehearsal: {sim['occasions']:,} simulated occasions through the real path.")
     for slug, effect in sim["planted"].items():
         print(f"  {slug:22s} planted {effect:+.0%}  ->  {found.get(slug)}")

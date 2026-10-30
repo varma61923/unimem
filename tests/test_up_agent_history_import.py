@@ -51,9 +51,7 @@ def _run_up(root, *, import_agent_history, capsys):
     return json.loads(output[result_start:])
 
 
-def test_up_keeps_private_history_opt_in_and_imports_only_cwd_attributed_sessions(
-    tmp_path, monkeypatch, capsys
-):
+def test_up_keeps_private_history_opt_in_and_imports_only_cwd_attributed_sessions(tmp_path, monkeypatch, capsys):
     root = tmp_path / "repo"
     home = tmp_path / "home"
     sibling = tmp_path / "repo-other"
@@ -87,9 +85,7 @@ def test_up_keeps_private_history_opt_in_and_imports_only_cwd_attributed_session
     default_result = _run_up(root, import_agent_history=False, capsys=capsys)
     assert default_result["history"] == []
     assert default_result["history_discovery"] == []
-    assert Journal(str(root)).search(
-        "Always run parse", kinds=("episode",), statuses=("quarantined",), limit=10
-    ) == []
+    assert Journal(str(root)).search("Always run parse", kinds=("episode",), statuses=("quarantined",), limit=10) == []
 
     result = _run_up(root, import_agent_history=True, capsys=capsys)
     imported = {(item["agent"], item["messages"]) for item in result["history"]}
@@ -173,9 +169,7 @@ def test_agent_history_total_byte_cap_is_reported(tmp_path, monkeypatch):
         files.append(filename)
     monkeypatch.setattr(history_import, "MAX_DISCOVERY_BYTES", files[0].stat().st_size)
 
-    sources, reports = history_import.discover_agent_history(
-        str(root), home=str(home), max_entries=100, max_files=10
-    )
+    sources, reports = history_import.discover_agent_history(str(root), home=str(home), max_entries=100, max_files=10)
 
     assert len([source for source in sources if source["agent"] == "codex"]) == 1
     assert reports["codex"]["selected_bytes"] == files[0].stat().st_size
@@ -200,9 +194,7 @@ def test_agent_history_aggregate_probe_cap_persists_partial_coverage(tmp_path, m
     monkeypatch.setattr(history_import, "MAX_HEADER_BYTES", 4096)
     monkeypatch.setattr(history_import, "MAX_DISCOVERY_PROBE_BYTES", probe_budget)
 
-    sources, reports = history_import.discover_agent_history(
-        str(root), home=str(home), max_entries=100, max_files=20
-    )
+    sources, reports = history_import.discover_agent_history(str(root), home=str(home), max_entries=100, max_files=20)
     report = reports["codex"]
     coverage_id = history_import.record_discovery_coverage(
         str(root), agent="codex", scope={"repo": "fixture"}, report=report
@@ -234,9 +226,7 @@ def test_cursor_and_gemini_history_discovery_fail_closed_without_project_cwd(tmp
         assert report["candidate_files"] is None
         assert report["candidate_count_known"] is False
         assert "recorded session cwd" in report["blocker"]
-        coverage_id = record_discovery_coverage(
-            str(root), agent=agent, scope={"repo": "fixture"}, report=report
-        )
+        coverage_id = record_discovery_coverage(str(root), agent=agent, scope={"repo": "fixture"}, report=report)
         coverage = Journal(str(root)).latest(coverage_id)
         assert coverage.payload["status"] == "unsupported-project-attribution"
         assert coverage.payload["scan_performed"] is False

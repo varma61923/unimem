@@ -12,8 +12,16 @@ from hub.models import Organization, Trace
 pytestmark = pytest.mark.asyncio
 
 HOSTILE = [
-    "../../etc/passwd", "' OR '1'='1", "1; DROP TABLE traces;--", "%00", "\u202e",
-    "-1", "{{7*7}}", "A" * 1500, "", "00000000-0000-0000-0000-000000000000",
+    "../../etc/passwd",
+    "' OR '1'='1",
+    "1; DROP TABLE traces;--",
+    "%00",
+    "\u202e",
+    "-1",
+    "{{7*7}}",
+    "A" * 1500,
+    "",
+    "00000000-0000-0000-0000-000000000000",
 ]
 
 
@@ -27,10 +35,15 @@ async def two_orgs(session_factory, config):
         a_id, b_id = a.id, b.id
     async with session_scope(session_factory) as session:
         made = await crud.contribute_trace(
-            session, b_id, config, limiter, title="b private title",
+            session,
+            b_id,
+            config,
+            limiter,
+            title="b private title",
             context_text="b private context about a staging outage",
             solution_text="b private solution: rotate the credentials",
-            tags=["b"], agent_type="general",
+            tags=["b"],
+            agent_type="general",
         )
     return {"a": a_id, "b": b_id, "b_trace": made["id"], "limiter": limiter}
 
@@ -58,6 +71,8 @@ async def test_foreign_and_hostile_ids_are_not_found_everywhere(session_factory,
             async with session_scope(session_factory) as session:
                 result = await call(session, trace_id)
             assert result in (None, False) or (isinstance(result, dict) and result.get("error")), (
-                name, trace_id[:40], result,
+                name,
+                trace_id[:40],
+                result,
             )
     assert await _b_trace_state(session_factory, b_trace) == before

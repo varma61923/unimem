@@ -18,12 +18,15 @@ def _write(tmp_path, name, text):
 
 class TestFormats:
     def test_plain_lines(self, tmp_path):
-        p = _write(tmp_path, "alerts.txt",
-                   "Connection pool exhausted\nWebhook delivered twice\n\nPod killed mid-request\n")
+        p = _write(
+            tmp_path, "alerts.txt", "Connection pool exhausted\nWebhook delivered twice\n\nPod killed mid-request\n"
+        )
         failures, stats = failure_import.read_failures(p)
         assert stats["format"] == "lines"
         assert [f["label"] for f in failures] == [
-            "Connection pool exhausted", "Webhook delivered twice", "Pod killed mid-request",
+            "Connection pool exhausted",
+            "Webhook delivered twice",
+            "Pod killed mid-request",
         ]
 
     def test_markdown_bullets_are_lines(self, tmp_path):
@@ -32,42 +35,48 @@ class TestFormats:
         assert [f["label"] for f in failures] == ["Pool exhausted under load", "Duplicate charge"]
 
     def test_jsonl(self, tmp_path):
-        p = _write(tmp_path, "incidents.jsonl",
-                   '{"title": "Pool exhausted", "description": "spike drained it", '
-                   '"tags": ["db", "load"]}\n'
-                   '{"title": "Clock drift 401s", "description": "token rejected"}\n')
+        p = _write(
+            tmp_path,
+            "incidents.jsonl",
+            '{"title": "Pool exhausted", "description": "spike drained it", '
+            '"tags": ["db", "load"]}\n'
+            '{"title": "Clock drift 401s", "description": "token rejected"}\n',
+        )
         failures, stats = failure_import.read_failures(p)
         assert stats["format"] == "jsonl"
         assert failures[0]["tags"] == ["db", "load"]
         assert failures[0]["text"] == "spike drained it"
 
     def test_json_array(self, tmp_path):
-        p = _write(tmp_path, "export.json",
-                   json.dumps([{"summary": "Pool exhausted", "detail": "spike"}]))
+        p = _write(tmp_path, "export.json", json.dumps([{"summary": "Pool exhausted", "detail": "spike"}]))
         failures, stats = failure_import.read_failures(p)
         assert stats["format"] == "json"
         assert failures[0]["label"] == "Pool exhausted"
 
     def test_json_envelope(self, tmp_path):
-        p = _write(tmp_path, "export.json",
-                   json.dumps({"total": 2, "issues": [{"summary": "A thing broke"}]}))
+        p = _write(tmp_path, "export.json", json.dumps({"total": 2, "issues": [{"summary": "A thing broke"}]}))
         failures, _ = failure_import.read_failures(p)
         assert failures[0]["label"] == "A thing broke"
 
     def test_csv_with_arbitrary_column_names(self, tmp_path):
-        p = _write(tmp_path, "tickets.csv",
-                   "Key,Summary,Description,Components\n"
-                   "OPS-1,Pool exhausted,spike drained it,\"db,load\"\n")
+        p = _write(
+            tmp_path,
+            "tickets.csv",
+            'Key,Summary,Description,Components\nOPS-1,Pool exhausted,spike drained it,"db,load"\n',
+        )
         failures, stats = failure_import.read_failures(p)
         assert stats["format"] == "csv"
         assert failures[0]["label"] == "Pool exhausted"
         assert failures[0]["tags"] == ["db", "load"]
 
     def test_csv_with_a_ragged_extra_column_does_not_crash(self, tmp_path):
-        p = _write(tmp_path, "ragged.csv",
-                   "Summary,Description,Components\n"
-                   "Pool exhausted,spike drained it,\"db,load\",unexpected,extra,columns\n"
-                   "Clean row,no ragged columns here,ops\n")
+        p = _write(
+            tmp_path,
+            "ragged.csv",
+            "Summary,Description,Components\n"
+            'Pool exhausted,spike drained it,"db,load",unexpected,extra,columns\n'
+            "Clean row,no ragged columns here,ops\n",
+        )
         failures, stats = failure_import.read_failures(p)
         assert stats["format"] == "csv"
         assert [f["label"] for f in failures] == ["Pool exhausted", "Clean row"]
@@ -98,8 +107,7 @@ class TestWhatWasMeasuredIsStated:
         assert stats["unique"] == 1
 
     def test_oversized_input_is_capped_and_says_so(self, tmp_path):
-        p = _write(tmp_path, "a.txt",
-                   "\n".join(f"distinct failure number {i}" for i in range(600)))
+        p = _write(tmp_path, "a.txt", "\n".join(f"distinct failure number {i}" for i in range(600)))
         failures, stats = failure_import.read_failures(p)
         assert len(failures) == failure_import.MAX_FAILURES
         assert stats["truncated"] == 600 - failure_import.MAX_FAILURES
@@ -158,7 +166,8 @@ class TestRefusalsAreActionable:
 class TestBracketPrefixedLogFallsBackToLines:
     def test_bracket_prefixed_log_lines_are_read_as_one_failure_per_line(self, tmp_path):
         p = _write(
-            tmp_path, "incidents.log",
+            tmp_path,
+            "incidents.log",
             "[2026-08-23 12:00:00] ERROR: connection refused\n"
             "[2026-08-23 12:05:00] ERROR: timeout waiting for upstream\n",
         )
@@ -192,24 +201,26 @@ class TestBracketPrefixedLogFallsBackToLines:
 class TestSignaturesAreComparable:
     def test_an_imported_failure_signs_identically_to_the_same_trace(self, tmp_path):
         title, text, tags = "Pool exhausted", "spike drained it", ["db", "load"]
-        p = _write(tmp_path, "a.jsonl", json.dumps(
-            {"title": title, "description": text, "tags": tags}) + "\n")
+        p = _write(tmp_path, "a.jsonl", json.dumps({"title": title, "description": text, "tags": tags}) + "\n")
         signed, _ = commons_cmd.signatures_from_file(p)
         reference = overlap.minhash(
-            " ".join([title, text, " ".join(tags)]), commons_cmd.COMMONS_NUM_PERM,
+            " ".join([title, text, " ".join(tags)]),
+            commons_cmd.COMMONS_NUM_PERM,
         )
         assert signed[0]["signature"] == reference
 
     def test_it_matches_the_hub_side_signature(self, tmp_path):
         hub_commons = pytest.importorskip("hub.commons")
         title, text, tags = "Pool exhausted", "spike drained it", ["db", "load"]
-        p = _write(tmp_path, "a.jsonl", json.dumps(
-            {"title": title, "description": text, "tags": tags}) + "\n")
+        p = _write(tmp_path, "a.jsonl", json.dumps({"title": title, "description": text, "tags": tags}) + "\n")
         signed, _ = commons_cmd.signatures_from_file(p)
         assert signed[0]["signature"] == hub_commons.signature_for(title, text, tags)
 
     def test_no_failure_text_is_in_the_signed_output(self, tmp_path):
-        p = _write(tmp_path, "a.jsonl", json.dumps(
-            {"title": "Pool exhausted", "description": "SECRETCUSTOMERNAME went down"}) + "\n")
+        p = _write(
+            tmp_path,
+            "a.jsonl",
+            json.dumps({"title": "Pool exhausted", "description": "SECRETCUSTOMERNAME went down"}) + "\n",
+        )
         signed, _ = commons_cmd.signatures_from_file(p)
         assert "SECRETCUSTOMERNAME" not in json.dumps(signed)

@@ -38,8 +38,7 @@ def test_no_match_returns_empty_list_not_error():
 
 def test_respects_top_k():
     lessons = [
-        _lesson(f"lesson_{i}", description="git safety force push branch", tags=["git-safety"])
-        for i in range(5)
+        _lesson(f"lesson_{i}", description="git safety force push branch", tags=["git-safety"]) for i in range(5)
     ]
     ranked = retrieval.rank_lessons("git safety force push branch", lessons, top_k=2)
     assert len(ranked) == 2
@@ -47,8 +46,7 @@ def test_respects_top_k():
 
 def test_negative_top_k_returns_nothing_not_a_python_slice_artifact():
     lessons = [
-        _lesson(f"lesson_{i}", description="git safety force push branch", tags=["git-safety"])
-        for i in range(5)
+        _lesson(f"lesson_{i}", description="git safety force push branch", tags=["git-safety"]) for i in range(5)
     ]
     ranked = retrieval.rank_lessons("git safety force push branch", lessons, top_k=-1)
     assert ranked == []
@@ -100,17 +98,16 @@ def test_lessons_with_duplicate_names_get_their_own_tie_break_fields():
 class TestReliabilityAndRecencyWeighting:
     def _tied_pair(self):
         return [
-            _lesson("lesson_a", description="refund policy for enterprise accounts",
-                    importance=3, uses=0),
-            _lesson("lesson_b", description="refund policy for enterprise accounts",
-                    importance=3, uses=0),
+            _lesson("lesson_a", description="refund policy for enterprise accounts", importance=3, uses=0),
+            _lesson("lesson_b", description="refund policy for enterprise accounts", importance=3, uses=0),
         ]
 
     def test_default_is_inert_identical_output_to_calling_with_neither_argument(self):
         lessons = self._tied_pair()
         baseline = retrieval.rank_lessons("refund policy enterprise", lessons)
         with_zero_weights = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_a": 1.0, "lesson_b": -1.0},
             reliability_weight=0.0,
             recency_lookup={"lesson_a": 1.0, "lesson_b": -1.0},
@@ -122,7 +119,8 @@ class TestReliabilityAndRecencyWeighting:
     def test_a_harmful_lesson_ranks_behind_a_reliable_one_when_otherwise_tied(self):
         lessons = self._tied_pair()
         ranked = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_a": -1.0, "lesson_b": 1.0},
             reliability_weight=0.2,
         )
@@ -131,7 +129,8 @@ class TestReliabilityAndRecencyWeighting:
     def test_a_stale_lesson_ranks_behind_a_fresh_one_when_otherwise_tied(self):
         lessons = self._tied_pair()
         ranked = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             recency_lookup={"lesson_a": -1.0, "lesson_b": 1.0},
             recency_weight=0.2,
         )
@@ -141,7 +140,8 @@ class TestReliabilityAndRecencyWeighting:
         lessons = self._tied_pair()
         unadjusted = retrieval.rank_lessons("refund policy enterprise", lessons)
         adjusted = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_a": -1.0, "lesson_b": 1.0},
             reliability_weight=0.9,
         )
@@ -150,7 +150,8 @@ class TestReliabilityAndRecencyWeighting:
     def test_adjustment_fields_are_recorded_on_the_ranked_lesson(self):
         lessons = self._tied_pair()
         ranked = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_a": -1.0, "lesson_b": 1.0},
             reliability_weight=0.2,
             recency_lookup={"lesson_a": 0.5, "lesson_b": 0.5},
@@ -164,7 +165,8 @@ class TestReliabilityAndRecencyWeighting:
     def test_a_below_floor_lesson_is_not_rescued_by_a_reliable_verdict(self):
         lessons = [_lesson("lesson_off_topic", description="completely unrelated widget content")]
         ranked = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_off_topic": 1.0},
             reliability_weight=1.0,
         )
@@ -173,7 +175,8 @@ class TestReliabilityAndRecencyWeighting:
     def test_a_missing_slug_in_the_lookup_is_treated_as_zero_adjustment(self):
         lessons = self._tied_pair()
         ranked = retrieval.rank_lessons(
-            "refund policy enterprise", lessons,
+            "refund policy enterprise",
+            lessons,
             reliability_lookup={"lesson_b": 1.0},
             reliability_weight=0.2,
         )
@@ -182,14 +185,18 @@ class TestReliabilityAndRecencyWeighting:
 
     def test_a_topically_stronger_match_still_wins_over_a_large_reliability_gap(self):
         lessons = [
-            _lesson("lesson_strong_match",
-                    description="refund policy for enterprise accounts",
-                    applies_when="refund policy enterprise accounts dispute",
-                    tags=["refund", "enterprise", "policy"], importance=3),
+            _lesson(
+                "lesson_strong_match",
+                description="refund policy for enterprise accounts",
+                applies_when="refund policy enterprise accounts dispute",
+                tags=["refund", "enterprise", "policy"],
+                importance=3,
+            ),
             _lesson("lesson_weak_match", description="refund", importance=3),
         ]
         ranked = retrieval.rank_lessons(
-            "refund policy for enterprise accounts dispute", lessons,
+            "refund policy for enterprise accounts dispute",
+            lessons,
             reliability_lookup={"lesson_strong_match": -1.0, "lesson_weak_match": 1.0},
             reliability_weight=0.2,
         )

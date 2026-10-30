@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 import yaml
@@ -17,24 +18,47 @@ def store(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     main(["init", "--agent-type", "support", "--dest", str(tmp_path)])
     for n in (1, 2, 3):
-        main(["capture", "--title", f"Refund confusion {n}", "--context", REFUND, "--solution", "link the policy",
-              "--tags", "refunds", "--agent-type", "support", "--not-resolved", "--dest", str(tmp_path)])
+        main(
+            [
+                "capture",
+                "--title",
+                f"Refund confusion {n}",
+                "--context",
+                REFUND,
+                "--solution",
+                "link the policy",
+                "--tags",
+                "refunds",
+                "--agent-type",
+                "support",
+                "--not-resolved",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
     return tmp_path
 
 
 def _statuses(store):
     ldir = paths.lessons_dir(str(store))
-    return {f: frontmatter.read(os.path.join(ldir, f))[0].get("status")
-            for f in os.listdir(ldir) if f.startswith("lesson_") and "template" not in f}
+    return {
+        f: frontmatter.read(os.path.join(ldir, f))[0].get("status")
+        for f in os.listdir(ldir)
+        if f.startswith("lesson_") and "template" not in f
+    }
 
 
 def test_without_a_model_it_reports_and_writes_no_lessons(store, capsys):
     assert main(["dream", "--dest", str(store)]) == 0
     out = capsys.readouterr().out
     assert "1 signal(s)" in out and "report only" in out
-    report = open(os.path.join(paths.memory_dir(str(store)), "dream",
-                               next(iter(os.listdir(os.path.join(paths.memory_dir(str(store)), "dream"))))),
-                  encoding="utf-8").read()
+    report = Path(
+        os.path.join(
+            paths.memory_dir(str(store)),
+            "dream",
+            next(iter(os.listdir(os.path.join(paths.memory_dir(str(store)), "dream")))),
+        )
+    ).read_text(encoding="utf-8")
     assert "Failure signals (1)" in report and "No model configured" in report
     assert _statuses(store) == {}
 
@@ -43,10 +67,23 @@ def test_with_a_model_it_drafts_from_the_signal_and_everything_stays_in_review(s
     import json
 
     from unimem import llm
+
     monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
-    monkeypatch.setattr(llm, "_call_anthropic", lambda cfg, prompt: (json.dumps({
-        "rule": "Link the single refund policy page.", "applies_when": "A customer asks about refund timing.",
-        "do_not_apply_when": "The refund was already issued.", "evidence": []}), {}))
+    monkeypatch.setattr(
+        llm,
+        "_call_anthropic",
+        lambda cfg, prompt: (
+            json.dumps(
+                {
+                    "rule": "Link the single refund policy page.",
+                    "applies_when": "A customer asks about refund timing.",
+                    "do_not_apply_when": "The refund was already issued.",
+                    "evidence": [],
+                }
+            ),
+            {},
+        ),
+    )
     assert main(["dream", "--dest", str(store)]) == 0
     assert "1 new draft(s)" in capsys.readouterr().out
     statuses = _statuses(store)
@@ -55,6 +92,7 @@ def test_with_a_model_it_drafts_from_the_signal_and_everything_stays_in_review(s
 
 def test_no_draft_flag_never_calls_a_model_even_when_one_is_configured(store, monkeypatch):
     from unimem import llm
+
     monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
     monkeypatch.setattr(llm, "_call_anthropic", lambda *a: (_ for _ in ()).throw(AssertionError("called")))
     assert main(["dream", "--no-draft", "--dest", str(store)]) == 0

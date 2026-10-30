@@ -1,10 +1,12 @@
 """Production read reuse preserves source boundaries and bounded capacity."""
+
 import os
 import sqlite3
 import threading
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.conversation import Options, Store, recall, unicode_index
 from unimem.conversation.pool import PoolBusy, ReadPool
 
@@ -152,8 +154,10 @@ def test_close_allows_active_read_to_finish_then_releases_handle(tmp_path):
             pytest.fail("closed pool reopened")
 
 
-@pytest.mark.parametrize("limits", [{"maximum": 0}, {"per_path": 17}, {"wait_seconds": float("nan")},
-                                   {"idle_seconds": "60"}, {"wait_seconds": True}])
+@pytest.mark.parametrize(
+    "limits",
+    [{"maximum": 0}, {"per_path": 17}, {"wait_seconds": float("nan")}, {"idle_seconds": "60"}, {"wait_seconds": True}],
+)
 def test_invalid_resource_limits_fail_closed(limits):
     with pytest.raises(ValueError):
         ReadPool(**limits)
@@ -169,7 +173,7 @@ def test_service_pool_and_response_cache_do_not_inherit_locked_parent_state(tmp_
         recall(store, "Orion launch", options=Options(embedder="none", rerank=None))
     READ_POOL._condition.acquire()
     search._RECALL_LOCK.acquire()
-    child = os.fork()
+    child = intentional_fork(os.fork)
     if child == 0:
         try:
             import signal

@@ -1,4 +1,5 @@
 """What does this Hub serve under CONCURRENT load, and where does it bind?"""
+
 from __future__ import annotations
 
 import argparse
@@ -101,7 +102,8 @@ def _build_app(session_factory, backend: str, database_url: str) -> Starlette:
     def limiter(name: str):
         if backend == "postgres":
             return PostgresRateLimiter(
-                per_minute=_LIMIT_PER_MINUTE, burst=_LIMIT_PER_MINUTE,
+                per_minute=_LIMIT_PER_MINUTE,
+                burst=_LIMIT_PER_MINUTE,
                 database_url=database_url,
                 limiter_name=f"bench-{name}-{uuid.uuid4().hex[:8]}",
             )
@@ -144,15 +146,9 @@ async def run(clients: list[int], requests: int, backends: list[str], as_json: b
     finally:
         async with session_scope(session_factory) as session:
             if (await session.execute(text("SELECT to_regclass('hub_rate_limit_buckets')"))).scalar():
-                await session.execute(
-                    text("DELETE FROM hub_rate_limit_buckets WHERE limiter_name LIKE 'bench-%'")
-                )
-            await session.execute(
-                text("DELETE FROM api_keys WHERE org_id = :o"), {"o": org_id}
-            )
-            await session.execute(
-                text("DELETE FROM organizations WHERE id = :o"), {"o": org_id}
-            )
+                await session.execute(text("DELETE FROM hub_rate_limit_buckets WHERE limiter_name LIKE 'bench-%'"))
+            await session.execute(text("DELETE FROM api_keys WHERE org_id = :o"), {"o": org_id})
+            await session.execute(text("DELETE FROM organizations WHERE id = :o"), {"o": org_id})
         await engine.dispose()
 
     if as_json:
@@ -168,16 +164,17 @@ async def run(clients: list[int], requests: int, backends: list[str], as_json: b
         print(header)
         print("  " + "-" * (len(header) - 2))
         for row in rows:
-            print(f"  {row['clients']:>8} {row['rps']:>10.1f} {row['p50_ms']:>9.2f} "
-                  f"{row['p95_ms']:>9.2f} {row['p99_ms']:>9.2f} {row['failures']:>7}")
+            print(
+                f"  {row['clients']:>8} {row['rps']:>10.1f} {row['p50_ms']:>9.2f} "
+                f"{row['p95_ms']:>9.2f} {row['p99_ms']:>9.2f} {row['failures']:>7}"
+            )
         if speedup is not None:
-            print(f"  {clients[0]} -> {clients[-1]} clients: {speedup:>.2f}x throughput"
-                  f"   {verdict(speedup)}")
+            print(f"  {clients[0]} -> {clients[-1]} clients: {speedup:>.2f}x throughput   {verdict(speedup)}")
 
     print()
     print("throughput speedup from the lowest to the highest concurrency level:")
     print(f"  <= {_SERIALIZED_SPEEDUP}x  SERIALIZED  adding clients bought nothing -- each request")
-    print( "                          holds something the others need, so load becomes queue")
+    print("                          holds something the others need, so load becomes queue")
     print(f"  <  {_SCALES_SPEEDUP}x  partial     some overlap, something still contended")
     print(f"  >= {_SCALES_SPEEDUP}x  scales      requests genuinely overlap")
     print()
@@ -188,23 +185,29 @@ async def run(clients: list[int], requests: int, backends: list[str], as_json: b
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Concurrent-load benchmark for the Hub's authenticated request path."
-    )
+    parser = argparse.ArgumentParser(description="Concurrent-load benchmark for the Hub's authenticated request path.")
     parser.add_argument(
-        "--clients", default=",".join(str(c) for c in DEFAULT_CLIENTS),
+        "--clients",
+        default=",".join(str(c) for c in DEFAULT_CLIENTS),
         help="comma-separated concurrency levels (default: %(default)s)",
     )
     parser.add_argument(
-        "--requests", type=int, default=DEFAULT_REQUESTS,
+        "--requests",
+        type=int,
+        default=DEFAULT_REQUESTS,
         help="requests per concurrency level (default: %(default)s)",
     )
     parser.add_argument(
-        "--backend", default="memory", choices=("memory", "postgres", "both"),
+        "--backend",
+        default="memory",
+        choices=("memory", "postgres", "both"),
         help="rate-limiter backend to drive load through (default: %(default)s)",
     )
     parser.add_argument(
-        "--auth-cache", type=float, default=0.0, metavar="SECONDS",
+        "--auth-cache",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
         help="HUB_AUTH_CACHE_SECONDS for this run (default: 0, off); see hub/auth.py for the trade-off",
     )
     parser.add_argument("--json", action="store_true", help="machine-readable output")

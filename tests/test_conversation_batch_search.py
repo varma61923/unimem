@@ -1,4 +1,5 @@
 """Exact batched recall must preserve independent rankings, scopes and bounded scans."""
+
 import pytest
 
 from unimem.conversation import Options, Store, embed, recall, search
@@ -120,8 +121,15 @@ def test_recall_encodes_multiple_facets_together_and_preserves_each_answer(tmp_p
         store.add("color", [{"text": "Project Zephyr color is sky blue."}])
         store.add("budget", [{"text": "Project Zephyr budget is 120 units."}])
         store.add("venue", [{"text": "Project Zephyr venue is Oslo."}])
-        opts = Options(rerank=None, graph_hops=0, neighbours_before=0, neighbours_after=0,
-                       profile_facts=0, instructions=0, summaries=False)
+        opts = Options(
+            rerank=None,
+            graph_hops=0,
+            neighbours_before=0,
+            neighbours_after=0,
+            profile_facts=0,
+            instructions=0,
+            summaries=False,
+        )
         result = recall(store, "Summarize Project Zephyr, including color, budget and venue.", options=opts)
         assert len(calls) == 1 and calls[0][1] and len(calls[0][0]) > 1
         assert all(text in result.context for text in ("sky blue", "120 units", "Oslo"))

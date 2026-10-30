@@ -1,4 +1,5 @@
 """Provenance evidence log for graph nodes/edges."""
+
 from __future__ import annotations
 
 import json
@@ -41,10 +42,17 @@ def append_provenance(
         from unimem import lineage
 
         content = {"id": str(target_id), "provenance": record}
-        lineage.attest(root, content, fp.sign(root, content),
-                       inputs=[str(value) for value in ("file:" + source_path if source_path else "",
-                                                       "run:" + run_id if run_id else "") if value],
-                       operation=str(target_kind))
+        lineage.attest(
+            root,
+            content,
+            fp.sign(root, content),
+            inputs=[
+                str(value)
+                for value in ("file:" + source_path if source_path else "", "run:" + run_id if run_id else "")
+                if value
+            ],
+            operation=str(target_kind),
+        )
     return record
 
 
@@ -94,8 +102,15 @@ _CONTROL_KINDS = ("proposal", "foresight", "wiki", "compression", "mental-model"
 
 def _node_kind(node_id: str) -> str:
     lowered = node_id.lower()
-    for prefix, kind in (("fact-", "fact"), ("obs-", "observation"), ("fcl-", "fact-cluster"),
-                         ("run:", "run"), ("file:", "file"), ("lesson:", "lesson"), ("chunk", "chunk")):
+    for prefix, kind in (
+        ("fact-", "fact"),
+        ("obs-", "observation"),
+        ("fcl-", "fact-cluster"),
+        ("run:", "run"),
+        ("file:", "file"),
+        ("lesson:", "lesson"),
+        ("chunk", "chunk"),
+    ):
         if lowered.startswith(prefix):
             return kind
     if "->" in node_id:
@@ -167,14 +182,20 @@ def _derivation_edges(root: str) -> list[tuple[str, str, str]]:
                 fm, _body = frontmatter.read(os.path.join(lessons, name))
             except Exception:  # noqa: BLE001 - one unreadable lesson must not hide the rest
                 continue
-            slug = str(fm.get("name") or name[len("lesson_"):-3])
+            slug = str(fm.get("name") or name[len("lesson_") : -3])
             for trace in fm.get("source_traces") or []:
                 add(trace, "lesson:" + slug, "lesson_source")
     return sorted(edges)
 
 
-def lineage(root: str, record_id: str, direction: str = "down", max_depth: int = DEFAULT_MAX_DEPTH, *,
-            max_nodes: int = MAX_NODES) -> dict[str, Any]:
+def lineage(
+    root: str,
+    record_id: str,
+    direction: str = "down",
+    max_depth: int = DEFAULT_MAX_DEPTH,
+    *,
+    max_nodes: int = MAX_NODES,
+) -> dict[str, Any]:
     """The derivation graph around *record_id*.
 
     ``direction="down"``: everything derived from it (its descendants);
@@ -224,11 +245,21 @@ def lineage(root: str, record_id: str, direction: str = "down", max_depth: int =
             break
     else:
         truncated = truncated or any(other not in depth_of for node in frontier for other, _r in forward.get(node, []))
-    nodes = [{"id": node, "kind": _node_kind(node), "depth": depth} for node, depth in
-             sorted(depth_of.items(), key=lambda kv: (kv[1], kv[0]))]
+    nodes = [
+        {"id": node, "kind": _node_kind(node), "depth": depth}
+        for node, depth in sorted(depth_of.items(), key=lambda kv: (kv[1], kv[0]))
+    ]
     out_edges = [e for e in out_edges if e["source"] in depth_of and e["target"] in depth_of]
-    return {"root": start, "direction": direction, "max_depth": max_depth, "found": start in known,
-            "nodes": nodes, "edges": out_edges, "revisited": revisited, "truncated": truncated}
+    return {
+        "root": start,
+        "direction": direction,
+        "max_depth": max_depth,
+        "found": start in known,
+        "nodes": nodes,
+        "edges": out_edges,
+        "revisited": revisited,
+        "truncated": truncated,
+    }
 
 
 def render_lineage(result: dict[str, Any]) -> str:
@@ -238,8 +269,9 @@ def render_lineage(result: dict[str, Any]) -> str:
     arrow = "derived" if result["direction"] == "down" else "came from"
     children: dict[str, list[tuple[str, str]]] = {}
     for edge in result["edges"]:
-        parent, child = (edge["source"], edge["target"]) if result["direction"] == "down" else \
-            (edge["target"], edge["source"])
+        parent, child = (
+            (edge["source"], edge["target"]) if result["direction"] == "down" else (edge["target"], edge["source"])
+        )
         children.setdefault(parent, []).append((child, edge["relation"]))
     lines = [f"{result['root']}  ({len(result['nodes']) - 1} record(s) {arrow}, depth <= {result['max_depth']})"]
     printed = {result["root"]}
@@ -247,8 +279,10 @@ def render_lineage(result: dict[str, Any]) -> str:
     def walk(node: str, indent: int) -> None:
         for child, relation in children.get(node, []):
             seen = child in printed
-            lines.append("  " * indent + f"{'<-' if result['direction'] == 'up' else '->'} {child}  "
-                         f"[{relation}]" + ("  (already shown)" if seen else ""))
+            lines.append(
+                "  " * indent + f"{'<-' if result['direction'] == 'up' else '->'} {child}  "
+                f"[{relation}]" + ("  (already shown)" if seen else "")
+            )
             if not seen:
                 printed.add(child)
                 walk(child, indent + 1)

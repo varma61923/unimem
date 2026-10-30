@@ -1,4 +1,5 @@
 """`unimem pack` vertical configuration and offline demo operations."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 def run(args: argparse.Namespace) -> int:
     from unimem import packs
 
+    result: list[dict] | dict
     if args.pack_action == "list":
         result = [item.__dict__ for item in packs.list_packs()]
     elif args.pack_action == "install":

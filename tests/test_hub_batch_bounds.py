@@ -1,4 +1,5 @@
 """Batch sync bounds both task allocation and shutdown of live operations."""
+
 import asyncio
 
 import pytest
@@ -32,53 +33,54 @@ def test_batch_consumes_lazily_and_preserves_order():
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('concurrency', [0, -4, 1, 8])
+@pytest.mark.parametrize("concurrency", [0, -4, 1, 8])
 def test_empty_batch_does_not_call_worker(concurrency):
     async def call(_value):
-        pytest.fail('empty input must not run a callback')
+        pytest.fail("empty input must not run a callback")
 
     assert asyncio.run(hub_client._gather_bounded(iter(()), call, concurrency)) == []
 
 
-@pytest.mark.parametrize('failure', ['callback', 'iterator', 'cancel'])
+@pytest.mark.parametrize("failure", ["callback", "iterator", "cancel"])
 def test_batch_failure_finishes_other_workers(failure):
     async def run():
         active = set()
         ready = asyncio.Event()
 
         def source():
-            yield 'waiting'
-            yield 'other'
-            if failure == 'iterator':
-                raise ValueError('source failed')
-            yield 'third'
+            yield "waiting"
+            yield "other"
+            if failure == "iterator":
+                raise ValueError("source failed")
+            yield "third"
 
         async def call(value):
             active.add(value)
             try:
-                if value == 'waiting':
+                if value == "waiting":
                     ready.set()
                     await asyncio.Event().wait()
-                if failure == 'callback':
+                if failure == "callback":
                     await ready.wait()
-                    raise ValueError('callback failed')
+                    raise ValueError("callback failed")
                 await asyncio.Event().wait()
             finally:
                 active.remove(value)
 
         callback = call
-        if failure == 'iterator':
+        if failure == "iterator":
             # Let one callback complete so a worker advances the failing source.
             async def completes(value):
-                if value == 'waiting':
+                if value == "waiting":
                     return value
                 return await call(value)
+
             callback = completes
         task = asyncio.create_task(hub_client._gather_bounded(source(), callback, 2))
-        if failure == 'cancel':
+        if failure == "cancel":
             await ready.wait()
             task.cancel()
-        with pytest.raises(asyncio.CancelledError if failure == 'cancel' else ValueError):
+        with pytest.raises(asyncio.CancelledError if failure == "cancel" else ValueError):
             await task
         assert active == set()
         assert len(asyncio.all_tasks()) == 1
@@ -105,8 +107,8 @@ def test_paced_slot_obeys_new_rate_limit_pause(monkeypatch):
             if len(sleeps) == 1:
                 gate.pause(1.0)
 
-        monkeypatch.setattr(hub_client.asyncio, 'get_running_loop', lambda: clock)
-        monkeypatch.setattr(hub_client.asyncio, 'sleep', sleep)
+        monkeypatch.setattr(hub_client.asyncio, "get_running_loop", lambda: clock)
+        monkeypatch.setattr(hub_client.asyncio, "sleep", sleep)
         await gate.wait()
         assert clock.now >= 1.2
         assert sleeps == pytest.approx([0.2, 1.0])

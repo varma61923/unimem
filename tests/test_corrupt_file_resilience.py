@@ -21,11 +21,28 @@ class TestLessonListSurvivesACorruptFile:
     def test_one_bad_lesson_does_not_hide_the_others(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
         ldir = store / "memory" / "lessons"
-        main([
-            "lesson", "new", "--slug", "good-lesson", "--description", "good lesson", "--tags", "x",
-            "--agent-type", "code", "--domain", "testing", "--applies-when", "w",
-            "--do-not-apply-when", "n", "--dest", str(store),
-        ])
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "good-lesson",
+                "--description",
+                "good lesson",
+                "--tags",
+                "x",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--applies-when",
+                "w",
+                "--do-not-apply-when",
+                "n",
+                "--dest",
+                str(store),
+            ]
+        )
         _corrupt(ldir / "lesson_broken.md")
         capsys.readouterr()
 
@@ -40,10 +57,21 @@ class TestTraceListSurvivesACorruptFile:
     def test_one_bad_trace_does_not_hide_the_others(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
         tdir = store / "memory" / "traces"
-        main([
-            "capture", "--title", "good trace", "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--dest", str(store),
-        ])
+        main(
+            [
+                "capture",
+                "--title",
+                "good trace",
+                "--context",
+                "c",
+                "--solution",
+                "s",
+                "--agent-type",
+                "code",
+                "--dest",
+                str(store),
+            ]
+        )
         _corrupt(tdir / "trace_broken.md")
         capsys.readouterr()
 
@@ -60,10 +88,22 @@ class TestCommonsRecurringFailuresSurvivesACorruptFile:
 
         main(["init", "--agent-type", "code", "--dest", str(store)])
         tdir = store / "memory" / "traces"
-        main([
-            "capture", "--title", "recurring thing", "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--repeated-error", "--dest", str(store),
-        ])
+        main(
+            [
+                "capture",
+                "--title",
+                "recurring thing",
+                "--context",
+                "c",
+                "--solution",
+                "s",
+                "--agent-type",
+                "code",
+                "--repeated-error",
+                "--dest",
+                str(store),
+            ]
+        )
         _corrupt(tdir / "trace_broken.md")
 
         failures = commons_cmd.build_signatures(str(store))

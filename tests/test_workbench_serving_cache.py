@@ -1,8 +1,10 @@
 """Serving caches reuse parsing, while source edits and scoped gates stay live."""
+
 import json
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -28,9 +30,16 @@ def lesson(root, name, *, status="active", scopes=None, rule="Use an idempotency
     folder = paths.lessons_dir(str(root))
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, name + ".md")
-    fm = {"name": name, "status": status, "scopes": scopes or [], "description": rule,
-          "applies_when": "The payment request timed out.", "do_not_apply_when": "The request is read-only.",
-          "source_traces": ["a"], "llm_draft": {"usage": {"input_tokens": 10}}}
+    fm = {
+        "name": name,
+        "status": status,
+        "scopes": scopes or [],
+        "description": rule,
+        "applies_when": "The payment request timed out.",
+        "do_not_apply_when": "The request is read-only.",
+        "source_traces": ["a"],
+        "llm_draft": {"usage": {"input_tokens": 10}},
+    }
     frontmatter.write(path, fm, "## Rule\n" + rule + "\n")
     return path
 
@@ -65,7 +74,7 @@ def test_same_size_same_mtime_edit_replacement_and_deletion_are_fresh(tmp_path):
     path = lesson(tmp_path, "lesson_live")
     first = workbench._lessons(str(tmp_path))[0]
     st = os.stat(path)
-    text = open(path, encoding="utf-8").read().replace("idempotency", "replacement")
+    text = Path(path).read_text(encoding="utf-8").replace("idempotency", "replacement")
     assert len(text.encode()) == st.st_size
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text)

@@ -67,10 +67,14 @@ def list_packs() -> list[PackInfo]:
             continue
         name = filename[: -len(".jsonl")]
         path = os.path.join(PACKS_DIR, filename)
-        out.append(PackInfo(
-            name=name, count=len(_read(path)), version=_version(path),
-            description=DESCRIPTIONS.get(name, ""),
-        ))
+        out.append(
+            PackInfo(
+                name=name,
+                count=len(_read(path)),
+                version=_version(path),
+                description=DESCRIPTIONS.get(name, ""),
+            )
+        )
     return out
 
 
@@ -93,9 +97,7 @@ def _lesson(record: dict, *, pack: str, version: str, slug: str, agent_type: str
         domain=pack,
         tags=tags,
         applies_when=situation,
-        do_not_apply_when=(
-            "TODO: where this does NOT apply in your own stack -- the pack cannot know"
-        ),
+        do_not_apply_when=("TODO: where this does NOT apply in your own stack -- the pack cannot know"),
         importance=3,
         importance_rationale=f"Installed from the curated '{pack}' pack; calibrate for this fleet.",
         status="review",
@@ -132,11 +134,18 @@ def install_pack(root: str, name: str, *, agent_type: str | None = None) -> Inst
             result.skipped_existing.append(slug)
             continue
         fm, body = _lesson(
-            record, pack=name, version=version, slug=slug,
+            record,
+            pack=name,
+            version=version,
+            slug=slug,
             agent_type=str(agent_type or record.get("agent_type") or store_type),
         )
         lesson_io.write_lesson(
-            out_path, fm, body, root=root, actor="kb-install",
+            out_path,
+            fm,
+            body,
+            root=root,
+            actor="kb-install",
             reason=f"installed from kb pack {name}@{version}",
         )
         result.written.append(slug)

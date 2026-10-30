@@ -1,4 +1,5 @@
 """`unimem graph`: manage temporal knowledge graph and entity relationships."""
+
 from __future__ import annotations
 
 import argparse
@@ -17,17 +18,23 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     p_node = sub.add_parser("node", help="Add or update an entity node.")
     p_node.add_argument("id", help="Node identifier (e.g. service:stripe, tool:git).")
-    p_node.add_argument("--type", default="concept",
-                        help="Entity type (built-in: " + ", ".join(graph.ENTITY_TYPES)
-                        + "; or one the ontology declares).")
+    p_node.add_argument(
+        "--type",
+        default="concept",
+        help="Entity type (built-in: " + ", ".join(graph.ENTITY_TYPES) + "; or one the ontology declares).",
+    )
     p_node.add_argument("--name", default="", help="Human-readable name.")
     p_node.add_argument("--dest", default=None)
     p_node.set_defaults(func=run_node)
 
     p_edge = sub.add_parser("edge", help="Add a relationship edge between two nodes.")
     p_edge.add_argument("source", help="Source node ID.")
-    p_edge.add_argument("relation", help="Relationship type (built-in: " + ", ".join(graph.RELATIONS)
-                        + "; or one the ontology declares, or a declared inverse).")
+    p_edge.add_argument(
+        "relation",
+        help="Relationship type (built-in: "
+        + ", ".join(graph.RELATIONS)
+        + "; or one the ontology declares, or a declared inverse).",
+    )
     p_edge.add_argument("target", help="Target node ID.")
     p_edge.add_argument("--weight", type=float, default=1.0, help="Edge weight/strength (0.0 to 1.0).")
     p_edge.add_argument("--valid-at", default=None, help="When the fact became true (valid time, ISO).")
@@ -41,11 +48,19 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_q.add_argument("--hops", type=int, default=1, choices=(1, 2, 3), help="Max hops to traverse.")
     p_q.add_argument("--as-of", default="", help="What was true at this moment (valid time).")
     p_q.add_argument("--known-at", default="", help="As the store knew it at this moment (record time).")
-    p_q.add_argument("--backend", default="local", choices=("local", "mirror"),
-                     help="local: the canonical files; mirror: the Neo4j/FalkorDB mirror named by "
-                          "UNIMEM_GRAPH_BACKEND (publish it first with `graph mirror`).")
-    p_q.add_argument("--relation", action="append", default=[],
-                     help="Only follow this relation (repeatable; local or mirror backend).")
+    p_q.add_argument(
+        "--backend",
+        default="local",
+        choices=("local", "mirror"),
+        help="local: the canonical files; mirror: the Neo4j/FalkorDB mirror named by "
+        "UNIMEM_GRAPH_BACKEND (publish it first with `graph mirror`).",
+    )
+    p_q.add_argument(
+        "--relation",
+        action="append",
+        default=[],
+        help="Only follow this relation (repeatable; local or mirror backend).",
+    )
     p_q.add_argument("--dest", default=None)
     p_q.set_defaults(func=run_query)
 
@@ -64,8 +79,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_path.set_defaults(func=run_path)
 
     p_mir = sub.add_parser("mirror", help="Publish the graph to the Neo4j/FalkorDB mirror (UNIMEM_GRAPH_BACKEND).")
-    p_mir.add_argument("--backend", default=None, choices=("neo4j", "falkordb"),
-                       help="Overrides UNIMEM_GRAPH_BACKEND.")
+    p_mir.add_argument("--backend", default=None, choices=("neo4j", "falkordb"), help="Overrides UNIMEM_GRAPH_BACKEND.")
     p_mir.add_argument("--json", action="store_true")
     p_mir.add_argument("--dest", default=None)
     p_mir.set_defaults(func=run_mirror)
@@ -111,19 +125,29 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_r = sub.add_parser("revise", help="Record a new version of an entity (the old one stays in its history).")
     p_r.add_argument("id", help="Entity ID to revise.")
     p_r.add_argument("--name", default="", help="New display name.")
-    p_r.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
-                     help="Property to set on the new version (repeatable).")
+    p_r.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Property to set on the new version (repeatable).",
+    )
     p_r.add_argument("--dest", default=None)
     p_r.set_defaults(func=run_revise)
 
     p_p = sub.add_parser("provenance", help="Show where a node or edge came from (source and run).")
     p_p.add_argument("target", nargs="?", default=None, help="Node id, or an edge as 'source->target:relation'.")
-    p_p.add_argument("--lineage", metavar="ID", default=None,
-                     help="Walk the derivation graph from this record (fact, observation, proposal, trace, "
-                          "chunk, source path, run:<id> or lesson:<slug>).")
+    p_p.add_argument(
+        "--lineage",
+        metavar="ID",
+        default=None,
+        help="Walk the derivation graph from this record (fact, observation, proposal, trace, "
+        "chunk, source path, run:<id> or lesson:<slug>).",
+    )
     way = p_p.add_mutually_exclusive_group()
-    way.add_argument("--down", dest="direction", action="store_const", const="down",
-                     help="What was derived from it (default).")
+    way.add_argument(
+        "--down", dest="direction", action="store_const", const="down", help="What was derived from it (default)."
+    )
     way.add_argument("--up", dest="direction", action="store_const", const="up", help="What it came from.")
     p_p.add_argument("--max-depth", type=int, default=5, help="Hops to follow (1-32, default 5).")
     p_p.add_argument("--json", action="store_true")
@@ -145,8 +169,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_l.add_argument("--dest", default=None)
     p_l.set_defaults(func=run_link)
 
-    p_sy = sub.add_parser("sync", help="Project new and changed facts into the graph (entities, mentions, "
-                                       "relations) and close what retired facts produced.")
+    p_sy = sub.add_parser(
+        "sync",
+        help="Project new and changed facts into the graph (entities, mentions, "
+        "relations) and close what retired facts produced.",
+    )
     p_sy.add_argument("--limit", type=int, default=2000, help="At most this many facts per pass.")
     p_sy.add_argument("--llm", action="store_true", help="Extract relations with the configured LLM.")
     p_sy.add_argument("--json", action="store_true")
@@ -171,32 +198,47 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_m.add_argument("--dest", default=None)
     p_m.set_defaults(func=run_merge)
 
-    p_rx = sub.add_parser("extract-relations",
-                          help="Extract ontology relations (triples) from a file or text into graph edges.")
+    p_rx = sub.add_parser(
+        "extract-relations", help="Extract ontology relations (triples) from a file or text into graph edges."
+    )
     p_rx.add_argument("source", help="A text file, or the text itself; '-' reads stdin.")
-    p_rx.add_argument("--llm", action="store_true",
-                      help="Extract with the configured LLM (UNIMEM_LLM_*) instead of offline patterns.")
+    p_rx.add_argument(
+        "--llm", action="store_true", help="Extract with the configured LLM (UNIMEM_LLM_*) instead of offline patterns."
+    )
     p_rx.add_argument("--dry-run", action="store_true", help="Show the triples without writing them.")
     p_rx.add_argument("--json", action="store_true")
     p_rx.add_argument("--dest", default=None)
     p_rx.set_defaults(func=run_extract_relations)
 
     p_rs = sub.add_parser("resolve", help="Propose (and with --apply, merge) entities that name one thing.")
-    p_rs.add_argument("--embedder", default=None,
-                      help="Embedding provider tag (e.g. arctic-m, openai:text-embedding-3-small); default "
-                           "UNIMEM_GRAPH_EMBEDDER, else character n-gram similarity.")
-    p_rs.add_argument("--threshold", type=float, default=None,
-                      help="Report pairs at or above this similarity (default 0.85 embeddings, 0.6 n-grams).")
-    p_rs.add_argument("--apply", action="store_true",
-                      help="Merge compatible pairs at or above the stricter --apply-threshold.")
-    p_rs.add_argument("--apply-threshold", type=float, default=None,
-                      help="Similarity a pair needs to be merged (default 0.95 embeddings, 0.85 n-grams).")
+    p_rs.add_argument(
+        "--embedder",
+        default=None,
+        help="Embedding provider tag (e.g. arctic-m, openai:text-embedding-3-small); default "
+        "UNIMEM_GRAPH_EMBEDDER, else character n-gram similarity.",
+    )
+    p_rs.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help="Report pairs at or above this similarity (default 0.85 embeddings, 0.6 n-grams).",
+    )
+    p_rs.add_argument(
+        "--apply", action="store_true", help="Merge compatible pairs at or above the stricter --apply-threshold."
+    )
+    p_rs.add_argument(
+        "--apply-threshold",
+        type=float,
+        default=None,
+        help="Similarity a pair needs to be merged (default 0.95 embeddings, 0.85 n-grams).",
+    )
     p_rs.add_argument("--context", action="store_true", help="Embed each entity with its neighbours' names.")
     p_rs.add_argument("--limit", type=int, default=100)
     p_rs.add_argument("--json", action="store_true")
     p_rs.add_argument("--dest", default=None)
-    p_rs.add_argument("--tiered", action="store_true",
-                      help="Exact, entropy-gated MinHash, embeddings and optional judge.")
+    p_rs.add_argument(
+        "--tiered", action="store_true", help="Exact, entropy-gated MinHash, embeddings and optional judge."
+    )
     p_rs.add_argument("--judge", action="store_true", help="Batch-judge remaining tiered entity candidates.")
     p_rs.set_defaults(func=run_resolve)
 
@@ -270,8 +312,7 @@ def run_mirror(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(out, indent=2))
     else:
-        print(f"[unimem] mirrored {out['nodes']} node(s) and {out['edges']} edge(s); "
-              "the local files stay canonical.")
+        print(f"[unimem] mirrored {out['nodes']} node(s) and {out['edges']} edge(s); the local files stay canonical.")
     return 0
 
 
@@ -317,9 +358,13 @@ def run_query(args: argparse.Namespace) -> int:
             _query_mirror(args, start_ids)
         elif args.hops == 1:
             for sid in start_ids:
-                neighbors = graph.get_neighbors(root, sid, as_of=args.as_of or None,
-                                                known_at=args.known_at or None,
-                                                relations=getattr(args, "relation", None) or None)
+                neighbors = graph.get_neighbors(
+                    root,
+                    sid,
+                    as_of=args.as_of or None,
+                    known_at=args.known_at or None,
+                    relations=getattr(args, "relation", None) or None,
+                )
                 print(f"# Neighbors of '{sid}':")
                 if not neighbors:
                     print("  (no connected edges)")
@@ -327,9 +372,14 @@ def run_query(args: argparse.Namespace) -> int:
                     arrow = f"--[{n['relation']}]-->" if n["direction"] == "out" else f"<--[{n['relation']}]--"
                     print(f"  ({sid}) {arrow} ({n['neighbor_id']} / {n['neighbor_name']})")
         else:
-            sub = graph.multi_hop_subgraph(root, start_ids, max_hops=args.hops, as_of=args.as_of or None,
-                                           known_at=args.known_at or None,
-                                           relations=getattr(args, "relation", None) or None)
+            sub = graph.multi_hop_subgraph(
+                root,
+                start_ids,
+                max_hops=args.hops,
+                as_of=args.as_of or None,
+                known_at=args.known_at or None,
+                relations=getattr(args, "relation", None) or None,
+            )
             print(f"# Subgraph: {len(sub['nodes'])} nodes, {len(sub['edges'])} edges")
             print("\n## Nodes:")
             for n in sub["nodes"]:
@@ -348,10 +398,18 @@ def run_query(args: argparse.Namespace) -> int:
 def run_path(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
-        result = graph.shortest_path(root, args.source, args.target, max_hops=args.hops,
-                                     relations=args.relation or None, direction=args.direction,
-                                     as_of=args.as_of, known_at=args.known_at, max_nodes=args.max_nodes,
-                                     max_examined_edges=args.max_examined_edges)
+        result = graph.shortest_path(
+            root,
+            args.source,
+            args.target,
+            max_hops=args.hops,
+            relations=args.relation or None,
+            direction=args.direction,
+            as_of=args.as_of,
+            known_at=args.known_at,
+            max_nodes=args.max_nodes,
+            max_examined_edges=args.max_examined_edges,
+        )
     except (ValueError, OSError) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -434,8 +492,9 @@ def run_provenance(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     if getattr(args, "lineage", None):
         try:
-            result = provenance.lineage(root, args.lineage, direction=args.direction or "down",
-                                        max_depth=args.max_depth)
+            result = provenance.lineage(
+                root, args.lineage, direction=args.direction or "down", max_depth=args.max_depth
+            )
         except ValueError as exc:
             print(f"[unimem] {exc}", file=sys.stderr)
             return 2
@@ -454,8 +513,10 @@ def run_provenance(args: argparse.Namespace) -> int:
     for rec in records:
         detail = rec.get("detail")
         detail_text = json.dumps(detail, sort_keys=True) if isinstance(detail, (dict, list)) else str(detail or "")
-        print(f"{rec.get('created_at', '')[:19]}  {rec.get('target_kind', '')}  "
-              f"source={rec.get('source_path') or '-'}  run={rec.get('run_id') or '-'}  {detail_text}")
+        print(
+            f"{rec.get('created_at', '')[:19]}  {rec.get('target_kind', '')}  "
+            f"source={rec.get('source_path') or '-'}  run={rec.get('run_id') or '-'}  {detail_text}"
+        )
     return 0
 
 
@@ -475,8 +536,9 @@ def run_timeline(args: argparse.Namespace) -> int:
 
 def run_between(args: argparse.Namespace) -> int:
     try:
-        edges = graph.edges_between(paths.resolve_root(args.dest), args.start, args.end,
-                                    relation=args.relation, entity=args.entity)
+        edges = graph.edges_between(
+            paths.resolve_root(args.dest), args.start, args.end, relation=args.relation, entity=args.entity
+        )
     except ValueError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -526,7 +588,8 @@ def run_ontology(args: argparse.Namespace) -> int:
         src, dst = nodes.get(edge.source), nodes.get(edge.target)
         if src and dst:
             for p in ontology.Ontology(onto.entity_types, onto.relations).check_edge(
-                    rel, src.entity_type, dst.entity_type):
+                rel, src.entity_type, dst.entity_type
+            ):
                 problems.append(f"{edge.source} -[{edge.relation}]-> {edge.target}: {p}")
     for node in nodes.values():
         if node.entity_type not in onto.entity_types:
@@ -549,8 +612,12 @@ def run_extract(args: argparse.Namespace) -> int:
         from unimem import ontology_classify
 
         root = paths.resolve_root(args.dest)
-        found = entities.extract(text, onto=ontology.load(root), use_spacy=_spacy_flag(args.spacy),
-                                 exemplars=ontology_classify.Exemplars.from_graph(root))
+        found = entities.extract(
+            text,
+            onto=ontology.load(root),
+            use_spacy=_spacy_flag(args.spacy),
+            exemplars=ontology_classify.Exemplars.from_graph(root),
+        )
     except RuntimeError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -580,9 +647,11 @@ def run_sync(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(out, indent=2))
     else:
-        print(f"[unimem] projected {out['facts']} fact(s): {out['entities']} entity link(s) "
-              f"({out['new_entities']} new entities), {out['relations']} relation(s); "
-              f"{out['retired']} retired fact(s), {out['closed']} edge(s) closed.")
+        print(
+            f"[unimem] projected {out['facts']} fact(s): {out['entities']} entity link(s) "
+            f"({out['new_entities']} new entities), {out['relations']} relation(s); "
+            f"{out['retired']} retired fact(s), {out['closed']} edge(s) closed."
+        )
         for error in out["errors"][:5]:
             print(f"  ! {error}", file=sys.stderr)
     return 0
@@ -592,17 +661,23 @@ def run_link(args: argparse.Namespace) -> int:
     from unimem import entities
 
     try:
-        out = entities.link_lessons(paths.resolve_root(args.dest), args.lesson or None,
-                                    use_spacy=_spacy_flag(args.spacy), min_mentions=args.min_mentions)
+        out = entities.link_lessons(
+            paths.resolve_root(args.dest),
+            args.lesson or None,
+            use_spacy=_spacy_flag(args.spacy),
+            min_mentions=args.min_mentions,
+        )
     except RuntimeError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(out, indent=2))
     else:
-        print(f"[unimem] linked {out['lessons']} lesson(s) to {out['entities']} entit(ies): "
-              f"{out['new_entities']} new, {out['new_links']} new link(s), {out['retired_links']} retired "
-              f"({out['backend']}).")
+        print(
+            f"[unimem] linked {out['lessons']} lesson(s) to {out['entities']} entit(ies): "
+            f"{out['new_entities']} new, {out['new_links']} new link(s), {out['retired_links']} retired "
+            f"({out['backend']})."
+        )
     return 0
 
 
@@ -628,8 +703,9 @@ def run_duplicates(args: argparse.Namespace) -> int:
         return 0
     for p in pairs:
         print(f"{p['a']}  ~  {p['b']}   ({p['because']})")
-    print(f"[unimem] {len(pairs)} candidate pair(s); fold one into another with `graph merge KEEP DUP`.",
-          file=sys.stderr)
+    print(
+        f"[unimem] {len(pairs)} candidate pair(s); fold one into another with `graph merge KEEP DUP`.", file=sys.stderr
+    )
     return 0
 
 
@@ -664,8 +740,13 @@ def run_extract_relations(args: argparse.Namespace) -> int:
 
     try:
         label, text = _relation_source(args.source)
-        report = relation_extraction.ingest_text(paths.resolve_root(args.dest), text, source=label,
-                                                 llm=llm.complete if args.llm else None, dry_run=args.dry_run)
+        report = relation_extraction.ingest_text(
+            paths.resolve_root(args.dest),
+            text,
+            source=label,
+            llm=llm.complete if args.llm else None,
+            dry_run=args.dry_run,
+        )
     except (OSError, ValueError, llm.LLMUnavailable) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -687,12 +768,19 @@ def run_resolve(args: argparse.Namespace) -> int:
     from unimem import embeddings, entity_resolution
 
     try:
-        out = entity_resolution.resolve(paths.resolve_root(args.dest), embedder=args.embedder,
-                                        threshold=args.threshold, apply=args.apply,
-                                        apply_threshold=args.apply_threshold, context=args.context,
-                                        limit=args.limit, tiered=getattr(args, 'tiered', False),
-                                        complete=__import__('unimem.llm', fromlist=['complete']).complete
-                                        if getattr(args, 'judge', False) else None)
+        out = entity_resolution.resolve(
+            paths.resolve_root(args.dest),
+            embedder=args.embedder,
+            threshold=args.threshold,
+            apply=args.apply,
+            apply_threshold=args.apply_threshold,
+            context=args.context,
+            limit=args.limit,
+            tiered=getattr(args, "tiered", False),
+            complete=__import__("unimem.llm", fromlist=["complete"]).complete
+            if getattr(args, "judge", False)
+            else None,
+        )
     except (ValueError, embeddings.EmbeddingError) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -706,6 +794,9 @@ def run_resolve(args: argparse.Namespace) -> int:
         print(f"merged {m['merged']} into {m['kept']} ({m['method']} {m['score']:.3f})")
     for s in out["skipped"]:
         print(f"skipped {s['a']} ~ {s['b']}: {s['reason']}")
-    print(f"[unimem] {len(out['pairs'])} candidate pair(s) by {out['method']} >= {out['threshold']}; "
-          f"{len(out['merged'])} merged (>= {out['apply_threshold']}).", file=sys.stderr)
+    print(
+        f"[unimem] {len(out['pairs'])} candidate pair(s) by {out['method']} >= {out['threshold']}; "
+        f"{len(out['merged'])} merged (>= {out['apply_threshold']}).",
+        file=sys.stderr,
+    )
     return 0

@@ -18,6 +18,7 @@ Usage:
     python query.py "my incoming task" --top-k=10
     python query.py "my task" --top-k=10 --include-importance-floor=4
 """
+
 import argparse
 import contextlib
 import datetime
@@ -28,26 +29,31 @@ import re
 import sys
 import time
 import zipfile
+from typing import Any
 
 try:
-    import numpy as np
+    import numpy as np_import
 except ImportError:
     np = None
+else:
+    np = np_import
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
+SentenceTransformer: type[Any] | None = None
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
 except ImportError:
-    SentenceTransformer = None
+    pass
+else:
+    SentenceTransformer = _SentenceTransformer
 
 SUPPORTED_MODELS = {
     "multi-qa-mpnet-base-dot-v1": "",
-    "Snowflake/snowflake-arctic-embed-m-v1.5":
-        "Represent this sentence for searching relevant passages: ",
+    "Snowflake/snowflake-arctic-embed-m-v1.5": "Represent this sentence for searching relevant passages: ",
 }
 TRUSTED_MODELS = SUPPORTED_MODELS
 DEFAULT_MODEL_NAME = "Snowflake/snowflake-arctic-embed-m-v1.5"
@@ -105,7 +111,7 @@ def load_importances(lessons_dir: str | None = None) -> "ImportancesResult":
         if len(delims) < 2:
             continue
         try:
-            frontmatter = _load_frontmatter(content[delims[0].end():delims[1].start()]) or {}
+            frontmatter = _load_frontmatter(content[delims[0].end() : delims[1].start()]) or {}
         except yaml.YAMLError:
             continue
         if not isinstance(frontmatter, dict):
@@ -126,6 +132,8 @@ def load_importances(lessons_dir: str | None = None) -> "ImportancesResult":
 
 def load_importances_from_index(data) -> "ImportancesResult | None":
     if isinstance(data, (str, os.PathLike)):
+        if np is None:
+            return None
         try:
             with np.load(data, allow_pickle=False) as npz:
                 return load_importances_from_index(npz)
@@ -159,7 +167,11 @@ def _append_telemetry(record, path=None):
         from unimem.frontmatter import locked
     except Exception:  # noqa: BLE001 - standalone use, any import problem
         import contextlib
-        locked = lambda _p: contextlib.nullcontext()  # noqa: E731
+
+        def fallback_locked(_path: str, *, timeout: float = 10.0):
+            return contextlib.nullcontext()
+
+        locked = fallback_locked
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with locked(path):
@@ -187,13 +199,9 @@ def check_staleness(
     added = active_slugs - indexed_slugs
     removed = indexed_slugs - active_slugs
     if added:
-        reasons.append(
-            f"{len(added)} active lesson(s) not embedded in the index: {', '.join(sorted(added))}"
-        )
+        reasons.append(f"{len(added)} active lesson(s) not embedded in the index: {', '.join(sorted(added))}")
     if removed:
-        reasons.append(
-            f"{len(removed)} embedded slug(s) no longer active on disk: {', '.join(sorted(removed))}"
-        )
+        reasons.append(f"{len(removed)} embedded slug(s) no longer active on disk: {', '.join(sorted(removed))}")
 
     try:
         index_mtime = os.path.getmtime(index_path)
@@ -226,7 +234,7 @@ def check_staleness(
                 if len(delims) < 2:
                     continue
                 try:
-                    frontmatter = _load_frontmatter(content[delims[0].end():delims[1].start()]) or {}
+                    frontmatter = _load_frontmatter(content[delims[0].end() : delims[1].start()]) or {}
                 except yaml.YAMLError:
                     continue
                 if not isinstance(frontmatter, dict):
@@ -296,9 +304,12 @@ _MODELS: dict = {}
 
 def load_index(index_path):
     if not os.path.exists(index_path):
-        return Ranked(1, stderr=[
-            f"[ERR] No index found at {index_path}. Run build_index.py first.",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] No index found at {index_path}. Run build_index.py first.",
+            ],
+        )
     try:
         with np.load(index_path, allow_pickle=False) as data:
             model_name = str(data["model_name"])
@@ -308,34 +319,51 @@ def load_index(index_path):
             n_lessons = int(data["n_lessons"])
             fast_importances = load_importances_from_index(data)
     except (zipfile.BadZipFile, OSError, ValueError, EOFError, KeyError) as exc:
-        return Ranked(1, stderr=[
-            f"[ERR] Index file at {index_path} is corrupted. "
-            "Please rebuild the index: python memory/attention/build_index.py --force. "
-            f"Details: {exc}",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] Index file at {index_path} is corrupted. "
+                "Please rebuild the index: python memory/attention/build_index.py --force. "
+                f"Details: {exc}",
+            ],
+        )
     return (model_name, embeddings, slugs, agent_types, n_lessons, fast_importances)
 
 
 def load_model(model_name=DEFAULT_MODEL_NAME):
     if model_name not in SUPPORTED_MODELS:
-        return Ranked(1, stderr=[
-            f"[ERR] {model_name!r} is not an accepted embedding model; expected one of "
-            f"{sorted(SUPPORTED_MODELS)}.",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] {model_name!r} is not an accepted embedding model; expected one of {sorted(SUPPORTED_MODELS)}.",
+            ],
+        )
     try:
         return _load_cached_first(model_name)
     except OSError as exc:
-        return Ranked(1, stderr=[
-            f"[ERR] Could not load model {model_name!r}: {exc}\n"
-            "If this host has no internet access, pre-download the model on a "
-            "connected machine and copy ~/.cache/huggingface/ over, or set "
-            "HF_HUB_OFFLINE=1 once it's cached locally.",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] Could not load model {model_name!r}: {exc}\n"
+                "If this host has no internet access, pre-download the model on a "
+                "connected machine and copy ~/.cache/huggingface/ over, or set "
+                "HF_HUB_OFFLINE=1 once it's cached locally.",
+            ],
+        )
 
 
-def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
-         index_path=None, lessons_dir=None, index=None, model=None,
-         lesson_mtimes=None) -> Ranked:
+def rank(
+    query,
+    top_k=10,
+    include_importance_floor=4,
+    agent_type=None,
+    *,
+    index_path=None,
+    lessons_dir=None,
+    index=None,
+    model=None,
+    lesson_mtimes=None,
+) -> Ranked:
     index_path = INDEX_PATH if index_path is None else index_path
     lessons_dir = LESSONS_DIR if lessons_dir is None else lessons_dir
     stderr: list[str] = []
@@ -347,32 +375,41 @@ def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
     model_name, embeddings, slugs, agent_types, n_lessons, fast_importances = index
 
     if model_name not in SUPPORTED_MODELS:
-        return Ranked(1, stderr=[
-            f"[WARN] {index_path} declares model_name={model_name!r}, which is not "
-            f"one of the supported models {sorted(SUPPORTED_MODELS)}. Refusing to load an "
-            "unsupported model name from an index file -- run build_index.py --force "
-            "to regenerate index.",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[WARN] {index_path} declares model_name={model_name!r}, which is not "
+                f"one of the supported models {sorted(SUPPORTED_MODELS)}. Refusing to load an "
+                "unsupported model name from an index file -- run build_index.py --force "
+                "to regenerate index.",
+            ],
+        )
     if model is None:
         model = load_model(model_name)
     if isinstance(model, Ranked):
         return model
     q_emb = model.encode(
-        SUPPORTED_MODELS[model_name] + query, normalize_embeddings=True, convert_to_numpy=True,
-        show_progress_bar=False)
+        SUPPORTED_MODELS[model_name] + query, normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False
+    )
 
     if embeddings.ndim != 2 or embeddings.shape[1] != q_emb.shape[0]:
-        return Ranked(1, stderr=[
-            f"[ERR] {index_path} has embedding dimension {embeddings.shape}, which "
-            f"does not match this model's {q_emb.shape[0]}. Rebuild the index: "
-            "python memory/attention/build_index.py --force",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] {index_path} has embedding dimension {embeddings.shape}, which "
+                f"does not match this model's {q_emb.shape[0]}. Rebuild the index: "
+                "python memory/attention/build_index.py --force",
+            ],
+        )
     if embeddings.shape[0] != len(slugs):
-        return Ranked(1, stderr=[
-            f"[ERR] {index_path} has {embeddings.shape[0]} embedding row(s) but "
-            f"{len(slugs)} slug(s) -- the index is truncated or corrupted. Rebuild it: "
-            "python memory/attention/build_index.py --force",
-        ])
+        return Ranked(
+            1,
+            stderr=[
+                f"[ERR] {index_path} has {embeddings.shape[0]} embedding row(s) but "
+                f"{len(slugs)} slug(s) -- the index is truncated or corrupted. Rebuild it: "
+                "python memory/attention/build_index.py --force",
+            ],
+        )
 
     scores = embeddings @ q_emb
 
@@ -399,7 +436,7 @@ def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
                         content = fh.read()
                     delims = list(_DELIM_RE.finditer(content))
                     if len(delims) >= 2:
-                        fm = _load_frontmatter(content[delims[0].end():delims[1].start()]) or {}
+                        fm = _load_frontmatter(content[delims[0].end() : delims[1].start()]) or {}
                         if isinstance(fm, dict) and fm.get("status", "active") == "active":
                             s = fm.get("name")
                             if s and _SLUG_RE.match(str(s)):
@@ -414,6 +451,8 @@ def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
         importances_res = load_importances(lessons_dir)
         importances, n_frontmatters_parsed = importances_res
 
+    if np is None:
+        raise RuntimeError("NumPy is required to rank the attention index")
     order = np.argsort(scores)[::-1]
     active_order = [idx for idx in order if str(slugs[idx]) in importances]
 
@@ -425,11 +464,8 @@ def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
                 "--force` to filter by fleet."
             )
         else:
-            active_order = [
-                idx for idx in active_order
-                if str(agent_types[idx]) == agent_type
-            ]
-    top_k_idx = list(active_order[: top_k])
+            active_order = [idx for idx in active_order if str(agent_types[idx]) == agent_type]
+    top_k_idx = list(active_order[:top_k])
 
     indexed_slugs = {str(s) for s in slugs}
     floor = include_importance_floor
@@ -484,12 +520,17 @@ def rank(query, top_k=10, include_importance_floor=4, agent_type=None, *,
     for slug, imp in missing_from_index:
         brief_lines.append(f"{slug} | cosine=N/A | importance={imp}")
 
-    return Ranked(0, brief_lines, stderr, {
-        "n_frontmatters_parsed": n_frontmatters_parsed,
-        "n_candidates_surfaced": len(top_k_idx),
-        "n_missing_from_index": len(missing_from_index),
-        "index_stale": bool(stale_reasons),
-    })
+    return Ranked(
+        0,
+        brief_lines,
+        stderr,
+        {
+            "n_frontmatters_parsed": n_frontmatters_parsed,
+            "n_candidates_surfaced": len(top_k_idx),
+            "n_missing_from_index": len(missing_from_index),
+            "index_stale": bool(stale_reasons),
+        },
+    )
 
 
 def _emit(fd, stream, text):
@@ -522,10 +563,11 @@ def main() -> int:
         help="Always include lessons with importance >= this (safety override, default 4)",
     )
     parser.add_argument(
-        "--agent-type", default=None,
+        "--agent-type",
+        default=None,
         help="Restrict results to one fleet. Requires an index built with the "
-             "agent_types column; an older index has no way to tell fleets apart "
-             "and the filter is reported as not applied rather than silently ignored.",
+        "agent_types column; an older index has no way to tell fleets apart "
+        "and the filter is reported as not applied rather than silently ignored.",
     )
     args = parser.parse_args()
 

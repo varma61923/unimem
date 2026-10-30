@@ -6,13 +6,18 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.runtime_cache import RuntimeCache
 
 
 def make_cache(**kwargs):
-    return RuntimeCache(max_entries=kwargs.pop("max_entries", 2),
-                        max_bytes=kwargs.pop("max_bytes", 20),
-                        ttl=kwargs.pop("ttl", 10), weigh=lambda _k, v: len(v), **kwargs)
+    return RuntimeCache(
+        max_entries=kwargs.pop("max_entries", 2),
+        max_bytes=kwargs.pop("max_bytes", 20),
+        ttl=kwargs.pop("ttl", 10),
+        weigh=lambda _k, v: len(v),
+        **kwargs,
+    )
 
 
 def test_ttl_lru_byte_limits_and_oversized_values():
@@ -100,7 +105,7 @@ def test_child_does_not_inherit_a_locked_cache():
     cache = make_cache()
     cache.get_or_load("k", lambda: "parent")
     cache._lock.acquire()
-    pid = os.fork()
+    pid = intentional_fork(os.fork)
     if pid == 0:
         try:
             import signal

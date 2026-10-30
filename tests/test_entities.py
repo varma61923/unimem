@@ -1,5 +1,6 @@
 """Entity extraction and linking: patterns, canonical keys, aliases, the entity store,
 lesson linking, retrieval boosting, duplicates and merge."""
+
 import subprocess
 import sys
 
@@ -11,12 +12,24 @@ from unimem import entities, graph, ontology
 
 @pytest.fixture
 def store(tmp_memory):
-    write_lesson(tmp_memory, "lesson_pool-reset", description="Reset the Postgres pool on OperationalError",
-                 rule="When PostgreSQL raises OperationalError in api/db.py, call reset_pool() first.")
-    write_lesson(tmp_memory, "lesson_redis-timeouts", description="Redis timeouts behind nginx",
-                 rule="Raise REDIS_TIMEOUT_MS when nginx returns HTTP 504 for cache reads.")
-    write_lesson(tmp_memory, "lesson_unrelated", description="Format before committing",
-                 rule="Run the formatter before you commit.")
+    write_lesson(
+        tmp_memory,
+        "lesson_pool-reset",
+        description="Reset the Postgres pool on OperationalError",
+        rule="When PostgreSQL raises OperationalError in api/db.py, call reset_pool() first.",
+    )
+    write_lesson(
+        tmp_memory,
+        "lesson_redis-timeouts",
+        description="Redis timeouts behind nginx",
+        rule="Raise REDIS_TIMEOUT_MS when nginx returns HTTP 504 for cache reads.",
+    )
+    write_lesson(
+        tmp_memory,
+        "lesson_unrelated",
+        description="Format before committing",
+        rule="Run the formatter before you commit.",
+    )
     return str(tmp_memory.parent)
 
 
@@ -25,10 +38,19 @@ def keys(text, **kw):
 
 
 def test_technical_entities():
-    found = keys("OperationalError in api/db.py: call reset_pool() and set DATABASE_URL; see `retry.backoff`, "
-                 "HTTP 503 and E1101.")
-    for key in ("error:operationalerror", "file:api/db.py", "symbol:reset_pool", "symbol:database_url",
-                "symbol:retry.backoff", "error:http_503", "error:e1101"):
+    found = keys(
+        "OperationalError in api/db.py: call reset_pool() and set DATABASE_URL; see `retry.backoff`, "
+        "HTTP 503 and E1101."
+    )
+    for key in (
+        "error:operationalerror",
+        "file:api/db.py",
+        "symbol:reset_pool",
+        "symbol:database_url",
+        "symbol:retry.backoff",
+        "error:http_503",
+        "error:e1101",
+    ):
         assert key in found
 
 
@@ -53,8 +75,9 @@ def test_each_entity_once_and_overlaps_resolved():
 
 def test_ontology_aliases_canonicalise(tmp_path):
     (tmp_path / "memory").mkdir()
-    (tmp_path / "memory" / "ontology.yaml").write_text("aliases:\n  service:postgres: [pg, the main db]\n",
-                                                       encoding="utf-8")
+    (tmp_path / "memory" / "ontology.yaml").write_text(
+        "aliases:\n  service:postgres: [pg, the main db]\n", encoding="utf-8"
+    )
     onto = ontology.load(str(tmp_path))
     assert keys("pg is down and the main db is slow", onto=onto) == ["service:postgres"]
 
@@ -72,8 +95,9 @@ def test_link_lessons_builds_entity_store_and_boosts(store):
     assert {"service:postgres", "error:operationalerror", "file:api/db.py"} <= nbrs
     known = {e["id"]: e for e in entities.entities(store)}
     assert known["service:postgres"]["mentions"] == 1
-    boosts = graph.graph_boost_for_lessons(store, "postgres is throwing errors",
-                                           ["lesson_pool-reset", "lesson_redis-timeouts", "lesson_unrelated"])
+    boosts = graph.graph_boost_for_lessons(
+        store, "postgres is throwing errors", ["lesson_pool-reset", "lesson_redis-timeouts", "lesson_unrelated"]
+    )
     assert boosts["lesson_pool-reset"] > 0 and boosts["lesson_unrelated"] == 0
     again = entities.link_lessons(store, use_spacy=False)
     assert again["new_links"] == 0 and again["retired_links"] == 0
@@ -90,8 +114,9 @@ def test_relinking_retires_entities_a_lesson_no_longer_names(store, tmp_memory):
 
 def test_duplicates_and_merge(store):
     graph.add_node(store, "organization:acme_corporation", "organization", "Acme Corporation")
-    graph.add_node(store, "organization:acme_corp", "organization", "Acme Corp",
-                   properties={"aliases": ["Acme Corporation"]})
+    graph.add_node(
+        store, "organization:acme_corp", "organization", "Acme Corp", properties={"aliases": ["Acme Corporation"]}
+    )
     graph.add_edge(store, "person:ana", "organization:acme_corporation", "works_at")
     pairs = entities.duplicates(store)
     assert any({p["a"], p["b"]} == {"organization:acme_corp", "organization:acme_corporation"} for p in pairs)
@@ -105,8 +130,13 @@ def test_duplicates_and_merge(store):
 
 def test_cli(store):
     def ct(*args):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "graph", *args, "--dest", store],  # nosec
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "graph", *args, "--dest", store],  # nosec
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     out = ct("extract", "Redis threw TimeoutError", "--spacy", "off")
     assert "service:redis" in out.stdout and "error:timeouterror" in out.stdout
     assert ct("link", "--spacy", "off").returncode == 0

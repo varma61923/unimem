@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -19,23 +20,31 @@ def test_the_committed_vectors_are_exactly_what_the_reference_produces():
 
 
 def test_the_packaged_vectors_and_the_copy_beside_the_spec_are_identical():
-    assert open(conformance.VECTORS_PATH, encoding="utf-8").read() == open(conformance.SPEC_VECTORS_PATH,
-                                                                           encoding="utf-8").read()
+    assert Path(conformance.VECTORS_PATH).read_text(encoding="utf-8") == Path(conformance.SPEC_VECTORS_PATH).read_text(
+        encoding="utf-8"
+    )
 
 
 def test_the_vectors_are_deterministic_and_cover_the_edges():
     a, b = conformance.build_vectors(), conformance.build_vectors()
     assert a == b
     rates = {v["rate"] for v in a["assign"]}
-    assert {0.0, 1.0} <= rates and any(not v["held_out"] for v in a["assign"]) and any(v["held_out"] for v in a["assign"])
+    assert (
+        {0.0, 1.0} <= rates and any(not v["held_out"] for v in a["assign"]) and any(v["held_out"] for v in a["assign"])
+    )
     assert any(not v["lesson"].isascii() for v in a["assign"]) and any("\x1f" in v["lesson"] for v in a["assign"])
     assert [len(v["rows"]) for v in a["ledger"]] == [0, 1, 3, 6]
 
 
 def test_the_reference_passes_over_stdio():
     results = conformance.run_exec(REFERENCE, conformance.load_vectors())
-    assert [r.name for r in results] == ["vectors:assign", "vectors:ledger", "vectors:digest", "vectors:revision",
-                                         "vectors:allocate"]
+    assert [r.name for r in results] == [
+        "vectors:assign",
+        "vectors:ledger",
+        "vectors:digest",
+        "vectors:revision",
+        "vectors:allocate",
+    ]
     assert all(r.ok for r in results), [r.detail for r in results if not r.ok]
 
 
@@ -52,7 +61,8 @@ def test_a_program_that_orders_the_hash_input_differently_is_caught(tmp_path):
         "    else:\n"
         "        d = hashlib.blake2b('\\x1f'.join([r['lesson'], r['occasion'], r['salt']]).encode(), digest_size=8).digest()\n"
         "        held = int.from_bytes(d, 'big') / 2**64 < rate\n"
-        "    print(json.dumps({'held_out': held}), flush=True)\n")
+        "    print(json.dumps({'held_out': held}), flush=True)\n"
+    )
     results = conformance.run_exec(f"{sys.executable} {script}", conformance.load_vectors(), only=("assign",))
     assert not results[0].ok and "first miss" in results[0].detail
 
@@ -83,8 +93,9 @@ def store(tmp_path, monkeypatch):
 
 def test_a_store_whose_assignments_follow_the_randomization_passes(store):
     for i in range(60):
-        holdout_io.assign_and_log(store, ["m1", "m2"], occasion_id=f"o{i}", rate=0.5, salt="conf-1",
-                                  revisions={"m1": "r", "m2": "r"})
+        holdout_io.assign_and_log(
+            store, ["m1", "m2"], occasion_id=f"o{i}", rate=0.5, salt="conf-1", revisions={"m1": "r", "m2": "r"}
+        )
     results = conformance.check_store(store)
     assert all(r.ok for r in results), [(r.name, r.detail) for r in results if not r.ok]
 
@@ -93,17 +104,17 @@ def test_a_store_that_flipped_assignments_is_not_randomizing(store):
     for i in range(30):
         holdout_io.assign_and_log(store, ["m1"], occasion_id=f"o{i}", rate=0.5, salt="conf-1", revisions={"m1": "r"})
     path = holdout_io.holdout_log_path(store)
-    rows = [json.loads(line) for line in open(path)]
+    rows = [json.loads(line) for line in Path(path).read_text().splitlines(keepends=True)]
     for row in rows[:5]:
         row["injected"] = not row["injected"]
-    open(path, "w").write("".join(json.dumps(r) + "\n" for r in rows))
+    Path(path).write_text("".join((json.dumps(r) + "\n" for r in rows)))
     failed = [r for r in conformance.check_store(store) if not r.ok]
     assert [r.name for r in failed] == ["store:assignments follow the randomization"]
 
 
 def test_a_malformed_lesson_fails_the_store_check(store):
     bad = os.path.join(paths.lessons_dir(store), "lesson_bad.md")
-    open(bad, "w").write("---\nname: bad\nstatus: not-a-status\n---\nbody\n")
+    Path(bad).write_text("---\nname: bad\nstatus: not-a-status\n---\nbody\n")
     failed = [r.name for r in conformance.check_store(store) if not r.ok]
     assert "store:lessons validate" in failed
 
@@ -112,9 +123,14 @@ def test_a_malformed_lesson_fails_the_store_check(store):
 def running(store):
     g = gateway.Gateway(store, token="t" * 40)
     server = gateway.make_http_server(g, "127.0.0.1", 0)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_our_gateway_passes_the_gateway_checks(running):
@@ -133,13 +149,16 @@ def test_the_report_names_what_it_does_not_test():
     assert "1/1 checks passed" in text and "not tested" in text and "statistics" in text
 
 
-@pytest.mark.skipif(not os.environ.get("UNIMEM_CONFORMANCE_GO") or shutil.which("go") is None,
-                    reason="set UNIMEM_CONFORMANCE_GO=1 with Go installed (downloads golang.org/x/crypto)")
+@pytest.mark.skipif(
+    not os.environ.get("UNIMEM_CONFORMANCE_GO") or shutil.which("go") is None,
+    reason="set UNIMEM_CONFORMANCE_GO=1 with Go installed (downloads golang.org/x/crypto)",
+)
 def test_an_independent_go_implementation_written_from_the_spec_passes_three_layers(tmp_path):
     src = os.path.join(ROOT, "protocol", "conformance", "examples", "go")
     binary = tmp_path / "conf"
-    subprocess.run(["go", "build", "-o", str(binary), "."], cwd=src, check=True,
-                   env={**os.environ, "GOFLAGS": "-mod=mod"})
+    subprocess.run(
+        ["go", "build", "-o", str(binary), "."], cwd=src, check=True, env={**os.environ, "GOFLAGS": "-mod=mod"}
+    )
     results = conformance.run_exec(str(binary), conformance.load_vectors(), only=("assign", "ledger", "digest"))
     assert all(r.ok for r in results), [r.detail for r in results if not r.ok]
 

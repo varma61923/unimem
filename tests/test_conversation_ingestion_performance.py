@@ -1,4 +1,5 @@
 """Chronological insertion preserves independently reconstructed belief chains."""
+
 import random
 
 import pytest
@@ -18,15 +19,18 @@ def test_incremental_links_match_sorted_owner_slot_history(tmp_path, seed):
                 owner = rng.choice(["ana", "ben", "cam"])
                 slot = rng.choice(["home", "work", None])
                 at = rng.choice([None, "2023-01-01", "2024-01-01", "2025-01-01"])
-                fid = store._insert_fact(turn, "fact", "source", f"Assertion {number}",
-                                         at, slot, "test", owner)
+                fid = store._insert_fact(turn, "fact", "source", f"Assertion {number}", at, slot, "test", owner)
                 if slot:
                     expected.setdefault((owner, slot), []).append((at or "", fid))
                 successors = {}
                 for history in expected.values():
                     ordered = sorted(history)
-                    successors.update({fid: ordered[index + 1][1] if index + 1 < len(ordered) else None
-                                       for index, (_, fid) in enumerate(ordered)})
+                    successors.update(
+                        {
+                            fid: ordered[index + 1][1] if index + 1 < len(ordered) else None
+                            for index, (_, fid) in enumerate(ordered)
+                        }
+                    )
                 rows = store.db.execute("SELECT id, slot, superseded_by FROM facts").fetchall()
                 assert all(row["superseded_by"] == successors.get(row["id"]) for row in rows)
                 assert store.db.execute("SELECT COUNT(*) FROM fact_sources").fetchone()[0] == number + 1

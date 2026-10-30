@@ -103,12 +103,13 @@ def build_report(
         activation_overlap=activation_overlap,
         signatures={slug: bundles[slug].activation_signature for slug in bundles},
     )
-    archive = tuple(sorted(
-        str(fm.get("name", "")) for fm in active if never_hit(fm)
-    ))
+    archive = tuple(sorted(str(fm.get("name", "")) for fm in active if never_hit(fm)))
 
     return ConsolidationReport(
-        n_active=len(active), fuse=tuple(fuse), contradict=tuple(contradict), archive=archive,
+        n_active=len(active),
+        fuse=tuple(fuse),
+        contradict=tuple(contradict),
+        archive=archive,
     )
 
 
@@ -171,8 +172,7 @@ def render(report: ConsolidationReport) -> str:
         ]
         for c in report.contradict:
             lines.append(
-                f"| `{c.slug_a}` | `{c.slug_b}` | {c.activation_overlap:.0%} | "
-                f"{'; '.join(c.signals)} | {c.severity} |"
+                f"| `{c.slug_a}` | `{c.slug_b}` | {c.activation_overlap:.0%} | {'; '.join(c.signals)} | {c.severity} |"
             )
         lines.append("")
 

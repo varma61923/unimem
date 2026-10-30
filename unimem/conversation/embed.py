@@ -1,5 +1,6 @@
 """The semantic arm of conversation memory. Vectors are cached by content hash in
 one file per model, shared by every space, so a message is embedded once."""
+
 from __future__ import annotations
 
 import heapq
@@ -10,6 +11,7 @@ import re
 import threading
 import time
 import weakref
+from _thread import LockType
 from collections import OrderedDict
 from dataclasses import dataclass
 
@@ -17,8 +19,10 @@ from unimem.configuration import getenv as _configuration_getenv
 from unimem.conversation import store as _store
 
 MODELS = {
-    "arctic-m": ("Snowflake/snowflake-arctic-embed-m-v1.5",
-                 "Represent this sentence for searching relevant passages: "),
+    "arctic-m": (
+        "Snowflake/snowflake-arctic-embed-m-v1.5",
+        "Represent this sentence for searching relevant passages: ",
+    ),
     "minilm": ("sentence-transformers/all-MiniLM-L6-v2", ""),
 }
 DEFAULT = "fastembed:BAAI/bge-small-en-v1.5"
@@ -27,11 +31,11 @@ BATCH = 64
 
 _LOCK = threading.Lock()
 _MODELS: dict[str, object] = {}
-_WORK_LOCKS = weakref.WeakValueDictionary()
+_WORK_LOCKS: weakref.WeakValueDictionary[tuple, LockType] = weakref.WeakValueDictionary()
 _WORK_LOCKS_GUARD = threading.Lock()
 _QUERY_CACHE: OrderedDict = OrderedDict()
 _QUERY_LOCK = threading.Lock()
-_QUERY_IDENTITIES = weakref.WeakKeyDictionary()
+_QUERY_IDENTITIES: weakref.WeakKeyDictionary[object, object] = weakref.WeakKeyDictionary()
 QUERY_CACHE_ENTRIES = 512
 QUERY_CACHE_BYTES = 8 * 1024 * 1024
 QUERY_CACHE_SECONDS = 300
@@ -48,8 +52,9 @@ def _work_lock(key):
 
 
 def available() -> bool:
-    return (importlib.util.find_spec("numpy") is not None
-            and importlib.util.find_spec("sentence_transformers") is not None)
+    return (
+        importlib.util.find_spec("numpy") is not None and importlib.util.find_spec("sentence_transformers") is not None
+    )
 
 
 def available_for(tag: str) -> bool:
@@ -65,8 +70,10 @@ def available_for(tag: str) -> bool:
     if spec.hosted or spec.provider in embeddings.known()["custom"]:
         return importlib.util.find_spec("numpy") is not None
     if spec.provider == "fastembed":
-        return all(importlib.util.find_spec(name) is not None
-                   for name in ("numpy", "onnxruntime", "tokenizers", "huggingface_hub"))
+        return all(
+            importlib.util.find_spec(name) is not None
+            for name in ("numpy", "onnxruntime", "tokenizers", "huggingface_hub")
+        )
     return available()
 
 
@@ -139,8 +146,13 @@ class Embedder:
         path = os.path.join(directory, f"embeddings-{safe}.db")
         if read_only:
             # vectors missing from a frozen cache are computed but never written back
-            self.db = _store.connect(path, read_only=True) if os.path.isfile(path) else \
-                _store.connect(":memory:", "CREATE TABLE IF NOT EXISTS vec (hash TEXT PRIMARY KEY, v BLOB NOT NULL)")
+            self.db = (
+                _store.connect(path, read_only=True)
+                if os.path.isfile(path)
+                else _store.connect(
+                    ":memory:", "CREATE TABLE IF NOT EXISTS vec (hash TEXT PRIMARY KEY, v BLOB NOT NULL)"
+                )
+            )
         else:
             os.makedirs(directory, exist_ok=True)
             self.db = _store.connect(path, "CREATE TABLE IF NOT EXISTS vec (hash TEXT PRIMARY KEY, v BLOB NOT NULL)")
@@ -174,9 +186,13 @@ class Embedder:
             model = _model(self.tag)
 
             def compute(items):
-                return model.encode([prefix + t for t in items], batch_size=BATCH,
-                                    normalize_embeddings=True, convert_to_numpy=True,
-                                    show_progress_bar=False).astype(self.np.float32)
+                return model.encode(
+                    [prefix + t for t in items],
+                    batch_size=BATCH,
+                    normalize_embeddings=True,
+                    convert_to_numpy=True,
+                    show_progress_bar=False,
+                ).astype(self.np.float32)
 
         if not query or not texts:
             return compute(texts)
@@ -216,8 +232,10 @@ class Embedder:
                             vector.flags.writeable = False
                             _QUERY_CACHE[key] = (expires, vector)
                             found[key] = vector
-                        while _QUERY_CACHE and (len(_QUERY_CACHE) > QUERY_CACHE_ENTRIES or sum(
-                                v[1].nbytes for v in _QUERY_CACHE.values()) > QUERY_CACHE_BYTES):
+                        while _QUERY_CACHE and (
+                            len(_QUERY_CACHE) > QUERY_CACHE_ENTRIES
+                            or sum(v[1].nbytes for v in _QUERY_CACHE.values()) > QUERY_CACHE_BYTES
+                        ):
                             _QUERY_CACHE.popitem(last=False)
         # Only hashes and immutable vectors are shared, never raw query text or
         # retrieved evidence. Stacking gives each caller an independent array.
@@ -230,8 +248,11 @@ class Embedder:
         hashes = list(dict.fromkeys(h for h, _t in items))
         with self._lock:
             if hashes:
-                found.update(self.db.execute(
-                    "SELECT hash, v FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),)))
+                found.update(
+                    self.db.execute(
+                        "SELECT hash, v FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),)
+                    )
+                )
             dimension = self._provider.spec.dimensions if self._provider is not None else None
             if dimension:
                 # Older custom-provider tags ignored @dimensions. Rebuild only
@@ -241,7 +262,7 @@ class Embedder:
             if todo:
                 keys = list(todo)
                 for start in range(0, len(keys), 1024):
-                    batch = keys[start:start + 1024]
+                    batch = keys[start : start + 1024]
                     vecs = self.encode([todo[h] for h in batch]).astype(np.float16)
                     rows = [(h, v.tobytes()) for h, v in zip(batch, vecs)]
                     if not self.read_only:
@@ -305,18 +326,25 @@ def prepare(store: _store.Store, embedder: Embedder, *, sessions=()) -> dict:
             embedder.vectors([(h, body) for _u, _t, body, h in batch])
             units += len(batch)
         revision = store.unit_stamp()
-    return {"space": store.space, "model": embedder.tag, "units": units,
-            "revision": list(revision), "elapsed_seconds": round(time.perf_counter() - start, 6)}
+    return {
+        "space": store.space,
+        "model": embedder.tag,
+        "units": units,
+        "revision": list(revision),
+        "elapsed_seconds": round(time.perf_counter() - start, 6),
+    }
 
 
-def search(store: _store.Store, embedder: Embedder, query_vec, limit: int, *,
-           allowed: set[int] | None = None) -> list[tuple[int, float]]:
+def search(
+    store: _store.Store, embedder: Embedder, query_vec, limit: int, *, allowed: set[int] | None = None
+) -> list[tuple[int, float]]:
     """Exact search for one query, using the same filtered engine as batched recall."""
     return search_many(store, embedder, embedder.np.asarray(query_vec)[None, :], limit, allowed=allowed)[0]
 
 
-def search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int, *,
-                allowed: set[int] | None = None) -> list[list[tuple[int, float]]]:
+def search_many(
+    store: _store.Store, embedder: Embedder, query_vecs, limit: int, *, allowed: set[int] | None = None
+) -> list[list[tuple[int, float]]]:
     """Exact independent top-k rankings, sharing a scan across query facets.
 
     Both corpus rows and query columns are bounded. No approximate candidate
@@ -330,13 +358,20 @@ def search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int,
     with store.read_snapshot():
         results = []
         for start in range(0, len(queries), QUERY_BATCH):
-            results.extend(_search_many(store, embedder, queries[start:start + QUERY_BATCH], limit, allowed=allowed))
+            results.extend(_search_many(store, embedder, queries[start : start + QUERY_BATCH], limit, allowed=allowed))
         return results
 
 
-def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int, *,
-                 allowed: set[int] | None = None, _building: bool = False,
-                 _skip_disk: bool = False) -> list[list[tuple[int, float]]]:
+def _search_many(
+    store: _store.Store,
+    embedder: Embedder,
+    query_vecs,
+    limit: int,
+    *,
+    allowed: set[int] | None = None,
+    _building: bool = False,
+    _skip_disk: bool = False,
+) -> list[list[tuple[int, float]]]:
     """Exact top-k over compact vectors, with bounded working memory.
 
     Persistent vectors already have float16 precision. Keep that representation
@@ -360,8 +395,9 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
         records = vector_index.load(store, embedder.tag, np, stamp[0], query_vecs.shape[1], check_ids=allowed is None)
         if records is not None:
             scoped = allowed is not None
-            cached = _Index(stamp, records["id"][1:], records["hash"][1:], records["turn"][1:],
-                            records["vector"][1:], mapped=True)
+            cached = _Index(
+                stamp, records["id"][1:], records["hash"][1:], records["turn"][1:], records["vector"][1:], mapped=True
+            )
             with _INDEX_LOCK:
                 current = _INDEX.get(key)
                 # A scoped view validates every selected id/turn/hash against
@@ -399,7 +435,7 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
                 threshold = np.partition(scores, len(ids) - count)[len(ids) - count]
                 above = np.flatnonzero(scores > threshold)
                 ties = np.flatnonzero(scores == threshold)
-                ties = ties[np.argsort(identifiers[ties], kind="stable")[:count - len(above)]]
+                ties = ties[np.argsort(identifiers[ties], kind="stable")[: count - len(above)]]
                 selected = np.concatenate((above, ties))
             else:
                 selected = np.arange(len(ids))
@@ -423,16 +459,21 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
             # visiting every vector/turn. Resolve its sorted ids into the exact
             # current snapshot; selection still happens before top-k scoring.
             identifiers = np.asarray(cached.ids)
-            cursor = store.db.execute("SELECT id, turn, hash FROM units WHERE turn IN "
-                                      "(SELECT value FROM json_each(?)) ORDER BY id", (json.dumps(sorted(allowed)),))
+            cursor = store.db.execute(
+                "SELECT id, turn, hash FROM units WHERE turn IN (SELECT value FROM json_each(?)) ORDER BY id",
+                (json.dumps(sorted(allowed)),),
+            )
             while rows := cursor.fetchmany(SCAN_BATCH):
                 ids = np.array([row[0] for row in rows], dtype=np.int64)
                 positions = np.searchsorted(identifiers, ids)
-                if scoped and (np.any(positions >= len(identifiers))
-                               or not np.array_equal(identifiers[positions], ids)
-                               or not np.array_equal(cached.turns[positions], [row[1] for row in rows])
-                               or not np.array_equal(cached.hashes[positions],
-                                                     np.array([row[2].encode("ascii") for row in rows], dtype="S32"))):
+                if scoped and (
+                    np.any(positions >= len(identifiers))
+                    or not np.array_equal(identifiers[positions], ids)
+                    or not np.array_equal(cached.turns[positions], [row[1] for row in rows])
+                    or not np.array_equal(
+                        cached.hashes[positions], np.array([row[2].encode("ascii") for row in rows], dtype="S32")
+                    )
+                ):
                     # Corrupt ordering, missing ids or mismatched provenance is
                     # a cache miss. Restart all facets through the source/vector
                     # cache so partial rankings can never escape.
@@ -443,10 +484,16 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
         # A stale mapped generation may contain millions of rows. Reuse its
         # vectors through the bounded persistent hash cache, rather than
         # materializing a corpus-sized dictionary of NumPy row objects.
-        known = {} if cached is None or cached.mapped else {
-            h.decode("ascii") if isinstance(h, bytes) else h: v for h, v in zip(cached.hashes, cached.matrix)}
+        known = (
+            {}
+            if cached is None or cached.mapped
+            else {h.decode("ascii") if isinstance(h, bytes) else h: v for h, v in zip(cached.hashes, cached.matrix)}
+        )
         count = store.db.execute("SELECT COUNT(*) FROM units").fetchone()[0]
-        ids, hashes, turns, matrix = [], [], [], None
+        ids = []
+        hashes: list[str] = []
+        turns: list[int] = []
+        matrix = None
         cacheable = allowed is None
         offset, builder, mapped = 0, None, None
         try:
@@ -464,8 +511,8 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
                         from unimem.conversation import vector_index
 
                         builder = vector_index.Build(store, embedder.tag, np, stamp[0], count, vectors.shape[1])
-                if cacheable:
-                    matrix[offset:offset + len(batch)] = vectors
+                if cacheable and matrix is not None:
+                    matrix[offset : offset + len(batch)] = vectors
                     ids.extend(batch_ids)
                     turns.extend(t for _u, t, _b, _h in batch)
                     hashes.extend(h for _u, _t, _b, h in batch)
@@ -486,12 +533,14 @@ def _search_many(store: _store.Store, embedder: Embedder, query_vecs, limit: int
             if mapped is not None:
                 while len(_INDEX) >= MAX_CACHED_SPACES:
                     _INDEX.popitem(last=False)
-                _INDEX[key] = _Index(stamp, mapped["id"][1:], mapped["hash"][1:], mapped["turn"][1:],
-                                    mapped["vector"][1:], mapped=True)
+                _INDEX[key] = _Index(
+                    stamp, mapped["id"][1:], mapped["hash"][1:], mapped["turn"][1:], mapped["vector"][1:], mapped=True
+                )
             elif matrix is not None and cacheable:
-                while _INDEX and (len(_INDEX) >= MAX_CACHED_SPACES
-                                  or sum(v.matrix.nbytes for v in _INDEX.values() if not v.mapped)
-                                  + matrix.nbytes > MAX_INDEX_BYTES):
+                while _INDEX and (
+                    len(_INDEX) >= MAX_CACHED_SPACES
+                    or sum(v.matrix.nbytes for v in _INDEX.values() if not v.mapped) + matrix.nbytes > MAX_INDEX_BYTES
+                ):
                     _INDEX.popitem(last=False)
                 _INDEX[key] = _Index(stamp, ids, hashes, turns, matrix[:offset])
     return results()

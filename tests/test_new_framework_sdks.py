@@ -1,4 +1,5 @@
 """Pinned real SDK factories and execution, without providers or model calls."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,10 +13,12 @@ from unimem.frameworks import MemoryTools
 def test_google_adk_executes_owner_bound_tools(tmp_path):
     pytest.importorskip("google.adk.tools")
     tools = MemoryTools(str(tmp_path), "adk", "session").tools("google-adk")
+
     async def run():
         await tools[1].run_async(args={"user": "Office is Tokyo", "assistant": "Acknowledged"}, tool_context=None)
         result = await tools[0].run_async(args={"query": "office"}, tool_context=None)
         assert "Tokyo" in result
+
     asyncio.run(run())
 
 

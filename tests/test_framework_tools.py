@@ -17,9 +17,11 @@ def tools(root: str, space: str = "owner-a", session: str = "session-a") -> Memo
 def test_native_tools_capture_and_recall_actual_sqlite_evidence(tmp_path):
     bundle = tools(str(tmp_path))
     recall, remember = bundle.native_tools()
-    written = json.loads(remember.invoke({
-        "user": "Which deployment region did we choose?", "assistant": "We selected the Stockholm region."
-    }))
+    written = json.loads(
+        remember.invoke(
+            {"user": "Which deployment region did we choose?", "assistant": "We selected the Stockholm region."}
+        )
+    )
     assert written["added"] == 2
     response = json.loads(recall.invoke({"query": "Which deployment region did we choose?"}))
     assert "Stockholm" in response["context"]
@@ -59,9 +61,17 @@ def test_async_framework_tools_use_bounded_worker_and_retain_caller_lifecycle(tm
         async with await AsyncStore.open(str(tmp_path), "owner-a", max_pending=2) as store:
             bundle = MemoryTools(str(tmp_path), "owner-a", "session-a", options=options, async_store=store)
             recall, remember = bundle.native_tools()
-            written = await asyncio.gather(*[remember.ainvoke({
-                "user": f"Deployment decision {i}", "assistant": f"The selected region for service {i} is Stockholm."
-            }) for i in range(4)])
+            written = await asyncio.gather(
+                *[
+                    remember.ainvoke(
+                        {
+                            "user": f"Deployment decision {i}",
+                            "assistant": f"The selected region for service {i} is Stockholm.",
+                        }
+                    )
+                    for i in range(4)
+                ]
+            )
             assert sum(json.loads(item)["added"] for item in written) == 8
             response = json.loads(await recall.ainvoke({"query": "selected region for service 1"}))
             assert "Stockholm" in response["context"]
@@ -97,7 +107,10 @@ def test_unknown_framework_is_rejected(tmp_path):
 def test_installed_langchain_tools_invoke_real_functions(tmp_path, framework):
     pytest.importorskip("langchain_core.tools")
     recall, remember = tools(str(tmp_path)).tools(framework)
-    assert json.loads(remember.invoke({"user": "Release name?", "assistant": "Kestrel is the release name."}))["added"] == 2
+    assert (
+        json.loads(remember.invoke({"user": "Release name?", "assistant": "Kestrel is the release name."}))["added"]
+        == 2
+    )
     assert "Kestrel" in json.loads(recall.invoke({"query": "release name"}))["context"]
 
 
@@ -107,7 +120,9 @@ def test_installed_autogen_tools_invoke_real_functions(tmp_path):
         from autogen_core import CancellationToken
 
         recall, remember = tools(str(tmp_path)).tools("autogen")
-        written = await remember.run_json({"user": "Release name?", "assistant": "Kestrel is the release name."}, CancellationToken())
+        written = await remember.run_json(
+            {"user": "Release name?", "assistant": "Kestrel is the release name."}, CancellationToken()
+        )
         assert json.loads(written)["added"] == 2
         recalled = await recall.run_json({"query": "release name"}, CancellationToken())
         assert "Kestrel" in json.loads(recalled)["context"]

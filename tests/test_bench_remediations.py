@@ -24,7 +24,9 @@ class TestStandaloneRootPathResolution:
         # clearing overrides so an inherited root cannot invalidate this test.
         result = subprocess.run(
             [sys.executable, "-c", "from unimem.reference import pilot_metrics; print(pilot_metrics._ROOT)"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         expected_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,21 +74,31 @@ class TestBenchCliArgumentForwarding:
         subparsers = parser.add_subparsers(dest="cmd")
         bench_cmd.add_parser(subparsers)
 
-        args = parser.parse_args([
-            "bench",
-            "--diff",
-            "--history",
-            "--strict",
-            "--no-save",
-            "--threshold-quality", "0.85",
-            "--threshold-retrieval", "0.65",
-            "--threshold-never-hit", "0.20",
-            "--threshold-unimodal", "0.90",
-            "--threshold-semantic", "0.80",
-            "--threshold-lexical", "0.75",
-            "--threshold-freshness", "0.50",
-            "--threshold-composite", "0.70",
-        ])
+        args = parser.parse_args(
+            [
+                "bench",
+                "--diff",
+                "--history",
+                "--strict",
+                "--no-save",
+                "--threshold-quality",
+                "0.85",
+                "--threshold-retrieval",
+                "0.65",
+                "--threshold-never-hit",
+                "0.20",
+                "--threshold-unimodal",
+                "0.90",
+                "--threshold-semantic",
+                "0.80",
+                "--threshold-lexical",
+                "0.75",
+                "--threshold-freshness",
+                "0.50",
+                "--threshold-composite",
+                "0.70",
+            ]
+        )
 
         assert args.diff is True
         assert args.history is True
@@ -106,21 +118,32 @@ class TestBenchCliArgumentForwarding:
         subparsers = parser.add_subparsers(dest="cmd")
         bench_cmd.add_parser(subparsers)
 
-        args = parser.parse_args([
-            "bench",
-            "--diff",
-            "--strict",
-            "--no-save",
-            "--threshold-quality", "0.85",
-            "--threshold-retrieval", "0.60",
-            "--threshold-never-hit", "0.25",
-            "--threshold-unimodal", "0.95",
-            "--threshold-semantic", "0.88",
-            "--threshold-lexical", "0.72",
-            "--threshold-freshness", "0.45",
-            "--threshold-composite", "0.68",
-            "--dest", str(tmp_path),
-        ])
+        args = parser.parse_args(
+            [
+                "bench",
+                "--diff",
+                "--strict",
+                "--no-save",
+                "--threshold-quality",
+                "0.85",
+                "--threshold-retrieval",
+                "0.60",
+                "--threshold-never-hit",
+                "0.25",
+                "--threshold-unimodal",
+                "0.95",
+                "--threshold-semantic",
+                "0.88",
+                "--threshold-lexical",
+                "0.72",
+                "--threshold-freshness",
+                "0.45",
+                "--threshold-composite",
+                "0.68",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
 
         with patch("unimem.commands.bench_cmd.run_script", return_value=0) as mock_run:
             rc = bench_cmd.run(args)
@@ -150,14 +173,18 @@ class TestBenchCliArgumentForwarding:
         subparsers = parser.add_subparsers(dest="cmd")
         bench_cmd.add_parser(subparsers)
 
-        args = parser.parse_args([
-            "bench",
-            "--pilot",
-            "--agent-type", "support",
-            "--html",
-            "--json",
-            "--dest", str(tmp_path),
-        ])
+        args = parser.parse_args(
+            [
+                "bench",
+                "--pilot",
+                "--agent-type",
+                "support",
+                "--html",
+                "--json",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
 
         with patch("unimem.commands.bench_cmd.run_script", return_value=0) as mock_run:
             rc = bench_cmd.run(args)
@@ -294,9 +321,7 @@ class TestLoadEpisodesAcceptsNonYearPrefixedNames:
         (ep_dir / "2026-01-01_real.md").write_text(
             "---\nname: real_one\nverdict: CONFORM\n---\nbody\n", encoding="utf-8"
         )
-        (ep_dir / "episode_template.md").write_text(
-            "---\nname: TEMPLATE\n---\nbody\n", encoding="utf-8"
-        )
+        (ep_dir / "episode_template.md").write_text("---\nname: TEMPLATE\n---\nbody\n", encoding="utf-8")
         (ep_dir / "README.md").write_text("# episodes\n", encoding="utf-8")
         monkeypatch.setattr(mp, "BASE_DIR", str(tmp_path / "memory"))
         episodes, skipped = mp.load_episodes()

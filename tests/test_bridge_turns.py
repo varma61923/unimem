@@ -1,17 +1,26 @@
 """Gap bridging: the turns between two nearby hits of one session are delivered together."""
+
 from unimem.conversation import Options, Store, recall
 
 
 def _store(tmp_path):
     s = Store(str(tmp_path), "agent")
-    steps = ["Step 1 action: open the settings page",
-             "Step 2 action: click the zebra toggle and the quokka button",
-             "Step 3 action: scroll down", "Step 4 action: wait for the spinner", "Step 5 action: scroll up",
-             "Step 6 action: press the zebra toggle and quokka button again",
-             "Step 7 action: close the dialog", "Step 8 action: log out"]
+    steps = [
+        "Step 1 action: open the settings page",
+        "Step 2 action: click the zebra toggle and the quokka button",
+        "Step 3 action: scroll down",
+        "Step 4 action: wait for the spinner",
+        "Step 5 action: scroll up",
+        "Step 6 action: press the zebra toggle and quokka button again",
+        "Step 7 action: close the dialog",
+        "Step 8 action: log out",
+    ]
     s.add("run", [{"speaker": "agent", "text": t} for t in steps], session_at="2024-01-01T10:00:00")
-    s.add("other", [{"speaker": "agent", "text": f"Unrelated note {i} about lunch"} for i in range(30)],
-          session_at="2024-01-02T10:00:00")
+    s.add(
+        "other",
+        [{"speaker": "agent", "text": f"Unrelated note {i} about lunch"} for i in range(30)],
+        session_at="2024-01-02T10:00:00",
+    )
     return s
 
 

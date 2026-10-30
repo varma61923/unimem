@@ -41,9 +41,7 @@ async def _traces(session_factory, org_id, outcome_list, agent_type="code", quar
 
 
 def _arm(n, *, resolved_true, baseline, **extra):
-    return [
-        {"resolved": i < resolved_true, "baseline": baseline, **extra} for i in range(n)
-    ]
+    return [{"resolved": i < resolved_true, "baseline": baseline, **extra} for i in range(n)]
 
 
 async def _report(session_factory, org_id, **kwargs):
@@ -58,9 +56,7 @@ def _row(report, metric):
 @pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
 class TestArmsAndRates:
     def test_baseline_splits_on_a_real_bool_only(self):
-        base, current = outcomes.split_arms(
-            [{"baseline": True}, {"baseline": False}, {}, {"baseline": "true"}]
-        )
+        base, current = outcomes.split_arms([{"baseline": True}, {"baseline": False}, {}, {"baseline": "true"}])
         assert len(base) == 1
         assert len(current) == 3
 
@@ -115,17 +111,13 @@ class TestHonesty:
         assert row["verdict"] == outcomes.VERDICT_IMPROVED
 
     def test_a_tiny_sample_is_insufficient_not_null(self):
-        report = outcomes.compare(
-            _arm(8, resolved_true=4, baseline=True), _arm(8, resolved_true=6, baseline=False)
-        )
+        report = outcomes.compare(_arm(8, resolved_true=4, baseline=True), _arm(8, resolved_true=6, baseline=False))
         row = _row(report, "resolution_rate")
         assert row["verdict"] == outcomes.VERDICT_INSUFFICIENT
         assert "not evidence of no effect" in row["note"]
 
     def test_an_inconclusive_result_reports_what_it_could_have_detected(self):
-        report = outcomes.compare(
-            _arm(40, resolved_true=20, baseline=True), _arm(40, resolved_true=22, baseline=False)
-        )
+        report = outcomes.compare(_arm(40, resolved_true=20, baseline=True), _arm(40, resolved_true=22, baseline=False))
         row = _row(report, "resolution_rate")
         assert row["verdict"] == outcomes.VERDICT_INCONCLUSIVE
         assert row["min_detectable_effect"] is not None
@@ -133,13 +125,23 @@ class TestHonesty:
 
     def test_the_multiple_comparisons_correction_is_actually_applied(self):
         base = [
-            {"resolved": i < 100, "escalated": i < 100, "repeated_error": i < 100,
-             "frustration_signal": i < 100, "baseline": True}
+            {
+                "resolved": i < 100,
+                "escalated": i < 100,
+                "repeated_error": i < 100,
+                "frustration_signal": i < 100,
+                "baseline": True,
+            }
             for i in range(200)
         ]
         current = [
-            {"resolved": i < 122, "escalated": i < 100, "repeated_error": i < 100,
-             "frustration_signal": i < 100, "baseline": False}
+            {
+                "resolved": i < 122,
+                "escalated": i < 100,
+                "repeated_error": i < 100,
+                "frustration_signal": i < 100,
+                "baseline": False,
+            }
             for i in range(200)
         ]
         row = _row(outcomes.compare(base, current), "resolution_rate")
@@ -150,13 +152,23 @@ class TestHonesty:
 
     def test_an_interval_excluding_zero_explains_why_it_still_reads_no_change(self):
         base = [
-            {"resolved": i < 100, "escalated": i < 100, "repeated_error": i < 100,
-             "frustration_signal": i < 100, "baseline": True}
+            {
+                "resolved": i < 100,
+                "escalated": i < 100,
+                "repeated_error": i < 100,
+                "frustration_signal": i < 100,
+                "baseline": True,
+            }
             for i in range(200)
         ]
         current = [
-            {"resolved": i < 122, "escalated": i < 100, "repeated_error": i < 100,
-             "frustration_signal": i < 100, "baseline": False}
+            {
+                "resolved": i < 122,
+                "escalated": i < 100,
+                "repeated_error": i < 100,
+                "frustration_signal": i < 100,
+                "baseline": False,
+            }
             for i in range(200)
         ]
         row = _row(outcomes.compare(base, current), "resolution_rate")
@@ -165,9 +177,7 @@ class TestHonesty:
         assert "uncorrected" in row["note"]
 
     def test_cost_metrics_carry_no_p_value(self):
-        report = outcomes.compare(
-            [{"tokens_used": 1000, "baseline": True}], [{"tokens_used": 700, "baseline": False}]
-        )
+        report = outcomes.compare([{"tokens_used": 1000, "baseline": True}], [{"tokens_used": 700, "baseline": False}])
         row = next(r for r in report["cost"] if r["metric"] == "avg_tokens_used")
         assert row["delta"] == -300
         assert "p_value" not in row
@@ -195,7 +205,9 @@ class TestAgainstPostgres:
     async def test_quarantined_traces_are_excluded(self, session_factory, orgs):
         await _traces(session_factory, orgs["fleet-a"], _arm(40, resolved_true=20, baseline=True))
         await _traces(
-            session_factory, orgs["fleet-a"], _arm(40, resolved_true=40, baseline=False),
+            session_factory,
+            orgs["fleet-a"],
+            _arm(40, resolved_true=40, baseline=False),
             quarantined=True,
         )
         report = await _report(session_factory, orgs["fleet-a"])
@@ -204,11 +216,15 @@ class TestAgainstPostgres:
 
     async def test_agent_type_narrows_the_comparison(self, session_factory, orgs):
         await _traces(
-            session_factory, orgs["fleet-a"], _arm(40, resolved_true=20, baseline=True),
+            session_factory,
+            orgs["fleet-a"],
+            _arm(40, resolved_true=20, baseline=True),
             agent_type="support",
         )
         await _traces(
-            session_factory, orgs["fleet-a"], _arm(40, resolved_true=20, baseline=True),
+            session_factory,
+            orgs["fleet-a"],
+            _arm(40, resolved_true=20, baseline=True),
             agent_type="code",
         )
         report = await _report(session_factory, orgs["fleet-a"], agent_type="support")
@@ -221,11 +237,10 @@ class TestAgainstPostgres:
         assert "nothing to compare against" in report["headline"]
         assert all(r["verdict"] == outcomes.VERDICT_INSUFFICIENT for r in report["metrics"])
 
-    async def test_a_malformed_outcome_column_does_not_crash_the_report(
-        self, session_factory, orgs
-    ):
+    async def test_a_malformed_outcome_column_does_not_crash_the_report(self, session_factory, orgs):
         await _traces(
-            session_factory, orgs["fleet-a"],
+            session_factory,
+            orgs["fleet-a"],
             [{"resolved": "yes", "baseline": "true"}, {"resolved": True, "baseline": True}],
         )
         report = await _report(session_factory, orgs["fleet-a"])
@@ -235,14 +250,28 @@ class TestAgainstPostgres:
 class TestSqlAndPythonCountingAgree:
     async def test_identical_report_from_both_paths(self, session_factory, orgs):
         mixed = [
-            {"resolved": True, "escalated": False, "repeated_error": True,
-             "frustration_signal": False, "tokens_used": 900, "llm_calls": 4, "baseline": True},
+            {
+                "resolved": True,
+                "escalated": False,
+                "repeated_error": True,
+                "frustration_signal": False,
+                "tokens_used": 900,
+                "llm_calls": 4,
+                "baseline": True,
+            },
             {"resolved": False, "escalated": True, "tokens_used": 1500, "baseline": True},
             {"resolved": None, "escalated": False, "baseline": True},
             {},
             {"resolved": "true", "tokens_used": True, "baseline": False},
-            {"resolved": True, "escalated": False, "repeated_error": False,
-             "frustration_signal": True, "tokens_used": 700, "llm_calls": 2, "baseline": False},
+            {
+                "resolved": True,
+                "escalated": False,
+                "repeated_error": False,
+                "frustration_signal": True,
+                "tokens_used": 700,
+                "llm_calls": 2,
+                "baseline": False,
+            },
             {"resolved": True, "tokens_used": 1100, "baseline": False},
             {"resolved": False, "baseline": False},
         ]
@@ -264,9 +293,7 @@ class TestSqlAndPythonCountingAgree:
             assert a["baseline"] == pytest.approx(b["baseline"]), a["metric"]
             assert a["current"] == pytest.approx(b["current"]), a["metric"]
 
-    async def test_both_paths_agree_that_a_stringified_bool_is_not_a_success(
-        self, session_factory, orgs
-    ):
+    async def test_both_paths_agree_that_a_stringified_bool_is_not_a_success(self, session_factory, orgs):
         rows = [{"resolved": "true", "baseline": True}, {"resolved": "true", "baseline": False}]
         await _traces(session_factory, orgs["fleet-a"], rows)
 
@@ -305,7 +332,5 @@ class TestManageOutcomes:
         assert "multiple-comparisons" in capsys.readouterr().out
 
     async def test_an_unknown_org_fails_cleanly(self, session_factory, capsys):
-        assert not await manage.fleet_outcomes(
-            "00000000-0000-0000-0000-000000000000", session_factory=session_factory
-        )
+        assert not await manage.fleet_outcomes("00000000-0000-0000-0000-000000000000", session_factory=session_factory)
         assert "no such organization" in capsys.readouterr().err

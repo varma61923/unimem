@@ -9,6 +9,7 @@ attribution and currency, not logical entailment of a newly synthesized claim.
 Current revocation and forgotten-source checks apply even to historical queries.
 An in-place content correction cannot reconstruct its former body from a hash.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -78,8 +79,13 @@ class FactEvidence:
         kind, polarity = values["kind"], values["polarity"]
         if kind not in ("fact", "lesson") or polarity not in ("support", "refute"):
             raise EvidenceError("unknown evidence kind or polarity")
-        return cls(cast(EvidenceKind, kind), values["source_id"], values["revision"],
-                   cast(EvidencePolarity, polarity), values["recorded_at"])
+        return cls(
+            cast(EvidenceKind, kind),
+            values["source_id"],
+            values["revision"],
+            cast(EvidencePolarity, polarity),
+            values["recorded_at"],
+        )
 
 
 def claim_revision(fact: AtomicFact) -> str:
@@ -91,15 +97,20 @@ def claim_revision(fact: AtomicFact) -> str:
     the prior historical claim look like a body correction.
     """
     payload = {
-        "statement": fact.statement, "category": fact.category, "scopes": sorted(fact.scopes),
-        "valid_from": fact.valid_from, "expires_at": fact.expires_at, "stability": fact.stability,
+        "statement": fact.statement,
+        "category": fact.category,
+        "scopes": sorted(fact.scopes),
+        "valid_from": fact.valid_from,
+        "expires_at": fact.expires_at,
+        "stability": fact.stability,
         "evidence": [receipt.to_dict() for receipt in fact.evidence],
         "min_support": fact.min_support,
         "evidence_bound": fact.evidence_bound,
         "source_traces": sorted(fact.source_traces),
     }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False,
-                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def scope_allows(target: Sequence[str], source: Sequence[str]) -> bool:
@@ -110,6 +121,7 @@ def scope_allows(target: Sequence[str], source: Sequence[str]) -> bool:
 @dataclass(frozen=True)
 class EvidenceAssessment:
     """Current distinct cited sources; these counts are not independent trials."""
+
     status: Literal["unbound", "supported", "insufficient", "refuted", "stale", "invalid"]
     supports: int = 0
     refutes: int = 0
@@ -120,8 +132,12 @@ class EvidenceAssessment:
         return self.status in ("unbound", "supported")
 
     def to_dict(self) -> dict[str, object]:
-        return {"status": self.status, "supports": self.supports,
-                "refutes": self.refutes, "reasons": list(self.reasons)}
+        return {
+            "status": self.status,
+            "supports": self.supports,
+            "refutes": self.refutes,
+            "reasons": list(self.reasons),
+        }
 
 
 class EvidenceResolver:
@@ -135,8 +151,15 @@ class EvidenceResolver:
     it does not pretend to reconstruct what the system knew at recorded time.
     """
 
-    def __init__(self, root: str, facts: Mapping[str, AtomicFact], *, as_of: str | None = None,
-                 max_depth: int = MAX_DEPTH, max_checks: int = MAX_CHECKS) -> None:
+    def __init__(
+        self,
+        root: str,
+        facts: Mapping[str, AtomicFact],
+        *,
+        as_of: str | None = None,
+        max_depth: int = MAX_DEPTH,
+        max_checks: int = MAX_CHECKS,
+    ) -> None:
         if isinstance(max_depth, bool) or not isinstance(max_depth, int) or not 1 <= max_depth <= MAX_DEPTH:
             raise EvidenceError(f"max_depth must be an integer between 1 and {MAX_DEPTH}")
         if isinstance(max_checks, bool) or not isinstance(max_checks, int) or not 1 <= max_checks <= MAX_CHECKS:
@@ -150,8 +173,13 @@ class EvidenceResolver:
         from unimem import hierarchical, lesson_cache
 
         moment = lesson_cache.parse_moment(self.as_of) if self.as_of else datetime.now(timezone.utc)
-        return not fact.forgotten and fact.status != "deleted" and (bool(self.as_of) or fact.status == "active") \
-            and hierarchical._valid_at(fact, moment) and not hierarchical._is_expired(fact, moment)
+        return (
+            not fact.forgotten
+            and fact.status != "deleted"
+            and (bool(self.as_of) or fact.status == "active")
+            and hierarchical._valid_at(fact, moment)
+            and not hierarchical._is_expired(fact, moment)
+        )
 
     def _lesson(self, identity: str) -> tuple[str, list[str]] | None:
         if identity in self._lessons:
@@ -168,10 +196,19 @@ class EvidenceResolver:
                 lesson_admission.validate_path(self.root, path)
                 fm, body = frontmatter.read(path)
                 name = fm.get("name")
-                if isinstance(name, str) and lesson_io.canonical_slug(name) == identity \
-                        and fm.get("status", "active") == "active" and lesson_admission.eligible(
-                    self.root, path, fm, body, as_of=self.as_of,
-                ) and lesson_cache.fresh_eligible(path, fm, name, as_of=self.as_of, body=body, root=self.root):
+                if (
+                    isinstance(name, str)
+                    and lesson_io.canonical_slug(name) == identity
+                    and fm.get("status", "active") == "active"
+                    and lesson_admission.eligible(
+                        self.root,
+                        path,
+                        fm,
+                        body,
+                        as_of=self.as_of,
+                    )
+                    and lesson_cache.fresh_eligible(path, fm, name, as_of=self.as_of, body=body, root=self.root)
+                ):
                     scopes = fm.get("scopes") or []
                     if isinstance(scopes, list) and all(isinstance(scope, str) for scope in scopes):
                         value = lesson_admission.digest_of(fm, body), scopes
@@ -208,10 +245,18 @@ class EvidenceResolver:
                 lesson_admission.validate_path(self.root, path)
                 fm, body = frontmatter.read(path)
                 name = fm.get("name")
-                if isinstance(name, str) and lesson_io.canonical_slug(name) == receipt.source_id \
-                        and lesson_admission.digest_of(fm, body) == receipt.revision \
-                        and lesson_cache.fresh_eligible(
-                    path, fm, name, as_of=self.as_of, body=body, root=self.root,
+                if (
+                    isinstance(name, str)
+                    and lesson_io.canonical_slug(name) == receipt.source_id
+                    and lesson_admission.digest_of(fm, body) == receipt.revision
+                    and lesson_cache.fresh_eligible(
+                        path,
+                        fm,
+                        name,
+                        as_of=self.as_of,
+                        body=body,
+                        root=self.root,
+                    )
                 ):
                     return body if isinstance(body, str) else None
             except (OSError, ValueError, TypeError):
@@ -288,8 +333,14 @@ class EvidenceResolver:
                 raise EvidenceError("source fact does not have eligible evidence")
 
 
-def bind_evidence(root: str, kind: EvidenceKind, source_id: str, *,
-                  polarity: EvidencePolarity = "support", revision: str | None = None) -> FactEvidence:
+def bind_evidence(
+    root: str,
+    kind: EvidenceKind,
+    source_id: str,
+    *,
+    polarity: EvidencePolarity = "support",
+    revision: str | None = None,
+) -> FactEvidence:
     """Capture a current source digest; an explicit stale digest is rejected."""
     from unimem import hierarchical, lesson_io
 
@@ -314,8 +365,13 @@ def parse_evidence(root: str, rows: Sequence[Mapping[str, object]]) -> list[Fact
             raise EvidenceError("invalid submitted evidence fields")
         kind, polarity = row.get("kind"), row.get("polarity", "support")
         identity, revision = row.get("source_id"), row.get("revision")
-        if kind not in ("fact", "lesson") or polarity not in ("support", "refute") \
-                or not isinstance(identity, str) or revision is not None and not isinstance(revision, str):
+        if (
+            kind not in ("fact", "lesson")
+            or polarity not in ("support", "refute")
+            or not isinstance(identity, str)
+            or revision is not None
+            and not isinstance(revision, str)
+        ):
             raise EvidenceError("invalid submitted evidence values")
         output.append(bind_evidence(root, kind, identity, polarity=polarity, revision=revision))
     return output

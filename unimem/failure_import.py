@@ -1,4 +1,5 @@
 """Read a fleet's recurring failures out of data it already has."""
+
 from __future__ import annotations
 
 import csv
@@ -14,15 +15,13 @@ except OverflowError:
 MAX_IMPORT_BYTES = 50 * 1024 * 1024
 
 _TITLE_KEYS = ("title", "label", "name", "summary", "subject", "issue", "alert", "error")
-_TEXT_KEYS = ("text", "description", "context", "context_text", "body", "detail", "details",
-              "message", "notes")
+_TEXT_KEYS = ("text", "description", "context", "context_text", "body", "detail", "details", "message", "notes")
 _TAG_KEYS = ("tags", "labels", "components", "service", "team")
 
 MAX_FAILURES = 500
 
 
-class FailureImportError(ValueError):
-    ...
+class FailureImportError(ValueError): ...
 
 
 def _norm(text: str) -> str:
@@ -77,7 +76,7 @@ def _parse_jsonl(raw: str) -> list[tuple[str, str, list[str]]]:
         except ValueError as exc:
             raise FailureImportError(
                 f"line {i} is not valid JSON. For JSONL, every line must be one "
-                f"object, e.g. {{\"title\": \"...\", \"text\": \"...\"}} ({exc})"
+                f'object, e.g. {{"title": "...", "text": "..."}} ({exc})'
             ) from exc
         if not isinstance(record, dict):
             raise FailureImportError(f"line {i} is not a JSON object")
@@ -128,7 +127,7 @@ def _parse_csv(raw: str) -> list[tuple[str, str, list[str]]]:
 
 
 def _parse_lines(raw: str) -> list[tuple[str, str, list[str]]]:
-    out = []
+    out: list[tuple[str, str, list[str]]] = []
     for line in raw.splitlines():
         line = line.strip().lstrip("-*# \t")
         if not line or line.startswith("//"):
@@ -168,15 +167,14 @@ _VALID_FORMATS = ("jsonl", "json", "csv", "lines")
 def read_failures(path: str, fmt_override: str | None = None) -> tuple[list[dict], dict]:
     """Parse `path` into failure records, plus a report of what happened."""
     if fmt_override is not None and fmt_override not in _VALID_FORMATS:
-        raise FailureImportError(
-            f"unknown format {fmt_override!r}; expected one of {'/'.join(_VALID_FORMATS)}"
-        )
+        raise FailureImportError(f"unknown format {fmt_override!r}; expected one of {'/'.join(_VALID_FORMATS)}")
     try:
         try:
             if os.path.getsize(path) > MAX_IMPORT_BYTES:
                 raise FailureImportError(
                     f"{path} is larger than {MAX_IMPORT_BYTES // (1024 * 1024)} MiB; "
-                    "split the export or pass a smaller file")
+                    "split the export or pass a smaller file"
+                )
         except OSError:
             pass
         with open(path, "rb") as fh:
@@ -184,7 +182,8 @@ def read_failures(path: str, fmt_override: str | None = None) -> tuple[list[dict
         if len(raw_bytes) > MAX_IMPORT_BYTES:
             raise FailureImportError(
                 f"{path} is larger than {MAX_IMPORT_BYTES // (1024 * 1024)} MiB; "
-                "split the export or pass a smaller file")
+                "split the export or pass a smaller file"
+            )
         raw = raw_bytes.decode("utf-8-sig", errors="replace")
     except OSError as exc:
         raise FailureImportError(f"cannot read {path}: {exc}") from exc

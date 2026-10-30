@@ -1,4 +1,5 @@
 from unimem import fact_embeddings, fact_store, fact_vector_projection, hierarchical, recall
+from unimem.fact_store import FactMap
 
 
 def test_dense_recall_uses_projection_and_scores_only_pending_facts(tmp_path, monkeypatch):
@@ -46,14 +47,65 @@ def test_dense_recall_uses_projection_and_scores_only_pending_facts(tmp_path, mo
     assert results[pending.id][1] == 0.95
 
 
+def test_lance_recall_bounds_and_batches_the_pending_event_tail(tmp_path, monkeypatch):
+    root = str(tmp_path)
+    model = "recall-projection-backlog-test"
+    monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", model)
+    fact_store.migrate(root)
+    with fact_store.transaction(root, write=True) as current:
+        current.connection.executemany(
+            "INSERT INTO events(fact_id,version,operation,record) VALUES(?,1,'put','{}')",
+            [(f"missing-{index}",) for index in range(1200)],
+        )
+        current.connection.execute(
+            "INSERT INTO meta(key,value) VALUES(?,?)",
+            (fact_vector_projection._watermark(model, "lance"), "0"),
+        )
+    pending, _ = hierarchical.add_fact(root, "recent parser boundary guidance", scopes=["repo"])
+    seen_batches = []
+    get_many = FactMap.get_many
+
+    def bounded_get_many(current, keys):
+        seen_batches.append(list(keys))
+        return get_many(current, keys)
+
+    get = FactMap.get
+    single_lookups = []
+
+    def bounded_get(current, key):
+        single_lookups.append(key)
+        if len(single_lookups) > 1:
+            raise AssertionError("pending facts must be hydrated in batches")
+        return get(current, key)
+
+    def score_pending(query, facts, *, model, root):
+        assert query == "parser boundaries"
+        assert [fact.id for fact in facts] == [pending.id]
+        assert model == "recall-projection-backlog-test"
+        assert root == str(tmp_path)
+        return {pending.id: 0.9}
+
+    monkeypatch.setattr(FactMap, "get_many", bounded_get_many)
+    monkeypatch.setattr(FactMap, "get", bounded_get)
+    monkeypatch.setattr(fact_vector_projection, "_backend", lambda _root: "lance")
+    monkeypatch.setattr(fact_vector_projection, "search", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(fact_embeddings, "scores", score_pending)
+
+    results = recall._dense_facts(root, "parser boundaries", None, 10, "repo")
+
+    assert list(results) == [pending.id]
+    assert len(seen_batches) == 1
+    assert len(seen_batches[0]) <= 200
+    assert pending.id in seen_batches[0]
+    assert single_lookups == [pending.id]
+
+
 def test_dense_recall_keeps_exact_path_for_historical_queries(tmp_path, monkeypatch):
     root = str(tmp_path)
     configured_model = "recall-projection-history-test"
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", configured_model)
     fact_store.migrate(root)
-    older, _ = hierarchical.add_fact(
-        root, "earlier parser boundary guidance", valid_from="2026-01-01T00:00:00Z"
-    )
+    older, _ = hierarchical.add_fact(root, "earlier parser boundary guidance", valid_from="2026-01-01T00:00:00Z")
     with hierarchical.mutate_facts(root) as facts:
         facts[older.id].status = "superseded"
         facts[older.id].valid_until = "2026-06-01T00:00:00Z"

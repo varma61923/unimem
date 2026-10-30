@@ -52,15 +52,15 @@ def test_subagent_stop_records_causal_holdout_outcome_for_claimed_memory(tmp_pat
     child_session = f"{parent}:{child}"
     run_id = hashlib.sha256(json.dumps([scope, child_session], sort_keys=True).encode()).hexdigest()
     occasion = f"{agent}:{run_id}"
-    holdout_io.configure(root, rate=.25, salt="subagent-outcome")
-    holdout_io.assign_and_log(root, ["newly-claimed-memory"], occasion_id=occasion, rate=.25,
-                              salt="subagent-outcome")
+    holdout_io.configure(root, rate=0.25, salt="subagent-outcome")
+    holdout_io.assign_and_log(root, ["newly-claimed-memory"], occasion_id=occasion, rate=0.25, salt="subagent-outcome")
     journal = Journal(root)
     journal.claim_injections(run_id, ["newly-claimed-memory"])
 
     HookKit(root, agent, embedder="none").handle(
-        "SubagentStop", {"session_id": parent, "parent_session_id": parent, "agent_id": child,
-                         "succeeded": True}, capture_only=True,
+        "SubagentStop",
+        {"session_id": parent, "parent_session_id": parent, "agent_id": child, "succeeded": True},
+        capture_only=True,
     )
 
     assert journal.unclaimed(run_id, ["newly-claimed-memory"]) == []
@@ -144,8 +144,10 @@ def test_semantic_segment_counts_whole_serialized_prompt():
     assert calls
 
 
-@pytest.mark.parametrize("option,value", [("max_tokens", 0), ("max_tokens", True), ("max_messages", 0),
-                                         ("max_messages", 2.5), ("max_messages", -1)])
+@pytest.mark.parametrize(
+    "option,value",
+    [("max_tokens", 0), ("max_tokens", True), ("max_messages", 0), ("max_messages", 2.5), ("max_messages", -1)],
+)
 def test_segment_rejects_invalid_limits_before_work(option, value):
     with pytest.raises(ValueError):
         segment([], **{option: value})
@@ -182,16 +184,24 @@ def test_curator_prior_slice_uses_task_relevance_before_top_k(tmp_path):
     root = str(tmp_path)
     journal = captured(root)
     for index in range(15):
-        journal.put(MemoryRecord(
-            f"a-unrelated-{index:02}", "lesson", 1,
-            {"text": f"Document the on-call rotation for service {index}."},
+        journal.put(
+            MemoryRecord(
+                f"a-unrelated-{index:02}",
+                "lesson",
+                1,
+                {"text": f"Document the on-call rotation for service {index}."},
+                scope={"agent": "a"},
+            )
+        )
+    journal.put(
+        MemoryRecord(
+            "z-relevant",
+            "lesson",
+            1,
+            {"text": "When pytest fails on parser boundaries, validate the parser input first."},
             scope={"agent": "a"},
-        ))
-    journal.put(MemoryRecord(
-        "z-relevant", "lesson", 1,
-        {"text": "When pytest fails on parser boundaries, validate the parser input first."},
-        scope={"agent": "a"},
-    ))
+        )
+    )
     calls = []
 
     def update_relevant_prior(prompt):
@@ -202,20 +212,20 @@ def test_curator_prior_slice_uses_task_relevance_before_top_k(tmp_path):
         offered_prior_ids = {record["id"] for record in offered["prior"]}
         assert "z-relevant" in offered_prior_ids
         assert not any(identity.startswith("a-unrelated-") for identity in offered_prior_ids)
-        return json.dumps({
-            "operation": "update",
-            "target_id": "z-relevant",
-            "kind": "procedure",
-            "text": "Validate parser boundaries before running pytest.",
-            "trigger": {},
-        }), {}
+        return json.dumps(
+            {
+                "operation": "update",
+                "target_id": "z-relevant",
+                "kind": "procedure",
+                "text": "Validate parser boundaries before running pytest.",
+                "trigger": {},
+            }
+        ), {}
 
     result = learn(root, "r", scope={"agent": "a"}, complete=update_relevant_prior)
     assert result["operation"] == "update"
     assert len(calls) == 2
-    updated = journal.search(
-        "parser", scope={"agent": "a"}, kinds=("lesson",), statuses=("quarantined",), limit=1
-    )[0]
+    updated = journal.search("parser", scope={"agent": "a"}, kinds=("lesson",), statuses=("quarantined",), limit=1)[0]
     assert updated.relations["updates"] == ["z-relevant"]
     assert updated.provenance["source_case_ids"]
 
@@ -254,8 +264,9 @@ def test_writer_oversize_proposal_never_dispatches_or_seals(tmp_path):
 def test_arena_budget_and_citations_match_supplied_evidence():
     from unimem.session_learning import arena
 
-    entries = [{"id": str(i), "sequence": i, "event": "PostToolUseFailure", "payload": {"text": "x" * 500}}
-               for i in range(32)]
+    entries = [
+        {"id": str(i), "sequence": i, "event": "PostToolUseFailure", "payload": {"text": "x" * 500}} for i in range(32)
+    ]
     calls = []
 
     def extractor(prompt):
@@ -275,9 +286,7 @@ def test_required_prior_evidence_cannot_be_dropped_to_fit(tmp_path):
     from unimem.memory_record import MemoryRecord
 
     journal = captured(str(tmp_path))
-    journal.put(MemoryRecord(
-        "large-prior", "lesson", 1, {"text": "Fix parser " + "x" * 7000}, scope={"agent": "a"}
-    ))
+    journal.put(MemoryRecord("large-prior", "lesson", 1, {"text": "Fix parser " + "x" * 7000}, scope={"agent": "a"}))
     before = journal.buffer("r", scope={"agent": "a"})
     calls = []
     with pytest.raises(ValueError, match="budget"):
@@ -318,8 +327,11 @@ def test_arena_indivisible_oversize_input_cannot_dispatch():
 
     calls = []
     with pytest.raises(ValueError, match="budget"):
-        arena([{"id": "big", "sequence": 1, "event": "PostToolUseFailure", "payload": {"text": "x" * 7000}}],
-              lambda prompt: calls.append(prompt), lambda prompt: calls.append(prompt))
+        arena(
+            [{"id": "big", "sequence": 1, "event": "PostToolUseFailure", "payload": {"text": "x" * 7000}}],
+            lambda prompt: calls.append(prompt),
+            lambda prompt: calls.append(prompt),
+        )
     assert calls == []
 
 
@@ -351,16 +363,18 @@ def test_default_durable_worker_parks_oversize_without_sealing(tmp_path, monkeyp
 def test_case_wrapper_splits_ordinary_captures_instead_of_blocking(tmp_path):
     root = str(tmp_path)
     journal = Journal(root)
-    for index, (event, payload) in enumerate([
-        ("UserPromptSubmit", {"prompt": "fix parser"}),
-        ("PreToolUse", {"tool_name": "pytest"}),
-        ("PostToolUseFailure", {"error": "x" * 2500}),
-        ("UserPromptSubmit", {"prompt": "continue fix"}),
-        ("PreToolUse", {"tool_name": "pytest"}),
-        ("PostToolUse", {"tool_name": "pytest", "exit_code": 0, "arguments": "x" * 2500}),
-        ("PostToolUse", {"tool_name": "pytest", "exit_code": 0}),
-        ("Stop", {}),
-    ]):
+    for index, (event, payload) in enumerate(
+        [
+            ("UserPromptSubmit", {"prompt": "fix parser"}),
+            ("PreToolUse", {"tool_name": "pytest"}),
+            ("PostToolUseFailure", {"error": "x" * 2500}),
+            ("UserPromptSubmit", {"prompt": "continue fix"}),
+            ("PreToolUse", {"tool_name": "pytest"}),
+            ("PostToolUse", {"tool_name": "pytest", "exit_code": 0, "arguments": "x" * 2500}),
+            ("PostToolUse", {"tool_name": "pytest", "exit_code": 0}),
+            ("Stop", {}),
+        ]
+    ):
         journal.capture("r", event, payload, scope={}, event_id=str(index))
     calls, supplied_outcomes = [], set()
 
@@ -370,8 +384,9 @@ def test_case_wrapper_splits_ordinary_captures_instead_of_blocking(tmp_path):
         if prompt.startswith("CASE:"):
             offered = json.loads(prompt.split("\n", 1)[1])
             supplied_outcomes.update(offered["outcomes"])
-            return json.dumps({"fix": "Validate parser boundaries.",
-                               "outcome_message_id": next(iter(offered["outcomes"]))}), {}
+            return json.dumps(
+                {"fix": "Validate parser boundaries.", "outcome_message_id": next(iter(offered["outcomes"]))}
+            ), {}
         return model(prompt)
 
     result = learn(root, "r", scope={}, complete=bounded_native)
@@ -513,8 +528,11 @@ def test_split_creates_distinct_quarantined_parts_with_pinned_target(tmp_path):
     journal = captured(str(tmp_path))
     journal.put(
         MemoryRecord(
-            "broad", "lesson", 1,
-            {"text": "Validate parser boundaries and test database migrations."}, scope={"agent": "a"},
+            "broad",
+            "lesson",
+            1,
+            {"text": "Validate parser boundaries and test database migrations."},
+            scope={"agent": "a"},
         )
     )
 

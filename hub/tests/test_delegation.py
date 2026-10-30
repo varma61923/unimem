@@ -30,20 +30,26 @@ from unimem.memory_record import MemoryRecord
 pytestmark = pytest.mark.asyncio
 
 
-@pytest.mark.parametrize("encoded", [
-    b'{"record":{"kind":"narrow"},"record":{"kind":"wide"}}',
-    b'{"record":{"limit":NaN}}',
-    b'{"record":{"limit":Infinity}}',
-])
+@pytest.mark.parametrize(
+    "encoded",
+    [
+        b'{"record":{"kind":"narrow"},"record":{"kind":"wide"}}',
+        b'{"record":{"limit":NaN}}',
+        b'{"record":{"limit":Infinity}}',
+    ],
+)
 async def test_capability_header_rejects_ambiguous_json(encoded):
     with pytest.raises(ValueError):
         delegation._decode(base64.urlsafe_b64encode(encoded).decode().rstrip("="), 8192)
 
 
-@pytest.mark.parametrize("raw", [
-    b'{"method":"tools/call","method":"tools/list","params":{"name":"delete_trace"}}',
-    b'{"method":"tools/call","params":{"name":"delete_trace"},"noise":NaN}',
-])
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"method":"tools/call","method":"tools/list","params":{"name":"delete_trace"}}',
+        b'{"method":"tools/call","params":{"name":"delete_trace"},"noise":NaN}',
+    ],
+)
 async def test_delegated_mcp_operation_rejects_ambiguous_json(raw):
     request = SimpleNamespace(url=SimpleNamespace(path="/mcp"), method="POST")
     config = SimpleNamespace(streamable_http_path="/mcp")
@@ -309,8 +315,9 @@ async def test_fact_erasure_cannot_launder_permission_to_erase_source_episode(
     scope = {"tenant": org, "labels": ["project:a"]}
     journal = PostgresJournal(session_factory, org)
     await journal.put(MemoryRecord("private-episode", "episode", 1, {"text": "Private source."}, scope=scope))
-    record = MemoryRecord("citing-fact", "fact", 1,
-                          {"text": "Derived content.", "source_message_ids": ["private-episode"]}, scope=scope)
+    record = MemoryRecord(
+        "citing-fact", "fact", 1, {"text": "Derived content.", "source_message_ids": ["private-episode"]}, scope=scope
+    )
     async with client(_app(session_factory, configured)) as app:
         target = "/v1/memory/record-put"
         raw = json.dumps({"record": record.to_dict(), "context": ["project:a"]}).encode()

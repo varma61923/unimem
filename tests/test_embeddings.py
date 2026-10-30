@@ -1,4 +1,5 @@
 """Multi-provider embeddings: tag parsing, request shapes, normalization, batching and the vector cache."""
+
 from __future__ import annotations
 
 import math
@@ -22,19 +23,22 @@ def _unit(v):
     return math.isclose(sum(x * x for x in v), 1.0, rel_tol=1e-6)
 
 
-@pytest.mark.parametrize("tag, provider, model, dims", [
-    ("arctic-m", "local", "arctic-m", None),
-    ("nomic", "local", "nomic", None),
-    ("local:BAAI/bge-base-en-v1.5", "local", "BAAI/bge-base-en-v1.5", None),
-    ("fastembed:baai/bge-small-en-v1.5", "fastembed", "BAAI/bge-small-en-v1.5", None),
-    ("fastembed:BAAI/bge-base-en-v1.5", "fastembed", "BAAI/bge-base-en-v1.5", None),
-    ("openai:text-embedding-3-large@1024", "openai", "text-embedding-3-large", 1024),
-    ("gemini:gemini-embedding-001", "gemini", "gemini-embedding-001", None),
-    ("voyage:voyage-3.5@512", "voyage", "voyage-3.5", 512),
-    ("cohere:embed-v4.0", "cohere", "embed-v4.0", None),
-    ("ollama:nomic-embed-text", "ollama", "nomic-embed-text", None),
-    ("compat:bge-m3", "compat", "bge-m3", None),
-])
+@pytest.mark.parametrize(
+    "tag, provider, model, dims",
+    [
+        ("arctic-m", "local", "arctic-m", None),
+        ("nomic", "local", "nomic", None),
+        ("local:BAAI/bge-base-en-v1.5", "local", "BAAI/bge-base-en-v1.5", None),
+        ("fastembed:baai/bge-small-en-v1.5", "fastembed", "BAAI/bge-small-en-v1.5", None),
+        ("fastembed:BAAI/bge-base-en-v1.5", "fastembed", "BAAI/bge-base-en-v1.5", None),
+        ("openai:text-embedding-3-large@1024", "openai", "text-embedding-3-large", 1024),
+        ("gemini:gemini-embedding-001", "gemini", "gemini-embedding-001", None),
+        ("voyage:voyage-3.5@512", "voyage", "voyage-3.5", 512),
+        ("cohere:embed-v4.0", "cohere", "embed-v4.0", None),
+        ("ollama:nomic-embed-text", "ollama", "nomic-embed-text", None),
+        ("compat:bge-m3", "compat", "bge-m3", None),
+    ],
+)
 def test_tags_parse_to_a_provider_model_and_dimensions(tag, provider, model, dims):
     spec = embeddings.parse(tag)
     assert (spec.provider, spec.model, spec.dimensions) == (provider, model, dims)
@@ -57,13 +61,20 @@ def test_fastembed_rejects_unregistered_models_and_dimensions():
 
 def test_openai_request_shape_dimensions_order_and_normalization(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    post = _Recorder(lambda url, p: {"data": [{"index": i, "embedding": [3.0, 4.0] + [0.0] * 254}
-                                             for i in reversed(range(len(p["input"])))]})
+    post = _Recorder(
+        lambda url, p: {
+            "data": [{"index": i, "embedding": [3.0, 4.0] + [0.0] * 254} for i in reversed(range(len(p["input"])))]
+        }
+    )
     vectors = embeddings.provider("openai:text-embedding-3-small@256", post=post).embed(["a", "b"], query=True)
-    (url, headers, payload), = post.calls
+    ((url, headers, payload),) = post.calls
     assert url == "https://api.openai.com/v1/embeddings" and headers["Authorization"] == "Bearer sk-test"
-    assert payload == {"model": "text-embedding-3-small", "input": ["a", "b"], "encoding_format": "float",
-                       "dimensions": 256}
+    assert payload == {
+        "model": "text-embedding-3-small",
+        "input": ["a", "b"],
+        "encoding_format": "float",
+        "dimensions": 256,
+    }
     assert [v[:2] for v in vectors] == [[0.6, 0.8], [0.6, 0.8]] and all(_unit(v) for v in vectors)
 
 
@@ -82,7 +93,9 @@ def test_gemini_uses_retrieval_task_types_and_the_key_header(monkeypatch):
     p.embed(["question"], query=True)
     (url, headers, doc), (_u, _h, query) = post.calls
     assert url.endswith("/models/gemini-embedding-001:batchEmbedContents") and headers["x-goog-api-key"] == "g-test"
-    assert doc["requests"][0]["taskType"] == "RETRIEVAL_DOCUMENT" and query["requests"][0]["taskType"] == "RETRIEVAL_QUERY"
+    assert (
+        doc["requests"][0]["taskType"] == "RETRIEVAL_DOCUMENT" and query["requests"][0]["taskType"] == "RETRIEVAL_QUERY"
+    )
     assert doc["requests"][0]["outputDimensionality"] == 768
 
 
@@ -113,11 +126,13 @@ def test_large_inputs_are_batched_and_clipped(monkeypatch):
 def test_short_replies_bad_vectors_and_missing_keys_fail_clearly(monkeypatch):
     monkeypatch.setenv("COHERE_API_KEY", "c")
     with pytest.raises(embeddings.EmbeddingError, match="returned 1 vectors for 2"):
-        embeddings.provider("cohere:embed-v4.0", post=_Recorder(
-            lambda url, p: {"embeddings": {"float": [[1.0]]}})).embed(["a", "b"], query=False)
+        embeddings.provider(
+            "cohere:embed-v4.0", post=_Recorder(lambda url, p: {"embeddings": {"float": [[1.0]]}})
+        ).embed(["a", "b"], query=False)
     with pytest.raises(embeddings.EmbeddingError, match="zero vector"):
-        embeddings.provider("cohere:embed-v4.0", post=_Recorder(
-            lambda url, p: {"embeddings": {"float": [[0.0, 0.0]]}})).embed(["a"], query=False)
+        embeddings.provider(
+            "cohere:embed-v4.0", post=_Recorder(lambda url, p: {"embeddings": {"float": [[0.0, 0.0]]}})
+        ).embed(["a"], query=False)
     monkeypatch.delenv("VOYAGE_API_KEY", raising=False)
     monkeypatch.delenv("VOYAGE_API_KEY_FILE", raising=False)
     with pytest.raises(embeddings.EmbeddingError, match="VOYAGE_API_KEY"):
@@ -157,12 +172,19 @@ def test_fastembed_uses_bounded_cpu_batches_and_query_document_apis(monkeypatch,
 
     assert len(query_vectors) == 65 and all(_unit(row) for row in query_vectors)
     assert document_vectors == [[0.6, 0.8]]
-    assert calls[0] == ("init", {
-        "model_name": "BAAI/bge-small-en-v1.5", "cache_dir": str(tmp_path), "threads": 2,
-        "local_files_only": True,
-    })
+    assert calls[0] == (
+        "init",
+        {
+            "model_name": "BAAI/bge-small-en-v1.5",
+            "cache_dir": str(tmp_path),
+            "threads": 2,
+            "local_files_only": True,
+        },
+    )
     assert [(call[0], len(call[1]), call[2], call[3]) for call in calls[1:]] == [
-        ("query", 64, 64, None), ("query", 1, 64, None), ("passage", 1, 64, None),
+        ("query", 64, 64, None),
+        ("query", 1, 64, None),
+        ("passage", 1, 64, None),
     ]
 
 
@@ -226,8 +248,7 @@ def test_missing_native_runtime_names_the_installable_extra(monkeypatch):
         provider.embed(["question"], query=True)
 
 
-def test_fastembed_projection_identity_binds_model_revision_version_and_dimension(
-        monkeypatch, tmp_path):
+def test_fastembed_projection_identity_binds_model_revision_version_and_dimension(monkeypatch, tmp_path):
     model_dir = tmp_path / "cached-model"
     model_dir.mkdir()
     (model_dir / "model.onnx").write_bytes(b"fake onnx artifact")

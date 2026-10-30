@@ -1,4 +1,5 @@
 """Explicit hazard review and safety-evidence export."""
+
 from __future__ import annotations
 
 import argparse

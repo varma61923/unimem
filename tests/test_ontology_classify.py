@@ -1,5 +1,6 @@
 """Ontology-based classification of entity mentions: aliases and keywords, embeddings
 (faked), an LLM (faked), inheritance, thresholds, extraction and the CLI."""
+
 import json
 import os
 
@@ -76,8 +77,7 @@ def test_head_word_prefers_the_most_specific_type(onto):
 def test_word_and_context_scores(onto):
     word = ontology_classify.classify("API Gateway Squad", onto=onto)
     assert word.type == "team" and word.confidence == pytest.approx(ontology_classify.SCORES["head"])
-    context = ontology_classify.classify("Velmora", "We opened an office in the city of Velmora last year.",
-                                         onto=onto)
+    context = ontology_classify.classify("Velmora", "We opened an office in the city of Velmora last year.", onto=onto)
     # "the city of X" (0.8) and "city" beside the mention (0.7) are independent evidence: noisy-OR.
     assert (context.type, context.confidence) == ("place", pytest.approx(1 - 0.2 * 0.3))
     assert context.method == "pattern"
@@ -126,8 +126,12 @@ def test_llm_method_validates_the_answer(onto):
     found = ontology_classify.classify("Zorblax", "Zorblax carried us home.", onto=onto, llm=complete)
     assert (found.type, found.method, found.confidence) == ("vehicle", "llm", 0.8)
     assert "- vehicle:" in prompts[0] and '"Zorblax"' in prompts[0]
-    for reply in ('{"type": "spaceship", "confidence": 0.9}', "not json", '{"type": "vehicle", "confidence": 0.2}',
-                  '{"type": "vehicle", "confidence": "high"}'):
+    for reply in (
+        '{"type": "spaceship", "confidence": 0.9}',
+        "not json",
+        '{"type": "vehicle", "confidence": 0.2}',
+        '{"type": "vehicle", "confidence": "high"}',
+    ):
         assert ontology_classify.classify("Zorblax", onto=onto, llm=lambda p, r=reply: (r, {})).type is None
 
 
@@ -144,8 +148,12 @@ def test_kg_similarity_embedder_resolution(monkeypatch):
 
 
 def test_extraction_types_untyped_mentions(onto):
-    found = {m.name: m.key for m in entities.extract("We met at the Berlin Summit while Orders Database failed.",
-                                                     onto=onto, use_spacy=False)}
+    found = {
+        m.name: m.key
+        for m in entities.extract(
+            "We met at the Berlin Summit while Orders Database failed.", onto=onto, use_spacy=False
+        )
+    }
     assert found["Berlin Summit"] == "event:berlin_summit"
     assert found["Orders Database"] == "database:orders_database"
     # Without an ontology nothing is reclassified.
@@ -156,7 +164,9 @@ def test_cli_classify(root, capsys):
     assert cli.main(["ontology", "classify", "Orders Database", "--json", "--dest", root]) == 0
     row = json.loads(capsys.readouterr().out)[0]
     assert row["type"] == "database" and row["ancestors"] == ["database", "service"]
-    assert cli.main(["ontology", "classify", "--extract", "The Platform Team runs the Orders Database.",
-                     "--dest", root]) == 0
+    assert (
+        cli.main(["ontology", "classify", "--extract", "The Platform Team runs the Orders Database.", "--dest", root])
+        == 0
+    )
     out = capsys.readouterr().out
     assert "'Platform Team': team" in out and "'Orders Database': database" in out

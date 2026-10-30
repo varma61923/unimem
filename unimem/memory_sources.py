@@ -1,4 +1,5 @@
 """Causal measurement for memory that lives in a plain file, not this store."""
+
 from __future__ import annotations
 
 import json
@@ -177,8 +178,7 @@ class FileMemorySource:
         rendered = preamble + "".join(item["memory"] for item in items if item["id"] in delivered_ids)
         harmful = [item["id"] for item in items if item["id"] in recalled.withdrawn]
         withheld = [
-            item["id"] for item in items
-            if item["id"] not in delivered_ids and item["id"] not in recalled.withdrawn
+            item["id"] for item in items if item["id"] not in delivered_ids and item["id"] not in recalled.withdrawn
         ]
         return RenderResult(
             text=rendered,

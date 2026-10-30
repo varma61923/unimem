@@ -1,20 +1,51 @@
 """Bounded operator JSON workflows for outcome, fleet and physical-AI evidence."""
+
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import asdict
 
 from unimem import frontier_protocol as fp
 from unimem import paths
 
-OPERATIONS = ("outcome-correct", "surrogate-fit", "sim-discrepancy", "simulation-weight", "recovery-register",
-              "recovery-recall", "cluster-publish", "cluster-assign", "cluster-effect", "valuation",
-              "valuation-certify", "valuation-verify", "warranty", "underwriting", "data-value", "spatial-update",
-              "spatial-history", "uplift-fit", "attribution-fit", "royalties", "private-effect", "compile-build",
-              "compile-trial", "compile-status", "vendor-report", "robot-ingest", "rewrite-propose",
-              "rewrite-review", "rewrite-status", "canary-create", "canary-check", "certified-erase",
-              "certified-verify", "symbiosis-bias")
+OPERATIONS = (
+    "outcome-correct",
+    "surrogate-fit",
+    "sim-discrepancy",
+    "simulation-weight",
+    "recovery-register",
+    "recovery-recall",
+    "cluster-publish",
+    "cluster-assign",
+    "cluster-effect",
+    "valuation",
+    "valuation-certify",
+    "valuation-verify",
+    "warranty",
+    "underwriting",
+    "data-value",
+    "spatial-update",
+    "spatial-history",
+    "uplift-fit",
+    "attribution-fit",
+    "royalties",
+    "private-effect",
+    "compile-build",
+    "compile-trial",
+    "compile-status",
+    "vendor-report",
+    "robot-ingest",
+    "rewrite-propose",
+    "rewrite-review",
+    "rewrite-status",
+    "canary-create",
+    "canary-check",
+    "certified-erase",
+    "certified-verify",
+    "symbiosis-bias",
+)
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -56,24 +87,39 @@ def run(args: argparse.Namespace) -> int:
         valuation,
     )
 
-    local = {
-        "sim-discrepancy": outcomes.record_discrepancy, "simulation-weight": outcomes.simulation_weight,
-        "recovery-register": recovery.register, "recovery-recall": recovery.recall,
-        "cluster-publish": interference.publish, "cluster-assign": interference.assign_cluster,
-        "valuation-certify": valuation.certify_logged, "valuation-verify": valuation.verify,
-        "warranty": valuation.warranty_credit, "underwriting": valuation.underwriting_export,
+    local: dict[str, Callable[..., object]] = {
+        "sim-discrepancy": outcomes.record_discrepancy,
+        "simulation-weight": outcomes.simulation_weight,
+        "recovery-register": recovery.register,
+        "recovery-recall": recovery.recall,
+        "cluster-publish": interference.publish,
+        "cluster-assign": interference.assign_cluster,
+        "valuation-certify": valuation.certify_logged,
+        "valuation-verify": valuation.verify,
+        "warranty": valuation.warranty_credit,
+        "underwriting": valuation.underwriting_export,
         "data-value": valuation.export_data,
-        "spatial-update": spatial.update, "spatial-history": spatial.history,
-        "private-effect": cleanroom.private_effect, "compile-build": compile_memory.build,
-        "compile-trial": compile_memory.register_trial, "compile-status": compile_memory.stale,
+        "spatial-update": spatial.update,
+        "spatial-history": spatial.history,
+        "private-effect": cleanroom.private_effect,
+        "compile-build": compile_memory.build,
+        "compile-trial": compile_memory.register_trial,
+        "compile-status": compile_memory.stale,
         "vendor-report": memory_adapters.comparative_report,
-        "rewrite-propose": retention.propose, "rewrite-review": retention.review, "rewrite-status": retention.report,
-        "canary-create": memory_ifc.create_canary, "canary-check": memory_ifc.egress_match,
+        "rewrite-propose": retention.propose,
+        "rewrite-review": retention.review,
+        "rewrite-status": retention.report,
+        "canary-create": memory_ifc.create_canary,
+        "canary-check": memory_ifc.egress_match,
         "certified-verify": lambda root, **request: {"valid": certified_verify(root, **request)},
     }
-    pure = {"outcome-correct": outcomes.corrected_effect, "valuation": valuation.factorial,
-            "attribution-fit": attribution.sparse_fit,
-            "royalties": cleanroom.royalties, "symbiosis-bias": interference.symbiosis_bias}
+    pure: dict[str, Callable[..., object]] = {
+        "outcome-correct": outcomes.corrected_effect,
+        "valuation": valuation.factorial,
+        "attribution-fit": attribution.sparse_fit,
+        "royalties": cleanroom.royalties,
+        "symbiosis-bias": interference.symbiosis_bias,
+    }
     if args.operation in local:
         result = local[args.operation](root, **body)
     elif args.operation in pure:
@@ -88,32 +134,45 @@ def run(args: argparse.Namespace) -> int:
 
         required = {"vault_directory", "subject", "identities", "reason"}
         if set(body) - required - {"probe"} or not required <= set(body):
-            raise ValueError("certified-erase requires vault_directory, subject, identities and reason; "
-                             "only probe is optional")
+            raise ValueError(
+                "certified-erase requires vault_directory, subject, identities and reason; only probe is optional"
+            )
         probe = body.get("probe")
         retrieval_probe = None
         if probe is not None:
             from unimem import recall
 
-            if (not isinstance(probe, dict) or set(probe) - {"queries", "forbidden", "threshold"}
-                    or not {"queries", "forbidden"} <= set(probe)
-                    or not isinstance(probe["queries"], list) or not isinstance(probe["forbidden"], list)):
+            if (
+                not isinstance(probe, dict)
+                or set(probe) - {"queries", "forbidden", "threshold"}
+                or not {"queries", "forbidden"} <= set(probe)
+                or not isinstance(probe["queries"], list)
+                or not isinstance(probe["forbidden"], list)
+            ):
                 raise ValueError("erasure probe requires query and forbidden-token lists and optional threshold")
             # Validate every probe field before constructing a vault or deleting
             # content; the real retrieval diagnostic still runs after erasure.
-            certified_erasure.probe(lambda query: [], probe["queries"], forbidden=probe["forbidden"],
-                                    threshold=probe.get("threshold", 0))
+            certified_erasure.probe(
+                lambda query: [], probe["queries"], forbidden=probe["forbidden"], threshold=probe.get("threshold", 0)
+            )
+
             def retrieval_probe() -> dict:
                 return certified_erasure.probe(
                     lambda query: [{"text": item.text} for item in recall.recall(root, query).items],
-                    probe["queries"], forbidden=probe["forbidden"], threshold=probe.get("threshold", 0))
+                    probe["queries"],
+                    forbidden=probe["forbidden"],
+                    threshold=probe.get("threshold", 0),
+                )
+
         vault = certified_erasure.SubjectVault(root, fp.text(body["vault_directory"], "vault directory", 4096))
-        result = certified_erasure.erase(root, body["subject"], body["identities"], vault,
-                                         reason=body["reason"], retrieval_probe=retrieval_probe)
+        result = certified_erasure.erase(
+            root, body["subject"], body["identities"], vault, reason=body["reason"], retrieval_probe=retrieval_probe
+        )
     elif args.operation == "cluster-effect":
         result = interference.cluster_effect([interference.Cluster(**row) for row in body.pop("rows")], **body)
     else:
         from unimem.robotics import ingest
+
         format = body.pop("format")
         if format not in ("mcap", "lerobot"):
             raise ValueError("robot format must be mcap or lerobot")

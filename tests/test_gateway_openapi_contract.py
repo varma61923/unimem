@@ -1,4 +1,5 @@
 """Every gateway route is in the OpenAPI document, and every live response matches its schema."""
+
 from __future__ import annotations
 
 import base64
@@ -80,8 +81,12 @@ def test_the_document_is_valid_openapi(tmp_path):
 
 
 def test_the_exported_documents_are_fresh():
-    result = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "export_openapi.py"), "--check"],
-                            capture_output=True, text=True, cwd=REPO)
+    result = subprocess.run(
+        [sys.executable, os.path.join(REPO, "scripts", "export_openapi.py"), "--check"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -114,13 +119,28 @@ def test_live_responses_match_the_declared_schemas(tmp_path):
             jsonschema.Draft4Validator({**request, **components}).validate(body)
         return value
 
-    call("POST", "/v1/memory/record-put", {"record": {
-        "id": "api-fact", "kind": "fact", "version": 1, "payload": {"text": "scoped parser fact"}}})
+    call(
+        "POST",
+        "/v1/memory/record-put",
+        {"record": {"id": "api-fact", "kind": "fact", "version": 1, "payload": {"text": "scoped parser fact"}}},
+    )
     call("POST", "/v1/memory/record-search", {"query": "parser"})
-    call("POST", "/v1/memory/record-put", {"record": {
-        "id": "expired-fact", "kind": "fact", "version": 1,
-        "payload": {"text": "expired contract record", "forget_after": "2000-01-01T00:00:00Z",
-                    "forget_reason": "contract retention"}}})
+    call(
+        "POST",
+        "/v1/memory/record-put",
+        {
+            "record": {
+                "id": "expired-fact",
+                "kind": "fact",
+                "version": 1,
+                "payload": {
+                    "text": "expired contract record",
+                    "forget_after": "2000-01-01T00:00:00Z",
+                    "forget_reason": "contract retention",
+                },
+            }
+        },
+    )
     call("POST", "/v1/memory/record-reap-due", {"limit": 1})
     call("POST", "/v1/memory/team-read", {"identities": []})
     call("POST", "/v1/memory/record-forget", {"id": "api-fact", "reason": "contract test erasure"})
@@ -138,25 +158,49 @@ def test_live_responses_match_the_declared_schemas(tmp_path):
     call("POST", "/v1/control/refresh", {"id": question["id"]})
     fact = call("POST", "/v1/memory/add", {"text": "Office is Tokyo"})
     proposal = call("POST", "/v1/memory/propose", {"text": "Proposal", "sources": [fact["facts"][0]["id"]]})
-    call("POST", "/v1/control/reject-proposal",
-         {"id": proposal["id"], "expected_revision": proposal["revision"], "reason": "no"})
-    for operation, body in (("search", {"query": "office"}), ("profile", {"query": "office"}),
-                            ("reflect", {"query": "office", "occasion_id": "m1"}),
-                            ("check-action", {"tool": "read"}), ("batch", {"items": [{"statement": "Osaka"}]}),
-                            ("outcome", {"occasion_id": "m1", "succeeded": True})):
+    call(
+        "POST",
+        "/v1/control/reject-proposal",
+        {"id": proposal["id"], "expected_revision": proposal["revision"], "reason": "no"},
+    )
+    for operation, body in (
+        ("search", {"query": "office"}),
+        ("profile", {"query": "office"}),
+        ("reflect", {"query": "office", "occasion_id": "m1"}),
+        ("check-action", {"tool": "read"}),
+        ("batch", {"items": [{"statement": "Osaka"}]}),
+        ("outcome", {"occasion_id": "m1", "succeeded": True}),
+    ):
         call("POST", "/v1/memory/" + operation, body)
     call("POST", "/v1/control/review-foresight", {"id": "x", "expected_revision": "y", "approve": True}, status=400)
-    call("POST", "/v1/control/skill-review", {"id": "x", "expected_revision": "y", "verdict": "approve"},
-         status=400)
+    call("POST", "/v1/control/skill-review", {"id": "x", "expected_revision": "y", "verdict": "approve"}, status=400)
     call("GET", "/v1/palace")
-    for target in ("/v1/health", "/v1/health/live", "/v1/health/ready", "/v1/capabilities", "/v1/whoami",
-                   "/v1/metrics?format=json", "/v1/command-catalog", "/v1/status", "/v1/memories",
-                   "/v1/traces", "/v1/benchmark-history", "/v1/occasions?limit=5", "/v1/agents", "/v1/lessons?status=review&limit=10",
-                   "/v1/lesson?slug=draft", "/v1/ledger/executive", "/v1/ledger/releases",
-                   f"/v1/ledger/releases?to={second.release_id}",
-                   "/v1/ledger/design?baseline=0.5&effect=0.1&rate=0.2&daily=100",
-                   "/v1/ledger/forensics?occasion=o1", "/v1/ledger/digest?days=7", "/v1/market/listings",
-                   "/v1/openapi.json", "/v1/docs"):
+    for target in (
+        "/v1/health",
+        "/v1/health/live",
+        "/v1/health/ready",
+        "/v1/capabilities",
+        "/v1/whoami",
+        "/v1/metrics?format=json",
+        "/v1/command-catalog",
+        "/v1/status",
+        "/v1/memories",
+        "/v1/traces",
+        "/v1/benchmark-history",
+        "/v1/occasions?limit=5",
+        "/v1/agents",
+        "/v1/lessons?status=review&limit=10",
+        "/v1/lesson?slug=draft",
+        "/v1/ledger/executive",
+        "/v1/ledger/releases",
+        f"/v1/ledger/releases?to={second.release_id}",
+        "/v1/ledger/design?baseline=0.5&effect=0.1&rate=0.2&daily=100",
+        "/v1/ledger/forensics?occasion=o1",
+        "/v1/ledger/digest?days=7",
+        "/v1/market/listings",
+        "/v1/openapi.json",
+        "/v1/docs",
+    ):
         call("GET", target)
     call("GET", "/v1/trace?file=absent.md", status=404)
     call("GET", "/v1/metrics")
@@ -167,26 +211,51 @@ def test_live_responses_match_the_declared_schemas(tmp_path):
     call("POST", "/v1/recall", {"occasion_id": "r1", "query": "payment retry", "agent_id": "bot-1"})
     call("POST", "/v1/recall", {"occasion_id": "r2", "items": [{"id": "a", "text": "Retry with backoff"}]})
     call("POST", "/v1/outcome", {"occasion_id": "r1", "succeeded": True})
-    call("POST", "/v1/outcome", {"occasion_id": "r2", "signals": [
-        {"detector": "from_test_exit_code", "args": {"returncode": 0}}]})
-    call("POST", "/v1/episode", {"occasion_id": "e1", "summary": "picked", "sensors": {"grip_n": 12.5},
-                                 "media": [{"kind": "image", "mime": "image/png",
-                                            "data_b64": base64.b64encode(_png(4, 4, 9)).decode()}]})
-    call("POST", "/v1/conversation/add", {"space": "u1", "session": "s1", "messages": [
-        {"speaker": "A", "text": "I moved to Paris in May", "at": "2024-05-02"}]})
+    call(
+        "POST",
+        "/v1/outcome",
+        {"occasion_id": "r2", "signals": [{"detector": "from_test_exit_code", "args": {"returncode": 0}}]},
+    )
+    call(
+        "POST",
+        "/v1/episode",
+        {
+            "occasion_id": "e1",
+            "summary": "picked",
+            "sensors": {"grip_n": 12.5},
+            "media": [{"kind": "image", "mime": "image/png", "data_b64": base64.b64encode(_png(4, 4, 9)).decode()}],
+        },
+    )
+    call(
+        "POST",
+        "/v1/conversation/add",
+        {
+            "space": "u1",
+            "session": "s1",
+            "messages": [{"speaker": "A", "text": "I moved to Paris in May", "at": "2024-05-02"}],
+        },
+    )
     call("POST", "/v1/conversation/recall", {"space": "u1", "question": "Where did A move?"})
-    call("POST", "/v1/conversation/add", {"space": "u1", "session": "s1", "messages": [
-        {"speaker": "A", "text": "The new flat near the river has two bedrooms", "at": "2024-05-03"}]})
+    call(
+        "POST",
+        "/v1/conversation/add",
+        {
+            "space": "u1",
+            "session": "s1",
+            "messages": [{"speaker": "A", "text": "The new flat near the river has two bedrooms", "at": "2024-05-03"}],
+        },
+    )
     call("GET", "/v1/conversation/sessions?space=u1&limit=10")
     call("GET", "/v1/conversation/sessions?space=missing", status=404)
     call("POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1"})
-    call("POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1", "mode": "extractive",
-                                                "verify": "tail"})
+    call("POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1", "mode": "extractive", "verify": "tail"})
     call("POST", "/v1/conversation/summarize", {"space": "u1", "session": "absent"}, status=404)
-    call("POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "Where did A move?",
-                                        "budget": 400, "recent_turns": 1})
-    call("POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "x", "budget": 10},
-         status=400)
+    call(
+        "POST",
+        "/v1/working-memory",
+        {"space": "u1", "session": "s1", "question": "Where did A move?", "budget": 400, "recent_turns": 1},
+    )
+    call("POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "x", "budget": 10}, status=400)
     call("POST", "/v1/lesson/edit", {"slug": "draft", "rule": "Draft rule, edited."})
     call("POST", "/v1/lesson/approve", {"slug": "draft-two", "rationale": "measured"}, status=409)
     call("POST", "/v1/lesson/reject", {"slug": "draft", "reason": "duplicate"})
@@ -199,11 +268,12 @@ def test_live_responses_match_the_declared_schemas(tmp_path):
     from unimem import hierarchical, holdout_io, rl_io
 
     unit, _ = hierarchical.add_fact(root, "UniMem RL contract signature check.")
-    config = holdout_io.configure(root, rate=.5, salt="rl-contract")
+    config = holdout_io.configure(root, rate=0.5, salt="rl-contract")
     for i in range(16):
         occasion = "rl-contract-" + str(i)
-        arm = holdout_io.assign_and_log(root, [unit.id], occasion_id=occasion, rate=.5, salt=config.salt,
-                                       revisions={unit.id: unit.revision})
+        arm = holdout_io.assign_and_log(
+            root, [unit.id], occasion_id=occasion, rate=0.5, salt=config.salt, revisions={unit.id: unit.revision}
+        )
         holdout_io.record_outcome(root, occasion, unit.id not in arm)
         rl_io.capture(root, occasion, unit.id, "contract", "Check signature.", "Checked.")
     wire = call("POST", "/v1/experiment/export-rl", {"units": [unit.id], "format": "advantage"})
@@ -217,11 +287,21 @@ def test_live_responses_match_the_declared_schemas(tmp_path):
     diff = call("GET", "/v1/stream?identity=contract-observer")
     assert b"event: beliefs\ndata: " in diff
 
-    call("POST", "/v1/tier", {"operation": "residency", "request": {"namespace": "contract-tier",
-        "region": "eu", "allowed_regions": ["eu"], "cold_region": "eu"}})
+    call(
+        "POST",
+        "/v1/tier",
+        {
+            "operation": "residency",
+            "request": {"namespace": "contract-tier", "region": "eu", "allowed_regions": ["eu"], "cold_region": "eu"},
+        },
+    )
     call("POST", "/v1/tier", {"operation": "status", "request": {"namespace": "contract-tier", "region": "eu"}})
-    call("POST", "/v1/tier", {"operation": "status", "request": {"namespace": "contract-tier", "region": "us"}},
-         status=403)
+    call(
+        "POST",
+        "/v1/tier",
+        {"operation": "status", "request": {"namespace": "contract-tier", "region": "us"}},
+        status=403,
+    )
 
     routes = set(gw.routes)
     assert routes - checked == set(), sorted(routes - checked)

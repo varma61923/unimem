@@ -81,9 +81,7 @@ def test_adk_callback_saves_and_retrieves_once_in_adk_user_scope(monkeypatch, tm
 
     monkeypatch.setattr(MemoryClient, "turn", tracked_turn)
     callback = before_model_callback(memory)
-    request = SimpleNamespace(
-        contents=[Content(role="user", parts=[Part(text="What display setting do I prefer?")])]
-    )
+    request = SimpleNamespace(contents=[Content(role="user", parts=[Part(text="What display setting do I prefer?")])])
     context = SimpleNamespace(
         user_id="alice",
         app_name="adk-app",
@@ -93,16 +91,11 @@ def test_adk_callback_saves_and_retrieves_once_in_adk_user_scope(monkeypatch, tm
     assert callback(context, request) is None
     assert len(calls) == 1
     routed_context, session_id, query, kwargs, result = calls[0]
-    assert {"tenant:acme", "agent:adk-agent", "user:alice", "app:adk-app", "session:session-a"} <= set(
-        routed_context
-    )
+    assert {"tenant:acme", "agent:adk-agent", "user:alice", "app:adk-app", "session:session-a"} <= set(routed_context)
     assert session_id == "session-a"
     assert query == "What display setting do I prefer?"
     assert kwargs["text"] == query
-    assert any(
-        entry["event"] == "UserMessage" and entry["payload"].get("text") == query
-        for entry in result["buffer"]
-    )
+    assert any(entry["event"] == "UserMessage" and entry["payload"].get("text") == query for entry in result["buffer"])
     assert "Use dark mode for the dashboard." in result["context"]
     assert len(request.contents) == 2
     assert request.contents[-1].role == "user"

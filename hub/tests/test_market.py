@@ -24,10 +24,18 @@ pytestmark = pytest.mark.asyncio
 def _lesson(root):
     os.makedirs(paths.lessons_dir(root), exist_ok=True)
     fm = templates.lesson_frontmatter(
-        slug="retry-flaky-network", description="Retry idempotent network calls with backoff",
-        agent_type="coder", domain="networking", tags=["network"], applies_when="transient failure",
-        do_not_apply_when="the call mutates state", importance=4, importance_rationale="saves reruns",
-        source_traces=[], status="active")
+        slug="retry-flaky-network",
+        description="Retry idempotent network calls with backoff",
+        agent_type="coder",
+        domain="networking",
+        tags=["network"],
+        applies_when="transient failure",
+        do_not_apply_when="the call mutates state",
+        importance=4,
+        importance_rationale="saves reruns",
+        source_traces=[],
+        status="active",
+    )
     path = os.path.join(paths.lessons_dir(root), "lesson_retry-flaky-network.md")
     lesson_io.write_lesson(path, fm, "## Rule\nRetry with backoff.\n", root=root, actor="t", reason="t")
 
@@ -43,10 +51,16 @@ def signed(tmp_path):
     pub = marketplace.identity(fleet_a, "publisher", principal_id="acme-pub", organization="acme", create=True)
     for root in (fleet_a, fleet_b):
         marketplace.trust(referee, marketplace.card(marketplace.identity(root, "fleet")), role="fleet")
-    receipts = [marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": .2, "standard_error": .04}),
-                marketplace.attest(fleet_b, "retry-flaky-network", effect={"effect": .15, "standard_error": .05})]
-    listing = marketplace.publish(fleet_a, "retry-flaky-network", marketplace.certify(referee, receipts),
-                                  {"id": "MIT", "terms": "MIT licence", "price": {"amount_usd": 5, "per": "install"}})
+    receipts = [
+        marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": 0.2, "standard_error": 0.04}),
+        marketplace.attest(fleet_b, "retry-flaky-network", effect={"effect": 0.15, "standard_error": 0.05}),
+    ]
+    listing = marketplace.publish(
+        fleet_a,
+        "retry-flaky-network",
+        marketplace.certify(referee, receipts),
+        {"id": "MIT", "terms": "MIT licence", "price": {"amount_usd": 5, "per": "install"}},
+    )
     return {"listing": listing, "publisher": marketplace.card(pub), "referee": marketplace.card(ref)}
 
 
@@ -61,8 +75,9 @@ async def _org(session_factory, name):
 
 def _client(session_factory, config, referee=None):
     if referee:
-        config = dataclasses.replace(config, market_referees=((referee["id"], referee["organization"],
-                                                               referee["public_key"]),))
+        config = dataclasses.replace(
+            config, market_referees=((referee["id"], referee["organization"], referee["public_key"]),)
+        )
     app = Starlette()
     rest.add_rest_routes(app, session_factory, config=config, rate_limiter=make_rate_limiter(config))
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
@@ -89,9 +104,11 @@ async def test_upload_verify_browse_and_withdraw(session_factory, config, signed
         assert [x["id"] for x in found] == [lid]
         assert found[0]["organizations"] == 2 and found[0]["lift_ci"][0] > 0 and found[0]["price"]["amount_usd"] == 5
         full = (await client.get(f"/api/v1/market/listings/{lid}", headers=other)).json()["listing"]
-        trusted = {"publisher": {"acme-pub": marketplace._principal_from_card(signed["publisher"], "publisher")},
-                   "referee": {"ref": marketplace._principal_from_card(signed["referee"], "referee")},
-                   "fleet": {}}
+        trusted = {
+            "publisher": {"acme-pub": marketplace._principal_from_card(signed["publisher"], "publisher")},
+            "referee": {"ref": marketplace._principal_from_card(signed["referee"], "referee")},
+            "fleet": {},
+        }
         assert marketplace.verify(full, trusted)["ok"]  # what the buyer downloads still verifies locally
         card = (await client.get("/api/v1/market/publishers/acme-pub", headers=other)).json()
         assert card["public_key"] == signed["publisher"]["public_key"]
@@ -126,11 +143,15 @@ async def market_rls(session_factory):
         for table, read in _READ.items():
             await session.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
             await session.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
-            await session.execute(text(
-                f"CREATE POLICY org_isolation ON {table} AS PERMISSIVE FOR ALL "
-                f"USING ({_UNSCOPED} OR {_OWN_ROWS}) WITH CHECK ({_UNSCOPED} OR {_OWN_ROWS})"))
-            await session.execute(text(
-                f"CREATE POLICY market_public_read ON {table} AS PERMISSIVE FOR SELECT USING ({read})"))
+            await session.execute(
+                text(
+                    f"CREATE POLICY org_isolation ON {table} AS PERMISSIVE FOR ALL "
+                    f"USING ({_UNSCOPED} OR {_OWN_ROWS}) WITH CHECK ({_UNSCOPED} OR {_OWN_ROWS})"
+                )
+            )
+            await session.execute(
+                text(f"CREATE POLICY market_public_read ON {table} AS PERMISSIVE FOR SELECT USING ({read})")
+            )
     try:
         yield
     finally:
@@ -143,7 +164,8 @@ async def market_rls(session_factory):
 
 
 async def test_rls_lets_every_org_read_the_catalog_but_never_write_anothers_rows(
-        session_factory, market_rls, enforcing_factory):
+    session_factory, market_rls, enforcing_factory
+):
     async with session_scope(session_factory) as session:
         if enforcing_factory is not session_factory:
             for table in _READ:
@@ -152,21 +174,27 @@ async def test_rls_lets_every_org_read_the_catalog_but_never_write_anothers_rows
         session.add_all([a, b])
         await session.flush()
         a_id, b_id = str(a.id), str(b.id)
-        await session.execute(text(
-            "INSERT INTO market_publishers (id, org_id, principal_id, organization, public_key, created_at) "
-            "VALUES (gen_random_uuid(), :o, 'pub-b', 'b', :k, now())"), {"o": b_id, "k": "A" * 44})
+        await session.execute(
+            text(
+                "INSERT INTO market_publishers (id, org_id, principal_id, organization, public_key, created_at) "
+                "VALUES (gen_random_uuid(), :o, 'pub-b', 'b', :k, now())"
+            ),
+            {"o": b_id, "k": "A" * 44},
+        )
     token = auth.current_org_id.set(a_id)
     try:
         async with session_scope(enforcing_factory) as session:
-            seen = (await session.execute(text(
-                "SELECT principal_id FROM market_publishers WHERE principal_id = 'pub-b'"))).all()
+            seen = (
+                await session.execute(text("SELECT principal_id FROM market_publishers WHERE principal_id = 'pub-b'"))
+            ).all()
             assert len(seen) == 1, "the public catalog must be readable across orgs"
             deleted = await session.execute(text("DELETE FROM market_publishers WHERE principal_id = 'pub-b'"))
             assert deleted.rowcount == 0, "another org deleted a publisher it can only read"
         try:
             async with session_scope(enforcing_factory) as session:
-                moved = await session.execute(text(
-                    "UPDATE market_publishers SET org_id = :a WHERE principal_id = 'pub-b'"), {"a": a_id})
+                moved = await session.execute(
+                    text("UPDATE market_publishers SET org_id = :a WHERE principal_id = 'pub-b'"), {"a": a_id}
+                )
                 assert moved.rowcount == 0
         except Exception as exc:  # noqa: BLE001
             assert "row-level security" in str(exc).lower()

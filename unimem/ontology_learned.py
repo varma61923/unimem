@@ -10,6 +10,7 @@ Features are deliberately generic, so they transfer to names never seen:
 character n-grams and the shape of the mention, its head word, and the words
 just before and after it.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,8 @@ _LOADED = False
 
 
 def _shape(name: str) -> str:
-    """"Kaelen Voss" -> "Xx Xx", "requests.get" -> "x.x", "ERR_42" -> "X_d"."""
-    out = []
+    """ "Kaelen Voss" -> "Xx Xx", "requests.get" -> "x.x", "ERR_42" -> "X_d"."""
+    out: list[str] = []
     for ch in name:
         kind = "X" if ch.isupper() else "x" if ch.islower() else "d" if ch.isdigit() else ch
         if not out or out[-1] != kind:
@@ -45,7 +46,7 @@ def features(name: str, context: str) -> list[str]:
     feats = [f"shape={_shape(name)}", f"ntok={min(len(name.split()), 4)}"]
     padded = f"^{lowered}$"
     for n in (3, 4):
-        feats += [f"c{n}={padded[i:i + n]}" for i in range(len(padded) - n + 1)][:40]
+        feats += [f"c{n}={padded[i : i + n]}" for i in range(len(padded) - n + 1)][:40]
     parts = _WORD.findall(_CAMEL.sub(" ", name).lower())
     if parts:
         feats += [f"head={parts[-1]}", f"first={parts[0]}"] + [f"part={p}" for p in parts[:6]]
@@ -57,7 +58,7 @@ def features(name: str, context: str) -> list[str]:
     at = text.lower().find(lowered) if lowered else -1
     if at >= 0:
         before = _WORD.findall(text[:at].lower())[-4:]
-        after = _WORD.findall(text[at + len(name):].lower())[:4]
+        after = _WORD.findall(text[at + len(name) :].lower())[:4]
         opener = not text[:at].strip() or text[:at].rstrip()[-1:] in ".!?:"
         feats.append("start" if opener else "mid")
         for i, w in enumerate(reversed(before), 1):
@@ -77,7 +78,36 @@ def features(name: str, context: str) -> list[str]:
 
 class Model:
     def __init__(self, labels: list[str], weights: dict[str, list[float]], bias: list[float], meta: dict):
-        self.labels, self.weights, self.bias, self.meta = labels, weights, bias, meta
+        if (
+            not isinstance(labels, list)
+            or not labels
+            or not all(isinstance(label, str) and label for label in labels)
+            or len(set(labels)) != len(labels)
+        ):
+            raise ValueError("typing model labels must be nonempty, unique strings")
+
+        def vector(value: object) -> bool:
+            if not isinstance(value, list) or len(value) != len(labels):
+                return False
+            try:
+                return all(
+                    not isinstance(item, bool) and isinstance(item, (int, float)) and math.isfinite(item)
+                    for item in value
+                )
+            except OverflowError:
+                return False
+
+        if (
+            not vector(bias)
+            or not isinstance(weights, dict)
+            or not all(isinstance(feature, str) and vector(row) for feature, row in weights.items())
+        ):
+            raise ValueError("typing model vectors must match labels and contain finite numbers")
+        if not isinstance(meta, dict):
+            raise ValueError("typing model metadata must be an object")
+        self.labels = list(labels)
+        self.weights = {feature: list(row) for feature, row in weights.items()}
+        self.bias, self.meta = list(bias), dict(meta)
 
     def probabilities(self, name: str, context: str) -> dict[str, float]:
         scores = list(self.bias)
@@ -86,29 +116,47 @@ class Model:
             if row is not None:
                 for i, w in enumerate(row):
                     scores[i] += w
+        if not all(math.isfinite(score) for score in scores):
+            raise ValueError("typing model scores must be finite")
         top = max(scores)
         exps = [math.exp(s - top) for s in scores]
         total = sum(exps)
         return {label: e / total for label, e in zip(self.labels, exps)}
 
     def to_dict(self) -> dict:
-        return {"format": 1, "labels": self.labels, "bias": [round(b, 4) for b in self.bias],
-                "weights": {f: [round(w, 4) for w in row] for f, row in sorted(self.weights.items())},
-                "meta": self.meta}
+        return {
+            "format": 1,
+            "labels": self.labels,
+            "bias": [round(b, 4) for b in self.bias],
+            "weights": {f: [round(w, 4) for w in row] for f, row in sorted(self.weights.items())},
+            "meta": self.meta,
+        }
 
     @classmethod
-    def from_dict(cls, data: dict) -> Model:
-        if data.get("format") != 1:
+    def from_dict(cls, data: object) -> Model:
+        if not isinstance(data, dict) or type(data.get("format")) is not int or data.get("format") != 1:
             raise ValueError("unsupported typing model format")
-        return cls(list(data["labels"]), {k: list(v) for k, v in data["weights"].items()},
-                   list(data["bias"]), dict(data.get("meta") or {}))
+        labels, weights, bias = data.get("labels"), data.get("weights"), data.get("bias")
+        if not isinstance(labels, list) or not isinstance(weights, dict) or not isinstance(bias, list):
+            raise ValueError("typing model requires label and bias arrays and a weight object")
+        meta = data.get("meta")
+        return cls(labels, weights, bias, {} if meta is None else meta)
 
 
-def train(rows: list[tuple[str, str, str]], *, epochs: int = 30, rate: float = 0.3, l2: float = 1e-4,
-          min_count: int = 2, seed: int = 0) -> Model:
+def train(
+    rows: list[tuple[str, str, str]],
+    *,
+    epochs: int = 30,
+    rate: float = 0.3,
+    l2: float = 1e-4,
+    min_count: int = 2,
+    seed: int = 0,
+) -> Model:
     """Softmax regression with Adagrad over (name, context, label) rows."""
     import random
 
+    if not rows:
+        raise ValueError("typing model training rows must not be empty")
     labels = sorted({label for _n, _c, label in rows})
     index = {label: i for i, label in enumerate(labels)}
     counts: dict[str, int] = {}

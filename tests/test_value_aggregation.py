@@ -9,44 +9,66 @@ from unimem import experiment, integrity, value
 
 def _effect(slug, verdict, effect, n_injected=200, half_width=0.02):
     return experiment.CausalEffect(
-        lesson_slug=slug, n_injected=n_injected, n_withheld=n_injected,
-        rate_injected=0.8, rate_withheld=0.8 - effect, effect=effect,
-        ci_low=effect - half_width, ci_high=effect + half_width, p_value=0.001,
+        lesson_slug=slug,
+        n_injected=n_injected,
+        n_withheld=n_injected,
+        rate_injected=0.8,
+        rate_withheld=0.8 - effect,
+        effect=effect,
+        ci_low=effect - half_width,
+        ci_high=effect + half_width,
+        p_value=0.001,
         significant=verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS),
-        min_detectable_effect=0.02, verdict=verdict,
+        min_detectable_effect=0.02,
+        verdict=verdict,
     )
 
 
 def _clean_audit():
-    return integrity.audit([
-        integrity.Assignment(
-            lesson="L", occasion_id=f"o{i}", injected=i % 2 == 0,
-            rate=0.5, succeeded=(i % 3 != 0),
-        )
-        for i in range(400)
-    ])
+    return integrity.audit(
+        [
+            integrity.Assignment(
+                lesson="L",
+                occasion_id=f"o{i}",
+                injected=i % 2 == 0,
+                rate=0.5,
+                succeeded=(i % 3 != 0),
+            )
+            for i in range(400)
+        ]
+    )
 
 
 def _assignments(pairs):
-    return [
-        integrity.Assignment(lesson=lesson, occasion_id=occasion, injected=True)
-        for lesson, occasion in pairs
-    ]
+    return [integrity.Assignment(lesson=lesson, occasion_id=occasion, injected=True) for lesson, occasion in pairs]
 
 
 class TestOverlapDetection:
     def test_memories_on_separate_occasions_do_not_conflict(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("a", "o2"), ("b", "o3"), ("b", "o4"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("a", "o2"),
+                    ("b", "o3"),
+                    ("b", "o4"),
+                ]
+            )
+        )
         assert overlap.shared_pairs == frozenset()
         assert overlap.unique_injected_occasions == 4
         assert overlap.conflicts_among(["a", "b"]) == []
 
     def test_one_shared_occasion_makes_a_pair(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("b", "o1"), ("b", "o2"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("b", "o1"),
+                    ("b", "o2"),
+                ]
+            )
+        )
         assert overlap.conflicts_among(["a", "b"]) == [("a", "b")]
         assert overlap.unique_injected_occasions == 2
 
@@ -58,24 +80,36 @@ class TestOverlapDetection:
         assert value.overlap_from_assignments(rows).shared_pairs == frozenset()
 
     def test_a_conflict_with_an_uncounted_memory_is_not_a_conflict(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("underpowered", "o1"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("underpowered", "o1"),
+                ]
+            )
+        )
         assert overlap.conflicts_among(["a"]) == []
         assert overlap.conflicts_among(["a", "underpowered"]) == [("a", "underpowered")]
 
 
 class TestTheAggregateRefusesToDoubleAttribute:
     def test_overlapping_counted_memories_yield_no_total(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "shared"), ("b", "shared"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "shared"),
+                    ("b", "shared"),
+                ]
+            )
+        )
         report = value.compute(
             [
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), value_per_occasion=25.0, overlap=overlap,
+            _clean_audit(),
+            value_per_occasion=25.0,
+            overlap=overlap,
         )
         assert report.readable
         assert len(report.memories) == 2
@@ -85,15 +119,22 @@ class TestTheAggregateRefusesToDoubleAttribute:
         assert report.ledger() == []
 
     def test_disjoint_counted_memories_still_produce_a_total(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("b", "o2"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("b", "o2"),
+                ]
+            )
+        )
         report = value.compute(
             [
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), value_per_occasion=25.0, overlap=overlap,
+            _clean_audit(),
+            value_per_occasion=25.0,
+            overlap=overlap,
         )
         assert report.aggregate_readable
         assert report.money == pytest.approx(report.occasions_improved * 25.0)
@@ -104,7 +145,8 @@ class TestTheAggregateRefusesToDoubleAttribute:
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), value_per_occasion=25.0,
+            _clean_audit(),
+            value_per_occasion=25.0,
         )
         assert not report.aggregate_readable
         assert "not known" in report.aggregate_reason
@@ -113,39 +155,52 @@ class TestTheAggregateRefusesToDoubleAttribute:
     def test_a_single_memory_needs_no_overlap_record(self):
         report = value.compute(
             [_effect("only", experiment.VERDICT_HELPS, 0.05)],
-            _clean_audit(), value_per_occasion=25.0,
+            _clean_audit(),
+            value_per_occasion=25.0,
         )
         assert report.aggregate_readable
         assert report.money is not None
 
     def test_overlap_between_an_uncounted_pair_does_not_block_the_total(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "shared"), ("weak", "shared"), ("b", "o2"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "shared"),
+                    ("weak", "shared"),
+                    ("b", "o2"),
+                ]
+            )
+        )
         report = value.compute(
             [
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
                 _effect("weak", experiment.VERDICT_UNDERPOWERED, 0.20),
             ],
-            _clean_audit(), value_per_occasion=25.0, overlap=overlap,
+            _clean_audit(),
+            value_per_occasion=25.0,
+            overlap=overlap,
         )
         assert report.aggregate_readable, report.aggregate_reason
 
 
 class TestTheJointInterval:
     def test_the_interval_is_combined_in_quadrature_not_by_summing_endpoints(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("b", "o2"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("b", "o2"),
+                ]
+            )
+        )
         report = value.compute(
             [
-                _effect("a", experiment.VERDICT_HELPS, 0.05, n_injected=100,
-                        half_width=0.02),
-                _effect("b", experiment.VERDICT_HELPS, 0.05, n_injected=100,
-                        half_width=0.02),
+                _effect("a", experiment.VERDICT_HELPS, 0.05, n_injected=100, half_width=0.02),
+                _effect("b", experiment.VERDICT_HELPS, 0.05, n_injected=100, half_width=0.02),
             ],
-            _clean_audit(), overlap=overlap,
+            _clean_audit(),
+            overlap=overlap,
         )
         per_memory_half_width = 0.02 * 100
         summed_endpoints = 2 * per_memory_half_width
@@ -156,15 +211,12 @@ class TestTheJointInterval:
         assert actual_half_width < summed_endpoints
 
     def test_the_interval_still_straddles_the_estimate(self):
-        report = value.compute(
-            [_effect("a", experiment.VERDICT_HELPS, 0.05)], _clean_audit()
-        )
+        report = value.compute([_effect("a", experiment.VERDICT_HELPS, 0.05)], _clean_audit())
         assert report.ci_low < report.occasions_improved < report.ci_high
 
     def test_one_memory_keeps_its_own_interval(self):
         report = value.compute(
-            [_effect("a", experiment.VERDICT_HELPS, 0.05, n_injected=100,
-                     half_width=0.02)],
+            [_effect("a", experiment.VERDICT_HELPS, 0.05, n_injected=100, half_width=0.02)],
             _clean_audit(),
         )
         [memory] = report.memories
@@ -179,9 +231,15 @@ class TestPostSelectionIsReportedAsANumber:
                 _effect("won", experiment.VERDICT_HELPS, 0.05, n_injected=100),
                 _effect("null", experiment.VERDICT_NO_EFFECT, -0.01, n_injected=100),
             ],
-            _clean_audit(), overlap=value.overlap_from_assignments(_assignments([
-                ("won", "o1"), ("null", "o2"),
-            ])),
+            _clean_audit(),
+            overlap=value.overlap_from_assignments(
+                _assignments(
+                    [
+                        ("won", "o1"),
+                        ("null", "o2"),
+                    ]
+                )
+            ),
         )
         assert report.occasions_improved == pytest.approx(5.0)
         assert report.occasions_improved_unselected == pytest.approx(4.0)
@@ -194,9 +252,15 @@ class TestPostSelectionIsReportedAsANumber:
                 _effect("won", experiment.VERDICT_HELPS, 0.05, n_injected=100),
                 _effect("weak", experiment.VERDICT_UNDERPOWERED, 0.50, n_injected=100),
             ],
-            _clean_audit(), overlap=value.overlap_from_assignments(_assignments([
-                ("won", "o1"), ("weak", "o2"),
-            ])),
+            _clean_audit(),
+            overlap=value.overlap_from_assignments(
+                _assignments(
+                    [
+                        ("won", "o1"),
+                        ("weak", "o2"),
+                    ]
+                )
+            ),
         )
         assert report.occasions_improved == pytest.approx(5.0)
         assert report.occasions_improved_unselected == pytest.approx(5.0)
@@ -207,15 +271,19 @@ class TestPostSelectionIsReportedAsANumber:
                 _effect("won", experiment.VERDICT_HELPS, 0.05, n_injected=100),
                 _effect("null", experiment.VERDICT_NO_EFFECT, 0.30, n_injected=100),
             ],
-            _clean_audit(), value_per_occasion=10.0,
-            overlap=value.overlap_from_assignments(_assignments([
-                ("won", "o1"), ("null", "o2"),
-            ])),
+            _clean_audit(),
+            value_per_occasion=10.0,
+            overlap=value.overlap_from_assignments(
+                _assignments(
+                    [
+                        ("won", "o1"),
+                        ("null", "o2"),
+                    ]
+                )
+            ),
         )
         assert report.money == pytest.approx(report.occasions_improved * 10.0)
-        assert report.money != pytest.approx(
-            report.occasions_improved_unselected * 10.0
-        )
+        assert report.money != pytest.approx(report.occasions_improved_unselected * 10.0)
 
 
 class TestThePolicyLevelAggregate:
@@ -231,10 +299,14 @@ class TestThePolicyLevelAggregate:
             treated = any(injected.values())
             succeeded = rng.random() < (0.5 + (lift if treated else 0.0))
             for lesson, inject in injected.items():
-                rows.append(integrity.Assignment(
-                    lesson=lesson, occasion_id=occasion,
-                    injected=inject, succeeded=succeeded,
-                ))
+                rows.append(
+                    integrity.Assignment(
+                        lesson=lesson,
+                        occasion_id=occasion,
+                        injected=inject,
+                        succeeded=succeeded,
+                    )
+                )
         return rows
 
     def test_each_occasion_is_counted_exactly_once(self):
@@ -255,11 +327,7 @@ class TestThePolicyLevelAggregate:
         assert effect.ci_low <= 0.0 <= effect.ci_high
 
     def test_a_thin_control_arm_is_refused_rather_than_reported(self):
-        rows = [
-            integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=True,
-                                 succeeded=True)
-            for i in range(50)
-        ]
+        rows = [integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=True, succeeded=True) for i in range(50)]
         effect = value.policy_effect(rows)
         assert not effect.readable
         assert "Not enough resolved occasions" in effect.reason
@@ -267,10 +335,8 @@ class TestThePolicyLevelAggregate:
 
     def test_unresolved_occasions_are_in_neither_arm(self):
         rows = [
-            integrity.Assignment(lesson="a", occasion_id="resolved", injected=True,
-                                 succeeded=True),
-            integrity.Assignment(lesson="a", occasion_id="pending", injected=True,
-                                 succeeded=None),
+            integrity.Assignment(lesson="a", occasion_id="resolved", injected=True, succeeded=True),
+            integrity.Assignment(lesson="a", occasion_id="pending", injected=True, succeeded=None),
         ]
         effect = value.policy_effect(rows)
         assert effect.n_treated + effect.n_control == 1
@@ -279,7 +345,8 @@ class TestThePolicyLevelAggregate:
         rows = self._fleet(n=3000, lift=0.2)
         report = value.compute(
             [_effect("a", experiment.VERDICT_HELPS, 0.05)],
-            _clean_audit(), assignments=rows,
+            _clean_audit(),
+            assignments=rows,
         )
         assert report.policy is not None
         assert report.policy.readable
@@ -294,7 +361,9 @@ class TestThePolicyLevelAggregate:
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), value_per_occasion=25.0, assignments=rows,
+            _clean_audit(),
+            value_per_occasion=25.0,
+            assignments=rows,
         )
         assert not report.aggregate_readable
         assert report.money is None
@@ -304,15 +373,22 @@ class TestThePolicyLevelAggregate:
 
 class TestWhatGetsRendered:
     def test_no_headline_total_when_the_memories_may_not_be_added(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "shared"), ("b", "shared"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "shared"),
+                    ("b", "shared"),
+                ]
+            )
+        )
         report = value.compute(
             [
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), value_per_occasion=25.0, overlap=overlap,
+            _clean_audit(),
+            value_per_occasion=25.0,
+            overlap=overlap,
         )
         rendered = value.render(report)
         assert "No total is stated" in rendered
@@ -327,7 +403,8 @@ class TestWhatGetsRendered:
                 _effect("a", experiment.VERDICT_HELPS, 0.05),
                 _effect("b", experiment.VERDICT_HELPS, 0.04),
             ],
-            _clean_audit(), assignments=rows,
+            _clean_audit(),
+            assignments=rows,
         )
         rendered = value.render(report)
         assert "Whole-policy comparison" in rendered
@@ -336,7 +413,8 @@ class TestWhatGetsRendered:
     def test_a_total_is_still_rendered_when_it_is_valid(self):
         report = value.compute(
             [_effect("a", experiment.VERDICT_HELPS, 0.05)],
-            _clean_audit(), value_per_occasion=25.0,
+            _clean_audit(),
+            value_per_occasion=25.0,
         )
         rendered = value.render(report)
         assert "went differently" in rendered
@@ -358,17 +436,22 @@ class TestWhatGetsRendered:
 
 class TestTheHonestDenominator:
     def test_unique_occasions_counts_distinct_occasions_not_injections(self):
-        overlap = value.overlap_from_assignments(_assignments([
-            ("a", "o1"), ("b", "o1"), ("b", "o2"),
-        ]))
+        overlap = value.overlap_from_assignments(
+            _assignments(
+                [
+                    ("a", "o1"),
+                    ("b", "o1"),
+                    ("b", "o2"),
+                ]
+            )
+        )
         report = value.compute(
             [_effect("a", experiment.VERDICT_HELPS, 0.05)],
-            _clean_audit(), overlap=overlap,
+            _clean_audit(),
+            overlap=overlap,
         )
         assert report.unique_occasions == 2
 
     def test_it_is_none_when_no_assignment_record_was_given(self):
-        report = value.compute(
-            [_effect("a", experiment.VERDICT_HELPS, 0.05)], _clean_audit()
-        )
+        report = value.compute([_effect("a", experiment.VERDICT_HELPS, 0.05)], _clean_audit())
         assert report.unique_occasions is None

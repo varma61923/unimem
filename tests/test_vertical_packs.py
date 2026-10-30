@@ -8,8 +8,14 @@ from unimem import packs
 def test_all_vertical_packs_have_docs_and_deterministic_offline_demos():
     listed = packs.list_packs()
     assert {item.name for item in listed} == {
-        "coding-agent", "support-outcome", "bank-ai-governance", "healthcare",
-        "robot-fleet", "autonomy-safety-case", "home-eldercare-robot", "sovereign-airgapped",
+        "coding-agent",
+        "support-outcome",
+        "bank-ai-governance",
+        "healthcare",
+        "robot-fleet",
+        "autonomy-safety-case",
+        "home-eldercare-robot",
+        "sovereign-airgapped",
     }
     started = time.perf_counter()
     for item in listed:

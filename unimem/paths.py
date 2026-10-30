@@ -1,4 +1,5 @@
 """Root/store resolution — provider-agnostic, mirrors memory/attention/query.py's convention."""
+
 from __future__ import annotations
 
 import os
@@ -6,10 +7,24 @@ import re
 import sys
 
 __all__ = [
-    "AGENT_TYPES", "AGENT_TYPE_RE", "GENERAL_AGENT_TYPE", "STARTER_DOMAINS", "SUGGESTED_AGENT_TYPES",
-    "PathTraversalError", "enforce_boundary", "episodes_dir", "index_path", "is_within_directory",
-    "lessons_dir", "memory_dir", "resolve_root", "safe_prepare_output_path", "schemas_dir",
-    "store_agent_type", "traces_dir", "warn_if_implicit_cwd_store",
+    "AGENT_TYPES",
+    "AGENT_TYPE_RE",
+    "GENERAL_AGENT_TYPE",
+    "STARTER_DOMAINS",
+    "SUGGESTED_AGENT_TYPES",
+    "PathTraversalError",
+    "enforce_boundary",
+    "episodes_dir",
+    "index_path",
+    "is_within_directory",
+    "lessons_dir",
+    "memory_dir",
+    "resolve_root",
+    "safe_prepare_output_path",
+    "schemas_dir",
+    "store_agent_type",
+    "traces_dir",
+    "warn_if_implicit_cwd_store",
 ]
 
 GENERAL_AGENT_TYPE = "general"
@@ -119,6 +134,7 @@ def schemas_dir() -> str:
 
 class PathTraversalError(ValueError):
     """Raised when a candidate path resolves outside the allowed base directory boundary."""
+
     pass
 
 
@@ -155,7 +171,7 @@ def enforce_boundary(base_dir: str, candidate_path: str, allow_within: bool = Tr
     if allow_within:
         is_safe = (candidate_real == base_real) or candidate_real.startswith(base_prefix)
     else:
-        is_safe = (candidate_real == base_real)
+        is_safe = candidate_real == base_real
 
     if not is_safe:
         raise PathTraversalError(
@@ -186,16 +202,12 @@ def safe_prepare_output_path(out_path: str, allow_unlink_leaf: bool = True) -> s
         if comp == os.sep:
             continue
         if os.path.islink(comp):
-            raise PathTraversalError(
-                f"refusing to write through symlinked directory: {comp!r}"
-            )
+            raise PathTraversalError(f"refusing to write through symlinked directory: {comp!r}")
 
     if parent_dir and not os.path.exists(parent_dir):
         os.makedirs(parent_dir, exist_ok=True)
         if os.path.islink(parent_dir):
-            raise PathTraversalError(
-                f"refusing to write through symlinked directory: {parent_dir!r}"
-            )
+            raise PathTraversalError(f"refusing to write through symlinked directory: {parent_dir!r}")
 
     if os.path.islink(norm_path) or os.path.islink(str(out_path)):
         if allow_unlink_leaf:
@@ -203,13 +215,8 @@ def safe_prepare_output_path(out_path: str, allow_unlink_leaf: bool = True) -> s
             try:
                 os.unlink(target_to_unlink)
             except OSError as exc:
-                raise PathTraversalError(
-                    f"cannot remove leaf symlink at {out_path!r}: {exc}"
-                ) from exc
+                raise PathTraversalError(f"cannot remove leaf symlink at {out_path!r}: {exc}") from exc
         else:
-            raise PathTraversalError(
-                f"refusing to write through leaf symlink: {out_path!r}"
-            )
+            raise PathTraversalError(f"refusing to write through leaf symlink: {out_path!r}")
 
     return norm_path
-

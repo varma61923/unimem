@@ -162,8 +162,10 @@ def attributes(
 
         attrs["unimem.isolation.level"] = team["level"]
         attrs["unimem.read.version"] = team["read_version"]
-        attrs["unimem.read.staleness_ms"] = max(0.0, (
-            datetime.fromisoformat(fp.now()) - datetime.fromisoformat(team["validated_at"])).total_seconds() * 1000)
+        attrs["unimem.read.staleness_ms"] = max(
+            0.0,
+            (datetime.fromisoformat(fp.now()) - datetime.fromisoformat(team["validated_at"])).total_seconds() * 1000,
+        )
     attrs["unimem.policy.decision"] = "allow"
     if include_content and len(visible) == len(set(identities)):
         # The non-standard content attributes are opt-in and bounded. The

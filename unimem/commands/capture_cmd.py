@@ -24,73 +24,100 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--solution", required=True, help="What worked")
     p.add_argument("--tags", default="", help="Comma-separated tags")
     p.add_argument(
-        "--agent-type", default=None,
+        "--agent-type",
+        default=None,
         help="Defaults to the agent_type this store was initialized with.",
     )
     p.add_argument(
-        "--agent-id", default="",
+        "--agent-id",
+        default="",
         help="WHICH agent produced this trace, as opposed to --agent-type (what KIND it is). "
-             "A fleet of 25 support agents shares one --agent-type, so only this distinguishes "
-             "them -- it is what makes 'how many agents does this fleet run' answerable, and "
-             "what a Hub plan's agent limit is enforced against. Optional; omitting it "
-             "attributes the trace to a single 'unattributed' agent for the org.",
+        "A fleet of 25 support agents shares one --agent-type, so only this distinguishes "
+        "them -- it is what makes 'how many agents does this fleet run' answerable, and "
+        "what a Hub plan's agent limit is enforced against. Optional; omitting it "
+        "attributes the trace to a single 'unattributed' agent for the org.",
     )
     p.add_argument("--profile", default="", help="Optional profile name (e.g. code-review)")
     p.add_argument("--dest", default=None, help="Store root (default: auto-detect / $UNIMEM_ROOT)")
     p.add_argument(
-        "--resolved", dest="resolved", action="store_true", default=None,
+        "--resolved",
+        dest="resolved",
+        action="store_true",
+        default=None,
         help="Underlying task reached a successful conclusion (pilot metric: resolution rate).",
     )
     p.add_argument(
-        "--not-resolved", dest="resolved", action="store_false",
+        "--not-resolved",
+        dest="resolved",
+        action="store_false",
         help="Underlying task did NOT reach a successful conclusion.",
     )
     p.add_argument(
-        "--escalated", dest="escalated", action="store_true", default=None,
+        "--escalated",
+        dest="escalated",
+        action="store_true",
+        default=None,
         help="Underlying task required human escalation (pilot metric: escalation rate).",
     )
     p.add_argument(
-        "--not-escalated", dest="escalated", action="store_false",
+        "--not-escalated",
+        dest="escalated",
+        action="store_false",
         help="Underlying task did NOT require human escalation.",
     )
     p.add_argument(
-        "--repeated-error", dest="repeated_error", action="store_true", default=None,
+        "--repeated-error",
+        dest="repeated_error",
+        action="store_true",
+        default=None,
         help="This trace is a recurrence of a previously captured failure (pilot metric: repeated-error rate).",
     )
     p.add_argument(
-        "--not-repeated-error", dest="repeated_error", action="store_false",
+        "--not-repeated-error",
+        dest="repeated_error",
+        action="store_false",
         help="This trace is NOT a recurrence of a previously captured failure.",
     )
     p.add_argument(
-        "--frustration", dest="frustration", action="store_true", default=None,
+        "--frustration",
+        dest="frustration",
+        action="store_true",
+        default=None,
         help="Explicit negative signal tied to this trace (pilot metric: frustration rate).",
     )
     p.add_argument(
-        "--not-frustration", dest="frustration", action="store_false",
+        "--not-frustration",
+        dest="frustration",
+        action="store_false",
         help="No negative signal tied to this trace.",
     )
     p.add_argument("--tokens-used", type=int, default=None, help="Tokens consumed producing this outcome.")
     p.add_argument("--llm-calls", type=int, default=None, help="LLM calls made producing this outcome.")
     p.add_argument(
-        "--baseline", action="store_true", default=False,
+        "--baseline",
+        action="store_true",
+        default=False,
         help="Mark this trace as captured during the pre-UniMem pilot baseline window.",
     )
     p.add_argument(
-        "--occasion-id", default=None,
+        "--occasion-id",
+        default=None,
         help="Use this as the trace id so `unimem experiment` can join this "
-             "outcome to the holdout arm logged by `query --experiment "
-             "--occasion-id <same id>`. Without it the randomized-holdout "
-             "pipeline cannot attribute outcomes and reports every assignment "
-             "as skipped.",
+        "outcome to the holdout arm logged by `query --experiment "
+        "--occasion-id <same id>`. Without it the randomized-holdout "
+        "pipeline cannot attribute outcomes and reports every assignment "
+        "as skipped.",
     )
     p.add_argument(
-        "--overwrite", action="store_true", default=False,
+        "--overwrite",
+        action="store_true",
+        default=False,
         help="When --occasion-id matches an existing trace, replace its title/context/"
-             "solution with the values given on THIS call. Without this flag, re-capturing "
-             "an existing occasion preserves the original narrative and only merges in "
-             "outcome fields (--resolved, --escalated, etc.) -- the common case, since "
-             "re-capturing under the same occasion-id exists to attach an outcome once a "
-             "task concludes, not to edit history.",
+        "solution with the values given on THIS call. Without this flag, re-capturing "
+        "an existing occasion preserves the original narrative and only merges in "
+        "outcome fields (--resolved, --escalated, etc.) -- the common case, since "
+        "re-capturing under the same occasion-id exists to attach an outcome once a "
+        "task concludes, not to edit history.",
     )
     p.set_defaults(func=run)
 
@@ -205,8 +232,7 @@ def run(args: argparse.Namespace) -> int:
             out_path = _free_path(out_path, trace_id)
         if existing_path is not None:
             out_path = existing_path
-            print(f"[unimem] note: updating the existing trace for occasion "
-                  f"{occasion_id!r}.", file=sys.stderr)
+            print(f"[unimem] note: updating the existing trace for occasion {occasion_id!r}.", file=sys.stderr)
             if not args.overwrite:
                 existing_instance, _existing_body = trace_io.read(existing_path)
                 title = existing_instance.get("title") or title
@@ -220,9 +246,7 @@ def run(args: argparse.Namespace) -> int:
                 created_at = existing_instance.get("created_at") or None
 
         agent_type = args.agent_type or paths.store_agent_type(root)
-        fm = templates.trace_frontmatter(
-            trace_id, title, agent_type, tags, args.profile, outcome, agent_id=agent_id
-        )
+        fm = templates.trace_frontmatter(trace_id, title, agent_type, tags, args.profile, outcome, agent_id=agent_id)
         if created_at:
             fm["created_at"] = created_at
         clean, metadata_redacted = memory_guard.sanitize_metadata(
@@ -244,8 +268,7 @@ def run(args: argparse.Namespace) -> int:
         errors = validate.validate(instance, validate.load_schema("trace.schema.json"))
         if errors:
             print(
-                "[unimem] refusing to write an invalid trace:\n"
-                + "\n".join(f"  - {e}" for e in errors),
+                "[unimem] refusing to write an invalid trace:\n" + "\n".join(f"  - {e}" for e in errors),
                 file=sys.stderr,
             )
             return 1
@@ -253,7 +276,8 @@ def run(args: argparse.Namespace) -> int:
         from unimem import memory_authority
 
         fm.setdefault("extensions", {}).setdefault("profile", {})["origin"] = memory_authority.bind(
-            root, memory_authority.trace_record(fm, context=context, solution=solution))
+            root, memory_authority.trace_record(fm, context=context, solution=solution)
+        )
         frontmatter.write(out_path, fm, body)
 
     print(f"[unimem] captured trace {trace_id} -> {out_path}", file=sys.stderr)

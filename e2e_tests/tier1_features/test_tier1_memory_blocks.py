@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 from e2e_tests.harness.cli_runner import run_cli
 
 
 def test_t1_block_create_and_get(isolated_store: str):
     res_set = run_cli(
-        "block", "set", "persona",
+        "block",
+        "set",
+        "persona",
         "Autonomous Staff Security Architect specialized in cloud systems.",
-        "--max-chars", "1500",
+        "--max-chars",
+        "1500",
         dest=isolated_store,
     )
     res_set.assert_success()
@@ -34,13 +38,17 @@ def test_t1_block_create_and_get(isolated_store: str):
 
 def test_t1_block_append_text(isolated_store: str):
     run_cli(
-        "block", "set", "guidelines",
+        "block",
+        "set",
+        "guidelines",
         "1. Never commit plain credentials.\n",
         dest=isolated_store,
     ).assert_success()
 
     res_append = run_cli(
-        "block", "append", "guidelines",
+        "block",
+        "append",
+        "guidelines",
         "2. All database queries must use prepared statements.\n",
         dest=isolated_store,
     )
@@ -55,15 +63,21 @@ def test_t1_block_append_text(isolated_store: str):
 
 def test_t1_block_atomic_substring_replace(isolated_store: str):
     run_cli(
-        "block", "set", "project",
+        "block",
+        "set",
+        "project",
         "Current priority: optimize Cassandra write throughput.",
         dest=isolated_store,
     ).assert_success()
 
     res_replace = run_cli(
-        "block", "replace", "project",
-        "--old", "Cassandra write throughput",
-        "--new", "PostgreSQL read replica latency",
+        "block",
+        "replace",
+        "project",
+        "--old",
+        "Cassandra write throughput",
+        "--new",
+        "PostgreSQL read replica latency",
         dest=isolated_store,
     )
     res_replace.assert_success()
@@ -109,7 +123,11 @@ def test_t1_block_sha256_revision_history_audit(isolated_store: str):
     history_file = os.path.join(isolated_store, "memory", "blocks", "history.jsonl")
     assert os.path.exists(history_file), "history.jsonl must exist"
 
-    lines = [json.loads(line) for line in open(history_file, encoding="utf-8") if line.strip()]
+    lines = [
+        json.loads(line)
+        for line in Path(history_file).read_text(encoding="utf-8").splitlines(keepends=True)
+        if line.strip()
+    ]
     audit_entries = [entry for entry in lines if entry.get("block") == "audit_test"]
     assert len(audit_entries) >= 3, "Must have recorded all 3 mutation revisions"
 

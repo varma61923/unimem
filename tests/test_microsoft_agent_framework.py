@@ -80,9 +80,7 @@ def test_import_is_safe_without_optional_agent_framework(monkeypatch):
             sys.modules[module_name] = previous
 
 
-def test_context_provider_uses_scoped_one_call_lifecycle_and_isolates_users(
-    monkeypatch, request, tmp_path
-):
+def test_context_provider_uses_scoped_one_call_lifecycle_and_isolates_users(monkeypatch, request, tmp_path):
     from unimem.hook_kit import HookKit
 
     original_handle = HookKit.handle
@@ -124,8 +122,12 @@ def test_context_provider_uses_scoped_one_call_lifecycle_and_isolates_users(
         alice = FakeSessionContext(session_id="alice-run", user_id="alice", query=query)
         bob = FakeSessionContext(session_id="bob-run", user_id="bob", query=query)
 
-        await provider.before_run(agent=None, session=SimpleNamespace(session_id="alice-run"), context=alice, state=alice_state)
-        await provider.before_run(agent=None, session=SimpleNamespace(session_id="bob-run"), context=bob, state=bob_state)
+        await provider.before_run(
+            agent=None, session=SimpleNamespace(session_id="alice-run"), context=alice, state=alice_state
+        )
+        await provider.before_run(
+            agent=None, session=SimpleNamespace(session_id="bob-run"), context=bob, state=bob_state
+        )
 
         assert len(calls) == 2
         assert {"tenant:acme", "agent:af-agent", "user:alice"} <= set(calls[0][0])
@@ -137,15 +139,18 @@ def test_context_provider_uses_scoped_one_call_lifecycle_and_isolates_users(
         alice_response = SimpleNamespace(messages=[FakeMessage("assistant", "I will verify the blue release gate.")])
         bob_response = SimpleNamespace(messages=[FakeMessage("assistant", "I have no scoped release preference.")])
         alice.response, bob.response = alice_response, bob_response
-        await provider.after_run(agent=None, session=SimpleNamespace(session_id="alice-run"), context=alice, state=alice_state)
-        await provider.after_run(agent=None, session=SimpleNamespace(session_id="bob-run"), context=bob, state=bob_state)
+        await provider.after_run(
+            agent=None, session=SimpleNamespace(session_id="alice-run"), context=alice, state=alice_state
+        )
+        await provider.after_run(
+            agent=None, session=SimpleNamespace(session_id="bob-run"), context=bob, state=bob_state
+        )
 
         alice_scope = {"agent": "af-agent", "tenant": "acme", "user": "alice"}
         alice_buffer = Journal(str(tmp_path)).buffer(_run_key(alice_scope, "alice-run"), scope=alice_scope)
         assert any(event["event"] == "UserMessage" for event in alice_buffer)
         assert any(
-            event["event"] == "SessionEnd"
-            and event["payload"].get("result") == "I will verify the blue release gate."
+            event["event"] == "SessionEnd" and event["payload"].get("result") == "I will verify the blue release gate."
             for event in alice_buffer
         )
         bob_scope = {"agent": "af-agent", "tenant": "acme", "user": "bob"}
@@ -209,7 +214,9 @@ def test_missing_user_identity_does_not_run_unscoped_memory(monkeypatch, request
         context.options.clear()
 
         with pytest.raises(ValueError, match="requires user_id"):
-            await provider.before_run(agent=None, session=SimpleNamespace(session_id="run-1"), context=context, state={})
+            await provider.before_run(
+                agent=None, session=SimpleNamespace(session_id="run-1"), context=context, state={}
+            )
 
     asyncio.run(_test())
 
@@ -251,7 +258,9 @@ def test_loop_nudges_reuse_context_without_overwriting_user_turn(monkeypatch, re
         assert state == {}
         scope = {"agent": "af-agent", "user": "alice"}
         events = Journal(str(tmp_path)).buffer(_run_key(scope, "run-1"), scope=scope)
-        assert [entry["payload"]["text"] for entry in events if entry["event"] == "UserMessage"] == ["Original user request"]
+        assert [entry["payload"]["text"] for entry in events if entry["event"] == "UserMessage"] == [
+            "Original user request"
+        ]
         assert [entry["payload"]["result"] for entry in events if entry["event"] == "SessionEnd"] == ["Completed task"]
 
         # A later loop, even in the same session with the same request, is a new turn.

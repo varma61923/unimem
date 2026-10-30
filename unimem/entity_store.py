@@ -153,8 +153,9 @@ def save_entities(root: str, entities: dict[str, dict[str, Any]]) -> None:
     _jsonl.write_rows(_entities_file(root), rows)
 
 
-def _link_into(entities: dict[str, dict[str, Any]], memory_id: str, text: str,
-               *, extracted: list[tuple[str, str]] | None = None) -> list[str]:
+def _link_into(
+    entities: dict[str, dict[str, Any]], memory_id: str, text: str, *, extracted: list[tuple[str, str]] | None = None
+) -> list[str]:
     """Fold one memory's entities into *entities*; returns the touched names."""
     touched: list[str] = []
     for etype, value in extract_entities(text) if extracted is None else extracted:
@@ -210,8 +211,9 @@ def link_memories(root: str, pairs: list[tuple[str, str]]) -> int:
         return 0
     with _jsonl.locked(_entities_file(root)):
         entities = load_entities(root)
-        linked = sum(1 for memory_id, text, extracted in work
-                     if _link_into(entities, memory_id, text, extracted=extracted))
+        linked = sum(
+            1 for memory_id, text, extracted in work if _link_into(entities, memory_id, text, extracted=extracted)
+        )
         if linked:
             save_entities(root, entities)
     return linked

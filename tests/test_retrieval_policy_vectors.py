@@ -1,4 +1,5 @@
 """Executable optional retrieval-policy vectors, independent of causal v1."""
+
 from __future__ import annotations
 
 import json
@@ -17,9 +18,19 @@ def populate(root, rows):
     fact_store.migrate(root)
     with fact_store.transaction(root, write=True) as facts:
         for identity, metadata in rows.items():
-            facts[identity] = hierarchical.AtomicFact(identity, metadata["statement"], "general", metadata["scopes"],
-                .8, 1, "2024-01-01T00:00:00Z", None, expires_at=metadata.get("expires_at"),
-                created_at="2024-01-01T00:00:00Z", updated_at="2024-01-01T00:00:00Z")
+            facts[identity] = hierarchical.AtomicFact(
+                identity,
+                metadata["statement"],
+                "general",
+                metadata["scopes"],
+                0.8,
+                1,
+                "2024-01-01T00:00:00Z",
+                None,
+                expires_at=metadata.get("expires_at"),
+                created_at="2024-01-01T00:00:00Z",
+                updated_at="2024-01-01T00:00:00Z",
+            )
 
 
 @pytest.mark.parametrize("vector", _VECTORS["graph"], ids=lambda vector: vector["name"])
@@ -31,8 +42,15 @@ def test_graph_vector(tmp_path, vector):
         def neighbors(self, node_id, *, as_of=None):
             return [{"neighbor_id": identity} for identity in vector["edges"].get(node_id, [])]
 
-    rows = search_recipes.search(root, "parser", context=vector["context"], dense_scores=vector["dense"],
-        backend=Backend(), embedder="none", reranker="none")
+    rows = search_recipes.search(
+        root,
+        "parser",
+        context=vector["context"],
+        dense_scores=vector["dense"],
+        backend=Backend(),
+        embedder="none",
+        reranker="none",
+    )
     assert sorted(row["id"] for row in rows) == sorted(vector["expected_ids"])
 
 
@@ -49,7 +67,8 @@ def test_multiround_vector(tmp_path, monkeypatch, vector):
 
     decisions = iter(vector["decisions"])
     monkeypatch.setattr(search_recipes, "search", retrieve)
-    results = search_recipes.multi_round(root, vector["question"], limit=vector["limit"],
-        complete=lambda prompt: (json.dumps(next(decisions)), {}))
+    results = search_recipes.multi_round(
+        root, vector["question"], limit=vector["limit"], complete=lambda prompt: (json.dumps(next(decisions)), {})
+    )
     assert [row["id"] for row in results["results"]] == vector["expected_ids"]
     assert observed == vector["expected_searches"]

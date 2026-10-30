@@ -1,4 +1,5 @@
 """UniMem authenticated aggregate contributions; no cross-tenant raw-data reads."""
+
 from __future__ import annotations
 
 import json
@@ -46,16 +47,36 @@ def add_routes(app, session_factory, *, authenticate, require_scope, config):
                     if existing.contribution != signed:
                         return JSONResponse({"error": "unimem_pool_release_conflict"}, status_code=409)
                     return JSONResponse({"accepted": True, "anchor": existing.anchor, "replayed": True})
-                anchor = await transparency.append(session, principal.org_id,
-                    {"event": "unimem-pooled-contribution-v1", "digest": fp.digest(signed),
-                     "unit_hash": data["unit_hash"]}, secret=config.ledger_signing_key,
-                    algorithm=config.transparency_algorithm)
-                await session.execute(insert(PooledContribution).values(
-                    org_id=principal.org_id, release_id=data["release_id"], unit_hash=data["unit_hash"],
-                    contribution=signed, anchor=anchor).on_conflict_do_nothing())
-                persisted = (await session.execute(select(PooledContribution).where(
-                    PooledContribution.org_id == principal.org_id,
-                    PooledContribution.release_id == data["release_id"]))).scalar_one()
+                anchor = await transparency.append(
+                    session,
+                    principal.org_id,
+                    {
+                        "event": "unimem-pooled-contribution-v1",
+                        "digest": fp.digest(signed),
+                        "unit_hash": data["unit_hash"],
+                    },
+                    secret=config.ledger_signing_key,
+                    algorithm=config.transparency_algorithm,
+                )
+                await session.execute(
+                    insert(PooledContribution)
+                    .values(
+                        org_id=principal.org_id,
+                        release_id=data["release_id"],
+                        unit_hash=data["unit_hash"],
+                        contribution=signed,
+                        anchor=anchor,
+                    )
+                    .on_conflict_do_nothing()
+                )
+                persisted = (
+                    await session.execute(
+                        select(PooledContribution).where(
+                            PooledContribution.org_id == principal.org_id,
+                            PooledContribution.release_id == data["release_id"],
+                        )
+                    )
+                ).scalar_one()
                 if persisted.contribution != signed:
                     raise ValueError("UniMem release identity conflicts with an existing contribution")
                 return JSONResponse({"accepted": True, "anchor": persisted.anchor}, status_code=201)

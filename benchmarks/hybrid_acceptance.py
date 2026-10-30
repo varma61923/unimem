@@ -15,6 +15,7 @@ quality or production embedding performance. The facts-channel
 The server gate remains unsupported until the governed fact-hybrid path has a
 server-backed full-text + vector projection adapter.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -83,16 +84,29 @@ def percentile(values: list[float], quantile: float) -> float:
 
 def _fixture_rows(count: int) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = [
-        {"statement": "A lynx rests beside the window after dusk.", "scopes": ["agent:a"],
-         "source_trace_id": "hybrid-fixture-lynx"},
-        {"statement": "Runtime policy requires a bounded restart window.", "scopes": ["agent:a"],
-         "source_trace_id": "hybrid-fixture-runtime"},
-        {"statement": "A lynx rests in a private workspace.", "scopes": ["agent:b"],
-         "source_trace_id": "hybrid-fixture-private"},
+        {
+            "statement": "A lynx rests beside the window after dusk.",
+            "scopes": ["agent:a"],
+            "source_trace_id": "hybrid-fixture-lynx",
+        },
+        {
+            "statement": "Runtime policy requires a bounded restart window.",
+            "scopes": ["agent:a"],
+            "source_trace_id": "hybrid-fixture-runtime",
+        },
+        {
+            "statement": "A lynx rests in a private workspace.",
+            "scopes": ["agent:b"],
+            "source_trace_id": "hybrid-fixture-private",
+        },
     ]
     for index in range(max(0, count - len(rows))):
-        rows.append({"statement": f"Unique archival record {index:09d} stores neutral audit detail {index % 31}.",
-                     "source_trace_id": f"hybrid-fixture-{index:09d}"})
+        rows.append(
+            {
+                "statement": f"Unique archival record {index:09d} stores neutral audit detail {index % 31}.",
+                "source_trace_id": f"hybrid-fixture-{index:09d}",
+            }
+        )
     return rows
 
 
@@ -103,8 +117,8 @@ def _seed(root: str, count: int) -> dict[str, str]:
     identities: dict[str, str] = {}
     rows = _fixture_rows(count)
     for start in range(0, len(rows), 1000):
-        admitted = hierarchical.add_facts(root, rows[start:start + 1000])
-        if len(admitted) != len(rows[start:start + 1000]) or any(action != "ADD" for _, action in admitted):
+        admitted = hierarchical.add_facts(root, rows[start : start + 1000])
+        if len(admitted) != len(rows[start : start + 1000]) or any(action != "ADD" for _, action in admitted):
             raise RuntimeError("fixture facts were not uniquely admitted")
         for fact, _action in admitted:
             if "lynx rests beside" in fact.statement:
@@ -135,17 +149,32 @@ def _seed_canonical_fixture(root: str, count: int, *, batch_size: int = 10_000) 
         added = []
         with fact_store.transaction(root, write=True) as facts:
             index = hierarchical._statement_index(facts)
-            for item in rows[start:start + batch_size]:
+            for item in rows[start : start + batch_size]:
                 statement, category, valid_from, valid_until, expires_at = hierarchical.prepare_fact(
-                    item.get("statement", ""), item.get("category", hierarchical.DEFAULT_CATEGORY),
-                    item.get("valid_from"), item.get("valid_until"), item.get("expires_at"))
+                    item.get("statement", ""),
+                    item.get("category", hierarchical.DEFAULT_CATEGORY),
+                    item.get("valid_from"),
+                    item.get("valid_until"),
+                    item.get("expires_at"),
+                )
                 fact, action = hierarchical._add_locked(
-                    facts, statement, category, hierarchical._clean_scopes(item.get("scopes")),
-                    valid_from, valid_until, expires_at, float(item.get("confidence", 0.8)),
+                    facts,
+                    statement,
+                    category,
+                    hierarchical._clean_scopes(item.get("scopes")),
+                    valid_from,
+                    valid_until,
+                    expires_at,
+                    float(item.get("confidence", 0.8)),
                     str(item.get("source_trace_id", "") or ""),
                     hierarchical._normalize_stability(item.get("stability", "")),
-                    item.get("created_at"), item.get("evidence"), item.get("min_support", 1),
-                    index=index, dedupe=hierarchical.dedup_mode(), root=root, conflicts=conflicts,
+                    item.get("created_at"),
+                    item.get("evidence"),
+                    item.get("min_support", 1),
+                    index=index,
+                    dedupe=hierarchical.dedup_mode(),
+                    root=root,
+                    conflicts=conflicts,
                 )
                 if action != "ADD":
                     raise RuntimeError("fixture facts were not uniquely admitted")
@@ -179,22 +208,21 @@ def _hybrid_search(root: str, query: str, embedder: str, *, context: list[str]) 
     from unimem import search_recipes
 
     explain: dict = {}
-    rows = search_recipes.search(root, query, embedder=embedder, reranker="none", recipe="balanced",
-                                 context=context, limit=20, explain=explain)
+    rows = search_recipes.search(
+        root, query, embedder=embedder, reranker="none", recipe="balanced", context=context, limit=20, explain=explain
+    )
     return rows, explain
 
 
 def _implementation_hash(source: str) -> dict[str, str]:
     names = sorted(Path(source, "unimem").rglob("*.py"))
     names.append(Path(source, "benchmarks/hybrid_acceptance.py"))
-    return {
-        os.path.relpath(path, source): hashlib.sha256(path.read_bytes()).hexdigest()
-        for path in names
-    }
+    return {os.path.relpath(path, source): hashlib.sha256(path.read_bytes()).hexdigest() for path in names}
 
 
-def _restart_worker(source: str, root: str, embedder: str, sample_ids: list[str],
-                    excluded_id: str, synthetic: bool) -> dict[str, Any]:
+def _restart_worker(
+    source: str, root: str, embedder: str, sample_ids: list[str], excluded_id: str, synthetic: bool
+) -> dict[str, Any]:
     from unimem import fact_embeddings, fact_store, fact_vector_projection
 
     counts = {"document_vectors_requested": 0, "query_vectors_requested": 0}
@@ -219,30 +247,56 @@ def _restart_worker(source: str, root: str, embedder: str, sample_ids: list[str]
     row_ids = {row["id"] for row in rows}
     found_ids = sorted(set(sample_ids) & row_ids)
     out_of_scope_excluded = not excluded_id or excluded_id not in row_ids
-    vector_db = os.path.join(os.path.dirname(fact_store.database_path(root)),
-                             "embeddings-" + "".join(c if c.isalnum() or c in ".-_" else "_" for c in
-                                                       ("synthetic:fixture-v1" if synthetic else embedder))[:120]
-                             + ".db")
+    vector_db = os.path.join(
+        os.path.dirname(fact_store.database_path(root)),
+        "embeddings-"
+        + "".join(c if c.isalnum() or c in ".-_" else "_" for c in ("synthetic:fixture-v1" if synthetic else embedder))[
+            :120
+        ]
+        + ".db",
+    )
     import sqlite3
 
     with sqlite3.connect(vector_db) as db:
         cache_entries = db.execute("SELECT COUNT(*) FROM vec").fetchone()[0]
-    return {"projection_drain": drain, **counts, "sample_cache_vectors": len(sample),
-            "content_hash_cache_entries": cache_entries, "hybrid_rows": len(rows),
-            "hybrid_dense_candidates": bool(explain.get("dense_candidates")),
-            "candidate_ids_expected": sample_ids, "candidate_ids_found": found_ids,
-            "candidate_inclusion_verified": bool(sample_ids) and len(found_ids) == len(set(sample_ids)),
-            "out_of_scope_id_expected": excluded_id, "out_of_scope_excluded": out_of_scope_excluded,
-            "provider_kind": "synthetic_adapter" if synthetic else "configured_embedding_provider"}
+    return {
+        "projection_drain": drain,
+        **counts,
+        "sample_cache_vectors": len(sample),
+        "content_hash_cache_entries": cache_entries,
+        "hybrid_rows": len(rows),
+        "hybrid_dense_candidates": bool(explain.get("dense_candidates")),
+        "candidate_ids_expected": sample_ids,
+        "candidate_ids_found": found_ids,
+        "candidate_inclusion_verified": bool(sample_ids) and len(found_ids) == len(set(sample_ids)),
+        "out_of_scope_id_expected": excluded_id,
+        "out_of_scope_excluded": out_of_scope_excluded,
+        "provider_kind": "synthetic_adapter" if synthetic else "configured_embedding_provider",
+    }
 
 
-def _run_restart(source: str, root: str, embedder: str, sample_ids: list[str],
-                 excluded_id: str, synthetic: bool) -> dict[str, Any]:
+def _run_restart(
+    source: str, root: str, embedder: str, sample_ids: list[str], excluded_id: str, synthetic: bool
+) -> dict[str, Any]:
     output_file = os.path.join(root, "restart-report.json")
-    command = [sys.executable, "-I", os.path.abspath(__file__), "--worker-restart", "--source", source,
-               "--root", root, "--embedder", embedder, "--sample-ids", ",".join(sample_ids),
-               "--excluded-id", excluded_id,
-               "--restart-output", output_file]
+    command = [
+        sys.executable,
+        "-I",
+        os.path.abspath(__file__),
+        "--worker-restart",
+        "--source",
+        source,
+        "--root",
+        root,
+        "--embedder",
+        embedder,
+        "--sample-ids",
+        ",".join(sample_ids),
+        "--excluded-id",
+        excluded_id,
+        "--restart-output",
+        output_file,
+    ]
     if synthetic:
         command.append("--synthetic-adapter")
     completed = subprocess.run(command, cwd=source, capture_output=True, text=True, check=True)
@@ -268,8 +322,7 @@ def _clear_embedding_memory_cache() -> None:
 def restart_status(report: dict[str, Any], *, facts: int = 0, synthetic: bool = False) -> str:
     expected = report.get("candidate_ids_expected")
     found = report.get("candidate_ids_found")
-    if not isinstance(expected, list) or not expected or not isinstance(found, list) \
-            or not set(expected) <= set(found):
+    if not isinstance(expected, list) or not expected or not isinstance(found, list) or not set(expected) <= set(found):
         return "fail: one or more expected hybrid candidates were missing after restart"
     if report.get("out_of_scope_excluded") is not True:
         return "fail: canonical scope filter admitted an out-of-scope restart candidate"
@@ -294,8 +347,9 @@ def hybrid_status(*, facts: int, p95_ms: float, backend: str = "sqlite") -> str:
     return "pass" if p95_ms < LOCAL_P95_MS else "fail"
 
 
-def worker_restart(source: str, root: str, embedder: str, sample_ids: list[str],
-                   excluded_id: str, synthetic: bool, output: str) -> int:
+def worker_restart(
+    source: str, root: str, embedder: str, sample_ids: list[str], excluded_id: str, synthetic: bool, output: str
+) -> int:
     sys.path.insert(0, source)
     if synthetic:
         _register_synthetic()
@@ -306,9 +360,17 @@ def worker_restart(source: str, root: str, embedder: str, sample_ids: list[str],
     return 0
 
 
-def measure(*, source: str, count: int, trials: int, embedder: str, synthetic: bool,
-            run_restart: bool, work_dir: str | None = None,
-            seed_mode: str = "public") -> dict[str, Any]:
+def measure(
+    *,
+    source: str,
+    count: int,
+    trials: int,
+    embedder: str,
+    synthetic: bool,
+    run_restart: bool,
+    work_dir: str | None = None,
+    seed_mode: str = "public",
+) -> dict[str, Any]:
     sys.path.insert(0, source)
     if synthetic:
         _register_synthetic()
@@ -342,8 +404,7 @@ def measure(*, source: str, count: int, trials: int, embedder: str, synthetic: b
         if identities["out_of_scope"] in row_ids:
             raise RuntimeError("canonical scope filter admitted an out-of-scope dense candidate")
         signals = {row["id"]: set(row.get("signals", {})) for row in warm_rows}
-        if "dense" not in signals[identities["dense_only"]] or \
-                "bm25" not in signals[identities["lexical_only"]]:
+        if "dense" not in signals[identities["dense_only"]] or "bm25" not in signals[identities["lexical_only"]]:
             raise RuntimeError("hybrid RRF omitted expected dense or lexical provenance")
 
         from unimem import search_recipes
@@ -353,15 +414,16 @@ def measure(*, source: str, count: int, trials: int, embedder: str, synthetic: b
         expected_order = [row["id"] for row in warm_rows]
         expected_signals = {row["id"]: sorted(row.get("signals", {})) for row in warm_rows}
         for trial in range(trials + 1):
-            _fts, fts_ms = _clock_ms(lambda: fact_store.fts_candidates(
-                root, query, context=["agent:a"], limit=200))
-            _dense, dense_ms = _clock_ms(lambda: fact_vector_projection.search(
-                root, query, model=embedder, limit=200))
-            timed_rows, hybrid_ms = _clock_ms(lambda: search_recipes.search(
-                root, query, embedder=embedder, reranker="none", recipe="balanced",
-                context=["agent:a"], limit=20))
-            if [row["id"] for row in timed_rows] != expected_order or \
-                    {row["id"]: sorted(row.get("signals", {})) for row in timed_rows} != expected_signals:
+            _fts, fts_ms = _clock_ms(lambda: fact_store.fts_candidates(root, query, context=["agent:a"], limit=200))
+            _dense, dense_ms = _clock_ms(lambda: fact_vector_projection.search(root, query, model=embedder, limit=200))
+            timed_rows, hybrid_ms = _clock_ms(
+                lambda: search_recipes.search(
+                    root, query, embedder=embedder, reranker="none", recipe="balanced", context=["agent:a"], limit=20
+                )
+            )
+            if [row["id"] for row in timed_rows] != expected_order or {
+                row["id"]: sorted(row.get("signals", {})) for row in timed_rows
+            } != expected_signals:
                 raise RuntimeError("stable-source hybrid candidates or provenance changed between trials")
             if trial:
                 fts_samples.append(fts_ms)
@@ -370,57 +432,86 @@ def measure(*, source: str, count: int, trials: int, embedder: str, synthetic: b
 
         restart = None
         if run_restart:
-            restart = _run_restart(source, root, embedder,
-                                   [identities["dense_only"], identities["lexical_only"]],
-                                   identities["out_of_scope"], synthetic)
+            restart = _run_restart(
+                source,
+                root,
+                embedder,
+                [identities["dense_only"], identities["lexical_only"]],
+                identities["out_of_scope"],
+                synthetic,
+            )
             restart["status"] = restart_status(restart, facts=count, synthetic=synthetic)
 
         vector_backend = fact_vector_projection._backend(root)
         report: dict[str, Any] = {
             "scope": "full production indexed facts hybrid API; no answer generation or model-quality claim",
             "api_path": API_PATH,
-            "timed_path_includes": ["FTS5 candidate retrieval", "dense projection search", "canonical admission",
-                                    "RRF and recipe ordering"],
-            "timed_path_excludes": ["fact seeding", "vector projection build", "cross-encoder reranking",
-                                    "model answer generation"],
+            "timed_path_includes": [
+                "FTS5 candidate retrieval",
+                "dense projection search",
+                "canonical admission",
+                "RRF and recipe ordering",
+            ],
+            "timed_path_excludes": [
+                "fact seeding",
+                "vector projection build",
+                "cross-encoder reranking",
+                "model answer generation",
+            ],
             "embedding_provider_kind": "synthetic_adapter" if synthetic else "configured_embedding_provider",
             "embedding_model": embedder,
             "backend": vector_backend,
-            "measurement_class": "production_api_with_synthetic_adapter" if synthetic
-                                  else "production_api_with_configured_embedding_provider",
-            "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source,
-                                                     text=True).strip(),
+            "measurement_class": "production_api_with_synthetic_adapter"
+            if synthetic
+            else "production_api_with_configured_embedding_provider",
+            "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip(),
             "source_sha256": source_hashes,
             "python": sys.version,
             "platform": platform.platform(),
             "facts": count,
             "trials": trials,
-            "seed": {"method": seed_method, "facts": count, "elapsed_ms": seed_ms,
-                     "entity_sidecar_built": seed_mode == "public"},
+            "seed": {
+                "method": seed_method,
+                "facts": count,
+                "elapsed_ms": seed_ms,
+                "entity_sidecar_built": seed_mode == "public",
+            },
             "warmup_queries": 1,
             "query": query,
             "query_context": ["agent:a"],
-            "fixture_checks": {"dense_only_id_found": identities["dense_only"] in row_ids,
-                               "lexical_only_id_found": identities["lexical_only"] in row_ids,
-                               "out_of_scope_id_excluded": identities["out_of_scope"] not in row_ids,
-                               "dense_and_bm25_signals_present": True,
-                               "result_count": len(warm_rows),
-                               "explain": explain},
+            "fixture_checks": {
+                "dense_only_id_found": identities["dense_only"] in row_ids,
+                "lexical_only_id_found": identities["lexical_only"] in row_ids,
+                "out_of_scope_id_excluded": identities["out_of_scope"] not in row_ids,
+                "dense_and_bm25_signals_present": True,
+                "result_count": len(warm_rows),
+                "explain": explain,
+            },
             "index_build": {"projection_ms": build_ms, "projection": projection},
             "components_excluded_from_gate": {
-                "fts5_candidates": {"p50_ms": statistics.median(fts_samples),
-                                     "p95_ms": percentile(fts_samples, .95), "samples_ms": fts_samples},
-                "dense_projection": {"p50_ms": statistics.median(dense_samples),
-                                     "p95_ms": percentile(dense_samples, .95), "samples_ms": dense_samples},
+                "fts5_candidates": {
+                    "p50_ms": statistics.median(fts_samples),
+                    "p95_ms": percentile(fts_samples, 0.95),
+                    "samples_ms": fts_samples,
+                },
+                "dense_projection": {
+                    "p50_ms": statistics.median(dense_samples),
+                    "p95_ms": percentile(dense_samples, 0.95),
+                    "samples_ms": dense_samples,
+                },
             },
-            "hybrid_api": {"p50_ms": statistics.median(hybrid_samples),
-                           "p95_ms": percentile(hybrid_samples, .95), "samples_ms": hybrid_samples,
-                           "gate": hybrid_status(facts=count, p95_ms=percentile(hybrid_samples, .95),
-                                                  backend=vector_backend)},
+            "hybrid_api": {
+                "p50_ms": statistics.median(hybrid_samples),
+                "p95_ms": percentile(hybrid_samples, 0.95),
+                "samples_ms": hybrid_samples,
+                "gate": hybrid_status(facts=count, p95_ms=percentile(hybrid_samples, 0.95), backend=vector_backend),
+            },
             "restart": restart,
-            "server_gate": {"status": "unsupported_by_current_fact_projection",
-                            "reason": "fact_vector_projection supports SQLite/Lance only; no Postgres full-text + "
-                                      "governed vector-hybrid adapter is wired to search_recipes.search"},
+            "server_gate": {
+                "status": "unsupported_by_current_fact_projection",
+                "reason": "fact_vector_projection supports SQLite/Lance only; no Postgres full-text + "
+                "governed vector-hybrid adapter is wired to search_recipes.search",
+            },
         }
         if _implementation_hash(source) != source_hashes:
             raise RuntimeError("product or benchmark source changed while the workload was running")
@@ -431,13 +522,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--facts", type=int, default=1000, help="canonical facts, minimum 3; 1M is a long workload")
     parser.add_argument("--trials", type=int, default=5)
-    parser.add_argument("--embedder",
-                        help="UniMem embedding provider tag (default: bge-small; ignored by the synthetic fixture)")
-    parser.add_argument("--synthetic-adapter", action="store_true",
-                        help="use a deterministic plumbing fixture; reported separately from real-provider runs")
+    parser.add_argument(
+        "--embedder", help="UniMem embedding provider tag (default: bge-small; ignored by the synthetic fixture)"
+    )
+    parser.add_argument(
+        "--synthetic-adapter",
+        action="store_true",
+        help="use a deterministic plumbing fixture; reported separately from real-provider runs",
+    )
     parser.add_argument("--skip-restart", action="store_true")
-    parser.add_argument("--seed-mode", choices=("public", "canonical_fixture"), default="public",
-                        help="canonical_fixture skips the unrelated entity sidecar for large search fixtures")
+    parser.add_argument(
+        "--seed-mode",
+        choices=("public", "canonical_fixture"),
+        default="public",
+        help="canonical_fixture skips the unrelated entity sidecar for large search fixtures",
+    )
     parser.add_argument("--work-dir", help="parent directory for the temporary canonical fact store")
     parser.add_argument("--output", help="JSON report path; defaults to stdout")
     parser.add_argument("--source", default=str(Path(__file__).resolve().parent.parent), help=argparse.SUPPRESS)
@@ -450,18 +549,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.worker_restart:
         if not all((args.root, args.restart_output)):
             parser.error("restart worker requires --root and --restart-output")
-        return worker_restart(os.path.realpath(args.source), args.root, args.embedder,
-                              [value for value in args.sample_ids.split(",") if value],
-                              args.excluded_id, args.synthetic_adapter, args.restart_output)
+        return worker_restart(
+            os.path.realpath(args.source),
+            args.root,
+            args.embedder,
+            [value for value in args.sample_ids.split(",") if value],
+            args.excluded_id,
+            args.synthetic_adapter,
+            args.restart_output,
+        )
     if args.facts < 3 or args.trials < 1:
         parser.error("--facts must be >=3 and --trials must be positive")
     if args.synthetic_adapter and args.embedder not in (None, EMBEDDER):
         parser.error(f"--synthetic-adapter uses the fixed provider tag {EMBEDDER}")
     embedder = EMBEDDER if args.synthetic_adapter else (args.embedder or "bge-small")
-    report = measure(source=os.path.realpath(args.source), count=args.facts, trials=args.trials,
-                     embedder=embedder, synthetic=args.synthetic_adapter,
-                     run_restart=not args.skip_restart, work_dir=args.work_dir,
-                     seed_mode=args.seed_mode)
+    report = measure(
+        source=os.path.realpath(args.source),
+        count=args.facts,
+        trials=args.trials,
+        embedder=embedder,
+        synthetic=args.synthetic_adapter,
+        run_restart=not args.skip_restart,
+        work_dir=args.work_dir,
+        seed_mode=args.seed_mode,
+    )
     report["command"] = " ".join(sys.argv if argv is None else [sys.argv[0], *argv])
     from unimem.telemetry import redact_mapping
 

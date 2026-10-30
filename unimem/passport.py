@@ -4,6 +4,7 @@ The UniMem format uses SHA-256 rather than PAM's BLAKE3; it does not assert PAM
 wire compatibility. A signature authenticates provenance claims, not their truth.
 Imports preserve the exact original payload and enter review before admission.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,10 +16,20 @@ from unimem import frontier_protocol as fp
 from unimem import transparency_log as merkle
 
 COMPONENTS = ("episodic", "semantic", "procedural", "working", "identity")
-ENTRY_FIELDS = {"parent_ids", "created_at", "version", "content", "provenance", "confidence", "timestamps",
-                "consent_scope", "labels", "capability_tokens"}
+ENTRY_FIELDS = {
+    "parent_ids",
+    "created_at",
+    "version",
+    "content",
+    "provenance",
+    "confidence",
+    "timestamps",
+    "consent_scope",
+    "labels",
+    "capability_tokens",
+}
 MAX_ENTRIES = 64
-MAX_BYTES = 256*1024
+MAX_BYTES = 256 * 1024
 
 
 def model_digest(value: str) -> str:
@@ -28,7 +39,7 @@ def model_digest(value: str) -> str:
 
 
 def _hash(value: Any) -> str:
-    return "sha256:"+fp.digest(value)
+    return "sha256:" + fp.digest(value)
 
 
 def entry(value: Mapping[str, Any]) -> dict[str, Any]:
@@ -73,10 +84,11 @@ def entry(value: Mapping[str, Any]) -> dict[str, Any]:
     return {"id": _hash(clean), **clean}
 
 
-def build(components: Mapping[str, Sequence[Mapping[str, Any]]], *, created_at: str,
-          source_agent: Mapping[str, Any]) -> dict[str, Any]:
+def build(
+    components: Mapping[str, Sequence[Mapping[str, Any]]], *, created_at: str, source_agent: Mapping[str, Any]
+) -> dict[str, Any]:
     fp.moment(created_at)
-    if set(components)-set(COMPONENTS) or not isinstance(source_agent, dict):
+    if set(components) - set(COMPONENTS) or not isinstance(source_agent, dict):
         raise ValueError("UniMem passport requires known memory components and source-agent metadata")
     if set(source_agent) != {"name", "model_digest", "model_identity", "runtime"}:
         raise ValueError("UniMem passport needs explicit source-agent and model identity metadata")
@@ -88,17 +100,25 @@ def build(components: Mapping[str, Sequence[Mapping[str, Any]]], *, created_at: 
         raise ValueError("UniMem unknown passport runtime")
     count = sum(len(values) for values in components.values())
     fp.count(count, 1, MAX_ENTRIES)
-    groups = {kind: sorted([entry(value) for value in components.get(kind, [])], key=lambda value: value["id"])
-              for kind in COMPONENTS}
+    groups = {
+        kind: sorted([entry(value) for value in components.get(kind, [])], key=lambda value: value["id"])
+        for kind in COMPONENTS
+    }
     entries = [value for kind in COMPONENTS for value in groups[kind]]
     identities = [(value["provenance"]["namespace"], value["provenance"]["source_id"]) for value in entries]
     if len(set(identities)) != len(identities):
         raise ValueError("UniMem a passport cannot contain repeated canonical source identities")
-    value = {"format": "unimem-passport", "schema_version": "1.0", "created_at": created_at,
-             "source_agent": dict(source_agent), "components": groups, "entry_count": count,
-             "hash_algorithm": "sha256",
-             "root_hash": "sha256:"+merkle.tree_hash([merkle.leaf_hash(e) for e in entries]),
-             "mapping": "PAM 1.0 field alignment; UniMem SHA-256 format, not PAM wire compatibility"}
+    value = {
+        "format": "unimem-passport",
+        "schema_version": "1.0",
+        "created_at": created_at,
+        "source_agent": dict(source_agent),
+        "components": groups,
+        "entry_count": count,
+        "hash_algorithm": "sha256",
+        "root_hash": "sha256:" + merkle.tree_hash([merkle.leaf_hash(e) for e in entries]),
+        "mapping": "PAM 1.0 field alignment; UniMem SHA-256 format, not PAM wire compatibility",
+    }
     if len(fp.wire(value)) > MAX_BYTES:
         raise ValueError("UniMem passport exceeds 256 KiB; export smaller scoped segments")
     return dict(json.loads(fp.wire(value)))
@@ -133,7 +153,7 @@ def stage(text: str, *, source: str) -> list[dict[str, Any]]:
     from unimem import defense, injection_guard, memory_guard
 
     fp.text(source, "self-reported import source", 128)
-    fp.text(text, "inbound memory summary", 128*1024)
+    fp.text(text, "inbound memory summary", 128 * 1024)
     source_decision = defense.screen_content(source)
     if source_decision.action is defense.DefenseAction.BLOCK:
         source = "[blocked source label]"
@@ -159,15 +179,26 @@ def stage(text: str, *, source: str) -> list[dict[str, Any]]:
     result = []
     for piece in pieces:
         fp.text(piece, "inbound candidate", 32768)
-        labels = injection_guard.injection_labels({"text": source+"\n"+piece})
+        labels = injection_guard.injection_labels({"text": source + "\n" + piece})
         decision = defense.screen_content(piece)
         safe = decision.redacted_content if decision.redacted_content is not None else piece
         if decision.action is defense.DefenseAction.BLOCK:
             safe = "[blocked by the memory defense screen]"
         safe, pii = memory_guard.redact_pii(safe)
-        result.append({"text": safe, "source": source, "status": "review", "verified": False,
-            "provenance": "unverified, self-reported via "+source, "raw_digest": fp.digest(piece),
-            "screening": {"injection_labels": labels, "defense_action": decision.action.value,
-                          "matched_types": sorted(set(decision.matched_types) | set(pii))},
-            "classification": "unverified candidate; never automatically admitted"})
+        result.append(
+            {
+                "text": safe,
+                "source": source,
+                "status": "review",
+                "verified": False,
+                "provenance": "unverified, self-reported via " + source,
+                "raw_digest": fp.digest(piece),
+                "screening": {
+                    "injection_labels": labels,
+                    "defense_action": decision.action.value,
+                    "matched_types": sorted(set(decision.matched_types) | set(pii)),
+                },
+                "classification": "unverified candidate; never automatically admitted",
+            }
+        )
     return result

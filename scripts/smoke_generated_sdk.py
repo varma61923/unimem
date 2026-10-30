@@ -1,4 +1,5 @@
 """Exercise an upstream-generated TypeScript client against the real HTTP gateway."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +13,7 @@ from pathlib import Path
 from unimem import holdout_io, memory_control
 from unimem.gateway import Gateway, make_http_server
 
-SMOKE = r'''
+SMOKE = r"""
 const assert = require('node:assert/strict');
 const {MemoryApi, ConversationsApi, HistoryApi, Configuration, ResponseError} =
     require(process.env.UNIMEM_GENERATED_SDK);
@@ -89,33 +90,36 @@ const api = new MemoryApi(configuration);
         console.log('Generated gateway SDK: conversation, temporal, summary and history workflows passed');
     }
 })().catch(error => { console.error(error.name, error.response?.status); process.exitCode = 1; });
-'''
+"""
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('sdk', type=Path, help='generated TypeScript directory after npm run build')
+    parser.add_argument("sdk", type=Path, help="generated TypeScript directory after npm run build")
     args = parser.parse_args()
-    module = args.sdk.resolve()/'dist'/'index.js'
+    module = args.sdk.resolve() / "dist" / "index.js"
     if not module.is_file():
-        parser.error('compile the generated client before the smoke test')
-    with tempfile.TemporaryDirectory(prefix='unimem-generated-sdk-') as root:
-        holdout_io.configure(root, rate=0, salt='generated-sdk-smoke')
-        memory_control.directive(root, 'Deployment prohibited', deny_tools=['deploy'])
+        parser.error("compile the generated client before the smoke test")
+    with tempfile.TemporaryDirectory(prefix="unimem-generated-sdk-") as root:
+        holdout_io.configure(root, rate=0, salt="generated-sdk-smoke")
+        memory_control.directive(root, "Deployment prohibited", deny_tools=["deploy"])
         token = secrets.token_urlsafe(32)
-        server = make_http_server(Gateway(root, token=token), '127.0.0.1', 0)
+        server = make_http_server(Gateway(root, token=token), "127.0.0.1", 0)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
-            environment = {**os.environ, 'UNIMEM_GENERATED_SDK': str(module),
-                           'UNIMEM_SMOKE_URL': 'http://127.0.0.1:'+str(server.server_port),
-                           'UNIMEM_SMOKE_TOKEN': token}
-            subprocess.run(['node', '-e', SMOKE], env=environment, check=True, timeout=60)
+            environment = {
+                **os.environ,
+                "UNIMEM_GENERATED_SDK": str(module),
+                "UNIMEM_SMOKE_URL": "http://127.0.0.1:" + str(server.server_port),
+                "UNIMEM_SMOKE_TOKEN": token,
+            }
+            subprocess.run(["node", "-e", SMOKE], env=environment, check=True, timeout=60)
         finally:
             server.shutdown()
             server.server_close()
             thread.join(5)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

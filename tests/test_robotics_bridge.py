@@ -17,6 +17,7 @@ from unimem.robotics import bridge, edge, ingest
 class LocalTransport:
     def __init__(self, root):
         self.gateway = gateway.Gateway(root, token=TOKEN)
+
     def post(self, path, body):
         response = self.gateway.handle("POST", path, AUTH, json.dumps(body).encode())
         if response.status != 200:
@@ -26,18 +27,22 @@ class LocalTransport:
 
 def test_simulated_robot_loop_and_offline_store_forward(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="robotics")
+    holdout_io.configure(root, rate=0.5, salt="robotics")
     transport = LocalTransport(root)
     queue = edge.OutcomeQueue(str(tmp_path / "edge"))
-    robot = bridge.RobotBridge(transport, embodiment="jaw", site="depot", skill="grasp", robot="r7", outcome_queue=queue)
+    robot = bridge.RobotBridge(
+        transport, embodiment="jaw", site="depot", skill="grasp", robot="r7", outcome_queue=queue
+    )
     for i in range(120):
         result = robot.start(str(i), "grasp", items=[{"id": "recovery", "text": "Check the grasp pose"}])
         robot.finish(str(i), bool(result["deliver"]))
     assert evidence.for_lessons(root)["by_lesson"]["recovery"]["effect"] == 1
     assert not queue.pending()
+
     class Offline:
         def post(self, path, body):
             raise ConnectionError("offline")
+
     robot.transport = Offline()
     assert robot.finish("offline", True)["queued"]
     restarted = edge.OutcomeQueue(str(tmp_path / "edge"))
@@ -61,30 +66,38 @@ def test_robot_bridge_fails_closed_without_memory_linked_shield_verdict():
         seen.update(body)
         return {"verdict": "safe", "action": "continue", "lineage_id": "verdict-1"}
 
-    allowed = robot.authorize_action("episode-9", {"grasp": "close"}, spec_id="clearance",
-                                     trace=[{"t": 0, "distance": 1}], monitor=monitor)
+    allowed = robot.authorize_action(
+        "episode-9", {"grasp": "close"}, spec_id="clearance", trace=[{"t": 0, "distance": 1}], monitor=monitor
+    )
     assert allowed["allowed"] and seen["source_memory_ids"] == ["clearance-rule"]
     assert allowed["lineage_id"] == "verdict-1"
 
 
 def test_ros_node_mock_drives_gateway_callbacks(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="ros")
+    holdout_io.configure(root, rate=0.5, salt="ros")
+
     class Message:
         def __init__(self, data=""):
             self.data = data
+
     class Publisher:
         messages = []
+
         def publish(self, message):
             self.messages.append(message.data)
+
     class Node:
         def __init__(self, name):
             self.callbacks = {}
             self.publisher = Publisher()
+
         def create_publisher(self, message_type, topic, qos):
             return self.publisher
+
         def create_subscription(self, message_type, topic, callback, qos):
             self.callbacks[topic] = callback
+
     robot = bridge.RobotBridge(LocalTransport(root), embodiment="jaw", site="depot", skill="grasp", robot="r7")
     scene = []
     node = bridge.create_node(robot, node_factory=Node, message_type=Message, on_scene=scene.append)
@@ -118,15 +131,27 @@ def test_edge_cache_rejects_unsigned_and_forked_heads(tmp_path):
 
 
 def test_lerobot_and_mcap_metadata_ingest(tmp_path):
-    rows = [{"episode_index": 1, "summary": "Recover from slip", "next.success": True,
-             "sensors": {"grasp_force": 2.4}, "media_refs": ["sha256:" + "a" * 64]}]
+    rows = [
+        {
+            "episode_index": 1,
+            "summary": "Recover from slip",
+            "next.success": True,
+            "sensors": {"grasp_force": 2.4},
+            "media_refs": ["sha256:" + "a" * 64],
+        }
+    ]
     path = tmp_path / "episodes.jsonl"
     path.write_text(json.dumps(rows[0]) + "\n")
     result = ingest.lerobot_jsonl(str(tmp_path / "store"), str(path), environment="sim", robot="r7")
     assert result[0]["env"] == "sim"
     with pytest.raises(ValueError):
-        ingest.ingest_records(str(tmp_path), [{**rows[0], "media_refs": ["http://raw-video"]}],
-                              format="mcap", environment="sim", robot="r7")
+        ingest.ingest_records(
+            str(tmp_path),
+            [{**rows[0], "media_refs": ["http://raw-video"]}],
+            format="mcap",
+            environment="sim",
+            robot="r7",
+        )
     mcap = pytest.importorskip("mcap.writer")
     mpath = tmp_path / "robot.mcap"
     with mpath.open("wb") as stream:
@@ -135,16 +160,21 @@ def test_lerobot_and_mcap_metadata_ingest(tmp_path):
         channel = writer.register_channel(topic="/unimem/episode", message_encoding="json", schema_id=0)
         writer.add_message(channel_id=channel, log_time=1, publish_time=1, data=json.dumps(rows[0]).encode())
         writer.finish()
-    assert ingest.mcap_file(str(tmp_path / "mcap-store"), str(mpath), environment="real", robot="r7")[0]["env"] == "real"
+    assert (
+        ingest.mcap_file(str(tmp_path / "mcap-store"), str(mpath), environment="real", robot="r7")[0]["env"] == "real"
+    )
 
 
 def test_protected_lesson_can_be_provisioned_to_edge(tmp_path):
     from unimem import safety
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import _write_lesson
+
     root = str(tmp_path / "origin")
     path = _write_lesson(root, "hazard", body="Stop motion when a human enters the work cell.")
     from unimem import frontmatter, lesson_admission
+
     fm, body = frontmatter.read(path)
     fm["approval_receipt"] = lesson_admission.issue(root, path, fm, body, actor="engineer")
     frontmatter.write(path, fm, body)
@@ -191,9 +221,10 @@ def test_long_lived_edge_journals_compact_without_losing_hazards_or_outcomes(tmp
 
 def test_bridge_accepts_realistic_labels_and_contains_bad_ros_messages(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="labels")
-    robot = bridge.RobotBridge(LocalTransport(root), embodiment="franka-panda-parallel-jaw", site="depot-7",
-                               skill="pick-and-place", robot="r7")
+    holdout_io.configure(root, rate=0.5, salt="labels")
+    robot = bridge.RobotBridge(
+        LocalTransport(root), embodiment="franka-panda-parallel-jaw", site="depot-7", skill="pick-and-place", robot="r7"
+    )
     assert robot.context == "franka-panda-parallel-jaw/depot-7/pick-and-place"
     with pytest.raises(ValueError):
         bridge.RobotBridge(LocalTransport(root), embodiment="x" * 40, site="y" * 40, skill="z", robot="r7")
@@ -206,10 +237,13 @@ def test_bridge_accepts_realistic_labels_and_contains_bad_ros_messages(tmp_path)
     class Node:
         def __init__(self, name):
             self.callbacks = {}
+
         def create_publisher(self, message_type, topic, qos):
             return None
+
         def create_subscription(self, message_type, topic, callback, qos):
             self.callbacks[topic] = callback
+
         def get_logger(self):
             return Logger()
 
@@ -229,11 +263,19 @@ def test_ros_stl_service_blocks_violating_action_and_contains_malformed_input(tm
     from unimem.robotics import shield
 
     root = str(tmp_path)
-    shield.register(root, "clearance", memory_id="stop-memory", embodiment="arm",
-                    description="maintain clearance", formula={
-                        "op": "always", "from": 0, "to": 1,
-                        "arg": {"op": "predicate", "signal": "distance", "cmp": ">=", "value": 0.5},
-                    })
+    shield.register(
+        root,
+        "clearance",
+        memory_id="stop-memory",
+        embodiment="arm",
+        description="maintain clearance",
+        formula={
+            "op": "always",
+            "from": 0,
+            "to": 1,
+            "arg": {"op": "predicate", "signal": "distance", "cmp": ">=", "value": 0.5},
+        },
+    )
     errors, services = [], {}
 
     class Logger:
@@ -243,12 +285,16 @@ def test_ros_stl_service_blocks_violating_action_and_contains_malformed_input(tm
     class Node:
         def __init__(self, name):
             pass
+
         def create_publisher(self, message_type, topic, qos):
             return None
+
         def create_subscription(self, message_type, topic, callback, qos):
             pass
+
         def create_service(self, service_type, topic, callback):
             services[topic] = callback
+
         def get_logger(self):
             return Logger()
 
@@ -257,12 +303,26 @@ def test_ros_stl_service_blocks_violating_action_and_contains_malformed_input(tm
             self.data = data
 
     robot = bridge.RobotBridge(LocalTransport(root), embodiment="arm", site="site", skill="grasp", robot="r7")
-    bridge.create_node(robot, node_factory=Node, message_type=Message, on_shield=bridge.shield_service_handler(root),
-                       shield_service_type=object)
-    request = SimpleNamespace(request_json=json.dumps({"spec_id": "clearance", "action": {"grasp": True},
-        "source_memory_ids": ["stop-memory"], "trace": [{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.2}]}))
+    bridge.create_node(
+        robot,
+        node_factory=Node,
+        message_type=Message,
+        on_shield=bridge.shield_service_handler(root),
+        shield_service_type=object,
+    )
+    request = SimpleNamespace(
+        request_json=json.dumps(
+            {
+                "spec_id": "clearance",
+                "action": {"grasp": True},
+                "source_memory_ids": ["stop-memory"],
+                "trace": [{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.2}],
+            }
+        )
+    )
     response = services[f"/unimem/robot_{fp.digest('r7')[:16]}/shield"](request, SimpleNamespace())
     assert not response.allowed and json.loads(response.verdict_json)["verdict"] == "violated"
     malformed = services[f"/unimem/robot_{fp.digest('r7')[:16]}/shield"](
-        SimpleNamespace(request_json="not-json"), SimpleNamespace())
+        SimpleNamespace(request_json="not-json"), SimpleNamespace()
+    )
     assert not malformed.allowed and malformed.error == "JSONDecodeError" and errors

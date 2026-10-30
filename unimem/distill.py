@@ -3,6 +3,7 @@
 Small corpora use exact Jaccard clustering. Large corpora use deterministic
 MinHash/LSH to propose bounded pairs, then verify each with the same exact rule.
 Candidate generation is approximate; it never makes an unverified lesson active."""
+
 from __future__ import annotations
 
 import hashlib
@@ -74,7 +75,7 @@ def _lsh_candidate_pairs(
     for tid in sorted(signatures):
         signature = signatures[tid]
         for band in range(_MINHASH_BANDS):
-            key = (band, signature[band * _MINHASH_ROWS:(band + 1) * _MINHASH_ROWS])
+            key = (band, signature[band * _MINHASH_ROWS : (band + 1) * _MINHASH_ROWS])
             buckets.setdefault(key, []).append(tid)
     star: set[tuple[str, str]] = set()
     pairs: set[tuple[str, str]] = set()
@@ -84,7 +85,7 @@ def _lsh_candidate_pairs(
         ordered = sorted(members)
         if len(ordered) <= _BUCKET_EXACT_LIMIT:
             for pos, left in enumerate(ordered):
-                for right in ordered[pos + 1:]:
+                for right in ordered[pos + 1 :]:
                     pairs.add((left, right))
         else:
             hub = ordered[0]
@@ -253,10 +254,7 @@ def representative(cluster: Cluster) -> TraceCandidate:
         members = sorted(cluster.traces, key=lambda t: t.id)[:_REPRESENTATIVE_LIMIT]
     else:
         members = cluster.traces
-    tokens = [
-        (t, set(_tokenize(f"{t.title} {t.context_text}")))
-        for t in members
-    ]
+    tokens = [(t, set(_tokenize(f"{t.title} {t.context_text}"))) for t in members]
     best, best_score = cluster.traces[0], -1.0
     for trace, own in tokens:
         if not own:
@@ -308,13 +306,19 @@ class ExtractionPolicy:
     min_solution_words: int = 3
 
     def __post_init__(self) -> None:
-        if isinstance(self.min_validation_score, bool) or not math.isfinite(self.min_validation_score) \
-                or not 0 <= self.min_validation_score <= 1:
+        if (
+            isinstance(self.min_validation_score, bool)
+            or not math.isfinite(self.min_validation_score)
+            or not 0 <= self.min_validation_score <= 1
+        ):
             raise ValueError("min_validation_score must be finite and between 0 and 1")
         if not isinstance(self.min_evidence, int) or isinstance(self.min_evidence, bool) or self.min_evidence < 2:
             raise ValueError("min_evidence must be at least 2")
-        if not isinstance(self.min_solution_words, int) or isinstance(self.min_solution_words, bool) \
-                or self.min_solution_words < 1:
+        if (
+            not isinstance(self.min_solution_words, int)
+            or isinstance(self.min_solution_words, bool)
+            or self.min_solution_words < 1
+        ):
             raise ValueError("min_solution_words must be positive")
 
 
@@ -336,9 +340,12 @@ class EvidenceAssessment:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "score": self.score, "repetition": self.repetition,
-            "cohesion": self.cohesion, "resolution_consensus": self.resolution_consensus,
-            "completeness": self.completeness, "supporting_ids": list(self.supporting_ids),
+            "score": self.score,
+            "repetition": self.repetition,
+            "cohesion": self.cohesion,
+            "resolution_consensus": self.resolution_consensus,
+            "completeness": self.completeness,
+            "supporting_ids": list(self.supporting_ids),
             "rejection_reasons": list(self.rejection_reasons),
         }
 
@@ -411,9 +418,13 @@ def assess_cluster(cluster: Cluster, policy: ExtractionPolicy = ExtractionPolicy
     if score < policy.min_validation_score:
         reasons.append("validation score below threshold")
     return EvidenceAssessment(
-        score=score, repetition=repetition, cohesion=cohesion,
-        resolution_consensus=consensus, completeness=completeness,
-        supporting_ids=tuple(t.id for t in supporting), rejection_reasons=tuple(reasons),
+        score=score,
+        repetition=repetition,
+        cohesion=cohesion,
+        resolution_consensus=consensus,
+        completeness=completeness,
+        supporting_ids=tuple(t.id for t in supporting),
+        rejection_reasons=tuple(reasons),
     )
 
 
@@ -437,6 +448,7 @@ def extract_cluster(cluster: Cluster, policy: ExtractionPolicy = ExtractionPolic
             "The failure's preconditions differ from the cited evidence, the resolution has already failed, "
             "or a contradictory resolution applies; investigate before reusing this rule."
         ),
-        evidence=list(assessment.supporting_ids), unverifiable_evidence=[],
+        evidence=list(assessment.supporting_ids),
+        unverifiable_evidence=[],
         provenance={"method": "evidence-consensus-v1", "assessment": assessment.to_dict()},
     )

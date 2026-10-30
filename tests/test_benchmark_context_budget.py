@@ -1,4 +1,5 @@
 """Measured caps preserve native source proofs and refuse unavoidable excess."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -52,8 +53,7 @@ def test_invalid_counter_is_refused(count):
 def test_adversarial_assembly_has_a_finite_attempt_bound():
     calls = []
     with pytest.raises(ValueError, match="within the attempt limit"):
-        retrieve_with_cap(lambda b: (calls.append(b) or SimpleNamespace(context="x" * 101)),
-                          100, len, max_attempts=3)
+        retrieve_with_cap(lambda b: calls.append(b) or SimpleNamespace(context="x" * 101), 100, len, max_attempts=3)
     assert len(calls) == 3
 
 
@@ -79,8 +79,13 @@ def test_real_native_packing_and_budgeted_history_fit_selected_counter(tmp_path,
     from tests.test_benchmark_measurement import _args
 
     bench = _fixture_counter(monkeypatch)
-    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="100",
-                 modes="memory,budgeted-history,full-context,no-memory")
+    args = _args(
+        tmp_path,
+        strict_context_budget=True,
+        tokenizer="fixture",
+        budget="100",
+        modes="memory,budgeted-history,full-context,no-memory",
+    )
     captured = []
     native = bench.recall
 
@@ -122,11 +127,11 @@ def test_unfitting_native_context_fails_before_reader_dispatch(tmp_path, monkeyp
     from unimem.conversation.search import Recall
 
     bench = _fixture_counter(monkeypatch)
-    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="10", answer=True,
-                 no_cache=True)
+    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="10", answer=True, no_cache=True)
     monkeypatch.setattr(bench, "get_judge", lambda *a, **kw: SimpleNamespace(profile="fixture"))
-    config = llm.Config(provider="openai-compatible", model="fixture", api_key="unused",
-                        base_url="http://127.0.0.1:1/v1")
+    config = llm.Config(
+        provider="openai-compatible", model="fixture", api_key="unused", base_url="http://127.0.0.1:1/v1"
+    )
     monkeypatch.setattr(bench, "_get_llm_config", lambda model: config)
     monkeypatch.setattr(bench, "recall", lambda *a, **kw: Recall("", "mandatory" * 20, 45, [], [], None))
     calls = []
@@ -151,8 +156,13 @@ def test_reference_only_modes_skip_unrequested_memory_retrieval(tmp_path, monkey
     from tests.test_benchmark_measurement import _args
 
     bench = _fixture_counter(monkeypatch)
-    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="10",
-                 modes="full-context,no-memory,budgeted-history")
+    args = _args(
+        tmp_path,
+        strict_context_budget=True,
+        tokenizer="fixture",
+        budget="10",
+        modes="full-context,no-memory,budgeted-history",
+    )
 
     def forbidden(*args, **kwargs):
         raise AssertionError("unrequested memory retrieval")
@@ -177,13 +187,12 @@ def test_native_vendor_is_reassembled_instead_of_context_truncation(tmp_path, mo
     def profile(name, store, now):
         def retrieve(question, budget):
             calls.append(budget)
-            return Recall(question, "x" * (budget + 20), budget, [1] if budget == 100 else [2],
-                          [1, 2], None)
+            return Recall(question, "x" * (budget + 20), budget, [1] if budget == 100 else [2], [1, 2], None)
+
         yield SimpleNamespace(descriptor={"profile": "native"}, retrieve=retrieve)
 
     monkeypatch.setattr(bench, "vendor_profile", profile)
-    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="100",
-                 memory_adapter="mem0-raw")
+    args = _args(tmp_path, strict_context_budget=True, tokenizer="fixture", budget="100", memory_adapter="mem0-raw")
     rows = bench.run(args)[100]["rows"]
     assert all(row["context_budget"]["attempts"] > 1 for row in rows)
     # The final native selection was turn 2; the discarded first pass selected gold turn 1.
@@ -195,11 +204,11 @@ def test_native_vendor_is_reassembled_instead_of_context_truncation(tmp_path, mo
 def test_tokenizer_binding_detects_vocabulary_or_regex_changes(monkeypatch):
     from benchmarks import requests
 
-    encoding = SimpleNamespace(_pat_str="pattern", _special_tokens={"end": 2},
-                               _mergeable_ranks={b"a": 0, b"b": 1})
+    encoding = SimpleNamespace(_pat_str="pattern", _special_tokens={"end": 2}, _mergeable_ranks={b"a": 0, b"b": 1})
     monkeypatch.setattr(requests, "_encoding", lambda name: encoding)
     # Avoid making tiktoken a requirement of the unit regression.
     import importlib.metadata
+
     monkeypatch.setattr(importlib.metadata, "version", lambda package: "fixture")
     before = requests.text_counter_binding("fixture")
     encoding._mergeable_ranks[b"b"] = 3

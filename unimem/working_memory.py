@@ -23,6 +23,7 @@ Nothing here writes: assembly is a pure read of the store (pass
 given store state, question and parameters, the output is identical on every call.
 Token counts use the conversation layer's estimate (~4 characters per token).
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -101,8 +102,9 @@ def _blocks_section(root: str, session: str, agent: str, cap: int) -> tuple[list
         line = label + body
         lines.append(line)
         spent += tokens(line + "\n")
-        items.append({"name": block.name, "scope": block.scope or "global", "revision": block.revision,
-                      "truncated": cut})
+        items.append(
+            {"name": block.name, "scope": block.scope or "global", "revision": block.revision, "truncated": cut}
+        )
     return lines, items, dropped
 
 
@@ -111,18 +113,32 @@ def _summary_text(store: Store, session: str) -> tuple[str, dict]:
 
     state = summary.rolling_state(store, session)
     if state and state.get("text"):
-        return str(state["text"]), {"source": "rolling", "through_idx": state.get("through_idx"),
-                                    "covers_turns": state.get("turns"), "method": state.get("method")}
+        return str(state["text"]), {
+            "source": "rolling",
+            "through_idx": state.get("through_idx"),
+            "covers_turns": state.get("turns"),
+            "method": state.get("method"),
+        }
     stored = store.db.execute("SELECT text, method, turns FROM summaries WHERE session=?", (session,)).fetchone()
     if stored and stored[0]:
         return str(stored[0]), {"source": "stored", "method": stored[1], "covers_turns": stored[2]}
     return "", {"source": "none"}
 
 
-def assemble(root: str, space: str, session: str, question: str, *, budget: int = DEFAULT_BUDGET,
-             recent_turns: int = DEFAULT_RECENT, agent: str = "", now=None,
-             refresh_summary: bool = False, options: Options | None = None,
-             block_namespace: str = "") -> dict:
+def assemble(
+    root: str,
+    space: str,
+    session: str,
+    question: str,
+    *,
+    budget: int = DEFAULT_BUDGET,
+    recent_turns: int = DEFAULT_RECENT,
+    agent: str = "",
+    now=None,
+    refresh_summary: bool = False,
+    options: Options | None = None,
+    block_namespace: str = "",
+) -> dict:
     """The working memory for the next call in `session`, within `budget` tokens.
 
     ``options`` tunes the evidence recall (its ``budget`` is replaced by what is
@@ -151,18 +167,25 @@ def assemble(root: str, space: str, session: str, question: str, *, budget: int 
     prefix = block_namespace + "/" if block_namespace else ""
     try:
         block_lines, block_items, dropped = _blocks_section(
-            root, prefix + session if session else "", prefix + agent if agent else "", cap)
+            root, prefix + session if session else "", prefix + agent if agent else "", cap
+        )
     except memory_blocks.MemoryBlockError as exc:
         raise ConversationError(str(exc)) from None
     text = _section("core_blocks", block_lines)
     explain["spent"]["core_blocks"] = tokens(text)
     explain["dropped"]["core_blocks"] = dropped
-    sections.append({"name": "core_blocks", "label": SECTION_LABELS["core_blocks"], "text": text,
-                     "tokens": tokens(text), "items": block_items})
+    sections.append(
+        {
+            "name": "core_blocks",
+            "label": SECTION_LABELS["core_blocks"],
+            "text": text,
+            "tokens": tokens(text),
+            "items": block_items,
+        }
+    )
 
     with Store(root, space, create=False, read_only=not refresh_summary) as store:
-        if refresh_summary and store.db.execute("SELECT 1 FROM turns WHERE session=? LIMIT 1",
-                                                (session,)).fetchone():
+        if refresh_summary and store.db.execute("SELECT 1 FROM turns WHERE session=? LIMIT 1", (session,)).fetchone():
             from unimem.conversation import summary
 
             summary.rolling(store, session)
@@ -173,23 +196,35 @@ def assemble(root: str, space: str, session: str, question: str, *, budget: int 
             # 2. session summary
             cap = min(remaining(), int(budget * SUMMARY_SHARE))
             explain["allocated"]["session_summary"] = cap
-            summary_text, summary_info = _summary_text(store, session) if total else ("", {"source": "none"})
+            if total:
+                summary_text, summary_info = _summary_text(store, session)
+            else:
+                summary_text, summary_info = "", {}
+                summary_info["source"] = "none"
             room = cap - tokens(SECTION_LABELS["session_summary"] + "\n")
             body, cut = _clip(summary_text, room) if summary_text and room > 0 else ("", bool(summary_text))
             text = _section("session_summary", [body] if body else [])
             summary_info["truncated"] = cut
             explain["summary"] = summary_info
             explain["spent"]["session_summary"] = tokens(text)
-            sections.append({"name": "session_summary", "label": SECTION_LABELS["session_summary"], "text": text,
-                             "tokens": tokens(text), "items": [summary_info] if body else []})
+            sections.append(
+                {
+                    "name": "session_summary",
+                    "label": SECTION_LABELS["session_summary"],
+                    "text": text,
+                    "tokens": tokens(text),
+                    "items": [summary_info] if body else [],
+                }
+            )
 
             # 3. the last N turns, verbatim; the oldest go first when they do not fit
             cap = min(remaining(), int(budget * RECENT_SHARE))
             explain["allocated"]["recent_turns"] = cap
             recent: list[Turn] = []
             if recent_turns and total:
-                rows = store.db.execute("SELECT idx FROM turns WHERE session=? ORDER BY idx DESC LIMIT ?",
-                                        (session, recent_turns)).fetchall()
+                rows = store.db.execute(
+                    "SELECT idx FROM turns WHERE session=? ORDER BY idx DESC LIMIT ?", (session, recent_turns)
+                ).fetchall()
                 if rows:
                     recent = store.session_turns(session, after_idx=rows[-1][0] - 1)
             spent = tokens(SECTION_LABELS["recent_turns"] + "\n")
@@ -211,10 +246,17 @@ def assemble(root: str, space: str, session: str, question: str, *, budget: int 
             text = _section("recent_turns", [line for _t, line, _c in kept])
             explain["dropped"]["recent_turns"] = len(recent) - len(kept)
             explain["spent"]["recent_turns"] = tokens(text)
-            sections.append({"name": "recent_turns", "label": SECTION_LABELS["recent_turns"], "text": text,
-                             "tokens": tokens(text),
-                             "items": [{"turn": t.id, "idx": t.idx, "speaker": t.speaker, "truncated": c}
-                                       for t, _line, c in kept]})
+            sections.append(
+                {
+                    "name": "recent_turns",
+                    "label": SECTION_LABELS["recent_turns"],
+                    "text": text,
+                    "tokens": tokens(text),
+                    "items": [
+                        {"turn": t.id, "idx": t.idx, "speaker": t.speaker, "truncated": c} for t, _line, c in kept
+                    ],
+                }
+            )
             in_window = {t.id for t, _l, _c in kept}
             seen_text = {_text_key(t.text) for t, _l, _c in kept}
 
@@ -227,11 +269,11 @@ def assemble(root: str, space: str, session: str, question: str, *, budget: int 
             dup_window = dup_text = dropped_evidence = 0
             recall_explain: dict = {}
             if cap - header >= MIN_BUDGET // 2 and store.turn_count():
-                opts = dataclasses.replace(options or Options(summaries=False, rerank=None),
-                                           budget=max(MIN_BUDGET, cap - header))
+                opts = dataclasses.replace(
+                    options or Options(summaries=False, rerank=None), budget=max(MIN_BUDGET, cap - header)
+                )
                 result = recall(store, question, now=now, options=opts)
-                recall_explain = {"turns": list(result.turns), "tokens": result.tokens,
-                                  "window": result.window}
+                recall_explain = {"turns": list(result.turns), "tokens": result.tokens, "window": result.window}
                 found = store.turns(result.turns)
                 spent = header
                 for turn_id in result.turns:
@@ -253,20 +295,43 @@ def assemble(root: str, space: str, session: str, question: str, *, budget: int 
                     seen_text.add(key)
                     lines.append(line)
                     spent += need
-                    items.append({"turn": turn.id, "session": turn.session, "idx": turn.idx,
-                                  "speaker": turn.speaker, "truncated": cut})
+                    items.append(
+                        {
+                            "turn": turn.id,
+                            "session": turn.session,
+                            "idx": turn.idx,
+                            "speaker": turn.speaker,
+                            "truncated": cut,
+                        }
+                    )
             text = _section("evidence", lines)
             explain["recall"] = recall_explain
             explain["deduplicated"] = {"in_recent_turns": dup_window, "repeated_text": dup_text}
             explain["dropped"]["evidence"] = dropped_evidence
             explain["spent"]["evidence"] = tokens(text)
-            sections.append({"name": "evidence", "label": SECTION_LABELS["evidence"], "text": text,
-                             "tokens": tokens(text), "items": items})
+            sections.append(
+                {
+                    "name": "evidence",
+                    "label": SECTION_LABELS["evidence"],
+                    "text": text,
+                    "tokens": tokens(text),
+                    "items": items,
+                }
+            )
 
     context = "\n\n".join(s["text"] for s in sections if s["text"])
     explain["unused"] = max(0, budget - sum(explain["spent"].values()))
-    return {"space": space, "session": session, "agent": agent, "question": question, "budget": budget,
-            "tokens": tokens(context), "context": context, "sections": sections, "explain": explain}
+    return {
+        "space": space,
+        "session": session,
+        "agent": agent,
+        "question": question,
+        "budget": budget,
+        "tokens": tokens(context),
+        "context": context,
+        "sections": sections,
+        "explain": explain,
+    }
 
 
 def sessions(store: Store, *, limit: int = 200, after_seq: int | None = None) -> dict:
@@ -280,19 +345,33 @@ def sessions(store: Store, *, limit: int = 200, after_seq: int | None = None) ->
             "SELECT s.id, s.started_at, s.seq, COUNT(t.id) AS turns, MIN(t.at) AS first_at, MAX(t.at) AS last_at, "
             "MAX(t.idx) AS last_idx FROM sessions s LEFT JOIN turns t ON t.session = s.id "
             "WHERE (? IS NULL OR s.seq > ?) GROUP BY s.id ORDER BY s.seq LIMIT ?",
-            (after_seq, after_seq, limit + 1)).fetchall()
+            (after_seq, after_seq, limit + 1),
+        ).fetchall()
         current = store.summaries()
         out = []
         for row in rows[:limit]:
             state = summary.rolling_state(store, row["id"])
             stored = current.get(row["id"])
-            out.append({"id": row["id"], "seq": row["seq"], "started_at": row["started_at"],
-                        "turns": row["turns"], "first_at": row["first_at"], "last_at": row["last_at"],
-                        "summary": {"current": stored is not None,
-                                    "method": stored["method"] if stored else None,
-                                    "rolling_through_idx": state.get("through_idx") if state else None,
-                                    "pending_turns": (row["turns"] - int(state.get("turns", 0))) if state
-                                    else row["turns"]}})
+            out.append(
+                {
+                    "id": row["id"],
+                    "seq": row["seq"],
+                    "started_at": row["started_at"],
+                    "turns": row["turns"],
+                    "first_at": row["first_at"],
+                    "last_at": row["last_at"],
+                    "summary": {
+                        "current": stored is not None,
+                        "method": stored["method"] if stored else None,
+                        "rolling_through_idx": state.get("through_idx") if state else None,
+                        "pending_turns": (row["turns"] - int(state.get("turns", 0))) if state else row["turns"],
+                    },
+                }
+            )
         total = store.db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
-    return {"space": store.space, "sessions": out, "total": total,
-            "next_after": out[-1]["seq"] if len(rows) > limit and out else None}
+    return {
+        "space": store.space,
+        "sessions": out,
+        "total": total,
+        "next_after": out[-1]["seq"] if len(rows) > limit and out else None,
+    }

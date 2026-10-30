@@ -70,8 +70,7 @@ class TestEnvelope:
         with pytest.raises(ValueError, match="records"):
             interop.loads_cogx('{"format": "cogx/v1", "schema_version": 1, "records": {}}')
         with pytest.raises(ValueError, match="kind"):
-            interop.loads_cogx('{"format": "cogx/v1", "schema_version": 1, '
-                               '"records": [{"kind": "nope", "data": {}}]}')
+            interop.loads_cogx('{"format": "cogx/v1", "schema_version": 1, "records": [{"kind": "nope", "data": {}}]}')
         with pytest.raises(ValueError, match="invalid JSON"):
             interop.loads_cogx("{not json")
 
@@ -127,8 +126,9 @@ class TestCliRoundTrip:
     def test_export_kind_traces_has_no_cogx_counterpart(self, store, tmp_path, capsys):
         _seed_store(store)
         capsys.readouterr()
-        rc = main(["export", "--format", "cogx", "--kind", "traces",
-                   "--out", str(tmp_path / "x.json"), "--dest", str(store)])
+        rc = main(
+            ["export", "--format", "cogx", "--kind", "traces", "--out", str(tmp_path / "x.json"), "--dest", str(store)]
+        )
         assert rc == 1
         assert "no cogx counterpart" in capsys.readouterr().err
 
@@ -136,8 +136,7 @@ class TestCliRoundTrip:
         _seed_store(store)
         capsys.readouterr()
         out = str(tmp_path / "lessons-only.json")
-        rc = main(["export", "--format", "cogx", "--kind", "lessons",
-                   "--out", out, "--dest", str(store)])
+        rc = main(["export", "--format", "cogx", "--kind", "lessons", "--out", out, "--dest", str(store)])
         assert rc == 0
         kinds = {r["kind"] for r in interop.read_cogx(out)["records"]}
         assert kinds == {"lesson"}
@@ -147,8 +146,7 @@ class TestMem0Adapter:
     MEM0 = {
         "memories": [
             {"id": "m1", "memory": "User prefers dark mode.", "user_id": "u1"},
-            {"id": "m2", "memory": "Repo uses ruff with line-length 120.",
-             "metadata": {"category": "tool_rule"}},
+            {"id": "m2", "memory": "Repo uses ruff with line-length 120.", "metadata": {"category": "tool_rule"}},
             {"id": "m3", "memory": "   "},
         ]
     }
@@ -185,8 +183,12 @@ class TestMem0Adapter:
 class TestZepAdapter:
     ZEP = {
         "episodes": [
-            {"uuid": "e1", "title": "Onboarding call",
-             "content": "User signed up and enabled SSO.", "created_at": "2026-01-02T00:00:00+00:00"},
+            {
+                "uuid": "e1",
+                "title": "Onboarding call",
+                "content": "User signed up and enabled SSO.",
+                "created_at": "2026-01-02T00:00:00+00:00",
+            },
             {"uuid": "e2", "name": "Blank episode", "content": ""},
         ]
     }
@@ -214,11 +216,13 @@ class TestZepAdapter:
 
 
 class TestLettaAdapter:
-    LETTA = {"blocks": [
-        {"label": "persona", "value": "I am a careful engineer.", "limit": 2000},
-        {"label": "human", "value": "Val likes concise replies."},
-        {"label": "empty", "value": "  "},
-    ]}
+    LETTA = {
+        "blocks": [
+            {"label": "persona", "value": "I am a careful engineer.", "limit": 2000},
+            {"label": "human", "value": "Val likes concise replies."},
+            {"label": "empty", "value": "  "},
+        ]
+    }
 
     def test_blocks_become_block_records(self):
         records = interop.import_letta_blocks(self.LETTA)
@@ -247,14 +251,16 @@ class TestLettaAdapter:
 
 def test_apply_store_skips_bad_records(store):
     main(["init", "--agent-type", "code", "--dest", str(store)])
-    counts = interop.apply_store(str(store), [
-        {"kind": "nope", "data": {}},
-        {"kind": "fact", "data": {"statement": ""}},
-        "not-a-record",
-        interop.make_record("fact", {"statement": "kept"}),
-    ])
-    assert counts == {"lesson": 0, "fact": 1, "graph_node": 0, "graph_edge": 0,
-                      "block": 0, "trace": 0, "skipped": 3}
+    counts = interop.apply_store(
+        str(store),
+        [
+            {"kind": "nope", "data": {}},
+            {"kind": "fact", "data": {"statement": ""}},
+            "not-a-record",
+            interop.make_record("fact", {"statement": "kept"}),
+        ],
+    )
+    assert counts == {"lesson": 0, "fact": 1, "graph_node": 0, "graph_edge": 0, "block": 0, "trace": 0, "skipped": 3}
 
 
 class TestCogneeAdapter:
@@ -294,8 +300,12 @@ class TestCogneeAdapter:
 class TestSupermemoryAdapter:
     SUPERMEMORY = {
         "documents": [
-            {"id": "d1", "title": "Architecture Guide", "content": "Microservices communicate via gRPC.",
-             "summary": "System uses gRPC for IPC."},
+            {
+                "id": "d1",
+                "title": "Architecture Guide",
+                "content": "Microservices communicate via gRPC.",
+                "summary": "System uses gRPC for IPC.",
+            },
         ],
         "chunks": [
             {"id": "c1", "content": "Connection pool size is 20."},
@@ -319,7 +329,9 @@ class TestSupermemoryAdapter:
         counts = interop.apply_store(str(store), interop.import_supermemory_dump(self.SUPERMEMORY))
         assert counts["block"] == 1
         assert counts["fact"] == 3
-        assert memory_blocks.get_block(str(store), "architecture-guide").content == "Microservices communicate via gRPC."
+        assert (
+            memory_blocks.get_block(str(store), "architecture-guide").content == "Microservices communicate via gRPC."
+        )
 
 
 class TestHindsightAdapter:
@@ -362,8 +374,13 @@ class TestEverosAdapter:
             {"id": "af1", "fact": "Postgres port is 5432.", "valid_from": "2026-01-01T00:00:00Z"},
         ],
         "agent_skills": [
-            {"id": "sk1", "name": "Database Migration", "skill": "Run migrations in dry-run mode first.",
-             "trigger": "before applying migrations", "source_case_ids": ["c1", "c2"]},
+            {
+                "id": "sk1",
+                "name": "Database Migration",
+                "skill": "Run migrations in dry-run mode first.",
+                "trigger": "before applying migrations",
+                "source_case_ids": ["c1", "c2"],
+            },
         ],
         "agent_cases": [
             {"id": "ac1", "task_intent": "fixing timeout", "insight": "Increase socket timeout to 60s."},
@@ -389,4 +406,3 @@ class TestEverosAdapter:
         assert counts["block"] == 1
         lesson_path = os.path.join(str(store), "memory", "lessons", "lesson_sk1.md")
         assert os.path.isfile(lesson_path)
-

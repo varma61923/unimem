@@ -1,4 +1,5 @@
 """Tests for Sagas: ordered incident/migration narratives with watermarked running briefs."""
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -31,7 +35,9 @@ def store(tmp_path):
 def test_saga_crud(store):
     # Create
     saga = sagas.create_saga(
-        store, "db-v16", "Postgres 16 Upgrade",
+        store,
+        "db-v16",
+        "Postgres 16 Upgrade",
         tags=["database", "migration"],
         brief="Planning phase started",
     )
@@ -50,12 +56,16 @@ def test_saga_crud(store):
 
     # Append events
     sagas.append_saga_event(
-        store, "db-v16", "Snapshot taken",
+        store,
+        "db-v16",
+        "Snapshot taken",
         description="RDS snapshot snapped before migration",
         actor="dba_dave",
     )
     sagas.append_saga_event(
-        store, "db-v16", "Instance upgraded",
+        store,
+        "db-v16",
+        "Instance upgraded",
         description="Engine bumped from 15 to 16",
         actor="dba_dave",
         new_brief="Engine upgraded; validating extensions",
@@ -83,13 +93,32 @@ def test_saga_crud(store):
 
 
 def test_saga_cli_commands(store):
-    res_create = cli("saga", "create", "inc-99", "Network Partition Incident",
-                     "--tags", "net", "p0", "--brief", "Packet loss detected", "--dest", store)
+    res_create = cli(
+        "saga",
+        "create",
+        "inc-99",
+        "Network Partition Incident",
+        "--tags",
+        "net",
+        "p0",
+        "--brief",
+        "Packet loss detected",
+        "--dest",
+        store,
+    )
     assert res_create.returncode == 0
     assert "Created saga 'inc-99'" in res_create.stdout
 
-    res_append = cli("saga", "append", "inc-99", "BGP Route Fixed",
-                     "--desc", "Switched to secondary transit provider", "--dest", store)
+    res_append = cli(
+        "saga",
+        "append",
+        "inc-99",
+        "BGP Route Fixed",
+        "--desc",
+        "Switched to secondary transit provider",
+        "--dest",
+        store,
+    )
     assert res_append.returncode == 0
     assert "Appended event to 'inc-99'" in res_append.stdout
 

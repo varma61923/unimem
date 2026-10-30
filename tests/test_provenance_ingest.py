@@ -20,7 +20,12 @@ def _store(tmp_path):
 def test_provenance_append_list_roundtrip(tmp_path):
     root = _store(tmp_path)
     rec = provenance.append_provenance(
-        root, "edge", "a->b:causes", "src.md", "run-1", "detail-x",
+        root,
+        "edge",
+        "a->b:causes",
+        "src.md",
+        "run-1",
+        "detail-x",
     )
     assert rec["target_id"] == "a->b:causes"
     out = provenance.list_provenance(root, "a->b:causes")
@@ -40,7 +45,11 @@ def test_graph_call_records_provenance(tmp_path):
     assert nodes[0]["target_kind"] == "node"
 
     graph.add_edge(
-        root, "service:auth", "error:boom", "causes", provenance=prov,
+        root,
+        "service:auth",
+        "error:boom",
+        "causes",
+        provenance=prov,
     )
     edges = provenance.list_provenance(root, "service:auth->error:boom:causes")
     assert len(edges) >= 1
@@ -55,8 +64,12 @@ def test_triples_path(tmp_path):
     root = _store(tmp_path)
     triples = [
         {"subject": "service:api", "predicate": "depends_on", "object": "service:db"},
-        {"subject": "service:api", "predicate": "causes", "object": "error:timeout",
-         "valid_at": "2026-01-01T00:00:00+00:00"},
+        {
+            "subject": "service:api",
+            "predicate": "causes",
+            "object": "error:timeout",
+            "valid_at": "2026-01-01T00:00:00+00:00",
+        },
     ]
     res = ingest_fact_triples(triples, root, scope="payments", run_id="t1")
     assert res.facts_written == 2
@@ -65,6 +78,7 @@ def test_triples_path(tmp_path):
     nodes = graph.load_nodes(root)
     assert "service:api" in nodes
     from unimem import hierarchical
+
     facts = hierarchical.load_facts(root)
     assert len(facts) >= 2
     prov = provenance.list_provenance(root, "service:api->service:db:depends_on")
@@ -85,14 +99,16 @@ def test_preview_makes_no_writes(tmp_path):
     graph_dir = os.path.join(root, "memory", "graph")
     if os.path.exists(graph_dir):
         files = os.listdir(graph_dir)
-        assert files == [] or all(
-            os.path.getsize(os.path.join(graph_dir, f)) == 0 for f in files
-        ), f"preview wrote files: {files}"
+        assert files == [] or all(os.path.getsize(os.path.join(graph_dir, f)) == 0 for f in files), (
+            f"preview wrote files: {files}"
+        )
     pipe = IngestionPipeline()
     res2 = pipe.ingest_source(str(src), "code", dest_root=root, preview=True)
     assert res2.chunks_extracted >= 1
-    assert not os.path.exists(os.path.join(root, "memory", "lessons")) or \
-        os.listdir(os.path.join(root, "memory", "lessons")) == []
+    assert (
+        not os.path.exists(os.path.join(root, "memory", "lessons"))
+        or os.listdir(os.path.join(root, "memory", "lessons")) == []
+    )
 
 
 def test_contextualizer_tag_stripping():

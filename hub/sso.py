@@ -106,8 +106,10 @@ class JWKSCache:
         cached = self._cached.get(jwks_uri)
         # A freshness TTL or retry backoff may never extend the absolute
         # trust lifetime of keys that the issuer can no longer refresh.
-        if cached is not None and now - cached[0] <= MAX_STALE_JWKS_SECONDS and (
-            now - cached[0] < window or now < self._retry_not_before.get(jwks_uri, now)
+        if (
+            cached is not None
+            and now - cached[0] <= MAX_STALE_JWKS_SECONDS
+            and (now - cached[0] < window or now < self._retry_not_before.get(jwks_uri, now))
         ):
             return cached
         return None
@@ -157,8 +159,9 @@ class JWKSCache:
             # deadline. Decide fallback eligibility at the time of failure.
             now = self._clock()
             if cached is not None and now - cached[0] <= MAX_STALE_JWKS_SECONDS:
-                logger.warning("JWKS refresh from %s failed (%s); serving the cached key set",
-                               jwks_uri, type(exc).__name__)
+                logger.warning(
+                    "JWKS refresh from %s failed (%s); serving the cached key set", jwks_uri, type(exc).__name__
+                )
                 self._retry_not_before[jwks_uri] = now + UNKNOWN_KID_REFETCH_SECONDS
                 return cached[1]
             raise IdentityError(
@@ -188,8 +191,7 @@ def _key_for(jwks_document: dict, kid: str | None, alg: str = "RS256"):
         raise IdentityError("JWKS document has no usable 'keys' list")
     if kid is None:
         raise IdentityError(
-            "token header carries no 'kid'; this verifier requires one to "
-            "select the matching key rather than guessing"
+            "token header carries no 'kid'; this verifier requires one to select the matching key rather than guessing"
         )
     for entry in keys:
         if isinstance(entry, dict) and entry.get("kid") == kid:
@@ -200,9 +202,7 @@ def _key_for(jwks_document: dict, kid: str | None, alg: str = "RS256"):
                     f"with {alg}, which needs kty={expected_kty!r}"
                 )
             if "alg" in entry and entry["alg"] != alg:
-                raise IdentityError(
-                    f"JWK kid={kid!r} is published for {entry['alg']!r}, not the token's {alg!r}"
-                )
+                raise IdentityError(f"JWK kid={kid!r} is published for {entry['alg']!r}, not the token's {alg!r}")
             if entry.get("use", "sig") != "sig":
                 raise IdentityError(f"JWK kid={kid!r} is not a signing key (use={entry.get('use')!r})")
             try:
@@ -237,8 +237,7 @@ def verify_bearer_token(
     if jwks_document is None:
         if not provider.jwks_uri:
             raise IdentityError(
-                f"identity provider {provider.issuer!r} has neither a static JWKS "
-                "nor a jwks_uri configured"
+                f"identity provider {provider.issuer!r} has neither a static JWKS nor a jwks_uri configured"
             )
         if jwks_cache is None:
             raise IdentityError(
@@ -273,13 +272,10 @@ def verify_bearer_token(
         raise IdentityError("token has expired") from exc
     except jwt.InvalidAudienceError as exc:
         raise IdentityError(
-            f"token audience does not match this deployment's configured audience "
-            f"{provider.audience!r}"
+            f"token audience does not match this deployment's configured audience {provider.audience!r}"
         ) from exc
     except jwt.InvalidIssuerError as exc:
-        raise IdentityError(
-            f"token issuer does not match the configured provider {provider.issuer!r}"
-        ) from exc
+        raise IdentityError(f"token issuer does not match the configured provider {provider.issuer!r}") from exc
     except jwt.PyJWTError as exc:
         raise IdentityError(f"signature or claim verification failed: {exc}") from exc
 

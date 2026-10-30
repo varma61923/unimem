@@ -14,7 +14,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -27,23 +30,34 @@ def store(tmp_path):
 
 def test_block_lifecycle(store):
     b = memory_blocks.set_block(
-        store, "persona", "You are an autonomous staff software architect.",
-        max_chars=500, actor="test", reason="init persona",
+        store,
+        "persona",
+        "You are an autonomous staff software architect.",
+        max_chars=500,
+        actor="test",
+        reason="init persona",
     )
     assert b.name == "persona"
     assert b.char_count == len("You are an autonomous staff software architect.")
     assert len(b.revision) == 16
 
     b2 = memory_blocks.append_block(
-        store, "persona", "Always verify diffs before committing.",
-        actor="test", reason="add rule",
+        store,
+        "persona",
+        "Always verify diffs before committing.",
+        actor="test",
+        reason="add rule",
     )
     assert "verify diffs" in b2.content
     assert b2.revision != b.revision
 
     b3 = memory_blocks.replace_block(
-        store, "persona", "Always verify diffs", "Thoroughly verify diffs",
-        actor="test", reason="refine wording",
+        store,
+        "persona",
+        "Always verify diffs",
+        "Thoroughly verify diffs",
+        actor="test",
+        reason="refine wording",
     )
     assert "Thoroughly verify diffs" in b3.content
 
@@ -61,7 +75,10 @@ def test_block_lifecycle(store):
 def test_block_quota_enforced(store):
     with pytest.raises(memory_blocks.QuotaExceededError):
         memory_blocks.set_block(
-            store, "strict", "x" * 150, max_chars=100,
+            store,
+            "strict",
+            "x" * 150,
+            max_chars=100,
         )
 
 

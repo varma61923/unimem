@@ -1,6 +1,7 @@
 """Memory as a versioned filesystem: a store that is its own git repository gets
 validation before every commit, a repair for merge conflicts in its append-only
 files, and signed handoffs that let one agent pass a known memory state to another."""
+
 from __future__ import annotations
 
 import base64
@@ -21,8 +22,7 @@ from unimem import memory_git, paths
 from unimem.configuration import getenv as _configuration_getenv
 
 CONFIG = "memfs.json"
-DEFAULTS = {"max_file_bytes": 5 * 1024 * 1024, "max_files": 50_000, "max_lesson_chars": 20_000,
-            "scan_secrets": True}
+DEFAULTS = {"max_file_bytes": 5 * 1024 * 1024, "max_files": 50_000, "max_lesson_chars": 20_000, "scan_secrets": True}
 GITIGNORE = """# unimem: derived or transient files
 *.db-wal
 *.db-shm
@@ -66,8 +66,9 @@ def _git(root: str, *args: str, check: bool = True) -> str:
 
 def require_repo(root: str) -> None:
     if not memory_git.owns_repo(root):
-        raise MemfsError("this store is not its own git repository; run `unimem memory init` "
-                         "(or `unimem init --git`) first")
+        raise MemfsError(
+            "this store is not its own git repository; run `unimem memory init` (or `unimem init --git`) first"
+        )
 
 
 def init(root: str) -> dict:
@@ -96,8 +97,10 @@ def install_hook(root: str) -> str:
     prefix = shlex.quote(sys.executable)
     if not getattr(sys, "frozen", False):
         prefix += " -m unimem.cli"
-    script = ("#!/bin/sh\n# installed by unimem: validate memory before it is committed\n"
-              f"exec {prefix} memory validate --staged --dest {shlex.quote(os.path.abspath(root))}\n")
+    script = (
+        "#!/bin/sh\n# installed by unimem: validate memory before it is committed\n"
+        f"exec {prefix} memory validate --staged --dest {shlex.quote(os.path.abspath(root))}\n"
+    )
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(script)
     os.chmod(path, 0o700)  # nosec B103 - git hook executable by owner only
@@ -105,6 +108,7 @@ def install_hook(root: str) -> str:
 
 
 # --- validation -------------------------------------------------------------------
+
 
 @dataclass
 class Report:
@@ -140,7 +144,7 @@ def validate(root: str, files: list[str] | None = None) -> Report:
     every = _memory_files(root)
     if len(every) > cfg["max_files"]:
         report.problems.append(f"memory/ holds {len(every)} files; the limit is {cfg['max_files']}")
-    for path in (every if files is None else files):
+    for path in every if files is None else files:
         if not os.path.isfile(path):
             continue
         rel = os.path.relpath(path, root)
@@ -180,17 +184,20 @@ def validate(root: str, files: list[str] | None = None) -> Report:
                 report.problems.append(f"{rel}: {exc}")
                 continue
             if len(body) > cfg["max_lesson_chars"]:
-                report.problems.append(f"{rel}: lesson body {len(body)} chars; the limit is "
-                                       f"{cfg['max_lesson_chars']}")
+                report.problems.append(f"{rel}: lesson body {len(body)} chars; the limit is {cfg['max_lesson_chars']}")
         if cfg["scan_secrets"]:
-            high = [f for f in memory_guard.scan_text(text, rel)
-                    if f.category == memory_guard.CATEGORY_SECRET and f.blocking]
+            high = [
+                f
+                for f in memory_guard.scan_text(text, rel)
+                if f.category == memory_guard.CATEGORY_SECRET and f.blocking
+            ]
             if high:
                 report.problems.append(f"{rel}: looks like it contains a credential ({high[0].label})")
     return report
 
 
 # --- history -------------------------------------------------------------------------
+
 
 def status(root: str) -> dict:
     require_repo(root)
@@ -224,7 +231,7 @@ def diff(root: str, rev: str | None = None) -> str:
     require_repo(root)
     if rev and not _REVISION.fullmatch(rev):
         raise MemfsError(f"not a revision: {rev!r}")
-    return _git(root, "diff", "--stat", "--patch", *( [rev] if rev else []), "--", "memory")
+    return _git(root, "diff", "--stat", "--patch", *([rev] if rev else []), "--", "memory")
 
 
 def restore(root: str, rev: str) -> dict:
@@ -239,6 +246,7 @@ def restore(root: str, rev: str) -> dict:
 
 # --- conflict repair -------------------------------------------------------------------
 
+
 def _merge_jsonl(ours: str, theirs: str) -> str:
     rows, order = {}, []
     for line in ours.splitlines() + theirs.splitlines():
@@ -248,8 +256,7 @@ def _merge_jsonl(ours: str, theirs: str) -> str:
             obj = json.loads(line)
         except ValueError:
             obj = None
-        key = (obj.get("id") or obj.get("key")) if isinstance(obj, dict) and (obj.get("id") or obj.get("key")) \
-            else line
+        key = (obj.get("id") or obj.get("key")) if isinstance(obj, dict) and (obj.get("id") or obj.get("key")) else line
         if key not in rows:
             order.append(key)
         rows[key] = line
@@ -294,6 +301,7 @@ def repair(root: str) -> dict:
 
 
 # --- signed handoff --------------------------------------------------------------------
+
 
 def _key(root: str) -> bytes:
     env = _configuration_getenv("UNIMEM_HANDOFF_KEY", "").strip()
@@ -346,8 +354,9 @@ def _tree_digest(root: str, rev: str, paths_: list[str]) -> str:
     return hashlib.sha256(out.encode()).hexdigest()
 
 
-def handoff(root: str, *, audience: str, issuer: str = "", ttl_seconds: int = 3600,
-            scope: list[str] | None = None) -> str:
+def handoff(
+    root: str, *, audience: str, issuer: str = "", ttl_seconds: int = 3600, scope: list[str] | None = None
+) -> str:
     """A token naming a committed memory state that `audience` may take over: the commit,
     a digest of the files in scope, who issued it and until when it holds."""
     require_repo(root)
@@ -361,9 +370,17 @@ def handoff(root: str, *, audience: str, issuer: str = "", ttl_seconds: int = 36
     if not commit_id:
         raise MemfsError("memory has no commits yet; run `unimem memory commit` first")
     now = int(time.time())
-    claims = {"v": 1, "commit": commit_id, "scope": scope, "tree": _tree_digest(root, commit_id, scope),
-              "aud": audience, "iss": issuer or os.environ.get("USER", "unimem"), "iat": now,
-              "exp": now + max(60, min(int(ttl_seconds), 30 * 86400)), "nonce": secrets.token_hex(8)}
+    claims = {
+        "v": 1,
+        "commit": commit_id,
+        "scope": scope,
+        "tree": _tree_digest(root, commit_id, scope),
+        "aud": audience,
+        "iss": issuer or os.environ.get("USER", "unimem"),
+        "iat": now,
+        "exp": now + max(60, min(int(ttl_seconds), 30 * 86400)),
+        "nonce": secrets.token_hex(8),
+    }
     body = _b64(json.dumps(claims, sort_keys=True, separators=(",", ":")).encode())
     sig = _b64(hmac.new(_key(root), body.encode(), hashlib.sha256).digest())
     return f"cth1.{body}.{sig}"
@@ -391,8 +408,9 @@ def verify_handoff(root: str, token: str, *, audience: str | None = None) -> dic
     if _tree_digest(root, claims["commit"], claims["scope"]) != claims["tree"]:
         raise MemfsError("the commit's files do not match what was handed off")
     head = memory_git.head_hash(root) or claims["commit"]
-    drift = head != claims["commit"] and bool(_git(root, "diff", "--name-only", claims["commit"], head, "--",
-                                                   *claims["scope"]).strip())
+    drift = head != claims["commit"] and bool(
+        _git(root, "diff", "--name-only", claims["commit"], head, "--", *claims["scope"]).strip()
+    )
     return {**claims, "head": head, "drift": drift}
 
 
@@ -404,8 +422,13 @@ def sign_snapshot(root: str, *, issuer: str) -> dict:
     commit_id = memory_git.head_hash(root)
     if not commit_id or status(root)["changed"]:
         raise MemfsError("commit memory before signing its snapshot")
-    claims = {"version": 1, "commit": commit_id, "tree": _tree_digest(root, commit_id, ["memory"]),
-              "issuer": issuer, "scope": ["memory"]}
+    claims = {
+        "version": 1,
+        "commit": commit_id,
+        "tree": _tree_digest(root, commit_id, ["memory"]),
+        "issuer": issuer,
+        "scope": ["memory"],
+    }
     if memory_authority.signing_config(root)["algorithm"] == "ed25519":
         row = {**claims, "origin": memory_authority.bind(root, claims)}
     else:
@@ -424,11 +447,15 @@ def verify_snapshot(root: str, attestation: dict) -> bool:
         if "origin" in attestation:
             from unimem import memory_authority
 
-            return (memory_authority.verify(root, attestation["origin"], claims)
-                    and _tree_digest(root, claims["commit"], claims["scope"]) == claims["tree"])
+            return (
+                memory_authority.verify(root, attestation["origin"], claims)
+                and _tree_digest(root, claims["commit"], claims["scope"]) == claims["tree"]
+            )
         signature = hmac.new(_key(root), json.dumps(claims, sort_keys=True).encode(), hashlib.sha256).hexdigest()
-        return (hmac.compare_digest(signature.encode(), str(attestation["signature"]).encode("utf-8", "replace"))
-                and _tree_digest(root, claims["commit"], claims["scope"]) == claims["tree"])
+        return (
+            hmac.compare_digest(signature.encode(), str(attestation["signature"]).encode("utf-8", "replace"))
+            and _tree_digest(root, claims["commit"], claims["scope"]) == claims["tree"]
+        )
     except (KeyError, ValueError, MemfsError):
         return False
 
@@ -452,8 +479,11 @@ def attach(root: str, shared_root: str, *, agent_id: str, token: str) -> dict:
 def attached_roots(root: str, *, agent_id: str) -> list[str]:
     from unimem import _jsonl
 
-    latest = {row["shared_root"]: row for row in _jsonl.read_rows(
-        os.path.join(paths.memory_dir(root), "attachments.jsonl")) if row["agent_id"] == agent_id}
+    latest = {
+        row["shared_root"]: row
+        for row in _jsonl.read_rows(os.path.join(paths.memory_dir(root), "attachments.jsonl"))
+        if row["agent_id"] == agent_id
+    }
     result = []
     for shared_root, row in latest.items():
         claims = verify_handoff(shared_root, row["handoff"], audience=agent_id)

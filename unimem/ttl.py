@@ -1,4 +1,5 @@
 """Per-lesson TTL expiry and fact forget/expire accounting."""
+
 from __future__ import annotations
 
 import datetime
@@ -7,8 +8,7 @@ from typing import Any
 EXPIRES_FIELD = "expires"
 
 
-def expiry_for_type(memory_type: str, *, valid_from: str | None = None,
-                    ttl_hours: float | None = None) -> str | None:
+def expiry_for_type(memory_type: str, *, valid_from: str | None = None, ttl_hours: float | None = None) -> str | None:
     """An explicit temporary assertion expires automatically; stable facts do not.
 
     This is a write-time default, not a retrospective rewrite of old records.
@@ -38,9 +38,7 @@ def parse_expiry(value: str | datetime.date | datetime.datetime) -> datetime.dat
         try:
             parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError as exc:
-            raise ValueError(
-                f"could not parse {value!r} as a date/time; use YYYY-MM-DD or ISO 8601"
-            ) from exc
+            raise ValueError(f"could not parse {value!r} as a date/time; use YYYY-MM-DD or ISO 8601") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=datetime.timezone.utc)
     return parsed.astimezone(datetime.timezone.utc)
@@ -61,7 +59,8 @@ def _moment(as_of: str | datetime.date | datetime.datetime | None) -> datetime.d
 
 
 def lesson_is_expired(
-    fm: dict[str, Any], as_of: str | datetime.date | datetime.datetime | None = None,
+    fm: dict[str, Any],
+    as_of: str | datetime.date | datetime.datetime | None = None,
 ) -> bool:
     """True when a lesson's ``expires`` instant has passed."""
     raw = fm.get(EXPIRES_FIELD)
@@ -99,7 +98,8 @@ def count_expired(
 
 
 def fact_is_expired(
-    fact: Any, as_of: str | datetime.date | datetime.datetime | None = None,
+    fact: Any,
+    as_of: str | datetime.date | datetime.datetime | None = None,
 ) -> bool:
     """True when a fact's ``expires_at`` instant has passed."""
     raw = getattr(fact, "expires_at", None)
@@ -139,7 +139,4 @@ def summarize(
 def format_notice(hidden: int) -> str:
     """The one-line query notice reporting TTL-hidden lessons."""
     noun = "lesson" if hidden == 1 else "lessons"
-    return (
-        f"[unimem] {hidden} expired {noun} hidden by TTL; "
-        "re-run with --show-expired to include them."
-    )
+    return f"[unimem] {hidden} expired {noun} hidden by TTL; re-run with --show-expired to include them."

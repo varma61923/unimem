@@ -1,4 +1,5 @@
 """Read a Trace file as the full object protocol/schemas/trace.schema.json describes."""
+
 from __future__ import annotations
 
 import re
@@ -58,8 +59,14 @@ def write_new(
     from unimem.commands.capture_cmd import _free_path, _id_suffix, _slugify
 
     clean, _ = memory_guard.sanitize_metadata(
-        {"title": title, "context": context, "solution": solution, "tags": tags,
-         "extra": extra or {}, "outcome": outcome},
+        {
+            "title": title,
+            "context": context,
+            "solution": solution,
+            "tags": tags,
+            "extra": extra or {},
+            "outcome": outcome,
+        },
         pii=memory_guard.privacy_redaction_enabled(),
     )
     title = clean["title"].strip()[:200] or "Trace"
@@ -78,8 +85,12 @@ def write_new(
             if name.endswith(f"_{suffix}.md"):
                 return None
     fm = templates.trace_frontmatter(
-        tid, title, agent_type or paths.store_agent_type(root),
-        [str(t).strip() for t in tags if str(t).strip()], "", outcome,
+        tid,
+        title,
+        agent_type or paths.store_agent_type(root),
+        [str(t).strip() for t in tags if str(t).strip()],
+        "",
+        outcome,
     )
     fm.update(extra or {})
     from unimem import memory_authority
@@ -97,8 +108,8 @@ def write_new(
     profile = fm.setdefault("extensions", {}).setdefault("profile", {})
     # The authenticated writer replaces any payload-supplied origin receipt.
     profile["origin"] = memory_authority.bind(
-        root, memory_authority.trace_record(fm, context=context, solution=solution),
-        sources=fm.get("source_traces", []))
+        root, memory_authority.trace_record(fm, context=context, solution=solution), sources=fm.get("source_traces", [])
+    )
     out_path = _free_path(os.path.join(tdir, f"{date}_{_slugify(title)}_{suffix}.md"), tid)
     frontmatter_io.write(out_path, fm, templates.trace_body(context, solution))
     return out_path

@@ -1,4 +1,5 @@
 """Real SDK clients verify the authenticated local MCP TCP transports."""
+
 from __future__ import annotations
 
 import asyncio
@@ -58,7 +59,9 @@ def running_server(root: Path, transport: str, **kwargs: Any) -> Iterator[str]:
 
 @contextlib.asynccontextmanager
 async def connected(
-    base: str, transport: str, token: str,
+    base: str,
+    transport: str,
+    token: str,
     sessions: list[Callable[[], str | None]] | None = None,
 ) -> AsyncIterator[ClientSession]:
     headers = {"Authorization": f"Bearer {token}"}
@@ -94,7 +97,11 @@ async def connected(
 
 
 def request_status(
-    url: str, *, token: str = "", headers: dict[str, str] | None = None, body: bytes | None = None,
+    url: str,
+    *,
+    token: str = "",
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
 ) -> int:
     supplied = dict(headers or {})
     if token:
@@ -104,13 +111,15 @@ def request_status(
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status
     except urllib.error.HTTPError as exc:
-        return exc.code
+        with exc:
+            return exc.code
 
 
 @pytest.mark.parametrize("transport", ["sse", "streamable-http"])
 def test_sdk_negotiation_tools_resources_and_correlated_progress(tmp_path: Path, transport: str) -> None:
     token = gateway_tokens.load_or_create_token(str(tmp_path))
     with running_server(tmp_path, transport) as base:
+
         async def exercise() -> None:
             async with connected(base, transport, token) as client:
                 initialized = await client.initialize()
@@ -118,9 +127,10 @@ def test_sdk_negotiation_tools_resources_and_correlated_progress(tmp_path: Path,
                 assert info.name == "unimem-local"
                 tools = await client.list_tools()
                 assert {tool.name for tool in tools.tools} == set(mcp_server.LOCAL_TOOLS)
-                assert all("ctx" not in (
-                    getattr(tool, "input_schema", None) or tool.inputSchema
-                ).get("properties", {}) for tool in tools.tools)
+                assert all(
+                    "ctx" not in (getattr(tool, "input_schema", None) or tool.inputSchema).get("properties", {})
+                    for tool in tools.tools
+                )
                 resources = await client.list_resources()
                 assert "unimem://profile" in {str(resource.uri) for resource in resources.resources}
                 profile = await client.read_resource("unimem://profile")
@@ -132,10 +142,15 @@ def test_sdk_negotiation_tools_resources_and_correlated_progress(tmp_path: Path,
                     assert total == 1
                     assert message is None or "private-venue" not in message
 
-                result = await client.call_tool("conversation_add", {
-                    "space": "private-venue", "session": "network-session",
-                    "messages": [{"text": "The venue is Oslo."}],
-                }, progress_callback=on_progress)
+                result = await client.call_tool(
+                    "conversation_add",
+                    {
+                        "space": "private-venue",
+                        "session": "network-session",
+                        "messages": [{"text": "The venue is Oslo."}],
+                    },
+                    progress_callback=on_progress,
+                )
                 assert json.loads(result.content[0].text)["added"] == 1
                 assert progress == [0, 1]
                 status = await client.call_tool("store_status", {})
@@ -165,6 +180,7 @@ def test_network_auth_rotation_and_dns_boundary(tmp_path: Path, transport: str, 
 def test_active_sse_stream_has_bounded_admission(tmp_path: Path) -> None:
     token = gateway_tokens.load_or_create_token(str(tmp_path))
     with running_server(tmp_path, "sse", max_connections=1) as base:
+
         async def exercise() -> None:
             async with sse_client(base + "/sse", headers={"Authorization": f"Bearer {token}"}):
                 assert await asyncio.to_thread(request_status, base + "/sse", token=token) == 503
@@ -175,30 +191,50 @@ def test_active_sse_stream_has_bounded_admission(tmp_path: Path) -> None:
 def test_streamable_session_id_cannot_bypass_revoked_authorization(tmp_path: Path) -> None:
     token = gateway_tokens.load_or_create_token(str(tmp_path))
     with running_server(tmp_path, "streamable-http") as base:
+
         async def exercise() -> None:
             sessions: list[Callable[[], str | None]] = []
             async with connected(base, "streamable-http", token, sessions) as client:
                 await client.initialize()
                 session_id = sessions[0]()
                 assert session_id
-                bad_requests = await asyncio.gather(*[
-                    asyncio.to_thread(request_status, base + "/mcp", headers={
-                        "Mcp-Session-Id": session_id, "Accept": "text/event-stream",
-                    }) for _ in range(12)
-                ])
+                bad_requests = await asyncio.gather(
+                    *[
+                        asyncio.to_thread(
+                            request_status,
+                            base + "/mcp",
+                            headers={
+                                "Mcp-Session-Id": session_id,
+                                "Accept": "text/event-stream",
+                            },
+                        )
+                        for _ in range(12)
+                    ]
+                )
                 assert bad_requests == [401] * 12
                 assert (await client.list_tools()).tools
                 gateway_tokens.revoke_token(str(tmp_path))
-                assert await asyncio.to_thread(request_status, base + "/mcp", token=token, headers={
-                    "Mcp-Session-Id": session_id, "Accept": "text/event-stream",
-                }) == 401
+                assert (
+                    await asyncio.to_thread(
+                        request_status,
+                        base + "/mcp",
+                        token=token,
+                        headers={
+                            "Mcp-Session-Id": session_id,
+                            "Accept": "text/event-stream",
+                        },
+                    )
+                    == 401
+                )
 
         asyncio.run(exercise())
 
 
 @pytest.mark.parametrize("transport,path", [("sse", "/sse"), ("streamable-http", "/mcp")])
 def test_cli_network_transports_preserve_no_approval_policy(
-    tmp_path: Path, transport: str, path: str,
+    tmp_path: Path,
+    transport: str,
+    path: str,
 ) -> None:
     assert main(["init", "--dest", str(tmp_path)]) == 0
     token = gateway_tokens.load_or_create_token(str(tmp_path))
@@ -207,10 +243,24 @@ def test_cli_network_transports_preserve_no_approval_policy(
         port = reservation.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     env = {**os.environ, "UNIMEM_MCP_WARM": "0", "UNIMEM_CONVERSATION_EMBEDDER": "none"}
-    process = subprocess.Popen([
-        sys.executable, "-m", "unimem.cli", "serve", "--dest", str(tmp_path),
-        "--transport", transport, "--port", str(port), "--no-approval",
-    ], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "unimem.cli",
+            "serve",
+            "--dest",
+            str(tmp_path),
+            "--transport",
+            transport,
+            "--port",
+            str(port),
+            "--no-approval",
+        ],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
     try:
         deadline = time.monotonic() + 10
         while True:
@@ -251,6 +301,7 @@ def test_cancelled_network_call_leaves_session_usable(tmp_path: Path, transport:
     with Store(str(tmp_path), "locked-space"):
         pass
     with running_server(tmp_path, transport) as base:
+
         async def exercise() -> None:
             async with connected(base, transport, token) as client:
                 await client.initialize()
@@ -262,10 +313,17 @@ def test_cancelled_network_call_leaves_session_usable(tmp_path: Path, transport:
 
                 lock = sqlite3.connect(db_path(str(tmp_path), "locked-space"))
                 lock.execute("BEGIN IMMEDIATE")
-                pending = asyncio.create_task(client.call_tool("conversation_add", {
-                    "space": "locked-space", "session": "cancelled-call",
-                    "messages": [{"text": "Retain the accepted write after caller cancellation."}],
-                }, progress_callback=on_progress))
+                pending = asyncio.create_task(
+                    client.call_tool(
+                        "conversation_add",
+                        {
+                            "space": "locked-space",
+                            "session": "cancelled-call",
+                            "messages": [{"text": "Retain the accepted write after caller cancellation."}],
+                        },
+                        progress_callback=on_progress,
+                    )
+                )
                 try:
                     await asyncio.wait_for(started.wait(), timeout=3)
                     assert not pending.done()
@@ -283,12 +341,18 @@ def test_cancelled_network_call_leaves_session_usable(tmp_path: Path, transport:
 
 def test_authenticated_streamable_body_limit_is_enforced(tmp_path: Path) -> None:
     token = gateway_tokens.load_or_create_token(str(tmp_path))
-    body = json.dumps({
-        "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-            "protocolVersion": "2025-11-25", "capabilities": {},
-            "clientInfo": {"name": "x" * 2048, "version": "1"},
-        },
-    }).encode("utf-8")
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "x" * 2048, "version": "1"},
+            },
+        }
+    ).encode("utf-8")
     headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     with running_server(tmp_path, "streamable-http", max_request_body_size=1024) as base:
         assert request_status(base + "/mcp", headers=headers, body=body) == 401

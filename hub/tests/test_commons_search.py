@@ -69,9 +69,7 @@ POOL = (
 
 
 class TestItFindsAnswers:
-    async def test_a_shared_trace_is_returned_for_a_related_question(
-        self, session_factory, config, orgs
-    ):
+    async def test_a_shared_trace_is_returned_for_a_related_question(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         r = await _search(session_factory, orgs["asker"], "payment webhook delivered twice")
         assert r["n_candidates"] >= 1
@@ -82,9 +80,7 @@ class TestItFindsAnswers:
         r = await _search(session_factory, orgs["asker"], "payment webhook delivered twice")
         assert "Persist the provider event id" in r["candidates"][0]["trace"]["solution_text"]
 
-    async def test_candidates_are_ranked_best_first_and_numbered(
-        self, session_factory, config, orgs
-    ):
+    async def test_candidates_are_ranked_best_first_and_numbered(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         await _contribute_and_share(session_factory, config, orgs["sharer"], *POOL)
         r = await _search(session_factory, orgs["asker"], "webhook delivered more than once payment")
@@ -92,9 +88,7 @@ class TestItFindsAnswers:
         assert sims == sorted(sims, reverse=True)
         assert [c["rank"] for c in r["candidates"]] == list(range(1, len(r["candidates"]) + 1))
 
-    async def test_it_finds_what_the_threshold_would_have_discarded(
-        self, session_factory, config, orgs
-    ):
+    async def test_it_finds_what_the_threshold_would_have_discarded(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         question = "customer charged twice for one order"
 
@@ -115,27 +109,22 @@ class TestItNeverClaimsCoverage:
         for forbidden in ("covered_fraction", "n_covered", "threshold"):
             assert forbidden not in r, f"search must not emit {forbidden}: that is coverage"
 
-    async def test_the_note_says_these_are_candidates_not_coverage(
-        self, session_factory, config, orgs
-    ):
+    async def test_the_note_says_these_are_candidates_not_coverage(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         r = await _search(session_factory, orgs["asker"], "webhook twice")
         assert "not coverage" in r["note"].lower()
 
-    async def test_an_unanswerable_question_still_returns_something(
-        self, session_factory, config, orgs
-    ):
+    async def test_an_unanswerable_question_still_returns_something(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         r = await _search(session_factory, orgs["asker"], "webhook payment provider unrelated")
         assert r["n_candidates"] >= 0
         assert "candidates" in r["note"].lower()
 
-    async def test_zero_scored_records_are_not_returned_as_answers(
-        self, session_factory, config, orgs
-    ):
+    async def test_zero_scored_records_are_not_returned_as_answers(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
         r = await _search(
-            session_factory, orgs["asker"],
+            session_factory,
+            orgs["asker"],
             "kubernetes ingress certificate rotation staging cluster",
         )
         assert all(c["similarity"] > 0 for c in r["candidates"])
@@ -151,9 +140,16 @@ class TestScopingMatchesCommonsOverlap:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, orgs["sharer"], config, rate_limiter,
-                title=WEBHOOK[0], context_text=WEBHOOK[1], solution_text=WEBHOOK[2],
-                tags=WEBHOOK[3], agent_type="code", actor="test",
+                session,
+                orgs["sharer"],
+                config,
+                rate_limiter,
+                title=WEBHOOK[0],
+                context_text=WEBHOOK[1],
+                solution_text=WEBHOOK[2],
+                tags=WEBHOOK[3],
+                agent_type="code",
+                actor="test",
             )
         r = await _search(session_factory, orgs["asker"], "payment webhook delivered twice")
         assert r["n_candidates"] == 0
@@ -168,9 +164,7 @@ class TestScopingMatchesCommonsOverlap:
 
     async def test_agent_type_narrows_the_corpus(self, session_factory, config, orgs):
         await _contribute_and_share(session_factory, config, orgs["sharer"], *WEBHOOK)
-        r = await _search(
-            session_factory, orgs["asker"], "payment webhook delivered twice", agent_type="support"
-        )
+        r = await _search(session_factory, orgs["asker"], "payment webhook delivered twice", agent_type="support")
         assert r["n_candidates"] == 0
 
 
@@ -239,6 +233,4 @@ class TestInputValidation:
     async def test_a_nonsense_limit_is_a_clean_error(self, session_factory, orgs):
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
-                await crud.commons_search(
-                    session, orgs["asker"], _sig("q"), limit="lots"
-                )
+                await crud.commons_search(session, orgs["asker"], _sig("q"), limit="lots")

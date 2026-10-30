@@ -28,6 +28,7 @@ Trigger:
 Strictly local: no API call at runtime, no telemetry, model cached under
 ~/.cache/huggingface/ (~420 MB) after first run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,19 +43,24 @@ import tempfile
 from typing import Any
 
 try:
-    import numpy as np
+    import numpy as _numpy
 except ImportError:
     np = None
+else:
+    np = _numpy
 
 try:
     import yaml
 except ImportError:
     yaml = None
 
+SentenceTransformer: type[Any] | None = None
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
 except ImportError:
-    SentenceTransformer = None
+    pass
+else:
+    SentenceTransformer = _SentenceTransformer
 
 _DELIM_RE = re.compile(r"^---[ \t]*\r?$", re.MULTILINE)
 
@@ -143,16 +149,18 @@ def iter_active_lessons(lessons_dir: str):
         delims = list(_DELIM_RE.finditer(content))
         if len(delims) < 2:
             continue
-        fm_text = content[delims[0].end():delims[1].start()]
-        body = content[delims[1].end():]
+        fm_text = content[delims[0].end() : delims[1].start()]
+        body = content[delims[1].end() :]
         try:
             frontmatter = _load_frontmatter(fm_text) or {}
         except yaml.YAMLError as exc:
             print(f"[WARN] YAML parse failed for {fname}: {exc}", file=sys.stderr)
             continue
         if not isinstance(frontmatter, dict):
-            print(f"[WARN] frontmatter in {fname} is {type(frontmatter).__name__}, "
-                  "not a mapping -- skipping", file=sys.stderr)
+            print(
+                f"[WARN] frontmatter in {fname} is {type(frontmatter).__name__}, not a mapping -- skipping",
+                file=sys.stderr,
+            )
             continue
         if frontmatter.get("status", "active") != "active":
             continue
@@ -162,8 +170,8 @@ def iter_active_lessons(lessons_dir: str):
             continue
         if not _SLUG_RE.match(str(slug)):
             print(
-                f"[WARN] 'name' in {fname} ({slug!r}) is not a plain slug "
-                f"({_SLUG_RE.pattern}), skipping", file=sys.stderr
+                f"[WARN] 'name' in {fname} ({slug!r}) is not a plain slug ({_SLUG_RE.pattern}), skipping",
+                file=sys.stderr,
             )
             continue
 
@@ -185,13 +193,15 @@ def iter_active_lessons(lessons_dir: str):
 def _write_index(
     index_path: str,
     slugs: "list[str]",
-    embeddings: "np.ndarray",
-    agent_types: "list[str]" = None,
-    hashes: "list[str]" = None,
-    importances: "list[int]" = None,
-    statuses: "list[str]" = None,
+    embeddings: "_numpy.ndarray",
+    agent_types: list[str] | None = None,
+    hashes: list[str] | None = None,
+    importances: list[int] | None = None,
+    statuses: list[str] | None = None,
     model_name: str = MODEL_NAME,
 ) -> None:
+    if np is None:
+        raise RuntimeError("NumPy is required to write an attention index")
     os.makedirs(os.path.dirname(index_path), exist_ok=True)
     tmp_fd, tmp_path = tempfile.mkstemp(
         dir=os.path.dirname(index_path), prefix=os.path.basename(index_path) + ".", suffix=".tmp.npz"
@@ -223,6 +233,8 @@ def _write_index(
 
 def index_model(index_path: str, fallback: "str | None" = None) -> str:
     try:
+        if np is None:
+            raise RuntimeError("NumPy is required to load an attention index")
         with np.load(index_path, allow_pickle=False) as data:
             name = str(data["model_name"])
             if name in TRUSTED_MODELS and int(data["embeddings"].shape[0]) > 0:
@@ -272,8 +284,7 @@ def build_or_update_index(
     if model_name is None:
         model_name = index_model(output_path)
     if model_name not in TRUSTED_MODELS:
-        raise ValueError(
-            f"{model_name!r} is not a trusted embedding model; expected one of {list(TRUSTED_MODELS)}")
+        raise ValueError(f"{model_name!r} is not a trusted embedding model; expected one of {list(TRUSTED_MODELS)}")
 
     active_items = list(items) if items is not None else list(iter_active_lessons(lessons_dir))
     slugs = [item[0] for item in active_items]
@@ -303,7 +314,7 @@ def build_or_update_index(
             "model_name": model_name,
         }
 
-    cached_vectors: dict[tuple[str, str], np.ndarray] = {}
+    cached_vectors: dict[tuple[str, str], _numpy.ndarray] = {}
     if os.path.exists(output_path) and not force_rebuild:
         try:
             with np.load(output_path, allow_pickle=False) as data:
@@ -324,7 +335,7 @@ def build_or_update_index(
 
     texts_to_encode: list[str] = []
     indices_to_encode: list[int] = []
-    reused_embeddings: dict[int, np.ndarray] = {}
+    reused_embeddings: dict[int, _numpy.ndarray] = {}
 
     for idx, (slug, text, chash) in enumerate(zip(slugs, texts, hashes)):
         if not force_rebuild and (slug, chash) in cached_vectors:
@@ -336,8 +347,7 @@ def build_or_update_index(
     if texts_to_encode:
         if model is None:
             if SentenceTransformer is None:
-                raise ImportError(
-                    "sentence_transformers is required to encode new or modified lessons.")
+                raise ImportError("sentence_transformers is required to encode new or modified lessons.")
             log(f"Loading model {model_name} (cached under ~/.cache/huggingface/) ...")
             try:
                 with _no_progress_bars():
@@ -394,23 +404,23 @@ def main() -> int:
         choices=TRUSTED_MODELS,
         default=None,
         help="Embedding model to build with (default: the one the existing index "
-             f"was built with, else {DEFAULT_MODEL_NAME}). A different model is a "
-             "different semantic ranking: a store mid-experiment records it as a new "
-             "treatment.",
+        f"was built with, else {DEFAULT_MODEL_NAME}). A different model is a "
+        "different semantic ranking: a store mid-experiment records it as a new "
+        "treatment.",
     )
     parser.add_argument(
         "--fallback-model",
         choices=TRUSTED_MODELS,
         default=None,
         help="Model to build with when the existing index pins none (it is missing "
-             "or empty) and --model is not given: the one a store's experiment "
-             "ranked with (`unimem index` passes it).",
+        "or empty) and --model is not given: the one a store's experiment "
+        "ranked with (`unimem index` passes it).",
     )
     args = parser.parse_args()
     model_name = args.model or index_model(INDEX_PATH, args.fallback_model)
 
     items = None
-    if os.path.exists(INDEX_PATH) and not args.force:
+    if np is not None and os.path.exists(INDEX_PATH) and not args.force:
         index_mtime = _safe_mtime(INDEX_PATH)
         newest_lesson = max(
             (_safe_mtime(p) for p in glob.glob(os.path.join(LESSONS_DIR, "lesson_*.md"))),
@@ -436,8 +446,7 @@ def main() -> int:
             print(f"Index up-to-date at {INDEX_PATH} (use --force or --rebuild to rebuild anyway)")
             return 0
 
-    res = build_or_update_index(
-        LESSONS_DIR, INDEX_PATH, model_name=model_name, force_rebuild=args.force, items=items)
+    res = build_or_update_index(LESSONS_DIR, INDEX_PATH, model_name=model_name, force_rebuild=args.force, items=items)
     print(
         f"Index built: {res['n_lessons']} lessons ({res['encoded_count']} encoded, "
         f"{res['reused_count']} reused from cache), "

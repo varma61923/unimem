@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import lesson_cache, retrieval
 
 
@@ -276,7 +277,7 @@ def test_fork_resets_locked_cache_and_abandoned_builds():
     cache._flights[("abandoned", 1)] = retrieval._IndexFlight(())
     read_fd, write_fd = os.pipe()
     cache._lock.acquire()
-    pid = os.fork()
+    pid = intentional_fork(os.fork)
     if pid == 0:
         os.close(read_fd)
         try:
@@ -293,9 +294,11 @@ def test_fork_resets_locked_cache_and_abandoned_builds():
     try:
         # A bounded read prevents a regression from hanging the test worker.
         import select
+
         ready, _, _ = select.select([read_fd], [], [], 5)
         if not ready:
             import signal
+
             os.kill(pid, signal.SIGKILL)
         assert ready, "forked child inherited a cache lock"
         assert os.read(read_fd, 5) == b"ok"

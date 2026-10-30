@@ -5,6 +5,7 @@ exact lowercased words and CJK bigrams (plus unigrams for one-character queries)
 SQL triggers invalidate postings even for writers outside the Python API. Frozen
 or concurrently dirtied snapshots use the same scorer over streamed source units.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -57,14 +58,12 @@ def terms(text: str) -> list[str]:
 
 
 def relevant(text: str) -> bool:
-    return not text.isascii() and any(ord(char) > 127 and char.isalnum()
-                                     for char in unicodedata.normalize("NFC", text))
+    return not text.isascii() and any(ord(char) > 127 and char.isalnum() for char in unicodedata.normalize("NFC", text))
 
 
 def ascii_query(text: str) -> str:
     """Keep complete ASCII words, never fragments inside accented/CJK words."""
-    return " ".join(word for word in WORD_RE.findall(unicodedata.normalize("NFC", text))
-                    if word.isascii())
+    return " ".join(word for word in WORD_RE.findall(unicodedata.normalize("NFC", text)) if word.isascii())
 
 
 def query_terms(text: str) -> list[str]:
@@ -88,28 +87,39 @@ def initialize(db: sqlite3.Connection) -> None:
     """Install once inside the caller's write transaction, without source edits."""
     if installed(db):
         return
-    db.execute("CREATE TABLE IF NOT EXISTS unicode_documents "
-               "(unit INTEGER PRIMARY KEY, length INTEGER NOT NULL CHECK(length>0))")
-    db.execute("CREATE TABLE IF NOT EXISTS unicode_postings "
-               "(term TEXT NOT NULL, unit INTEGER NOT NULL, frequency INTEGER NOT NULL, "
-               "PRIMARY KEY(term,unit)) WITHOUT ROWID")
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS unicode_documents "
+        "(unit INTEGER PRIMARY KEY, length INTEGER NOT NULL CHECK(length>0))"
+    )
+    db.execute(
+        "CREATE TABLE IF NOT EXISTS unicode_postings "
+        "(term TEXT NOT NULL, unit INTEGER NOT NULL, frequency INTEGER NOT NULL, "
+        "PRIMARY KEY(term,unit)) WITHOUT ROWID"
+    )
     db.execute("CREATE INDEX IF NOT EXISTS unicode_postings_unit ON unicode_postings(unit)")
     db.execute("CREATE TABLE IF NOT EXISTS unicode_dirty (unit INTEGER PRIMARY KEY)")
-    db.execute("CREATE TRIGGER IF NOT EXISTS unicode_units_insert AFTER INSERT ON units "
-               "WHEN length(CAST(new.body AS BLOB))<>length(new.body) BEGIN "
-               "INSERT OR IGNORE INTO unicode_dirty VALUES(new.id); END")
-    db.execute("CREATE TRIGGER IF NOT EXISTS unicode_units_update AFTER UPDATE ON units BEGIN "
-               "DELETE FROM unicode_postings WHERE unit=old.id; "
-               "DELETE FROM unicode_documents WHERE unit=old.id; "
-               "DELETE FROM unicode_dirty WHERE unit=old.id; "
-               "INSERT OR IGNORE INTO unicode_dirty SELECT new.id "
-               "WHERE length(CAST(new.body AS BLOB))<>length(new.body); END")
-    db.execute("CREATE TRIGGER IF NOT EXISTS unicode_units_delete AFTER DELETE ON units BEGIN "
-               "DELETE FROM unicode_postings WHERE unit=old.id; "
-               "DELETE FROM unicode_documents WHERE unit=old.id; "
-               "DELETE FROM unicode_dirty WHERE unit=old.id; END")
-    db.execute("INSERT OR IGNORE INTO unicode_dirty SELECT id FROM units "
-               "WHERE length(CAST(body AS BLOB))<>length(body)")
+    db.execute(
+        "CREATE TRIGGER IF NOT EXISTS unicode_units_insert AFTER INSERT ON units "
+        "WHEN length(CAST(new.body AS BLOB))<>length(new.body) BEGIN "
+        "INSERT OR IGNORE INTO unicode_dirty VALUES(new.id); END"
+    )
+    db.execute(
+        "CREATE TRIGGER IF NOT EXISTS unicode_units_update AFTER UPDATE ON units BEGIN "
+        "DELETE FROM unicode_postings WHERE unit=old.id; "
+        "DELETE FROM unicode_documents WHERE unit=old.id; "
+        "DELETE FROM unicode_dirty WHERE unit=old.id; "
+        "INSERT OR IGNORE INTO unicode_dirty SELECT new.id "
+        "WHERE length(CAST(new.body AS BLOB))<>length(new.body); END"
+    )
+    db.execute(
+        "CREATE TRIGGER IF NOT EXISTS unicode_units_delete AFTER DELETE ON units BEGIN "
+        "DELETE FROM unicode_postings WHERE unit=old.id; "
+        "DELETE FROM unicode_documents WHERE unit=old.id; "
+        "DELETE FROM unicode_dirty WHERE unit=old.id; END"
+    )
+    db.execute(
+        "INSERT OR IGNORE INTO unicode_dirty SELECT id FROM units WHERE length(CAST(body AS BLOB))<>length(body)"
+    )
     db.execute("INSERT OR REPLACE INTO meta VALUES('unicode_postings', ?)", (VERSION,))
 
 
@@ -120,8 +130,9 @@ def dirty(db: sqlite3.Connection) -> bool:
 def refresh(db: sqlite3.Connection) -> None:
     """Bounded keyset batches; caller owns the write transaction and store lock."""
     while True:
-        rows = db.execute("SELECT d.unit,u.body FROM unicode_dirty d LEFT JOIN units u "
-                          "ON u.id=d.unit ORDER BY d.unit LIMIT 256").fetchall()
+        rows = db.execute(
+            "SELECT d.unit,u.body FROM unicode_dirty d LEFT JOIN units u ON u.id=d.unit ORDER BY d.unit LIMIT 256"
+        ).fetchall()
         if not rows:
             return
         for uid, body in rows:
@@ -130,24 +141,33 @@ def refresh(db: sqlite3.Connection) -> None:
             counts = Counter(terms(body)) if body is not None else Counter()
             if counts:
                 db.execute("INSERT INTO unicode_documents VALUES(?,?)", (uid, sum(counts.values())))
-                db.executemany("INSERT INTO unicode_postings VALUES(?,?,?)",
-                               ((term, uid, count) for term, count in counts.items()))
+                db.executemany(
+                    "INSERT INTO unicode_postings VALUES(?,?,?)", ((term, uid, count) for term, count in counts.items())
+                )
             db.execute("DELETE FROM unicode_dirty WHERE unit=?", (uid,))
 
 
-def _score(frequencies: dict[str, int], length: int, average: float,
-           idfs: dict[str, float]) -> float:
-    raw = sum(idfs[term] * count * 2.2 /
-              (count + 1.2 * (0.25 + 0.75 * length / average))
-              for term, count in frequencies.items())
+def _score(frequencies: dict[str, int], length: int, average: float, idfs: dict[str, float]) -> float:
+    raw = sum(
+        idfs[term] * count * 2.2 / (count + 1.2 * (0.25 + 0.75 * length / average))
+        for term, count in frequencies.items()
+    )
     n = len(idfs)
-    midpoint, steepness = ((5.0, 0.7) if n <= 3 else (7.0, 0.6) if n <= 6 else
-                          (9.0, 0.5) if n <= 9 else (10.0, 0.5) if n <= 15 else (12.0, 0.5))
+    midpoint, steepness = (
+        (5.0, 0.7)
+        if n <= 3
+        else (7.0, 0.6)
+        if n <= 6
+        else (9.0, 0.5)
+        if n <= 9
+        else (10.0, 0.5)
+        if n <= 15
+        else (12.0, 0.5)
+    )
     return 1.0 / (1.0 + math.exp(-steepness * (raw - midpoint)))
 
 
-def rank(db: sqlite3.Connection, query: str, limit: int,
-         allowed: set[int] | None) -> list[tuple[int, float]]:
+def rank(db: sqlite3.Connection, query: str, limit: int, allowed: set[int] | None) -> list[tuple[int, float]]:
     """BM25 over eligible Unicode-bearing units; postings never cross a scope."""
     wanted = query_terms(query)
     if not wanted or limit <= 0 or allowed == set():
@@ -183,8 +203,7 @@ def rank(db: sqlite3.Connection, query: str, limit: int,
     return heapq.nsmallest(limit, scores(), key=lambda hit: (-hit[1], hit[0]))
 
 
-def stream_rank(units: Iterable[tuple[int, int, str, str]], query: str,
-                limit: int) -> list[tuple[int, float]]:
+def stream_rank(units: Iterable[tuple[int, int, str, str]], query: str, limit: int) -> list[tuple[int, float]]:
     """Exact scoring fallback for frozen legacy banks and dirty read snapshots."""
     wanted = set(query_terms(query))
     if not wanted or limit <= 0:
@@ -206,6 +225,8 @@ def stream_rank(units: Iterable[tuple[int, int, str, str]], query: str,
     if not size:
         return []
     idfs = {term: math.log(1 + (size - dfs[term] + 0.5) / (dfs[term] + 0.5)) for term in wanted}
-    return heapq.nsmallest(limit, ((uid, _score(counts, length, total / size, idfs))
-                                 for uid, length, counts in candidates),
-                          key=lambda hit: (-hit[1], hit[0]))
+    return heapq.nsmallest(
+        limit,
+        ((uid, _score(counts, length, total / size, idfs)) for uid, length, counts in candidates),
+        key=lambda hit: (-hit[1], hit[0]),
+    )

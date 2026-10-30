@@ -1,4 +1,5 @@
 """Source, clock and budget boundaries of optional vendor evaluation."""
+
 from __future__ import annotations
 
 import contextlib
@@ -14,9 +15,15 @@ from unimem.conversation import Store
 
 
 def test_locomo_question_limit_exact_stratified_and_repeatable():
-    cases = [(f"c{i}", [], None, [
-        {"id": f"{i}-{kind}-{j}", "type": kind}
-        for kind in ("single-hop", "temporal") for j in range(8)]) for i in range(3)]
+    cases = [
+        (
+            f"c{i}",
+            [],
+            None,
+            [{"id": f"{i}-{kind}-{j}", "type": kind} for kind in ("single-hop", "temporal") for j in range(8)],
+        )
+        for i in range(3)
+    ]
     before = copy.deepcopy(cases)
     selected = bench.sample_cases(cases, 11, 19)
     identities = [q["id"] for _s, _ss, _n, qs in selected for q in qs]
@@ -40,8 +47,9 @@ def test_vendor_cutoff_precedes_indexing_and_invalid_clock_refused(tmp_path):
 
 def test_vendor_packing_has_source_attribution_and_no_oversized_partial_proof(tmp_path):
     with Store(str(tmp_path), "test") as store:
-        store.add("s", [{"id": "big", "text": "long " * 100}, {"id": "short", "text": "Mango"}],
-                  session_at="2025-01-01")
+        store.add(
+            "s", [{"id": "big", "text": "long " * 100}, {"id": "short", "text": "Mango"}], session_at="2025-01-01"
+        )
         result = pack(store, [1, 1, 2], 40, profile="test")
         assert result.ranked == [1, 2]
         assert result.turns == [2]
@@ -123,10 +131,12 @@ def test_hindsight_raw_uses_public_chunks_mode_and_isolates_home(tmp_path, monke
 
         def recall(self, **kwargs):
             calls.append(("recall", kwargs))
-            return types.SimpleNamespace(results=[
-                types.SimpleNamespace(document_id="source-turn-1"),
-                types.SimpleNamespace(document_id="source-turn-1"),
-            ])
+            return types.SimpleNamespace(
+                results=[
+                    types.SimpleNamespace(document_id="source-turn-1"),
+                    types.SimpleNamespace(document_id="source-turn-1"),
+                ]
+            )
 
         def close(self, *, stop_daemon):
             closed.append((stop_daemon, os.environ["HOME"]))
@@ -145,14 +155,26 @@ def test_hindsight_raw_uses_public_chunks_mode_and_isolates_home(tmp_path, monke
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://telemetry.example")
 
     tracked_env = (
-        "HOME", "USERPROFILE", "HINDSIGHT_API_LLM_PROVIDER",
-        "HINDSIGHT_API_RETAIN_LLM_PROVIDER", "HINDSIGHT_API_RETAIN_LLM_1_PROVIDER",
+        "HOME",
+        "USERPROFILE",
+        "HINDSIGHT_API_LLM_PROVIDER",
+        "HINDSIGHT_API_RETAIN_LLM_PROVIDER",
+        "HINDSIGHT_API_RETAIN_LLM_1_PROVIDER",
         "HINDSIGHT_EMBED_API_DATABASE_URL",
-        "HINDSIGHT_API_EMBEDDINGS_PROVIDER", "HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL",
-        "HINDSIGHT_API_ENABLE_RERANKING", "HINDSIGHT_API_OTEL_TRACES_ENABLED",
-        "HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT", "HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS",
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "OTEL_EXPORTER_OTLP_HEADERS",
-        "HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HOME", "HF_HUB_CACHE", "TRANSFORMERS_CACHE",
+        "HINDSIGHT_API_EMBEDDINGS_PROVIDER",
+        "HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL",
+        "HINDSIGHT_API_ENABLE_RERANKING",
+        "HINDSIGHT_API_OTEL_TRACES_ENABLED",
+        "HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT",
+        "HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+        "OTEL_EXPORTER_OTLP_HEADERS",
+        "HF_HUB_OFFLINE",
+        "TRANSFORMERS_OFFLINE",
+        "HF_HOME",
+        "HF_HUB_CACHE",
+        "TRANSFORMERS_CACHE",
     )
     old_env = {key: os.environ.get(key) for key in tracked_env}
     with Store(str(tmp_path), "test") as store:
@@ -188,17 +210,20 @@ def test_hindsight_raw_refuses_network_fallback_when_local_runtime_is_missing(tm
                 pass
 
 
-@pytest.mark.skipif(os.environ.get("UNIMEM_VENDOR_NATIVE_SMOKE") != "1",
-                    reason="opt-in native local Graphiti backend")
+@pytest.mark.skipif(os.environ.get("UNIMEM_VENDOR_NATIVE_SMOKE") != "1", reason="opt-in native local Graphiti backend")
 @pytest.mark.parametrize("space", ["demo", "conv-26", "gpt4_93159ced"])
 def test_native_graphiti_case_namespaces_preserve_sources(tmp_path, space):
     pytest.importorskip("graphiti_core")
     pytest.importorskip("redislite.async_falkordb_client")
     with Store(str(tmp_path), space) as store:
-        store.add("s", [{"id": "evidence", "text": "Caroline visited the LGBTQ support group on May 7."}],
-                  session_at="2025-01-01")
-        store.add("future", [{"id": "future", "text": "Caroline visited the LGBTQ group tomorrow."}],
-                  session_at="2027-01-01")
+        store.add(
+            "s",
+            [{"id": "evidence", "text": "Caroline visited the LGBTQ support group on May 7."}],
+            session_at="2025-01-01",
+        )
+        store.add(
+            "future", [{"id": "future", "text": "Caroline visited the LGBTQ group tomorrow."}], session_at="2027-01-01"
+        )
         with vendor_profile("graphiti-episodic", store, "2026-01-01") as adapter:
             result = adapter.retrieve("When did Caroline go to the LGBTQ support group?", 1000)
             assert result.turns == [1]
@@ -209,8 +234,9 @@ def test_native_graphiti_case_namespaces_preserve_sources(tmp_path, space):
 
 
 def test_small_limit_rotates_types_and_conversations():
-    cases = [(f"c{i}", [], None, [{"id": f"{i}-{kind}", "type": kind}
-                                 for kind in ("a", "b", "c", "d")]) for i in range(10)]
+    cases = [
+        (f"c{i}", [], None, [{"id": f"{i}-{kind}", "type": kind} for kind in ("a", "b", "c", "d")]) for i in range(10)
+    ]
     selected = bench.sample_cases(cases, 10, 17)
     assert len(selected) == 10
     types = [q["type"] for _s, _ss, _n, qs in selected for q in qs]
@@ -227,13 +253,13 @@ def test_mem0_failed_setup_releases_all_returned_resources(tmp_path, monkeypatch
 
     closed = []
     embedding = types.SimpleNamespace(
-        embed=lambda *args: [0.], embed_batch=lambda texts, action: [[0.] for _ in texts])
+        embed=lambda *args: [0.0], embed_batch=lambda texts, action: [[0.0] for _ in texts]
+    )
 
     class Memory:
         embedding_model = embedding
         llm = types.SimpleNamespace(client=types.SimpleNamespace(close=lambda: closed.append("llm")))
-        vector_store = types.SimpleNamespace(
-            client=types.SimpleNamespace(close=lambda: closed.append("qdrant")))
+        vector_store = types.SimpleNamespace(client=types.SimpleNamespace(close=lambda: closed.append("qdrant")))
 
         @classmethod
         def from_config(cls, config):

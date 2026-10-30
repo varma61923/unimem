@@ -4,6 +4,7 @@ Fixtures are canonical production writes. Invalid high-ranking evidence must
 not occupy the requested result limit, and changing a scorer never changes
 which tenant or source revisions an agent may read.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -41,17 +42,29 @@ class Corpus:
 @pytest.fixture
 def corpus(tmp_path: Path) -> Corpus:
     root = str(tmp_path)
-    source, _ = hierarchical.add_fact(root, "Alpha observed the Aster service timer in an instrument log.",
-                                      scopes=[SCOPE], valid_from="2026-01-01T00:00:00Z")
+    source, _ = hierarchical.add_fact(
+        root,
+        "Alpha observed the Aster service timer in an instrument log.",
+        scopes=[SCOPE],
+        valid_from="2026-01-01T00:00:00Z",
+    )
     receipt = bind_evidence(root, "fact", source.id)
-    target, _ = hierarchical.add_fact(root, "Aster gateway timeout uses the verified scheduling configuration.",
-                                      scopes=[SCOPE], evidence=[receipt], valid_from="2026-01-01T00:00:00Z")
-    unsupported, _ = hierarchical.add_fact(root, "Aster gateway timeout.", scopes=[SCOPE],
-                                           confidence=1.0, evidence=[receipt], min_support=2)
-    private, _ = hierarchical.add_fact(root, "SECRET_BETA Aster gateway timeout needs a different account.",
-                                       scopes=["container:beta"], confidence=1.0)
-    expired, _ = hierarchical.add_fact(root, "EXPIRED_ALPHA Aster gateway timeout historical entry.",
-                                       scopes=[SCOPE], expires_at="2020-01-01T00:00:00Z")
+    target, _ = hierarchical.add_fact(
+        root,
+        "Aster gateway timeout uses the verified scheduling configuration.",
+        scopes=[SCOPE],
+        evidence=[receipt],
+        valid_from="2026-01-01T00:00:00Z",
+    )
+    unsupported, _ = hierarchical.add_fact(
+        root, "Aster gateway timeout.", scopes=[SCOPE], confidence=1.0, evidence=[receipt], min_support=2
+    )
+    private, _ = hierarchical.add_fact(
+        root, "SECRET_BETA Aster gateway timeout needs a different account.", scopes=["container:beta"], confidence=1.0
+    )
+    expired, _ = hierarchical.add_fact(
+        root, "EXPIRED_ALPHA Aster gateway timeout historical entry.", scopes=[SCOPE], expires_at="2020-01-01T00:00:00Z"
+    )
     hierarchical.add_fact(root, "The Aster timeout investigation requires corroborated diagnostic evidence.")
     return Corpus(root, source, target, unsupported, private, expired)
 
@@ -72,8 +85,13 @@ def endpoint(corpus: Corpus) -> Iterator[str]:
 
 
 def cli(corpus: Corpus, *arguments: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run([sys.executable, "-m", "unimem.cli", *arguments, "--dest", corpus.root],
-                          capture_output=True, text=True, check=False, timeout=30)
+    return subprocess.run(
+        [sys.executable, "-m", "unimem.cli", *arguments, "--dest", corpus.root],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
 
 
 def http(endpoint: str, body: dict[str, Any], *, authenticated: bool = True) -> tuple[int, dict[str, Any]]:
@@ -85,7 +103,8 @@ def http(endpoint: str, body: dict[str, Any], *, authenticated: bool = True) -> 
         with urllib.request.urlopen(request, timeout=10) as response:
             return response.status, json.loads(response.read())
     except urllib.error.HTTPError as error:
-        return error.code, json.loads(error.read())
+        with error:
+            return error.code, json.loads(error.read())
 
 
 def tool(server: Any, name: str, **arguments: Any) -> dict[str, Any]:
@@ -139,19 +158,41 @@ def test_cli_scorer_preserves_scope_quotes_and_eligibility_before_limit(corpus: 
     searched = cli(corpus, "fact", "search", QUERY, "--scope", SCOPE, "--limit", "1", "--scorer", scorer)
     assert searched.returncode == 0, searched.stderr
     assert corpus.target.id in searched.stdout and corpus.unsupported.id not in searched.stdout
-    result = cli(corpus, "recall", QUERY, "--channel", "facts", "--scope", SCOPE,
-                 "--fact-scorer", scorer, "--evidence-budget", "256", "--json")
+    result = cli(
+        corpus,
+        "recall",
+        QUERY,
+        "--channel",
+        "facts",
+        "--scope",
+        SCOPE,
+        "--fact-scorer",
+        scorer,
+        "--evidence-budget",
+        "256",
+        "--json",
+    )
     assert result.returncode == 0, result.stderr
     assert_admitted(corpus, json.loads(result.stdout), scorer)
 
 
 @pytest.mark.parametrize("scorer", SCORERS)
 def test_real_http_explorer_reports_scorer_and_cannot_override_authenticated_scope(
-    corpus: Corpus, endpoint: str, scorer: str,
+    corpus: Corpus,
+    endpoint: str,
+    scorer: str,
 ) -> None:
     before = hierarchical.load_facts(corpus.root)[corpus.target.id].to_dict()
-    status, data = http(endpoint, {"question": QUERY, "channels": ["facts"], "fact_scorer": scorer,
-                                   "scope": "container:beta", "evidence_budget": 256})
+    status, data = http(
+        endpoint,
+        {
+            "question": QUERY,
+            "channels": ["facts"],
+            "fact_scorer": scorer,
+            "scope": "container:beta",
+            "evidence_budget": 256,
+        },
+    )
     assert status == 200 and data["scope"] == SCOPE and data["read_only"] is True
     assert_admitted(corpus, data, scorer)
     assert hierarchical.load_facts(corpus.root)[corpus.target.id].to_dict() == before
@@ -184,18 +225,26 @@ def test_authentication_precedes_invalid_scorer_validation(endpoint: str) -> Non
     assert status == 401 and "items" not in data
 
 
-@pytest.mark.parametrize(("query", "statement", "expected_terms"), [
-    ("café délai", "Le café applique un délai maximal de cinq secondes.", ["café", "délai"]),
-    ("北辰缓存", "北辰缓存容量为512条记录。", ["北辰", "缓存", "辰缓"]),
-])
+@pytest.mark.parametrize(
+    ("query", "statement", "expected_terms"),
+    [
+        ("café délai", "Le café applique un délai maximal de cinq secondes.", ["café", "délai"]),
+        ("北辰缓存", "北辰缓存容量为512条记录。", ["北辰", "缓存", "辰缓"]),
+    ],
+)
 def test_multilingual_http_evidence_remains_attributed_and_not_falsely_abstained(
-    corpus: Corpus, endpoint: str, query: str, statement: str, expected_terms: list[str],
+    corpus: Corpus,
+    endpoint: str,
+    query: str,
+    statement: str,
+    expected_terms: list[str],
 ) -> None:
     source, _ = hierarchical.add_fact(corpus.root, "Instrument observation: " + statement, scopes=[SCOPE])
     receipt = bind_evidence(corpus.root, "fact", source.id)
     target, _ = hierarchical.add_fact(corpus.root, statement, scopes=[SCOPE], evidence=[receipt])
-    status, data = http(endpoint, {"question": query, "channels": ["facts"],
-                                   "fact_scorer": "bm25-v1", "evidence_budget": 256})
+    status, data = http(
+        endpoint, {"question": query, "channels": ["facts"], "fact_scorer": "bm25-v1", "evidence_budget": 256}
+    )
     assert status == 200 and data["fact_scorer"] == "bm25-v1"
     assert data["assessment"]["abstain"] is False
     item = next(item for item in data["items"] if item["id"] == "fact:" + target.id)
@@ -204,8 +253,10 @@ def test_multilingual_http_evidence_remains_attributed_and_not_falsely_abstained
     assert any(node["quote"] == source.statement for node in item["provenance"]["evidence_context"]["nodes"])
 
 
-@pytest.mark.parametrize("arguments", [("fact", "search", QUERY, "--scorer", "unknown-v1"),
-                                       ("recall", QUERY, "--fact-scorer", "unknown-v1", "--json")])
+@pytest.mark.parametrize(
+    "arguments",
+    [("fact", "search", QUERY, "--scorer", "unknown-v1"), ("recall", QUERY, "--fact-scorer", "unknown-v1", "--json")],
+)
 def test_cli_rejects_unknown_scorer_without_a_traceback(corpus: Corpus, arguments: tuple[str, ...]) -> None:
     result = cli(corpus, *arguments)
     assert result.returncode == 2
@@ -223,8 +274,15 @@ def test_public_mcp_tools_transport_scorer_and_preserve_governed_result_limits(c
         assert data["ok"] and data["count"] == 1
         assert data["facts"][0]["fact"]["id"] == corpus.target.id
         assert "SECRET_BETA" not in json.dumps(data)
-    recalled = tool(server, "memory_recall", question=QUERY, channels=["facts"], scope=SCOPE,
-                    fact_scorer=scorer, evidence_budget=256)
+    recalled = tool(
+        server,
+        "memory_recall",
+        question=QUERY,
+        channels=["facts"],
+        scope=SCOPE,
+        fact_scorer=scorer,
+        evidence_budget=256,
+    )
     assert recalled["ok"]
     assert_admitted(corpus, recalled, scorer)
     hierarchical.delete_fact(corpus.root, corpus.source.id)
@@ -238,8 +296,10 @@ def test_mcp_schemas_expose_default_profile_and_unknown_names_fail(corpus: Corpu
     from unimem import mcp_server
 
     server = mcp_server.build_server(corpus.root)
-    schemas = {item.name: getattr(item, "input_schema", getattr(item, "inputSchema", None))
-               for item in asyncio.run(server.list_tools())}
+    schemas = {
+        item.name: getattr(item, "input_schema", getattr(item, "inputSchema", None))
+        for item in asyncio.run(server.list_tools())
+    }
     for name in ("query_facts", "archival_memory_search"):
         assert schemas[name]["properties"]["scorer"]["default"] == "overlap-v1"
         result = tool(server, name, query=QUERY, scorer="unknown-v1")

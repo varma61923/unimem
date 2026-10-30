@@ -1,4 +1,5 @@
 """Runtime transactions keep delegation, canonical bodies and change delivery consistent."""
+
 from __future__ import annotations
 
 import pytest
@@ -19,8 +20,9 @@ def test_runtime_class_scope_trust_and_typed_identity(tmp_path):
     journal = Journal(root)
     journal.put(MemoryRecord("visible", "fact", 1, {"text": "Wrist calibration."}, scope=scope))
     journal.put(MemoryRecord("hidden", "episode", 1, {"text": "Wrist private episode."}, scope=scope))
-    canonical = hierarchical.append_facts(root, [{"statement": "Independent wrist instruction.",
-                                                "scopes": ["project:a"]}])[0][0]
+    canonical = hierarchical.append_facts(
+        root, [{"statement": "Independent wrist instruction.", "scopes": ["project:a"]}]
+    )[0][0]
     token = io.grant(root, policy(namespaces=["records"], classes=["fact", "directive"]))["token"]
     with io.activate(authenticate(root, token, proof(root, token))):
         assert [record.id for record in journal.search("wrist", scope=scope)] == ["visible"]
@@ -48,16 +50,21 @@ def test_committed_runtime_outbox_recovers_once_and_revokes_capture_descendants(
     token = io.grant(root, policy(namespaces=["records"], classes=["fact", "capture"]))["token"]
     with io.activate(authenticate(root, token, proof(root, token))):
         journal.capture("s", "sensor", {"text": "Wrist current spike."}, scope=scope, event_id="capture")
-        journal.put(MemoryRecord("derived", "fact", 1, {"text": "Inspect wrist."}, scope=scope,
-                                 relations={"caused_by": ["capture"]}))
+        journal.put(
+            MemoryRecord(
+                "derived", "fact", 1, {"text": "Inspect wrist."}, scope=scope, relations={"caused_by": ["capture"]}
+            )
+        )
     source = io.runtime_identity(root, "capture", capture=True)
     derived = io.runtime_identity(root, "derived")
     assert set(nextwave_store.admit(root, [source, derived], context=["project:a"])) == {source, derived}
     assert not nextwave_store.admit(root, [source, derived], context=["project:b"])
     publish = change_stream.publish
+
     def crash_after_publish(*args, **kwargs):
         publish(*args, **kwargs)
         raise OSError("simulated post-fsync interruption")
+
     monkeypatch.setattr(change_stream, "publish", crash_after_publish)
     with pytest.raises(OSError):
         journal.drain_changes()
@@ -83,8 +90,12 @@ def test_rolled_back_update_changes_neither_provenance_nor_stream(tmp_path):
         reference = io.runtime_identity(root, "episode")
         before = lineage.record(root, reference)
         with pytest.raises(ValueError):
-            journal.put_many([MemoryRecord("episode", "episode", 2, {"text": "Aborted."}, scope=scope),
-                              MemoryRecord("episode", "episode", 2, {"text": "Duplicate version."}, scope=scope)])
+            journal.put_many(
+                [
+                    MemoryRecord("episode", "episode", 2, {"text": "Aborted."}, scope=scope),
+                    MemoryRecord("episode", "episode", 2, {"text": "Duplicate version."}, scope=scope),
+                ]
+            )
         assert journal.current("episode", scope=scope).version == 1
         assert lineage.record(root, reference) == before
     events = change_stream.poll(root, "reader", context=["project:a"])["events"]
@@ -112,8 +123,15 @@ def test_capture_replay_and_capture_only_erase_do_not_change_unrelated_authority
         with pytest.raises(PermissionError):
             memory_authority.record_forgetting(root, reference, forgotten=True)
     initial = change_stream.poll(root, "reader", context=["project:a"])
-    authorization = io.authenticate(root, token, proof(root, token, "erase"), request_digest="f"*64,
-                                   operation="forget", purpose="support", principal="a")
+    authorization = io.authenticate(
+        root,
+        token,
+        proof(root, token, "erase"),
+        request_digest="f" * 64,
+        operation="forget",
+        purpose="support",
+        principal="a",
+    )
     with io.activate(authorization):
         journal.forget("capture", reason="consent withdrawn", scope=scope)
     assert not nextwave_store.admit(root, [reference], context=["project:a"])
@@ -130,8 +148,10 @@ def test_failed_postcommit_authority_publication_keeps_outbox_and_blocks_reads_u
     journal = Journal(root)
     token = io.grant(root, policy(namespaces=["records"], classes=["episode"]))["token"]
     commit = lineage.commit_prepared
+
     def fail(*args, **kwargs):
         raise OSError("simulated durable journal failure")
+
     with io.activate(authenticate(root, token, proof(root, token))):
         monkeypatch.setattr(lineage, "commit_prepared", fail)
         record = journal.put(MemoryRecord("committed", "episode", 1, {"text": "Committed payload."}, scope=scope))

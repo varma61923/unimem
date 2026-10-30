@@ -1,4 +1,5 @@
 """What every outcome connector shares."""
+
 from __future__ import annotations
 
 import hmac

@@ -74,7 +74,7 @@ jobs:
         run: python -m pip install pytest pytest-xdist
 
       - name: Run tests
-        run: make test PYTEST_ARGS="-q -n auto"
+        run: make test PYTEST_ARGS="-q -n auto -W error"
 
       - name: Original offline evidence and governed-memory contracts
         run: python -m benchmarks.memory_contracts
@@ -137,7 +137,7 @@ jobs:
 
       - name: Run tests with the 80 percent coverage gate
         run: >-
-          python -m pytest tests/ e2e_tests/ -q -n auto
+          python -m pytest tests/ e2e_tests/ -q -n auto -W error
           --cov=unimem --cov-report=xml --cov-fail-under=80
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -554,6 +554,8 @@ jobs:
           mypy --strict --follow-imports=silent --ignore-missing-imports \
             unimem/async_workers.py unimem/mcp_transport.py \
             unimem/commons_integrity.py unimem/frameworks.py \
+            unimem/litellm_wrapper.py \
+            hub/scopes.py \
             unimem/conversation/async_store.py unimem/conversation/validation.py \
             unimem/semantic.py unimem/vector_store.py unimem/provider_config.py hub/migrate.py \
             unimem/distill.py unimem/distillation_worker.py unimem/draft_quality.py \
@@ -594,8 +596,13 @@ jobs:
             benchmarks/fact_search.py benchmarks/fact_retrieval.py benchmarks/fact_mutation.py \
             benchmarks/conversation_retrieval.py benchmarks/robot_memory.py unimem/pack_demos.py
 
-      - name: mypy (known findings, informational only)
-        continue-on-error: true
+      - name: Types for recall, authority and HTTP boundaries
+        run: |
+          mypy --follow-imports=silent --ignore-missing-imports \
+            unimem/recall.py unimem/memory_authority.py unimem/reranking.py hub/auth.py \
+            unimem/conformance.py unimem/connectors/web_crawler.py
+
+      - name: mypy (full codebase)
         run: mypy unimem/ hub/ --ignore-missing-imports
 
   deploy-assets:

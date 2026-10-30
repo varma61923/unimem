@@ -1,4 +1,5 @@
 """Shared trace loaders for taxonomy_cmd / impact_cmd / pilot_cmd."""
+
 from __future__ import annotations
 
 import glob

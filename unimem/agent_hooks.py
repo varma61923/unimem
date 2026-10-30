@@ -1,4 +1,5 @@
 """Portable JSON hooks: recall on session start, capture explicit outcomes at end."""
+
 from __future__ import annotations
 
 import argparse
@@ -32,8 +33,9 @@ def _handle(root: str, operation: str, payload: dict, *, agent_id: str) -> dict:
             config = payload["tier"]
             if not isinstance(config, dict) or set(config) != {"namespace", "region"}:
                 raise ValueError("UniMem session tier needs only namespace and region")
-            tiering.prewarm(root, config["namespace"], region=config["region"], context=memory.context,
-                            trigger="session-start")
+            tiering.prewarm(
+                root, config["namespace"], region=config["region"], context=memory.context, trigger="session-start"
+            )
         return memory.reflect(query, budget=payload.get("budget", 600), occasion_id=occasion)
     if operation != "end":
         raise ValueError("unknown hook operation")
@@ -51,20 +53,39 @@ def _handle(root: str, operation: str, payload: dict, *, agent_id: str) -> dict:
     except FileNotFoundError:
         sources = []  # A session may end without a preceding recall.
     extra = {"scopes": memory.context, "source_traces": sources, "extensions": {"profile": {"occasion_id": occasion}}}
-    attribution = assurance.failure(root, memory._occasion(occasion),
-        plan_valid=payload.get("plan_valid"), execution_valid=payload.get("execution_valid"),
-        environment_valid=payload.get("environment_valid"), final=payload.get("final", True),
-        outcome=float(succeeded) if succeeded is not None else None)
+    attribution = assurance.failure(
+        root,
+        memory._occasion(occasion),
+        plan_valid=payload.get("plan_valid"),
+        execution_valid=payload.get("execution_valid"),
+        environment_valid=payload.get("environment_valid"),
+        final=payload.get("final", True),
+        outcome=float(succeeded) if succeeded is not None else None,
+    )
     extra["extensions"]["profile"]["failure_attribution"] = attribution["attribution"]
     # A completion or git commit is never silently labelled a success.
     if succeeded is not None and payload.get("final", True):
         extra["outcome"] = {"resolved": succeeded}
-    filename = (trace_io.write_new(root, title=context[:200], context=context, solution=solution,
-                                 tags=["agent-session"], agent_type="code", extra=extra,
-                                 trace_id=hashlib.sha256((agent_id + "\0" + occasion).encode()).hexdigest())
-                if payload.get("final", True) else None)
-    return {"captured": bool(filename), "outcome_recorded":
-            memory.outcome(occasion, succeeded) if succeeded is not None and payload.get("final", True) else False}
+    filename = (
+        trace_io.write_new(
+            root,
+            title=context[:200],
+            context=context,
+            solution=solution,
+            tags=["agent-session"],
+            agent_type="code",
+            extra=extra,
+            trace_id=hashlib.sha256((agent_id + "\0" + occasion).encode()).hexdigest(),
+        )
+        if payload.get("final", True)
+        else None
+    )
+    return {
+        "captured": bool(filename),
+        "outcome_recorded": memory.outcome(occasion, succeeded)
+        if succeeded is not None and payload.get("final", True)
+        else False,
+    }
 
 
 def main(argv=None) -> int:

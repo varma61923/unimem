@@ -192,10 +192,7 @@ def alpha_spent(
     shape: str = SPEND_OBRIEN_FLEMING,
 ) -> float:
     if shape not in SPENDING_FUNCTIONS:
-        raise ValueError(
-            f"unknown alpha-spending shape {shape!r}; expected one of "
-            f"{', '.join(SPENDING_FUNCTIONS)}"
-        )
+        raise ValueError(f"unknown alpha-spending shape {shape!r}; expected one of {', '.join(SPENDING_FUNCTIONS)}")
     if not 0.0 < alpha < 1.0:
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     t = min(max(information_fraction, 0.0), 1.0)
@@ -208,7 +205,10 @@ def alpha_spent(
 
 
 def _log_beta_binomial_bayes_factor(
-    p: float, successes: int, trials: int, prior: float,
+    p: float,
+    successes: int,
+    trials: int,
+    prior: float,
 ) -> float:
     """Log Bayes factor of a symmetric beta-mixture against Bernoulli(p)."""
     failures = trials - successes
@@ -232,7 +232,10 @@ def _log_beta_binomial_bayes_factor(
 
 
 def _mixture_proportion_interval(
-    successes: int, trials: int, alpha: float, prior_strength: float,
+    successes: int,
+    trials: int,
+    alpha: float,
+    prior_strength: float,
 ) -> tuple[float, float]:
     """A beta-mixture confidence sequence for one Bernoulli proportion.
 
@@ -277,7 +280,10 @@ def _mixture_proportion_interval(
 
 
 def anytime_confidence_interval(
-    s1: int, n1: int, s2: int, n2: int,
+    s1: int,
+    n1: int,
+    s2: int,
+    n2: int,
     alpha: float = 0.05,
     target_n_per_arm: int | None = None,
 ) -> tuple[float, float]:
@@ -326,8 +332,7 @@ def minimum_detectable_effect(n_per_arm: int, baseline: float, power: float = 0.
 
 
 def required_n_per_arm(effect: float, baseline: float, power: float = 0.80) -> int:
-    if (not math.isfinite(effect) or not math.isfinite(baseline)
-            or not (0 < baseline < 1) or effect <= 0):
+    if not math.isfinite(effect) or not math.isfinite(baseline) or not (0 < baseline < 1) or effect <= 0:
         raise ValueError("effect must be finite and > 0; baseline must be finite and strictly between 0 and 1")
     if not 0.5 <= power < 1.0:
         raise ValueError(f"power must be in [0.5, 1.0), got {power}")
@@ -375,9 +380,14 @@ def plan(
             verdict = "ok" if needed_share <= rate else "raise_rate"
 
     return Design(
-        effect=effect, baseline=baseline, power=power, n_per_arm=n_per_arm,
-        occasions_needed=occasions_needed, rate_used=rate,
-        rate_for_budget=rate_for_budget, occasions_budget=occasions_budget,
+        effect=effect,
+        baseline=baseline,
+        power=power,
+        n_per_arm=n_per_arm,
+        occasions_needed=occasions_needed,
+        rate_used=rate,
+        rate_for_budget=rate_for_budget,
+        occasions_budget=occasions_budget,
         verdict=verdict,
     )
 
@@ -530,8 +540,7 @@ def analyze(
         raise ValueError(f"detectable must be strictly between 0 and 1, got {detectable}")
     if spending_shape not in SPENDING_FUNCTIONS:
         raise ValueError(
-            f"unknown alpha-spending shape {spending_shape!r}; expected one of "
-            f"{', '.join(SPENDING_FUNCTIONS)}"
+            f"unknown alpha-spending shape {spending_shape!r}; expected one of {', '.join(SPENDING_FUNCTIONS)}"
         )
     if not target_effect_multiple > 0.0:
         raise ValueError(f"target_effect_multiple must be > 0, got {target_effect_multiple}")
@@ -546,7 +555,7 @@ def analyze(
         scalar_target = target_n_per_arm
     elif isinstance(target_n_per_arm, dict):
         fixed_targets = target_n_per_arm
-        scalar_target = None
+        scalar_target = default_target
         if any(not isinstance(slug, str) or not slug for slug in fixed_targets):
             raise ValueError("target_n_per_arm mapping keys must be non-empty lesson slugs")
         if any(type(value) is not int or value < 0 for value in fixed_targets.values()):
@@ -569,10 +578,7 @@ def analyze(
     else:
         missing = set(by_lesson) - set(fixed_targets)
         if missing:
-            raise ValueError(
-                "target_n_per_arm mapping is missing observed lessons: "
-                + ", ".join(sorted(missing))
-            )
+            raise ValueError("target_n_per_arm mapping is missing observed lessons: " + ", ".join(sorted(missing)))
         horizon_by_slug = {slug: fixed_targets[slug] for slug in by_lesson}
     if sequential and any(horizon < 1 for horizon in horizon_by_slug.values()):
         raise ValueError("sequential analysis requires a positive target horizon for every observed lesson")
@@ -581,14 +587,16 @@ def analyze(
     for slug, rows in sorted(by_lesson.items()):
         inj = [r for r in rows if r.injected]
         wit = [r for r in rows if not r.injected]
-        staged.append((slug, sum(r.succeeded for r in inj), len(inj),
-                       sum(r.succeeded for r in wit), len(wit)))
+        staged.append((slug, sum(r.succeeded for r in inj), len(inj), sum(r.succeeded for r in wit), len(wit)))
 
     testable = [s for s in staged if s[2] >= min_arm and s[4] >= min_arm]
     # Lessons whose rate changed are estimated by AIPW (see allocation); a difference
     # in means would weight the eras by how many occasions each arm happened to get.
-    weighted = {slug for slug, rows in by_lesson.items()
-                if len({r.rate for r in rows if r.rate is not None}) > 1 or any(r.scheduled for r in rows)}
+    weighted = {
+        slug
+        for slug, rows in by_lesson.items()
+        if len({r.rate for r in rows if r.rate is not None}) > 1 or any(r.scheduled for r in rows)
+    }
     aipw: dict = {}
     if weighted:
         from unimem import aipw as allocation
@@ -597,9 +605,13 @@ def analyze(
             if slug not in weighted:
                 continue
             horizon = 2 * horizon_by_slug[slug]
-            aipw[slug] = allocation.estimate(
-                [allocation.Observation(r.injected, r.succeeded, r.rate) for r in by_lesson[slug]],
-                alpha=alpha, horizon=horizon, sequential=not use_fixed)
+            weighted_rows = []
+            for row in by_lesson[slug]:
+                rate = row.rate
+                if rate is None:
+                    raise ValueError("adaptive assignments require recorded propensities")
+                weighted_rows.append(allocation.Observation(row.injected, row.succeeded, rate))
+            aipw[slug] = allocation.estimate(weighted_rows, alpha=alpha, horizon=horizon, sequential=not use_fixed)
 
     # The interval that drives the verdict, per lesson: the anytime interval
     # in sequential mode, the alpha-matched pooled interval in fixed mode.
@@ -607,12 +619,16 @@ def analyze(
     sig_by_slug: dict[str, bool] = {}
     if use_fixed:
         z_fixed = _norm_ppf(1.0 - alpha / 2.0)
-        p_values = [aipw[s[0]].p_value if s[0] in aipw else two_proportion_test(s[1], s[2], s[3], s[4])[1]
-                    for s in testable]
+        p_values = [
+            aipw[s[0]].p_value if s[0] in aipw else two_proportion_test(s[1], s[2], s[3], s[4])[1] for s in testable
+        ]
         for s, sig in zip(testable, benjamini_hochberg(p_values, alpha=alpha)):
             sig_by_slug[s[0]] = sig
-            interval_by_slug[s[0]] = ((aipw[s[0]].ci_low, aipw[s[0]].ci_high) if s[0] in aipw
-                                      else diff_confidence_interval(s[1], s[2], s[3], s[4], z=z_fixed))
+            interval_by_slug[s[0]] = (
+                (aipw[s[0]].ci_low, aipw[s[0]].ci_high)
+                if s[0] in aipw
+                else diff_confidence_interval(s[1], s[2], s[3], s[4], z=z_fixed)
+            )
     else:
         for slug, s_inj, n_inj, s_wit, n_wit in testable:
             if slug in aipw:
@@ -620,7 +636,11 @@ def analyze(
                 sig_by_slug[slug] = aipw[slug].ci_low > 0.0 or aipw[slug].ci_high < 0.0
                 continue
             lo, hi = anytime_confidence_interval(
-                s_inj, n_inj, s_wit, n_wit, alpha=alpha,
+                s_inj,
+                n_inj,
+                s_wit,
+                n_wit,
+                alpha=alpha,
                 target_n_per_arm=horizon_by_slug[slug],
             )
             interval_by_slug[slug] = (lo, hi)
@@ -691,12 +711,19 @@ def analyze(
 
         out.append(
             CausalEffect(
-                lesson_slug=slug, n_injected=n_inj, n_withheld=n_wit,
-                rate_injected=round(rate_inj, 4), rate_withheld=round(rate_wit, 4),
-                effect=round(effect, 4), ci_low=round(lo, 4), ci_high=round(hi, 4),
-                p_value=round(p, 6), significant=significant,
+                lesson_slug=slug,
+                n_injected=n_inj,
+                n_withheld=n_wit,
+                rate_injected=round(rate_inj, 4),
+                rate_withheld=round(rate_wit, 4),
+                effect=round(effect, 4),
+                ci_low=round(lo, 4),
+                ci_high=round(hi, 4),
+                p_value=round(p, 6),
+                significant=significant,
                 min_detectable_effect=round(mde, 4) if mde is not None else None,
-                verdict=verdict, note=note,
+                verdict=verdict,
+                note=note,
             )
         )
 
@@ -714,21 +741,25 @@ def analyze(
     shared = any(len(slugs) > 1 for slugs in occasions.values())
     # Downward censoring (non-candidates get e = 0) preserves e-validity while
     # retaining interval/sample-size admission as an additional conservative gate.
-    family = [e_values.get(effect.lesson_slug, {}).get("helps", 0.0)
-              if effect.significant and effect.effect > 0 else 0.0 for effect in out]
+    family = [
+        e_values.get(effect.lesson_slug, {}).get("helps", 0.0) if effect.significant and effect.effect > 0 else 0.0
+        for effect in out
+    ]
     confirmed = eprocess.ebh(family, alpha) if family else []
-    for i, effect in enumerate(out):
-        evidence = e_values.get(effect.lesson_slug)
+    for i, causal_effect in enumerate(out):
+        evidence = e_values.get(causal_effect.lesson_slug)
         if evidence is not None:
-            effect.e_value = evidence["helps" if effect.effect > 0 else "hurts"]
+            causal_effect.e_value = evidence["helps" if causal_effect.effect > 0 else "hurts"]
         if not shared:
             continue
         if use_fixed:
-            effect.note += " Legacy fixed-horizon BH display; not dependence-robust release evidence."
-        elif effect.verdict == VERDICT_HELPS and not confirmed[i]:
-            effect.significant = False
-            effect.verdict = VERDICT_UNDERPOWERED
-            effect.note = "Shared-task e-BH evidence is insufficient; marginal intervals and BH are display only."
+            causal_effect.note += " Legacy fixed-horizon BH display; not dependence-robust release evidence."
+        elif causal_effect.verdict == VERDICT_HELPS and not confirmed[i]:
+            causal_effect.significant = False
+            causal_effect.verdict = VERDICT_UNDERPOWERED
+            causal_effect.note = (
+                "Shared-task e-BH evidence is insufficient; marginal intervals and BH are display only."
+            )
     order = {VERDICT_HURTS: 0, VERDICT_HELPS: 1, VERDICT_NO_EFFECT: 2, VERDICT_UNDERPOWERED: 3}
     out.sort(key=lambda e: (order[e.verdict], -abs(e.effect)))
     return out
@@ -757,9 +788,7 @@ def render(summary: ExperimentSummary, alpha: float = 0.05, fixed_horizon: bool 
         counts[e.verdict] = counts.get(e.verdict, 0) + 1
 
     if fixed_horizon:
-        significance_line = (
-            f"- Significance at FDR ≤ {alpha:.2f} (Benjamini-Hochberg across all tested lessons)"
-        )
+        significance_line = f"- Significance at FDR ≤ {alpha:.2f} (Benjamini-Hochberg across all tested lessons)"
     else:
         significance_line = (
             f"- Significance per lesson against an anytime-valid interval at α = {alpha:.2f} "
@@ -821,7 +850,7 @@ def render(summary: ExperimentSummary, alpha: float = 0.05, fixed_horizon: bool 
         "---",
         "",
         "**How to read this.** A significant positive effect is evidence the lesson "
-        "causes better outcomes on this fleet's own work. \"No measurable effect\" "
+        'causes better outcomes on this fleet\'s own work. "No measurable effect" '
         "means this sample could not detect one at the stated size — it is not proof "
         "of absence, which is why the minimum detectable effect is quoted alongside.",
         "",

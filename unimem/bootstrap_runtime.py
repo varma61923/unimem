@@ -172,8 +172,7 @@ def merge_hooks(filename: str, generated: dict):
                 entry
                 for entry in previous
                 if not any(
-                    name in json.dumps(entry)
-                    for name in ("unimem.hook_kit", "hook-bridge.mjs", "hook_bridge.py")
+                    name in json.dumps(entry) for name in ("unimem.hook_kit", "hook-bridge.mjs", "hook_bridge.py")
                 )
             ] + entries
         _jsonl.write_json(filename, {**generated, **existing})
@@ -204,24 +203,44 @@ def stage_project_rule(root: str, filename: str) -> dict:
                 raise ValueError("candidate identity conflicts with an existing lesson")
         else:
             fm = templates.lesson_frontmatter(
-                slug=slug, description=next(line.strip() for line in body.splitlines() if line.strip())[:240],
-                agent_type=paths.store_agent_type(root), domain="other", tags=["project-rule"],
-                applies_when="Working in this repository.", do_not_apply_when="Working outside this repository.",
+                slug=slug,
+                description=next(line.strip() for line in body.splitlines() if line.strip())[:240],
+                agent_type=paths.store_agent_type(root),
+                domain="other",
+                tags=["project-rule"],
+                applies_when="Working in this repository.",
+                do_not_apply_when="Working outside this repository.",
                 importance_rationale="Project rule supplied for review; no measured lift is claimed.",
-                source_traces=[], status="review",
+                source_traces=[],
+                status="review",
             )
             fm["lesson_kind"] = "directive"
             fm["provenance"] = {"source_kind": "explicit_project_rule", "source_path": source, "source_sha256": digest}
             lesson_io.write_lesson(
-                target, fm, body, root=root, actor=approval.AGENT_ACTOR_PREFIX + "unimem-up",
+                target,
+                fm,
+                body,
+                root=root,
+                actor=approval.AGENT_ACTOR_PREFIX + "unimem-up",
                 reason="Explicit project rule staged for review",
             )
     return {
-        "slug": slug, "path": target, "status": fm["status"], "source_sha256": digest,
-        "approval_command": shlex.join([
-            "unimem", "lesson", "approve", slug, "--dest", root,
-            "--rationale", "Reviewed this project rule.",
-        ]),
+        "slug": slug,
+        "path": target,
+        "status": fm["status"],
+        "source_sha256": digest,
+        "approval_command": shlex.join(
+            [
+                "unimem",
+                "lesson",
+                "approve",
+                slug,
+                "--dest",
+                root,
+                "--rationale",
+                "Reviewed this project rule.",
+            ]
+        ),
     }
 
 
@@ -237,7 +256,11 @@ def bridge_lessons(root: str, *, scope: dict) -> int:
         if fm.get("provenance", {}).get("source_kind") == "explicit_project_rule" and not fm.get("approval_receipt"):
             continue
         if not lesson_cache.fresh_eligible(
-            path, fm, slug=lesson_io.canonical_slug(os.path.basename(path)), body=body, root=root,
+            path,
+            fm,
+            slug=lesson_io.canonical_slug(os.path.basename(path)),
+            body=body,
+            root=root,
         ):
             continue
         identity = "lesson-" + hashlib.sha256((path + json.dumps(scope, sort_keys=True)).encode()).hexdigest()
@@ -451,7 +474,10 @@ def setup(
     for agent, report in discovery_reports.items():
         identity = agent + "-" + repo
         coverage_id = record_discovery_coverage(
-            root, agent=agent, scope={"agent": identity, "repo": repo}, report=report,
+            root,
+            agent=agent,
+            scope={"agent": identity, "repo": repo},
+            report=report,
         )
         history_discovery.append({**report, "coverage_id": coverage_id})
     first_lesson = None

@@ -1,4 +1,5 @@
 """Shared argparse `type=` validators for CLI flags reused across commands."""
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,7 @@ def similarity_threshold(value: str) -> float:
     except ValueError:
         raise argparse.ArgumentTypeError(f"must be a number, got {value!r}") from None
     if not (0 < threshold <= 1):
-        raise argparse.ArgumentTypeError(
-            f"must be > 0 and <= 1 (Jaccard similarity's own range), got {threshold}"
-        )
+        raise argparse.ArgumentTypeError(f"must be > 0 and <= 1 (Jaccard similarity's own range), got {threshold}")
     return threshold
 
 

@@ -1,4 +1,5 @@
 """`unimem conversation`: remember what was said, recall it into a small dated context."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,8 +16,8 @@ SPACE_HELP = "the conversation space: one user, agent or thread (letters, digits
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
-        "conversation",
-        help="Conversation memory: store messages with their dates, recall what answers a question.")
+        "conversation", help="Conversation memory: store messages with their dates, recall what answers a question."
+    )
     sub = p.add_subparsers(dest="subcommand", required=True)
 
     a = sub.add_parser("add", help="Add messages to a session (JSON list or JSONL on a file or stdin).")
@@ -26,16 +27,22 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     a.add_argument("--file", default="-", help="messages as JSON or JSONL, - for stdin (default)")
     a.add_argument("--text", default=None, help="add one message with this text instead of reading --file")
     a.add_argument("--speaker", default="user", help="speaker of --text (default user)")
-    a.add_argument("--cache-vectors", action="store_true",
-                   help="Prepare semantic vectors after committing messages; may invoke the selected provider.")
+    a.add_argument(
+        "--cache-vectors",
+        action="store_true",
+        help="Prepare semantic vectors after committing messages; may invoke the selected provider.",
+    )
     a.add_argument("--embedder", default=None, help="Embedding provider tag for --cache-vectors (default configured).")
     a.add_argument("--dest", default=None)
     a.set_defaults(func=run_add)
 
     ix = sub.add_parser("index", help="Prepare local semantic vectors before serving questions.")
     ix.add_argument("space", help=SPACE_HELP)
-    ix.add_argument("--model", default=None,
-                    help="Local or registered embedding provider tag (default: UNIMEM_CONVERSATION_EMBEDDER).")
+    ix.add_argument(
+        "--model",
+        default=None,
+        help="Local or registered embedding provider tag (default: UNIMEM_CONVERSATION_EMBEDDER).",
+    )
     ix.add_argument("--session", action="append", default=[], help="only these sessions (repeatable)")
     ix.add_argument("--json", action="store_true")
     ix.add_argument("--dest", default=None)
@@ -44,18 +51,37 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     r = sub.add_parser("recall", help="The turns that answer a question, as a dated, budgeted context.")
     r.add_argument("space", help=SPACE_HELP)
     r.add_argument("question")
-    r.add_argument("--budget", type=_budget_arg, default=None,
-                   help="context size in tokens (default 1500), or 'auto' to size it by the question's shape "
-                        "(summaries, orderings, counts and lists get more; see --max-budget)")
-    r.add_argument("--max-budget", type=int, default=None,
-                   help="with --budget auto: the most an adaptive budget may grow to (default 12000)")
-    r.add_argument("--now", default=None,
-                   help="historical cutoff and reference time (default: the latest message, without a cutoff)")
-    r.add_argument("--rerank", choices=("auto", "none", "cross-encoder", "cross-encoder-fast"), default="auto",
-                   help="second-stage reranker (auto: the accurate one when the attention extra is installed)")
+    r.add_argument(
+        "--budget",
+        type=_budget_arg,
+        default=None,
+        help="context size in tokens (default 1500), or 'auto' to size it by the question's shape "
+        "(summaries, orderings, counts and lists get more; see --max-budget)",
+    )
+    r.add_argument(
+        "--max-budget",
+        type=int,
+        default=None,
+        help="with --budget auto: the most an adaptive budget may grow to (default 12000)",
+    )
+    r.add_argument(
+        "--now",
+        default=None,
+        help="historical cutoff and reference time (default: the latest message, without a cutoff)",
+    )
+    r.add_argument(
+        "--rerank",
+        choices=("auto", "none", "cross-encoder", "cross-encoder-fast"),
+        default="auto",
+        help="second-stage reranker (auto: the accurate one when the attention extra is installed)",
+    )
     r.add_argument("--lexical", action="store_true", help="keyword search only, no embedding model")
-    r.add_argument("--context-strategy", choices=("legacy", "coverage-v1", "coverage-v2"), default="legacy",
-                   help="context packing: preserve ranking or diversify delivered query facets")
+    r.add_argument(
+        "--context-strategy",
+        choices=("legacy", "coverage-v1", "coverage-v2"),
+        default="legacy",
+        help="context packing: preserve ranking or diversify delivered query facets",
+    )
     _filters(r)
     r.add_argument("--json", action="store_true")
     r.add_argument("--dest", default=None)
@@ -64,12 +90,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     q = sub.add_parser("answer", help="Answer a question from memory with the configured model (UNIMEM_LLM_*).")
     q.add_argument("space", help=SPACE_HELP)
     q.add_argument("question")
-    q.add_argument("--rounds", type=int, default=1,
-                   help="up to 4: the model may ask for follow-up searches before answering")
-    q.add_argument("--grounded", action="store_true",
-                   help="require bounded JSON answers with citations to delivered evidence; invalid replies abstain")
-    q.add_argument("--budget", type=_budget_arg, default=None,
-                   help="tokens, or 'auto' (see recall); default: adaptive from 6000 up to 16000 tokens")
+    q.add_argument(
+        "--rounds", type=int, default=1, help="up to 4: the model may ask for follow-up searches before answering"
+    )
+    q.add_argument(
+        "--grounded",
+        action="store_true",
+        help="require bounded JSON answers with citations to delivered evidence; invalid replies abstain",
+    )
+    q.add_argument(
+        "--budget",
+        type=_budget_arg,
+        default=None,
+        help="tokens, or 'auto' (see recall); default: adaptive from 6000 up to 16000 tokens",
+    )
     q.add_argument("--max-budget", type=int, default=None)
     q.add_argument("--now", default=None)
     q.add_argument("--context-strategy", choices=("legacy", "coverage-v1", "coverage-v2"), default="legacy")
@@ -83,15 +117,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     m.add_argument("--session", action="append", default=[], help="only this session (repeatable)")
     m.add_argument("--model", action="store_true", help="have the configured model write them (default: extractive)")
     m.add_argument("--force", action="store_true", help="rewrite summaries that are already current")
-    m.add_argument("--rolling", action="store_true",
-                   help="keep a rolling summary: fold in only turns added since the last run "
-                        "(rebuilds when earlier turns changed)")
+    m.add_argument(
+        "--rolling",
+        action="store_true",
+        help="keep a rolling summary: fold in only turns added since the last run "
+        "(rebuilds when earlier turns changed)",
+    )
     m.add_argument("--json", action="store_true")
     m.add_argument("--dest", default=None)
     m.set_defaults(func=run_summarize)
 
-    w = sub.add_parser("working-memory",
-                       help="Core blocks, rolling summary, recent turns and recalled evidence in one budgeted context.")
+    w = sub.add_parser(
+        "working-memory",
+        help="Core blocks, rolling summary, recent turns and recalled evidence in one budgeted context.",
+    )
     w.add_argument("space", help=SPACE_HELP)
     w.add_argument("session", help="the session the next call belongs to")
     w.add_argument("question", help="what the next call is about")
@@ -109,8 +148,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     x.add_argument("--dest", default=None)
     x.set_defaults(func=run_extract)
 
-    an = sub.add_parser("anticipate", help="Index the questions each message answers, written by the configured "
-                                           "model (sleep-time indexing; generated text is never shown as evidence).")
+    an = sub.add_parser(
+        "anticipate",
+        help="Index the questions each message answers, written by the configured "
+        "model (sleep-time indexing; generated text is never shown as evidence).",
+    )
     an.add_argument("space", help=SPACE_HELP)
     an.add_argument("--limit", type=int, default=None, help="at most this many pending messages")
     an.add_argument("--workers", type=int, default=4, help="concurrent model calls (default 4)")
@@ -189,10 +231,15 @@ def _budget_arg(value: str):
 def _options(args):
     from unimem.conversation import Options
 
-    opts = Options(rerank=None if getattr(args, "rerank", "auto") == "none" else getattr(args, "rerank", "auto"),
-                   embedder=None if getattr(args, "lexical", False) else "auto",
-                   sessions=tuple(args.session), speakers=tuple(args.speaker), since=args.since, until=args.until,
-                   context_strategy=getattr(args, "context_strategy", "legacy"))
+    opts = Options(
+        rerank=None if getattr(args, "rerank", "auto") == "none" else getattr(args, "rerank", "auto"),
+        embedder=None if getattr(args, "lexical", False) else "auto",
+        sessions=tuple(args.session),
+        speakers=tuple(args.speaker),
+        since=args.since,
+        until=args.until,
+        context_strategy=getattr(args, "context_strategy", "legacy"),
+    )
     if args.budget == "auto":
         opts.adaptive_budget = True
     elif args.budget is not None:
@@ -216,7 +263,11 @@ def _store(args, create: bool = True):
 
 
 def _read_messages(path: str) -> list[dict]:
-    raw = sys.stdin.read() if path == "-" else open(path, encoding="utf-8").read()
+    if path == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
     raw = raw.strip()
     if not raw:
         return []
@@ -233,24 +284,31 @@ def run_add(args) -> int:
     from unimem.conversation import ConversationError
 
     try:
-        messages = [{"speaker": args.speaker, "text": args.text}] if args.text is not None \
-            else _read_messages(args.file)
+        messages = (
+            [{"speaker": args.speaker, "text": args.text}] if args.text is not None else _read_messages(args.file)
+        )
         with _store(args) as store:
-            result = store.add(args.session, messages, session_at=args.at,
-                               cache_vectors=args.cache_vectors, embedder=args.embedder)
+            result = store.add(
+                args.session, messages, session_at=args.at, cache_vectors=args.cache_vectors, embedder=args.embedder
+            )
     except (ConversationError, ValueError, OSError) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
     note = f", {result['secrets_redacted']} secret(s) redacted" if result["secrets_redacted"] else ""
-    print(f"[unimem] {result['added']} message(s) added to {args.space}/{args.session}"
-          f" ({result['skipped']} already stored or empty{note}).")
+    print(
+        f"[unimem] {result['added']} message(s) added to {args.space}/{args.session}"
+        f" ({result['skipped']} already stored or empty{note})."
+    )
     cache = result.get("embedding_cache")
     if cache:
         if cache["ready"]:
             print(f"[unimem] semantic cache ready: {cache['units']} unit(s), {cache['model']}.")
         else:
-            print(f"[unimem] source saved; semantic cache unavailable ({cache['error_type']}). "
-                  "Retry with conversation index.", file=sys.stderr)
+            print(
+                f"[unimem] source saved; semantic cache unavailable ({cache['error_type']}). "
+                "Retry with conversation index.",
+                file=sys.stderr,
+            )
     return 0
 
 
@@ -299,8 +357,10 @@ def run_index(args) -> int:
     if args.json:
         print(json.dumps(safe_result))
     else:
-        print(f"[unimem] {safe_result.get('units', 0)} passage(s) prepared with {safe_result.get('model', '')} "
-              f"in {safe_result.get('elapsed_seconds', 0.0):.3f}s.")
+        print(
+            f"[unimem] {safe_result.get('units', 0)} passage(s) prepared with {safe_result.get('model', '')} "
+            f"in {safe_result.get('elapsed_seconds', 0.0):.3f}s."
+        )
     return 0
 
 
@@ -314,8 +374,14 @@ def run_answer(args) -> int:
         if args.budget is None and getattr(args, "max_budget", None) is None:
             opts.budget, opts.adaptive_budget, opts.max_budget = ANSWER_BUDGET, True, ANSWER_MAX_BUDGET
         with _store(args, create=False) as store:
-            out = answer(store, args.question, now=args.now, options=opts, rounds=args.rounds,
-                         grounded=getattr(args, "grounded", False))
+            out = answer(
+                store,
+                args.question,
+                now=args.now,
+                options=opts,
+                rounds=args.rounds,
+                grounded=getattr(args, "grounded", False),
+            )
     except (ConversationError, ValueError, llm.LLMUnavailable) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -324,8 +390,7 @@ def run_answer(args) -> int:
     else:
         print(out["answer"])
         extra = f", follow-ups: {'; '.join(out['follow_ups'])}" if out["follow_ups"] else ""
-        print(f"[unimem] from {len(out['turns'])} turn(s), ~{out['tokens']} tokens of memory{extra}.",
-              file=sys.stderr)
+        print(f"[unimem] from {len(out['turns'])} turn(s), ~{out['tokens']} tokens of memory{extra}.", file=sys.stderr)
     return 0
 
 
@@ -347,11 +412,14 @@ def run_summarize(args) -> int:
     if getattr(args, "json", False):
         print(json.dumps(out, indent=2))
     elif getattr(args, "rolling", False):
-        print(f"[unimem] rolling ({out['method']}): {out['incremental']} updated incrementally, "
-              f"{out['full']} rebuilt, {out['unchanged']} unchanged.")
+        print(
+            f"[unimem] rolling ({out['method']}): {out['incremental']} updated incrementally, "
+            f"{out['full']} rebuilt, {out['unchanged']} unchanged."
+        )
     else:
-        print(f"[unimem] {out['summarized']} session(s) summarised ({out['method']}), "
-              f"{out['unchanged']} already current.")
+        print(
+            f"[unimem] {out['summarized']} session(s) summarised ({out['method']}), {out['unchanged']} already current."
+        )
     return 0
 
 
@@ -360,9 +428,16 @@ def run_working_memory(args) -> int:
     from unimem.conversation import ConversationError
 
     try:
-        out = working_memory.assemble(paths.resolve_root(args.dest), args.space, args.session, args.question,
-                                      budget=args.budget, recent_turns=args.recent_turns, agent=args.agent,
-                                      refresh_summary=args.refresh_summary)
+        out = working_memory.assemble(
+            paths.resolve_root(args.dest),
+            args.space,
+            args.session,
+            args.question,
+            budget=args.budget,
+            recent_turns=args.recent_turns,
+            agent=args.agent,
+            refresh_summary=args.refresh_summary,
+        )
     except ConversationError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -409,9 +484,11 @@ def run_anticipate(args) -> int:
     if args.json:
         print(json.dumps(out, sort_keys=True))
     else:
-        print(f"[unimem] indexed {out['indexed']} message(s), {out['empty']} without content, "
-              f"{out['rejected']} refused by the injection screen, {out['failed_batches']} batch(es) left "
-              f"for the next pass; {out['pending']} pending.")
+        print(
+            f"[unimem] indexed {out['indexed']} message(s), {out['empty']} without content, "
+            f"{out['rejected']} refused by the injection screen, {out['failed_batches']} batch(es) left "
+            f"for the next pass; {out['pending']} pending."
+        )
     return 0
 
 
@@ -422,9 +499,17 @@ def run_export(args) -> int:
     count = 0
     try:
         with _store(args, create=False) as store:
-            output = contextlib.nullcontext(sys.stdout) if args.out == "-" else tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=os.path.dirname(os.path.abspath(args.out)),
-                prefix=".unimem-export-", delete=False)
+            output = (
+                contextlib.nullcontext(sys.stdout)
+                if args.out == "-"
+                else tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=os.path.dirname(os.path.abspath(args.out)),
+                    prefix=".unimem-export-",
+                    delete=False,
+                )
+            )
             with output as stream:
                 staged = stream.name if args.out != "-" else None
                 for row in store.export():
@@ -454,8 +539,10 @@ def run_import(args) -> int:
     except (ConversationError, ValueError, OSError) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
-    print(f"[unimem] {result['added']} message(s) in {result['sessions']} session(s) imported into {args.space}; "
-          f"{result['memories']} archived memory/memories restored.")
+    print(
+        f"[unimem] {result['added']} message(s) in {result['sessions']} session(s) imported into {args.space}; "
+        f"{result['memories']} archived memory/memories restored."
+    )
     return 0
 
 
@@ -482,8 +569,10 @@ def run_forget(args) -> int:
         return 2
     try:
         with _store(args, create=False) as store:
-            n = store.purge(before=args.before,
-                            expired_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) if args.expired else None)
+            n = store.purge(
+                before=args.before,
+                expired_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) if args.expired else None,
+            )
     except ConversationError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -505,8 +594,10 @@ def run_sessions(args) -> int:
         return 0
     for row in rows:
         print(f"{row['id']}\t{row['started_at'] or '-'}\t{row['turns']} turn(s)")
-    print(f"[unimem] {stats['sessions']} session(s), {stats['turns']} turn(s), "
-          f"{stats['facts']} profile statement(s).", file=sys.stderr)
+    print(
+        f"[unimem] {stats['sessions']} session(s), {stats['turns']} turn(s), {stats['facts']} profile statement(s).",
+        file=sys.stderr,
+    )
     return 0
 
 

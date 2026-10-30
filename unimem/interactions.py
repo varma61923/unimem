@@ -18,8 +18,10 @@ of the cell variances; tests are Benjamini-Hochberg corrected across every
 pair read. Like subgroup effects, this is an exploratory fixed-horizon
 reading, never the billing verdict.
 """
+
 from __future__ import annotations
 
+import heapq
 import itertools
 import math
 from collections import defaultdict
@@ -30,6 +32,10 @@ from unimem import experiment
 
 DEFAULT_MIN_CELL = 10
 MAX_PAIRS = 200
+MAX_OBSERVATIONS = 100_000
+MAX_ARMS_PER_OCCASION = 256
+MAX_CANDIDATE_PAIRS = 50_000
+MAX_PAIR_OCCURRENCES = 2_000_000
 FLAG_SYNERGY = "SYNERGY"
 FLAG_INTERFERENCE = "INTERFERENCE"
 FLAG_ADDITIVE = "ADDITIVE"
@@ -64,24 +70,44 @@ def _normal_sf(z: float) -> float:
     return 0.5 * math.erfc(z / math.sqrt(2))
 
 
-def analyze(observations: Iterable[experiment.HoldoutObservation], *, min_cell: int = DEFAULT_MIN_CELL,
-            alpha: float = 0.05, max_pairs: int = MAX_PAIRS) -> list[PairInteraction]:
+def analyze(
+    observations: Iterable[experiment.HoldoutObservation],
+    *,
+    min_cell: int = DEFAULT_MIN_CELL,
+    alpha: float = 0.05,
+    max_pairs: int = MAX_PAIRS,
+) -> list[PairInteraction]:
     """Interactions for every co-eligible lesson pair with `min_cell` outcomes in each of its four cells."""
     if not 0 < alpha < 1:
         raise ValueError("alpha must be between 0 and 1")
-    if min_cell < 2:
-        raise ValueError("min_cell must be at least 2")
+    if isinstance(min_cell, bool) or not isinstance(min_cell, int) or min_cell < 2:
+        raise ValueError("min_cell must be an integer of at least 2")
+    if isinstance(max_pairs, bool) or not isinstance(max_pairs, int) or not 0 <= max_pairs <= MAX_PAIRS:
+        raise ValueError(f"max_pairs must be an integer in 0..{MAX_PAIRS}")
+    if max_pairs == 0:
+        return []
     by_occasion: dict[str, dict[str, bool]] = defaultdict(dict)
     outcome: dict[str, bool] = {}
-    for obs in observations:
-        by_occasion[obs.occasion_id][obs.lesson_slug] = obs.injected
+    for count, obs in enumerate(observations, start=1):
+        if count > MAX_OBSERVATIONS:
+            raise ValueError(f"interaction analysis is limited to {MAX_OBSERVATIONS} observations")
+        arms = by_occasion[obs.occasion_id]
+        if obs.lesson_slug not in arms and len(arms) >= MAX_ARMS_PER_OCCASION:
+            raise ValueError(f"an occasion may contain at most {MAX_ARMS_PER_OCCASION} lesson arms")
+        arms[obs.lesson_slug] = obs.injected
         outcome[obs.occasion_id] = obs.succeeded
-    co = defaultdict(int)
+    co: defaultdict[tuple[str, str], int] = defaultdict(int)
+    pair_occurrences = 0
     for arms in by_occasion.values():
-        for a, b in itertools.combinations(sorted(arms), 2):
-            co[(a, b)] += 1
+        pair_occurrences += len(arms) * (len(arms) - 1) // 2
+        if pair_occurrences > MAX_PAIR_OCCURRENCES:
+            raise ValueError(f"interaction analysis is limited to {MAX_PAIR_OCCURRENCES} pair occurrences")
+        for candidate_key in itertools.combinations(sorted(arms), 2):
+            if candidate_key not in co and len(co) >= MAX_CANDIDATE_PAIRS:
+                raise ValueError(f"interaction analysis is limited to {MAX_CANDIDATE_PAIRS} candidate pairs")
+            co[candidate_key] += 1
     # The most frequently co-eligible pairs first; a cap bounds the multiple-testing burden.
-    pairs = sorted(co, key=lambda k: (-co[k], k))[:max_pairs]
+    pairs = heapq.nsmallest(max_pairs, co, key=lambda k: (-co[k], k))
     staged: list[PairInteraction] = []
     for a, b in pairs:
         cells = {k: [0, 0] for k in ("00", "01", "10", "11")}
@@ -96,10 +122,19 @@ def analyze(observations: Iterable[experiment.HoldoutObservation], *, min_cell: 
         interaction = (y11 - y01) - (y10 - y00)
         se = math.sqrt(v00 + v01 + v10 + v11)
         z = abs(interaction) / se
-        staged.append(PairInteraction(
-            a, b, cells, round(y10 - y00, 4), round(y11 - y01, 4), round(interaction, 4),
-            round(interaction - 1.959964 * se, 4), round(interaction + 1.959964 * se, 4),
-            round(min(1.0, 2 * _normal_sf(z)), 6)))
+        staged.append(
+            PairInteraction(
+                a,
+                b,
+                cells,
+                round(y10 - y00, 4),
+                round(y11 - y01, 4),
+                round(interaction, 4),
+                round(interaction - 1.959964 * se, 4),
+                round(interaction + 1.959964 * se, 4),
+                round(min(1.0, 2 * _normal_sf(z)), 6),
+            )
+        )
     for pair, significant in zip(staged, experiment.benjamini_hochberg([p.p_value for p in staged], alpha=alpha)):
         pair.significant = significant
         if significant:
@@ -110,16 +145,21 @@ def analyze(observations: Iterable[experiment.HoldoutObservation], *, min_cell: 
 
 
 def render(results: list[PairInteraction]) -> str:
-    lines = ["Lesson interactions on co-eligible occasions (exploratory, fixed-horizon; BH across pairs; "
-             "not the billing verdict)", ""]
+    lines = [
+        "Lesson interactions on co-eligible occasions (exploratory, fixed-horizon; BH across pairs; "
+        "not the billing verdict)",
+        "",
+    ]
     if not results:
         lines.append("No lesson pair has enough co-eligible outcomes in all four injected/withheld cells yet.")
         return "\n".join(lines)
     for p in results:
         mark = "*" if p.significant else " "
-        lines.append(f"{mark} {p.lesson_a} x {p.lesson_b}: {p.flag}  interaction {p.interaction:+.1%} "
-                     f"[{p.ci_low:+.1%}, {p.ci_high:+.1%}]  (A's effect {p.effect_a_without_b:+.1%} alone, "
-                     f"{p.effect_a_with_b:+.1%} with B; n={sum(n for _s, n in p.cells.values())})")
+        lines.append(
+            f"{mark} {p.lesson_a} x {p.lesson_b}: {p.flag}  interaction {p.interaction:+.1%} "
+            f"[{p.ci_low:+.1%}, {p.ci_high:+.1%}]  (A's effect {p.effect_a_without_b:+.1%} alone, "
+            f"{p.effect_a_with_b:+.1%} with B; n={sum(n for _s, n in p.cells.values())})"
+        )
         if p.flag == FLAG_INTERFERENCE:
             lines.append("    -> they work against each other together: merge them, order them, or scope one away.")
     lines.append("")

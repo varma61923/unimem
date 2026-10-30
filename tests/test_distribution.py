@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
@@ -33,7 +34,7 @@ def test_the_plugin_version_is_the_package_version():
 
 @pytest.mark.parametrize("skill", ["install-unimem", "prove-memory"])
 def test_each_skill_has_a_name_and_a_description_that_says_when_to_use_it(skill):
-    text = open(os.path.join(PLUGIN, "skills", skill, "SKILL.md"), encoding="utf-8").read()
+    text = Path(os.path.join(PLUGIN, "skills", skill, "SKILL.md")).read_text(encoding="utf-8")
     front = re.match(r"---\n(.*?)\n---\n", text, re.S).group(1)
     fields = dict(line.split(": ", 1) for line in front.splitlines())
     assert fields["name"] == skill and "Use when" in fields["description"]
@@ -52,7 +53,7 @@ def test_the_skills_name_only_commands_that_exist():
 
     top = choices(build_parser())
     for skill in ("install-unimem", "prove-memory"):
-        text = open(os.path.join(PLUGIN, "skills", skill, "SKILL.md"), encoding="utf-8").read()
+        text = Path(os.path.join(PLUGIN, "skills", skill, "SKILL.md")).read_text(encoding="utf-8")
         for first, second in re.findall(r"^unimem ([a-z]+)(?: ([a-z]+))?", text, re.M):
             assert first in top, f"{skill}: `unimem {first}` is not a command"
             sub = choices(top[first])

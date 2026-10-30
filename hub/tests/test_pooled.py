@@ -1,4 +1,5 @@
 """UniMem signed aggregate ingestion through the authenticated Hub boundary."""
+
 from __future__ import annotations
 
 import copy
@@ -23,8 +24,10 @@ def provision(root, org):
     with memory_authority.writer("contributor", "operator"):
         identity = pooled_io.issue_identity(root, org)
         rng = random.Random(29)
-        rows = [{"occasion_id": str(i), "injected": bool(i % 2), "rate": .5,
-                 "outcome": rng.random() < .5} for i in range(40)]
+        rows = [
+            {"occasion_id": str(i), "injected": bool(i % 2), "rate": 0.5, "outcome": rng.random() < 0.5}
+            for i in range(40)
+        ]
         bundle = pooled_io.contribute(root, org, fp.digest("public procedure"), rows, release_id="release")
     card = {**identity, "group": "owner", "stake_cents": 100, "expires_at": "2099-01-01T00:00:00+00:00"}
     return card, bundle["signed"]
@@ -61,15 +64,16 @@ async def test_authenticated_signature_replay_conflict_and_cross_tenant(session_
         assert (await client.post(PATH, headers=_key(key), json={"signed": expired})).status_code == 403
         for bad in ({}, {"signed": []}, {"signed": {"record": []}}, {"signed": signed, "org_id": other}):
             assert (await client.post(PATH, headers=_key(key), json=bad)).status_code == 400
-        for raw in (b'{"signed":NaN}', b" "*65537):
+        for raw in (b'{"signed":NaN}', b" " * 65537):
             assert (await client.post(PATH, headers=_key(key), content=raw)).status_code == 400
     async with session_scope(session_factory, org_id=org) as session:
         query = select(PooledContribution).where(PooledContribution.org_id == org)
         rows = (await session.execute(query)).scalars().all()
         assert len(rows) == 1
     async with session_scope(session_factory, org_id=other) as session:
-        assert (await session.execute(select(PooledContribution).where(
-            PooledContribution.org_id == other))).scalars().all() == []
+        assert (
+            await session.execute(select(PooledContribution).where(PooledContribution.org_id == other))
+        ).scalars().all() == []
 
 
 async def test_feature_requires_configured_registry_and_signer(session_factory, config, tmp_path):

@@ -43,11 +43,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--push", action="store_true", help="Push active lessons to the Hub only.")
     p.add_argument("--pull", action="store_true", help="Pull search_traces results into memory/traces/ only.")
     p.add_argument(
-        "--push-traces", action="store_true",
+        "--push-traces",
+        action="store_true",
         help="Push captured traces (unimem capture), including any recorded outcome "
-             "data, to the Hub via contribute_trace/amend_trace. Independent of --push/--pull "
-             "and NOT run by default -- a raw trace is a specific incident record, not curated "
-             "knowledge, so pushing it is opt-in.",
+        "data, to the Hub via contribute_trace/amend_trace. Independent of --push/--pull "
+        "and NOT run by default -- a raw trace is a specific incident record, not curated "
+        "knowledge, so pushing it is opt-in.",
     )
     p.add_argument("--query", default="", help="search_traces query text (--pull only).")
     p.add_argument("--tags", default="", help="Comma-separated search_traces tags filter (--pull only).")
@@ -55,42 +56,46 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument(
         "--hub-api-key",
         default=None,
-        help="Hub API key ($UNIMEM_HUB_API_KEY environment variable is preferred "
-             "to avoid process table exposure).",
+        help="Hub API key ($UNIMEM_HUB_API_KEY environment variable is preferred to avoid process table exposure).",
     )
     p.add_argument("--dest", default=None)
-    p.add_argument("--connector", default=None,
-                   help="Auto-sync connector to run (local_dir, web_crawler). "
-                        "When given, Hub push/pull is skipped and the connector "
-                        "syncs into the local store instead.")
-    p.add_argument("--source", action="append", default=None,
-                   help="Connector source: directory path (local_dir) or URL "
-                        "(web_crawler). Repeatable; comma-separated also accepted.")
-    p.add_argument("--scope", default="",
-                   help="Routing scope for connector facts (e.g. payments).")
-    p.add_argument("--dry-run", action="store_true",
-                   help="Connector dry-run: fetch/chunk with zero writes "
-                        "(no facts, provenance, or state).")
-    p.add_argument("--run-id", default="",
-                   help="Provenance run identifier (default: generated).")
-    p.add_argument("--state-token", default=None,
-                   help="Explicit resume token (default: persisted state).")
-    p.add_argument("--max-files", type=int, default=200,
-                   help="Max changed files per local_dir sync.")
-    p.add_argument("--max-pages", type=int, default=20,
-                   help="Max pages per web_crawler sync.")
-    p.add_argument("--timeout", type=int, default=10,
-                   help="Fetch timeout (seconds) for web_crawler.")
     p.add_argument(
-        "--fail-if-unconfigured", action="store_true",
-        help="Exit 2 (instead of 0) when no Hub is configured. For scripts "
-             "that must distinguish 'synced' from 'nothing configured'. "
-             "Also enabled by UNIMEM_SYNC_STRICT=1.",
+        "--connector",
+        default=None,
+        help="Auto-sync connector to run (local_dir, web_crawler). "
+        "When given, Hub push/pull is skipped and the connector "
+        "syncs into the local store instead.",
     )
     p.add_argument(
-        "--quiet", action="store_true",
+        "--source",
+        action="append",
+        default=None,
+        help="Connector source: directory path (local_dir) or URL "
+        "(web_crawler). Repeatable; comma-separated also accepted.",
+    )
+    p.add_argument("--scope", default="", help="Routing scope for connector facts (e.g. payments).")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Connector dry-run: fetch/chunk with zero writes (no facts, provenance, or state).",
+    )
+    p.add_argument("--run-id", default="", help="Provenance run identifier (default: generated).")
+    p.add_argument("--state-token", default=None, help="Explicit resume token (default: persisted state).")
+    p.add_argument("--max-files", type=int, default=200, help="Max changed files per local_dir sync.")
+    p.add_argument("--max-pages", type=int, default=20, help="Max pages per web_crawler sync.")
+    p.add_argument("--timeout", type=int, default=10, help="Fetch timeout (seconds) for web_crawler.")
+    p.add_argument(
+        "--fail-if-unconfigured",
+        action="store_true",
+        help="Exit 2 (instead of 0) when no Hub is configured. For scripts "
+        "that must distinguish 'synced' from 'nothing configured'. "
+        "Also enabled by UNIMEM_SYNC_STRICT=1.",
+    )
+    p.add_argument(
+        "--quiet",
+        action="store_true",
         help="Suppress the unconfigured-Hub help text on stdout (the stderr "
-             "marker is still printed). For cron wrappers.",
+        "marker is still printed). For cron wrappers.",
     )
     p.set_defaults(func=run)
 
@@ -119,7 +124,10 @@ def run(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         env_strict = _configuration_getenv("UNIMEM_SYNC_STRICT", "").strip().lower() in {
-            "1", "true", "yes", "on",
+            "1",
+            "true",
+            "yes",
+            "on",
         }
         strict = getattr(args, "fail_if_unconfigured", False) or env_strict
         return 2 if strict else 0
@@ -225,30 +233,39 @@ def _run_connector(args: argparse.Namespace) -> int:
             from unimem.connectors.local_dir import LocalDirConnector
 
             if not sources:
-                print("[unimem] sync --connector local_dir requires --source <dir>.",
-                      file=sys.stderr)
+                print("[unimem] sync --connector local_dir requires --source <dir>.", file=sys.stderr)
                 return 2
             connector = LocalDirConnector()
             sync_result = connector.sync(
-                root, state_token, scope=scope, run_id=run_id,
-                dry_run=dry_run, source_dir=sources[0], max_files=max_files,
+                root,
+                state_token,
+                scope=scope,
+                run_id=run_id,
+                dry_run=dry_run,
+                source_dir=sources[0],
+                max_files=max_files,
             )
         elif name == "web_crawler":
             from unimem.connectors.web_crawler import WebCrawlerConnector
 
             if not sources:
-                print("[unimem] sync --connector web_crawler requires --source <url>.",
-                      file=sys.stderr)
+                print("[unimem] sync --connector web_crawler requires --source <url>.", file=sys.stderr)
                 return 2
-            connector = WebCrawlerConnector()
-            sync_result = connector.sync(
-                root, state_token, scope=scope, run_id=run_id,
-                dry_run=dry_run, urls=sources, max_pages=max_pages,
+            web_connector = WebCrawlerConnector()
+            sync_result = web_connector.sync(
+                root,
+                state_token,
+                scope=scope,
+                run_id=run_id,
+                dry_run=dry_run,
+                urls=sources,
+                max_pages=max_pages,
                 timeout=timeout,
             )
         else:
-            print(f"[unimem] sync: unknown connector {name!r} "
-                  "(expected 'local_dir' or 'web_crawler').", file=sys.stderr)
+            print(
+                f"[unimem] sync: unknown connector {name!r} (expected 'local_dir' or 'web_crawler').", file=sys.stderr
+            )
             return 2
     except Exception as exc:
         print(f"[unimem] sync --connector {name} failed: {exc}", file=sys.stderr)
@@ -256,14 +273,16 @@ def _run_connector(args: argparse.Namespace) -> int:
 
     d = sync_result.result.to_dict() if sync_result.result is not None else {}
     mode = "dry-run " if dry_run else ""
-    print(f"[unimem] sync --connector {name}: {mode}{d.get('chunks_extracted', 0)} "
-          f"chunk(s), {d.get('facts_written', 0)} fact(s), "
-          f"{len(sync_result.result.errors) if sync_result.result else 0} error(s).")
+    print(
+        f"[unimem] sync --connector {name}: {mode}{d.get('chunks_extracted', 0)} "
+        f"chunk(s), {d.get('facts_written', 0)} fact(s), "
+        f"{len(sync_result.result.errors) if sync_result.result else 0} error(s)."
+    )
     if sync_result.pending:
         print(f"  {sync_result.pending} more item(s) are waiting; run the sync again to continue.")
     print(f"  run_id={sync_result.run_id}")
     print(f"  new_state_token={sync_result.new_state_token}")
-    for err in (sync_result.result.errors if sync_result.result else []):
+    for err in sync_result.result.errors if sync_result.result else []:
         print(f"  [ERROR] {err}", file=sys.stderr)
     if dry_run:
         print("  dry-run: no facts, provenance, or state were written.")

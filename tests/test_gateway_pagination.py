@@ -1,7 +1,9 @@
 """Pagination, bounded scans, stdio/HTTP parity and cache invalidation for gateway/workbench."""
+
 import io
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -22,13 +24,23 @@ def root(tmp_path, monkeypatch):
 
 def _lesson(root, slug, *, status="review"):
     fm = templates.lesson_frontmatter(
-        slug=slug, description=f"{slug} description", agent_type="support", domain="payments",
-        tags=["pay"], applies_when="Payments are retried after a timeout.",
-        do_not_apply_when="The call is naturally idempotent.", importance=3,
-        importance_rationale="r", source_traces=["t1"], status=status)
-    body = ("## Rule\nSend an idempotency key on every payment request.\n\n## Why\nDuplicate charges.\n\n"
-            "## How to apply\nPayments are retried after a timeout.\n\n"
-            "## Counter-examples\nThe call is naturally idempotent.\n")
+        slug=slug,
+        description=f"{slug} description",
+        agent_type="support",
+        domain="payments",
+        tags=["pay"],
+        applies_when="Payments are retried after a timeout.",
+        do_not_apply_when="The call is naturally idempotent.",
+        importance=3,
+        importance_rationale="r",
+        source_traces=["t1"],
+        status=status,
+    )
+    body = (
+        "## Rule\nSend an idempotency key on every payment request.\n\n## Why\nDuplicate charges.\n\n"
+        "## How to apply\nPayments are retried after a timeout.\n\n"
+        "## Counter-examples\nThe call is naturally idempotent.\n"
+    )
     frontmatter.write(os.path.join(paths.lessons_dir(root), f"{slug}.md"), fm, body)
 
 
@@ -73,23 +85,45 @@ def test_list_pagination_defaults_to_full_list_and_slices(root):
 
 def test_active_index_cache_invalidates_on_write(root):
     assert main(["init", "--function", "support", "--dest", root]) == 0
-    assert main(["lesson", "new", "--slug", "lesson_cache_me", "--description",
-                 "Check the suppression list before re-sending a reset email", "--agent-type", "support",
-                 "--domain", "troubleshooting", "--tags", "email,reset", "--applies-when",
-                 "A customer reports a missing password-reset email", "--do-not-apply-when",
-                 "The customer received the email", "--importance", "4", "--importance-rationale", "r",
-                 "--dest", root]) == 0
+    assert (
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_cache_me",
+                "--description",
+                "Check the suppression list before re-sending a reset email",
+                "--agent-type",
+                "support",
+                "--domain",
+                "troubleshooting",
+                "--tags",
+                "email,reset",
+                "--applies-when",
+                "A customer reports a missing password-reset email",
+                "--do-not-apply-when",
+                "The customer received the email",
+                "--importance",
+                "4",
+                "--importance-rationale",
+                "r",
+                "--dest",
+                root,
+            ]
+        )
+        == 0
+    )
     path = os.path.join(paths.lessons_dir(root), "lesson_cache_me.md")
-    text = open(path, encoding="utf-8").read()
-    open(path, "w", encoding="utf-8").write(text[: text.index("\n## Rule")] + "\n## Rule\nCheck the list.\n")
+    text = Path(path).read_text(encoding="utf-8")
+    Path(path).write_text(text[: text.index("\n## Rule")] + "\n## Rule\nCheck the list.\n", encoding="utf-8")
     assert main(["lesson", "approve", "lesson_cache_me", "--rationale", "t", "--dest", root]) == 0
     holdout_io.configure(root, rate=0.5, salt="cache-inv")
     gw = gateway.Gateway(root, token=TOKEN)
 
     def recall_delivered(query, tag):
         for n in range(20):
-            code, out = _call(gw, "POST", "/v1/recall",
-                              {"occasion_id": f"{tag}-{n}", "query": query})
+            code, out = _call(gw, "POST", "/v1/recall", {"occasion_id": f"{tag}-{n}", "query": query})
             assert code == 200 and out["mode"] == "store"
             ids = {i["id"] for i in out["deliver"]} | set(out["withheld"])
             assert ids == {"lesson_cache_me"}
@@ -127,25 +161,34 @@ def test_stdio_http_parity_for_added_ops(root, monkeypatch):
     assert reply["status"] == http_status and reply["body"]["slug"] == http_detail["slug"]
 
     http_status, http_edited = _call(
-        gw, "POST", "/v1/lesson/edit", {"slug": "lesson_parity", "description": "A clearer summary."})
-    [reply] = _stdio(gw, json.dumps({"id": 3, "op": "lesson_edit", "slug": "lesson_parity",
-                                      "description": "A clearer summary."}))
+        gw, "POST", "/v1/lesson/edit", {"slug": "lesson_parity", "description": "A clearer summary."}
+    )
+    [reply] = _stdio(
+        gw, json.dumps({"id": 3, "op": "lesson_edit", "slug": "lesson_parity", "description": "A clearer summary."})
+    )
     assert reply["status"] == http_status == 200
     assert reply["body"]["description"] == "A clearer summary." or "applies_when" in reply["body"]
 
     for op, http_path, http_body in [
-        ("conversation_add", "/v1/conversation/add",
-         {"space": "team", "session": "s-http", "messages": [{"speaker": "op", "text": "The pump failed."}]}),
+        (
+            "conversation_add",
+            "/v1/conversation/add",
+            {"space": "team", "session": "s-http", "messages": [{"speaker": "op", "text": "The pump failed."}]},
+        ),
     ]:
         http_code, http_out = _call(gw, "POST", http_path, http_body)
         assert http_code == 200 and http_out["added"] == 1
-        wire = {"id": 10, "op": op, "space": "team", "session": "s-stdio",
-                "messages": [{"speaker": "op", "text": "The pump failed again."}]}
+        wire = {
+            "id": 10,
+            "op": op,
+            "space": "team",
+            "session": "s-stdio",
+            "messages": [{"speaker": "op", "text": "The pump failed again."}],
+        }
         [reply] = _stdio(gw, json.dumps(wire))
         assert reply["status"] == 200 and reply["body"]["added"] == 1
 
-    http_code, http_out = _call(
-        gw, "POST", "/v1/conversation/recall", {"space": "team", "question": "What failed?"})
+    http_code, http_out = _call(gw, "POST", "/v1/conversation/recall", {"space": "team", "question": "What failed?"})
     for alias in ("conversation_recall", "converse"):
         [reply] = _stdio(gw, json.dumps({"id": 11, "op": alias, "space": "team", "question": "What failed?"}))
         assert reply["status"] == http_code == 200
@@ -158,16 +201,17 @@ def test_stdio_http_parity_for_added_ops(root, monkeypatch):
 
     acting = gateway.Gateway(root, token=TOKEN, allow_approval=True)
     [approved] = _stdio(
-        acting, json.dumps({"id": 20, "op": "lesson_approve", "slug": "lesson_parity", "rationale": "looks good"}))
+        acting, json.dumps({"id": 20, "op": "lesson_approve", "slug": "lesson_parity", "rationale": "looks good"})
+    )
     # Approval goes through the same gates as HTTP: either both succeed or both refuse with the same code.
-    http_code, _ = _call(acting, "POST", "/v1/lesson/approve",
-                         {"slug": "lesson_parity", "rationale": "looks good"})
+    http_code, _ = _call(acting, "POST", "/v1/lesson/approve", {"slug": "lesson_parity", "rationale": "looks good"})
     # The stdio call ran first, so HTTP may now see an already-active lesson; both paths use the same handler.
     assert approved["status"] in (200, 409) and http_code in (200, 409)
 
     _lesson(root, "lesson_reject_me")
-    [rejected] = _stdio(acting, json.dumps({"id": 21, "op": "lesson_reject", "slug": "lesson_reject_me",
-                                            "reason": "too broad"}))
+    [rejected] = _stdio(
+        acting, json.dumps({"id": 21, "op": "lesson_reject", "slug": "lesson_reject_me", "reason": "too broad"})
+    )
     assert rejected["status"] == 200 and rejected["body"]["status"] == "archived"
 
 
@@ -176,8 +220,7 @@ def test_bounded_scan_metadata_and_limits(root):
     items = [{"id": "a", "text": "check the key"}]
     for n in range(10):
         assert _call(gw, "POST", "/v1/recall", {"occasion_id": f"o{n}", "items": items})[0] == 200
-        assert _call(gw, "POST", "/v1/outcome",
-                      {"occasion_id": f"o{n}", "succeeded": True})[0] == 200
+        assert _call(gw, "POST", "/v1/outcome", {"occasion_id": f"o{n}", "succeeded": True})[0] == 200
 
     assert gateway.EVENTS_TAIL_BYTES == 1_500_000 and gateway.EVENTS_MAX_EVENTS == 5000
 

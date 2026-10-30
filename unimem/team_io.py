@@ -5,6 +5,7 @@ transactions. Read versions are checked inside those transactions. The lock is
 not distributed: a space must have a single shared local store and lock domain.
 Raw file edits by the store operator are outside this concurrency protocol.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -43,14 +44,18 @@ def config(root: str) -> dict[str, Any]:
     if len(raw) > 128 * 1024:
         raise ValueError("UniMem team policy exceeds its bound")
     value = json.loads(raw)
-    if (not fp.verify(root, value) or value["record"].get("type") != "unimem.team-policy"
-            or value["record"].get("version") != 1):
+    if (
+        not fp.verify(root, value)
+        or value["record"].get("type") != "unimem.team-policy"
+        or value["record"].get("version") != 1
+    ):
         raise PermissionError("UniMem team policy signature is invalid")
     return dict(value["record"]["spaces"])
 
 
-def isolation(root: str, *, space: str = "default", level: str | None = None,
-              scopes: Sequence[str] = ()) -> dict[str, Any]:
+def isolation(
+    root: str, *, space: str = "default", level: str | None = None, scopes: Sequence[str] = ()
+) -> dict[str, Any]:
     fp.text(space, "space", 128)
     if level is None:
         return {"space": space, **config(root).get(space, {"level": "none", "scopes": []})}
@@ -81,9 +86,16 @@ def _space(root: str, space: str, context: Sequence[str]) -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def request(*, read_set: Any = None, space: str = "default", context: Sequence[str] = (),
-            work_item: str = "", fencing_token: int | None = None,
-            lease_id: str = "", merge: bool = False) -> Iterator[None]:
+def request(
+    *,
+    read_set: Any = None,
+    space: str = "default",
+    context: Sequence[str] = (),
+    work_item: str = "",
+    fencing_token: int | None = None,
+    lease_id: str = "",
+    merge: bool = False,
+) -> Iterator[None]:
     fp.text(space, "space", 128)
     if type(merge) is not bool:
         raise ValueError("UniMem merge flag must be boolean")
@@ -97,9 +109,17 @@ def request(*, read_set: Any = None, space: str = "default", context: Sequence[s
         fp.text(work_item, "work item", 128)
     if lease_id:
         fp.text(lease_id, "lease ID", 128)
-    token = pure.REQUEST.set({"read_set": None if read_set is None else pure.read_set(read_set),
-                             "space": space, "context": labels, "work_item": work_item,
-                             "fencing_token": fencing_token, "lease_id": lease_id, "merge": merge})
+    token = pure.REQUEST.set(
+        {
+            "read_set": None if read_set is None else pure.read_set(read_set),
+            "space": space,
+            "context": labels,
+            "work_item": work_item,
+            "fencing_token": fencing_token,
+            "lease_id": lease_id,
+            "merge": merge,
+        }
+    )
     try:
         yield
     finally:
@@ -111,15 +131,25 @@ def _leases(root: str) -> sqlite3.Connection:
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     connection = sqlite3.connect(filename, timeout=30, isolation_level=None)
     connection.execute("PRAGMA synchronous=FULL")
-    connection.execute("CREATE TABLE IF NOT EXISTS leases (space TEXT, item TEXT, principal TEXT NOT NULL, "
-                       "lease_id TEXT NOT NULL, fence INTEGER NOT NULL, expires TEXT NOT NULL, "
-                       "PRIMARY KEY(space,item))")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS leases (space TEXT, item TEXT, principal TEXT NOT NULL, "
+        "lease_id TEXT NOT NULL, fence INTEGER NOT NULL, expires TEXT NOT NULL, "
+        "PRIMARY KEY(space,item))"
+    )
     return connection
 
 
-def lease(root: str, *, work_item: str, space: str = "default", context: Sequence[str] = (),
-          seconds: int = 60, release: bool = False, lease_id: str = "",
-          fencing_token: int | None = None) -> dict[str, Any]:
+def lease(
+    root: str,
+    *,
+    work_item: str,
+    space: str = "default",
+    context: Sequence[str] = (),
+    seconds: int = 60,
+    release: bool = False,
+    lease_id: str = "",
+    fencing_token: int | None = None,
+) -> dict[str, Any]:
     fp.text(work_item, "work item", 128)
     fp.count(seconds, 1, 3600, "lease seconds")
     if type(release) is not bool:
@@ -129,15 +159,21 @@ def lease(root: str, *, work_item: str, space: str = "default", context: Sequenc
         _space(root, space, context)
         with contextlib.closing(_leases(root)) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            row = connection.execute("SELECT principal,lease_id,fence,expires FROM leases WHERE space=? AND item=?",
-                                     (space, work_item)).fetchone()
+            row = connection.execute(
+                "SELECT principal,lease_id,fence,expires FROM leases WHERE space=? AND item=?", (space, work_item)
+            ).fetchone()
             stamp = datetime.now(timezone.utc)
             if release:
-                if (row is None or row[0] != principal or row[2] != fencing_token
-                        or not hmac.compare_digest(row[1], lease_id)):
+                if (
+                    row is None
+                    or row[0] != principal
+                    or row[2] != fencing_token
+                    or not hmac.compare_digest(row[1], lease_id)
+                ):
                     raise pure.StaleGeneration(reason="stale_fencing_token")
-                connection.execute("UPDATE leases SET expires=? WHERE space=? AND item=?",
-                                   (stamp.isoformat(), space, work_item))
+                connection.execute(
+                    "UPDATE leases SET expires=? WHERE space=? AND item=?", (stamp.isoformat(), space, work_item)
+                )
                 connection.commit()
                 return {"released": True, "fencing_token": row[2]}
             if row and datetime.fromisoformat(row[3]) > stamp:
@@ -148,12 +184,21 @@ def lease(root: str, *, work_item: str, space: str = "default", context: Sequenc
             fp.count(fence, 1, 2**53 - 1, "fencing token")
             identity = secrets.token_urlsafe(24)
             expires = (stamp + timedelta(seconds=seconds)).isoformat()
-            connection.execute("INSERT INTO leases VALUES(?,?,?,?,?,?) ON CONFLICT(space,item) DO UPDATE SET "
-                               "principal=excluded.principal,lease_id=excluded.lease_id,fence=excluded.fence,"
-                               "expires=excluded.expires", (space, work_item, principal, identity, fence, expires))
+            connection.execute(
+                "INSERT INTO leases VALUES(?,?,?,?,?,?) ON CONFLICT(space,item) DO UPDATE SET "
+                "principal=excluded.principal,lease_id=excluded.lease_id,fence=excluded.fence,"
+                "expires=excluded.expires",
+                (space, work_item, principal, identity, fence, expires),
+            )
             connection.commit()
-            return {"space": space, "work_item": work_item, "lease_id": identity,
-                    "fencing_token": fence, "expires_at": expires, "principal": principal}
+            return {
+                "space": space,
+                "work_item": work_item,
+                "lease_id": identity,
+                "fencing_token": fence,
+                "expires_at": expires,
+                "principal": principal,
+            }
 
 
 def _fence(root: str, settings: dict[str, Any], value: dict[str, Any]) -> None:
@@ -162,16 +207,23 @@ def _fence(root: str, settings: dict[str, Any], value: dict[str, Any]) -> None:
     if not value["work_item"]:
         raise pure.StaleGeneration(reason="lease_required")
     with contextlib.closing(_leases(root)) as connection:
-        row = connection.execute("SELECT principal,lease_id,fence,expires FROM leases WHERE space=? AND item=?",
-                                 (value["space"], value["work_item"])).fetchone()
-    if (row is None or row[0] != memory_authority.bound_writer()[0]
-            or row[2] != value["fencing_token"] or not hmac.compare_digest(row[1], value["lease_id"])
-            or datetime.fromisoformat(row[3]) <= datetime.now(timezone.utc)):
+        row = connection.execute(
+            "SELECT principal,lease_id,fence,expires FROM leases WHERE space=? AND item=?",
+            (value["space"], value["work_item"]),
+        ).fetchone()
+    if (
+        row is None
+        or row[0] != memory_authority.bound_writer()[0]
+        or row[2] != value["fencing_token"]
+        or not hmac.compare_digest(row[1], value["lease_id"])
+        or datetime.fromisoformat(row[3]) <= datetime.now(timezone.utc)
+    ):
         raise pure.StaleGeneration(reason="stale_fencing_token")
 
 
-def _visible(root: str, facts: Mapping[str, Any], context: Sequence[str],
-             identities: Sequence[str]) -> dict[str, dict[str, Any]]:
+def _visible(
+    root: str, facts: Mapping[str, Any], context: Sequence[str], identities: Sequence[str]
+) -> dict[str, dict[str, Any]]:
     from unimem.fact_evidence import EvidenceResolver
     from unimem.search_recipes import _eligible_fact
 
@@ -185,8 +237,9 @@ def _visible(root: str, facts: Mapping[str, Any], context: Sequence[str],
     return result
 
 
-def fetch(root: str, *, identities: Sequence[str], space: str = "default",
-          context: Sequence[str] = ()) -> dict[str, Any]:
+def fetch(
+    root: str, *, identities: Sequence[str], space: str = "default", context: Sequence[str] = ()
+) -> dict[str, Any]:
     from unimem import fact_store, hierarchical
 
     if not isinstance(identities, (list, tuple)):
@@ -204,8 +257,12 @@ def fetch(root: str, *, identities: Sequence[str], space: str = "default",
                 rows = _visible(root, facts, context, ids)
     if any(i not in rows or not set(settings["scopes"]) <= set(rows[i].get("scopes", [])) for i in ids):
         raise PermissionError("UniMem fact is unavailable in this team space")
-    return {"space": space, "level": settings["level"], "facts": [rows[i] for i in ids],
-            "read_set": [{"id": i, "transaction_time": pure.transaction_time(rows[i])} for i in ids]}
+    return {
+        "space": space,
+        "level": settings["level"],
+        "facts": [rows[i] for i in ids],
+        "read_set": [{"id": i, "transaction_time": pure.transaction_time(rows[i])} for i in ids],
+    }
 
 
 @contextlib.contextmanager
@@ -233,7 +290,7 @@ def _checked(root: str, facts: Any, settings: dict[str, Any], value: dict[str, A
                 target = getattr(old, "superseded_by", "")
                 if target:
                     successors.append(target)
-        details = list(_visible(root, facts, value["context"], successors[:pure.MAX_READS]).values())
+        details = list(_visible(root, facts, value["context"], successors[: pure.MAX_READS]).values())
         raise pure.StaleGeneration(details)
 
     _fence(root, settings, value)
@@ -246,16 +303,15 @@ def _checked(root: str, facts: Any, settings: dict[str, Any], value: dict[str, A
     yield
     changed_ids = [i for i, f in facts.items() if before.get(i) != pure.transaction_time(f.to_dict())]
     changed_ids += [i for i in before if i not in facts]
-    if any(i in facts and not memory_control.matches(facts[i].scopes, value["context"])
-           for i in changed_ids):
+    if any(i in facts and not memory_control.matches(facts[i].scopes, value["context"]) for i in changed_ids):
         raise PermissionError("UniMem team write is outside the caller's scope")
-    if any(not memory_control.matches(prior_scopes[i], value["context"])
-           for i in changed_ids if i in prior_scopes):
+    if any(not memory_control.matches(prior_scopes[i], value["context"]) for i in changed_ids if i in prior_scopes):
         raise PermissionError("UniMem team write cannot alter an unavailable source")
     if any(i in facts and not set(settings["scopes"]) <= set(facts[i].scopes) for i in changed_ids):
         raise PermissionError("UniMem team write cannot escape its space")
     if settings["level"] == "snapshot" and any(
-            i in before and (i not in declared or i in changed) for i in changed_ids):
+        i in before and (i not in declared or i in changed) for i in changed_ids
+    ):
         raise pure.StaleGeneration(reason="snapshot_write_conflict")
     # Lease expiry during generation/commit fails too; lease acquisition is
     # serialized on this same lock, and cannot advance the fence underneath us.
@@ -285,8 +341,12 @@ def transactions(factory: Callable[..., Any]) -> Callable[..., Any]:
                 with factory(root, **kwargs) as facts:
                     before = {i: pure.transaction_time(f.to_dict()) for i, f in facts.items()}
                     yield facts
-                    if (any(i not in before or before[i] != pure.transaction_time(f.to_dict())
-                            for i, f in facts.items()) or not (set(before) - set(facts)) <= erasure[1]):
+                    if (
+                        any(
+                            i not in before or before[i] != pure.transaction_time(f.to_dict()) for i, f in facts.items()
+                        )
+                        or not (set(before) - set(facts)) <= erasure[1]
+                    ):
                         raise PermissionError("UniMem privacy purge may only remove its authorized facts")
                 return
             value = pure.REQUEST.get()
@@ -303,19 +363,26 @@ def transactions(factory: Callable[..., Any]) -> Callable[..., Any]:
             with factory(root, **kwargs) as facts:
                 with _checked(root, facts, settings, value):
                     yield facts
+
     return wrapped
 
 
-def contradictions(root: str | None, facts: Any, index: Any, statement: str,
-                   scopes: list[str]) -> list[Any]:
+def contradictions(root: str | None, facts: Any, index: Any, statement: str, scopes: list[str]) -> list[Any]:
     """Inspect contradiction slots before any near/semantic dedup decision."""
     if root is None or pure.REQUEST.get() is None:
         return []
     from unimem import hierarchical as h
 
-    probe = h.AtomicFact(id="team-probe-" + secrets.token_hex(12), statement=statement,
-                         category="general", scopes=scopes, confidence=.8, confirmations=1,
-                         valid_from=fp.now(), valid_until=None)
+    probe = h.AtomicFact(
+        id="team-probe-" + secrets.token_hex(12),
+        statement=statement,
+        category="general",
+        scopes=scopes,
+        confidence=0.8,
+        confirmations=1,
+        valid_from=fp.now(),
+        valid_until=None,
+    )
     found: list[Any] = []
     h._detect_conflicts(facts, index, probe, root, found, may_supersede=False)
     value = pure.REQUEST.get()
@@ -331,26 +398,40 @@ def contradictions(root: str | None, facts: Any, index: Any, statement: str,
             if source is None or not set(source.scopes) <= set(scopes):
                 raise PermissionError("UniMem merge cannot reduce its source scopes")
             if source.statement != statement and identity not in present:
-                found.append(fact_conflicts.Conflict(identity, probe.id, "team-merge", source.statement,
-                             statement, fp.now(), "flagged", "Semantic merge proposal requires review"))
+                found.append(
+                    fact_conflicts.Conflict(
+                        identity,
+                        probe.id,
+                        "team-merge",
+                        source.statement,
+                        statement,
+                        fp.now(),
+                        "flagged",
+                        "Semantic merge proposal requires review",
+                    )
+                )
     return found
 
 
 def resolved_conflicts(found: list[Any], identity: str) -> list[Any]:
     from dataclasses import replace
 
-    return [replace(conflict, newer=identity, action="flagged") for conflict in found
-            if conflict.older != identity]
+    return [replace(conflict, newer=identity, action="flagged") for conflict in found if conflict.older != identity]
 
 
 def gateway_request(root: str, body: dict[str, Any], context: Sequence[str]) -> Any:
     fields = {"read_set", "team_space", "work_item", "fencing_token", "lease_id", "merge"}
     if not fields.intersection(body) and not os.path.isfile(_path(root)):
         return contextlib.nullcontext()
-    return request(read_set=body.get("read_set"), space=body.get("team_space", "default"),
-                   context=context, work_item=body.get("work_item", ""),
-                   fencing_token=body.get("fencing_token"), lease_id=body.get("lease_id", ""),
-                   merge=body.get("merge", False))
+    return request(
+        read_set=body.get("read_set"),
+        space=body.get("team_space", "default"),
+        context=context,
+        work_item=body.get("work_item", ""),
+        fencing_token=body.get("fencing_token"),
+        lease_id=body.get("lease_id", ""),
+        merge=body.get("merge", False),
+    )
 
 
 @contextlib.contextmanager

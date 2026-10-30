@@ -1,4 +1,5 @@
 """Native opt-in MCP progress preserves result schemas and correlated stdio frames."""
+
 from __future__ import annotations
 
 import asyncio
@@ -62,9 +63,17 @@ def test_old_sdk_call_signature_remains_supported(tmp_path, monkeypatch):
 
     monkeypatch.setattr(MCPServer, "call_tool", legacy)
     server = mcp_server.build_server(str(tmp_path))
-    result = asyncio.run(server.call_tool("conversation_add", {
-        "space": "test", "session": "one", "messages": [{"text": "The venue is Oslo."}],
-    }, object()))
+    result = asyncio.run(
+        server.call_tool(
+            "conversation_add",
+            {
+                "space": "test",
+                "session": "one",
+                "messages": [{"text": "The venue is Oslo."}],
+            },
+            object(),
+        )
+    )
     assert payload(result)["added"] == 1
 
 
@@ -78,9 +87,16 @@ def test_context_absent_server_keeps_tools_and_internal_argument_hidden(tmp_path
     for tool in tools:
         schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema")
         assert "ctx" not in schema.get("properties", {})
-    result = asyncio.run(server.call_tool("conversation_add", {
-        "space": "test", "session": "one", "messages": [{"text": "The venue is Oslo."}],
-    }))
+    result = asyncio.run(
+        server.call_tool(
+            "conversation_add",
+            {
+                "space": "test",
+                "session": "one",
+                "messages": [{"text": "The venue is Oslo."}],
+            },
+        )
+    )
     assert payload(result)["added"] == 1
 
 
@@ -96,14 +112,28 @@ def test_sdk_context_is_forwarded_and_failed_tools_never_report_completion(tmp_p
             self.sent.append((progress, total, message))
 
     session = Session()
-    ctx = Context(request_context=ServerRequestContext(
-        session=session, lifespan_context=None, protocol_version="2025-11-25", method="tools/call",
-        request_id=1, meta={"progress_token": 0},
-    ))
+    ctx = Context(
+        request_context=ServerRequestContext(
+            session=session,
+            lifespan_context=None,
+            protocol_version="2025-11-25",
+            method="tools/call",
+            request_id=1,
+            meta={"progress_token": 0},
+        )
+    )
     server = mcp_server.build_server(str(tmp_path))
-    success = asyncio.run(server.call_tool("conversation_add", {
-        "space": "test", "session": "one", "messages": [{"text": "A private venue is Oslo."}],
-    }, context=ctx))
+    success = asyncio.run(
+        server.call_tool(
+            "conversation_add",
+            {
+                "space": "test",
+                "session": "one",
+                "messages": [{"text": "A private venue is Oslo."}],
+            },
+            context=ctx,
+        )
+    )
     assert payload(success)["added"] == 1
     assert [p for p, _, _ in session.sent] == [0, 1]
     session.sent.clear()
@@ -121,14 +151,28 @@ def test_optional_notification_failure_does_not_rollback_a_write(tmp_path):
         async def report_progress(self, *args):
             raise OSError("transport temporarily unavailable")
 
-    ctx = Context(request_context=ServerRequestContext(
-        session=Session(), lifespan_context=None, protocol_version="2025-11-25", method="tools/call",
-        request_id=1, meta={"progress_token": "request-a"},
-    ))
+    ctx = Context(
+        request_context=ServerRequestContext(
+            session=Session(),
+            lifespan_context=None,
+            protocol_version="2025-11-25",
+            method="tools/call",
+            request_id=1,
+            meta={"progress_token": "request-a"},
+        )
+    )
     server = mcp_server.build_server(str(tmp_path))
-    result = asyncio.run(server.call_tool("conversation_add", {
-        "space": "test", "session": "one", "messages": [{"text": "The venue is Oslo."}],
-    }, ctx))
+    result = asyncio.run(
+        server.call_tool(
+            "conversation_add",
+            {
+                "space": "test",
+                "session": "one",
+                "messages": [{"text": "The venue is Oslo."}],
+            },
+            ctx,
+        )
+    )
     assert payload(result)["ok"] and payload(result)["added"] == 1
 
 
@@ -147,9 +191,16 @@ def test_worker_ingestion_does_not_block_another_tool_request(tmp_path, monkeypa
     server = mcp_server.build_server(str(tmp_path))
 
     async def drive():
-        task = asyncio.create_task(server.call_tool("conversation_add", {
-            "space": "test", "session": "one", "messages": [{"text": "The venue is Oslo."}],
-        }))
+        task = asyncio.create_task(
+            server.call_tool(
+                "conversation_add",
+                {
+                    "space": "test",
+                    "session": "one",
+                    "messages": [{"text": "The venue is Oslo."}],
+                },
+            )
+        )
         try:
             assert await asyncio.to_thread(started.wait, 2)
             assert not task.done()
@@ -166,8 +217,7 @@ def test_progress_does_not_swallow_request_cancellation():
     async def report(*args, **kwargs):
         raise asyncio.CancelledError
 
-    ctx = SimpleNamespace(request_context=SimpleNamespace(meta={"progress_token": "request-a"}),
-                          report_progress=report)
+    ctx = SimpleNamespace(request_context=SimpleNamespace(meta={"progress_token": "request-a"}), report_progress=report)
     with pytest.raises(asyncio.CancelledError):
         asyncio.run(mcp_server._progress(ctx, 0, "Storing conversation messages"))
 
@@ -212,13 +262,17 @@ def test_native_stdio_progress_is_opt_in_correlated_and_frames_remain_readable(t
 
     async def drive():
         env = {**os.environ, "UNIMEM_MCP_WARM": "0", "UNIMEM_CONVERSATION_EMBEDDER": "none"}
-        params = StdioServerParameters(command=sys.executable,
-                                      args=["-m", "unimem.cli", "serve", "--dest", str(tmp_path)], env=env)
+        params = StdioServerParameters(
+            command=sys.executable, args=["-m", "unimem.cli", "serve", "--dest", str(tmp_path)], env=env
+        )
         async with stdio_client(params) as (read, write):
             async with ClientSession(RecordingRead(read), write) as client:
                 await client.initialize()
-                arguments = {"space": "private-customer-name", "session": "first",
-                             "messages": [{"text": "Private project budget is 900 units."}]}
+                arguments = {
+                    "space": "private-customer-name",
+                    "session": "first",
+                    "messages": [{"text": "Private project budget is 900 units."}],
+                }
                 default = await client.call_tool("conversation_add", arguments)
                 assert payload(default)["added"] == 1 and received == []
                 callbacks = [[], []]
@@ -230,10 +284,8 @@ def test_native_stdio_progress_is_opt_in_correlated_and_frames_remain_readable(t
                     callbacks[1].append((progress, total, message))
 
                 results = await asyncio.gather(
-                    client.call_tool("conversation_add", {**arguments, "session": "second"},
-                                     progress_callback=first),
-                    client.call_tool("conversation_add", {**arguments, "session": "third"},
-                                     progress_callback=second),
+                    client.call_tool("conversation_add", {**arguments, "session": "second"}, progress_callback=first),
+                    client.call_tool("conversation_add", {**arguments, "session": "third"}, progress_callback=second),
                 )
                 assert all(payload(result)["added"] == 1 for result in results)
                 assert all([value for value, _, _ in events] == [0, 1] for events in callbacks)

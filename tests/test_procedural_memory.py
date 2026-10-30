@@ -146,4 +146,3 @@ def test_mcp_procedural_tools(tmp_path):
     )
     replay_text = replay_res.content[0].text if hasattr(replay_res, "content") else str(replay_res)
     assert "prompt_context" in replay_text
-

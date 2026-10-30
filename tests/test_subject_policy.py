@@ -1,4 +1,5 @@
 """Regulated-subject decisions happen before canonical writes, not after retrieval."""
+
 from __future__ import annotations
 
 import json
@@ -22,16 +23,29 @@ def clock(monkeypatch):
 def configure(root, *, subject="adult", context="workplace", consent=True):
     binding = {"id": "work-area", "scopes": ["project:a"], "subject_class": subject, "context": context}
     if subject == "child-under-13":
-        binding.update(retention_days=7, retention_purpose=policy.MEDICAL,
-            parental_consent={"reference": "verified-parent-receipt-42", "verification_method": "External reviewed VPC",
-                "expires_at": (NOW+timedelta(days=2)).isoformat()} if consent else None)
+        binding.update(
+            retention_days=7,
+            retention_purpose=policy.MEDICAL,
+            parental_consent={
+                "reference": "verified-parent-receipt-42",
+                "verification_method": "External reviewed VPC",
+                "expires_at": (NOW + timedelta(days=2)).isoformat(),
+            }
+            if consent
+            else None,
+        )
     return policy.compile(root, [binding])
 
 
 def emotion(identity="emotion", modality="voice"):
-    return MemoryRecord(identity, "observation", 1, {"text": "Inferred emotional state."},
+    return MemoryRecord(
+        identity,
+        "observation",
+        1,
+        {"text": "Inferred emotional state."},
         provenance={"source": {"modality": modality, "labels": ["emotion"], "inferred": True}},
-        scope={"labels": ["project:a"]})
+        scope={"labels": ["project:a"]},
+    )
 
 
 @pytest.mark.parametrize("context", ["workplace", "education"])
@@ -51,7 +65,7 @@ def test_biometric_emotion_is_quarantined_before_any_record_is_written(tmp_path,
 
 def test_clinical_medical_and_explicit_workplace_medical_exception_are_allowed(tmp_path):
     for context in ("clinical", "workplace"):
-        root = str(tmp_path/context)
+        root = str(tmp_path / context)
         configure(root, context=context)
         with purpose.request(root, policy.MEDICAL):
             saved = Journal(root).put(emotion())
@@ -63,8 +77,9 @@ def test_unknown_modality_is_held_for_review_even_in_clinical_context(tmp_path):
     root = str(tmp_path)
     configure(root, context="clinical")
     with pytest.raises(policy.HeldForReview, match="unknown-source-modality"):
-        Journal(root).put(MemoryRecord("unknown", "fact", 1, {"text": "An untagged observation."},
-                                      scope={"labels": ["project:a"]}))
+        Journal(root).put(
+            MemoryRecord("unknown", "fact", 1, {"text": "An untagged observation."}, scope={"labels": ["project:a"]})
+        )
     assert policy.explain(root)["decisions"][-1]["decision"] == "review"
 
 
@@ -76,10 +91,10 @@ def test_child_biometric_gets_earliest_written_retention_and_is_actually_erased(
     rows = policy._retentions(root)
     assert len(rows) == 1
     receipt = next(iter(rows.values()))
-    assert receipt["expires_at"] == (NOW+timedelta(days=2)).isoformat()
+    assert receipt["expires_at"] == (NOW + timedelta(days=2)).isoformat()
     assert receipt["namespace"] == "records"
     assert policy.explain(root)["decisions"][-1]["biometric_personal_information"]
-    monkeypatch.setattr(fp, "now", lambda: (NOW+timedelta(days=3)).isoformat())
+    monkeypatch.setattr(fp, "now", lambda: (NOW + timedelta(days=3)).isoformat())
     journal = Journal(root)
     assert journal.current("emotion", scope={"labels": ["project:a"]}) is None
     result = purpose.reap(root)["regulated_retention"][0]
@@ -94,16 +109,18 @@ def test_missing_parental_consent_denies_child_capture_before_persistence(tmp_pa
     configure(root, subject="child-under-13", context="home", consent=False)
     with purpose.request(root, policy.MEDICAL), policy.ingest(root, {"modality": "voice"}):
         with pytest.raises(policy.HeldForReview, match="parental-consent"):
-            Journal(root).capture("session", "speech", {"text": "Sensitive child speech."},
-                                  scope={"labels": ["project:a"]})
+            Journal(root).capture(
+                "session", "speech", {"text": "Sensitive child speech."}, scope={"labels": ["project:a"]}
+            )
     assert policy.explain(root)["decisions"][-1]["decision"] == "deny"
 
 
 @pytest.mark.parametrize("indexed", [False, True])
 def test_fact_writes_and_direct_mutations_cannot_skip_modality_enforcement(tmp_path, indexed):
     root = str(tmp_path)
-    existing = hierarchical.append_facts(root, [{"statement": "Reviewed public procedure.",
-                                                "scopes": ["project:a"]}])[0][0]
+    existing = hierarchical.append_facts(root, [{"statement": "Reviewed public procedure.", "scopes": ["project:a"]}])[
+        0
+    ][0]
     if indexed:
         from unimem import fact_store
 
@@ -170,7 +187,7 @@ def test_child_expiry_filters_native_search_before_limit_and_capture_buffer(tmp_
     with purpose.request(root, policy.MEDICAL), policy.ingest(root, {"modality": "text"}):
         journal.put(MemoryRecord("old", "fact", 1, {"text": "Wrist wrist calibration."}, scope=scope))
         journal.capture("session", "message", {"text": "Care information."}, scope=scope, event_id="message")
-    monkeypatch.setattr(fp, "now", lambda: (NOW+timedelta(days=3)).isoformat())
+    monkeypatch.setattr(fp, "now", lambda: (NOW + timedelta(days=3)).isoformat())
     assert journal.search("wrist", scope=scope, limit=1) == []
     assert journal.buffer("session", scope=scope) == []
 
@@ -181,11 +198,20 @@ def test_child_retention_cannot_be_extended_by_recompiling_a_longer_policy(tmp_p
     with purpose.request(root, policy.MEDICAL):
         Journal(root).put(emotion())
     prior = next(iter(policy._retentions(root).values()))["expires_at"]
-    monkeypatch.setattr(fp, "now", lambda: (NOW+timedelta(days=1)).isoformat())
-    binding = {"id": "home", "scopes": ["project:a"], "subject_class": "child-under-13", "context": "home",
-        "retention_days": 30, "retention_purpose": policy.MEDICAL,
-        "parental_consent": {"reference": "new-parent-receipt", "verification_method": "External reviewed VPC",
-            "expires_at": (NOW+timedelta(days=40)).isoformat()}}
+    monkeypatch.setattr(fp, "now", lambda: (NOW + timedelta(days=1)).isoformat())
+    binding = {
+        "id": "home",
+        "scopes": ["project:a"],
+        "subject_class": "child-under-13",
+        "context": "home",
+        "retention_days": 30,
+        "retention_purpose": policy.MEDICAL,
+        "parental_consent": {
+            "reference": "new-parent-receipt",
+            "verification_method": "External reviewed VPC",
+            "expires_at": (NOW + timedelta(days=40)).isoformat(),
+        },
+    }
     policy.compile(root, [binding])
     original = emotion()
     from dataclasses import replace
@@ -199,9 +225,10 @@ def test_child_fact_expiry_removes_canonical_content_and_policy_tampering_fails_
     root = str(tmp_path)
     configure(root, subject="child-under-13", context="home")
     with purpose.request(root, policy.MEDICAL), policy.ingest(root, {"modality": "face"}):
-        fact = hierarchical.append_facts(root, [{"statement": "Reviewed facial biometric classification.",
-                                                "scopes": ["project:a"]}])[0][0]
-    monkeypatch.setattr(fp, "now", lambda: (NOW+timedelta(days=3)).isoformat())
+        fact = hierarchical.append_facts(
+            root, [{"statement": "Reviewed facial biometric classification.", "scopes": ["project:a"]}]
+        )[0][0]
+    monkeypatch.setattr(fp, "now", lambda: (NOW + timedelta(days=3)).isoformat())
     assert not memory_authority.permits(root, fact)
     assert purpose.reap(root)["regulated_retention"][0]["local_purge"]
     assert fact.id not in hierarchical.load_facts(root)

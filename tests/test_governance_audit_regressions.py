@@ -1,4 +1,5 @@
 """Regressions at the governance persistence and statistical boundaries."""
+
 from __future__ import annotations
 
 import copy
@@ -8,9 +9,11 @@ import multiprocessing
 import os
 from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import _jsonl, causal_policy, conformal_gate, holdout_io, promotion, safety
 from unimem import frontier_protocol as fp
 
@@ -32,7 +35,7 @@ def test_rotation_checks_actual_serialized_row_size(tmp_path, monkeypatch):
     root = str(tmp_path)
     name = "rotation.jsonl"
     fp.append(root, name, {"kind": "original"})
-    original = open(fp.filename(root, name), "rb").read()
+    original = Path(fp.filename(root, name)).read_bytes()
     payload = {str(i): 0 for i in range(200)}
     # Choose a limit between compact canonical bytes and the actual on-disk
     # encoding, including the signature and chain metadata.
@@ -42,10 +45,12 @@ def test_rotation_checks_actual_serialized_row_size(tmp_path, monkeypatch):
     monkeypatch.setattr(fp, "MAX_BYTES", maximum)
     with pytest.raises(ValueError, match="serialized journal record"):
         fp.rotate(root, name, [payload])
-    assert open(fp.filename(root, name), "rb").read() == original
+    assert Path(fp.filename(root, name)).read_bytes() == original
 
 
-@pytest.mark.parametrize("payload", [b'{"x":\xff}\n', b'{"x":NaN}\n', b'{"x":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}\n'])
+@pytest.mark.parametrize(
+    "payload", [b'{"x":\xff}\n', b'{"x":NaN}\n', b'{"x":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}\n"]
+)
 def test_journal_parser_normalizes_malformed_input_to_value_error(tmp_path, payload):
     path = tmp_path / "rows.jsonl"
     path.write_bytes(payload)
@@ -55,20 +60,21 @@ def test_journal_parser_normalizes_malformed_input_to_value_error(tmp_path, payl
 
 def test_harm_gate_cache_cannot_be_mutated_by_a_consumer(tmp_path):
     root = str(tmp_path)
-    configured = conformal_gate.configure(root, alpha=.02)
+    configured = conformal_gate.configure(root, alpha=0.02)
     configured["strata"][""]["threshold"] = 0
     configured["scorers"].append("forged")
     fresh = conformal_gate.current(root)
     assert fresh["strata"][""]["threshold"] > 1
     assert fresh["scorers"] == []
-    assert not conformal_gate.admit(fresh, .99)
+    assert not conformal_gate.admit(fresh, 0.99)
 
 
 def test_hazard_cache_cannot_be_mutated_by_a_consumer(tmp_path):
     root = str(tmp_path)
     review = fp.sign(root, {"kind": "hazard-review", "id": "hazard"})
-    fp.append(root, safety.REGISTRY, {"kind": "mark", "id": "hazard", "site": "private",
-                                    "robot": "robot-a", "review": review})
+    fp.append(
+        root, safety.REGISTRY, {"kind": "mark", "id": "hazard", "site": "private", "robot": "robot-a", "review": review}
+    )
     original = copy.deepcopy(safety.protected(root))
     safety.protected(root)["hazard"]["site"] = ""
     assert safety.protected(root) == original
@@ -76,11 +82,13 @@ def test_hazard_cache_cannot_be_mutated_by_a_consumer(tmp_path):
 
 def test_snipw_stays_finite_for_subnormal_propensity_products():
     tiny = math.nextafter(0, 1)
-    rows = [dict(delivered=True, outcome=1, selection_probability=tiny, treatment_probability=tiny),
-            dict(delivered=True, outcome=0, selection_probability=tiny, treatment_probability=tiny),
-            dict(delivered=False, outcome=0, selection_probability=tiny, treatment_probability=.5)]
+    rows = [
+        dict(delivered=True, outcome=1, selection_probability=tiny, treatment_probability=tiny),
+        dict(delivered=True, outcome=0, selection_probability=tiny, treatment_probability=tiny),
+        dict(delivered=False, outcome=0, selection_probability=tiny, treatment_probability=0.5),
+    ]
     result = causal_policy.snipw(rows)
-    assert result["effect"] == .5
+    assert result["effect"] == 0.5
     assert result["effective_sample_size"] == {"True": 2, "False": 1}
     assert math.isfinite(result["treated"])
 
@@ -100,9 +108,9 @@ def test_child_cannot_inherit_parent_jsonl_lock_ownership(tmp_path):
     process = context.Process(target=_fork_lock_probe, args=(path, child))
     try:
         with _jsonl.locked(path):
-            process.start()
+            intentional_fork(process.start)
             assert parent.poll(10) and parent.recv() == "ready"
-            assert not parent.poll(.1), "child bypassed the parent's file lock"
+            assert not parent.poll(0.1), "child bypassed the parent's file lock"
         assert parent.poll(10) and parent.recv() == "acquired"
         process.join(10)
         assert process.exitcode == 0
@@ -116,12 +124,19 @@ def test_child_cannot_inherit_parent_jsonl_lock_ownership(tmp_path):
 
 def test_change_plan_registration_is_atomic(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="audit")
+    holdout_io.configure(root, rate=0.5, salt="audit")
 
     def register(_):
         try:
-            promotion.register(root, "one-plan", candidate={"default": 1}, incumbent={"default": 0},
-                               allowed_changes=["ranker"], monitoring="harm", rollback="restore")
+            promotion.register(
+                root,
+                "one-plan",
+                candidate={"default": 1},
+                incumbent={"default": 0},
+                allowed_changes=["ranker"],
+                monitoring="harm",
+                rollback="restore",
+            )
             return True
         except ValueError as exc:
             assert "immutable" in str(exc)
@@ -134,19 +149,38 @@ def test_change_plan_registration_is_atomic(tmp_path):
 
 def test_promotion_evidence_is_bound_to_the_registered_design(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="audit")
-    design = promotion.register(root, "upgrade", candidate={"default": 1}, incumbent={"default": 0},
-                                allowed_changes=["ranker"], monitoring="harm", rollback="restore")["record"]
+    holdout_io.configure(root, rate=0.5, salt="audit")
+    design = promotion.register(
+        root,
+        "upgrade",
+        candidate={"default": 1},
+        incumbent={"default": 0},
+        allowed_changes=["ranker"],
+        monitoring="harm",
+        rollback="restore",
+    )["record"]
     promotion.assign(root, "upgrade", "valid")
     holdout_io.record_outcome(root, "valid", True)
-    holdout_io.assign_and_log(root, [design["trial_lesson"]], occasion_id="foreign", rate=.5, salt="audit",
-                              revisions={design["trial_lesson"]: "foreign-design"})
+    holdout_io.assign_and_log(
+        root,
+        [design["trial_lesson"]],
+        occasion_id="foreign",
+        rate=0.5,
+        salt="audit",
+        revisions={design["trial_lesson"]: "foreign-design"},
+    )
     holdout_io.record_outcome(root, "foreign", True)
     assert [row["occasion_id"] for row in promotion.logged_rows(root, "upgrade")] == ["valid"]
 
 
-@pytest.mark.parametrize("extra", [{"unexpected": True}, {"probe": {"queries": [], "forbidden": ["secret"]}},
-                                   {"probe": {"queries": ["query"], "forbidden": ["secret"], "threshold": -1}}])
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"unexpected": True},
+        {"probe": {"queries": [], "forbidden": ["secret"]}},
+        {"probe": {"queries": ["query"], "forbidden": ["secret"], "threshold": -1}},
+    ],
+)
 def test_invalid_erasure_cli_request_has_no_side_effects(tmp_path, monkeypatch, extra):
     from unimem import certified_erasure
     from unimem.commands import frontier_cmd
@@ -157,21 +191,30 @@ def test_invalid_erasure_cli_request_has_no_side_effects(tmp_path, monkeypatch, 
     monkeypatch.setattr(certified_erasure, "SubjectVault", forbidden)
     monkeypatch.setattr(certified_erasure, "erase", forbidden)
     request = tmp_path / "request.json"
-    request.write_text(json.dumps({"subject": "subject", "identities": ["fact"], "reason": "request",
-                                   "vault_directory": str(tmp_path / "vault"), **extra}))
+    request.write_text(
+        json.dumps(
+            {
+                "subject": "subject",
+                "identities": ["fact"],
+                "reason": "request",
+                "vault_directory": str(tmp_path / "vault"),
+                **extra,
+            }
+        )
+    )
     with pytest.raises(ValueError):
         frontier_cmd.run(Namespace(input=str(request), operation="certified-erase", dest=str(tmp_path / "store")))
 
 
-@pytest.mark.parametrize("reason,foreign_vault,scalar_ids", [("", False, False), ("reason", True, False),
-                                                            ("reason", False, True)])
+@pytest.mark.parametrize(
+    "reason,foreign_vault,scalar_ids", [("", False, False), ("reason", True, False), ("reason", False, True)]
+)
 def test_erasure_preflight_preserves_content_and_subject_keys(tmp_path, reason, foreign_vault, scalar_ids):
     pytest.importorskip("cryptography")
     from unimem import certified_erasure, hierarchical
 
     root = str(tmp_path / "store")
-    vault = certified_erasure.SubjectVault(str(tmp_path / "other") if foreign_vault else root,
-                                           str(tmp_path / "vault"))
+    vault = certified_erasure.SubjectVault(str(tmp_path / "other") if foreign_vault else root, str(tmp_path / "vault"))
     fact, _ = hierarchical.add_fact(root, "Private subject preference")
     envelope = vault.seal("subject", fact.id, fact.statement)
     with pytest.raises(ValueError):
@@ -214,8 +257,9 @@ def test_delegation_cannot_inherit_enclosing_operator_administration(tmp_path):
         lambda: compression.review(root, "proposal", "experiment", actor="delegate", expected_revision="revision"),
         lambda: policy.install(root, {}),
         lambda: policy.preregister(root, {}),
-        lambda: federation.randomized_response(root, [], public_cohort_id="cohort",
-                                               public_cohort_size=1, public_steps=[]),
+        lambda: federation.randomized_response(
+            root, [], public_cohort_id="cohort", public_cohort_size=1, public_steps=[]
+        ),
     ]
     try:
         assert not memory_authority.is_operator()
@@ -255,8 +299,9 @@ def test_hub_merkle_proofs_work_beyond_local_journal_row_bound():
     proof = log.inclusion(hashes, index)
     assert log.verify_inclusion(hashes[index], index, len(hashes), proof, root)
     old_size = fp.MAX_ROWS
-    assert log.verify_consistency(old_size, len(hashes), log.tree_hash(hashes[:old_size]), root,
-                                  log.consistency(hashes, old_size))
+    assert log.verify_consistency(
+        old_size, len(hashes), log.tree_hash(hashes[:old_size]), root, log.consistency(hashes, old_size)
+    )
 
 
 def test_framework_turn_allows_bounded_cold_capture_without_editor_hook_deadline(tmp_path, monkeypatch):
@@ -268,24 +313,25 @@ def test_framework_turn_allows_bounded_cold_capture_without_editor_hook_deadline
 
     root = str(tmp_path)
     scope = {"agent": "crew", "user": "alice"}
-    Journal(root).put(MemoryRecord("directive", "directive", 1, {"text": "Verify the blue release gate."},
-                                    scope=scope))
+    Journal(root).put(MemoryRecord("directive", "directive", 1, {"text": "Verify the blue release gate."}, scope=scope))
     elapsed = [0.0]
     capture = Journal.capture
 
     def cold_capture(*args, **kwargs):
         result = capture(*args, **kwargs)
-        elapsed[0] += .1
+        elapsed[0] += 0.1
         return result
 
     monkeypatch.setattr(Journal, "capture", cold_capture)
     monkeypatch.setattr(hook_kit, "time", SimpleNamespace(monotonic=lambda: elapsed[0]))
-    result = framework_middleware.turn(root, "framework", "release", context=["agent:crew", "user:alice"],
-                                        embedder="none")
+    result = framework_middleware.turn(
+        root, "framework", "release", context=["agent:crew", "user:alice"], embedder="none"
+    )
     assert "blue release gate" in result["context"]
     # The native editor hook keeps its original latency deadline.
     assert hook_kit.HookKit(root, "crew", scope=scope, embedder="none").handle(
-        "UserPromptSubmit", {"session_id": "native", "prompt": "release"})["timed_out"]
+        "UserPromptSubmit", {"session_id": "native", "prompt": "release"}
+    )["timed_out"]
 
 
 def test_spatial_beliefs_admit_one_snapshot_and_match_per_object_queries(tmp_path, monkeypatch):
@@ -294,9 +340,19 @@ def test_spatial_beliefs_admit_one_snapshot_and_match_per_object_queries(tmp_pat
     root = str(tmp_path)
     context = {"tenant": "tenant", "site": "site", "robot": "robot"}
     for i in range(3):
-        spatial.update(root, {"object_id": f"box-{i}", "class": "crate", "pose": [i, 0, 0], "frame": "map",
-                               "robot_id": "robot", "timestamp": "2026-01-01T00:00:00Z", "confidence": .9},
-                       context=context)
+        spatial.update(
+            root,
+            {
+                "object_id": f"box-{i}",
+                "class": "crate",
+                "pose": [i, 0, 0],
+                "frame": "map",
+                "robot_id": "robot",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "confidence": 0.9,
+            },
+            context=context,
+        )
     at = fp.now()
     expected = [spatial.where_is(root, f"box-{i}", context=context, when=at, known_at=at) for i in range(3)]
     calls = []

@@ -36,18 +36,14 @@ class TestFileIndirection:
         monkeypatch.setenv("HUB_TEST_SECRET_FILE", str(secret_file))
         assert env_secret("HUB_TEST_SECRET") == "padded-value"
 
-    def test_the_file_variant_wins_over_a_plain_env_var_set_alongside_it(
-        self, monkeypatch, tmp_path
-    ):
+    def test_the_file_variant_wins_over_a_plain_env_var_set_alongside_it(self, monkeypatch, tmp_path):
         secret_file = tmp_path / "secret"
         secret_file.write_text("from-the-secret-store")
         monkeypatch.setenv("HUB_TEST_SECRET", "stale-plaintext-value")
         monkeypatch.setenv("HUB_TEST_SECRET_FILE", str(secret_file))
         assert env_secret("HUB_TEST_SECRET") == "from-the-secret-store"
 
-    def test_a_missing_file_raises_a_clear_error_naming_the_variable_and_path(
-        self, monkeypatch, tmp_path
-    ):
+    def test_a_missing_file_raises_a_clear_error_naming_the_variable_and_path(self, monkeypatch, tmp_path):
         missing = tmp_path / "does-not-exist"
         monkeypatch.setenv("HUB_TEST_SECRET_FILE", str(missing))
         with pytest.raises(RuntimeError, match="HUB_TEST_SECRET_FILE") as exc:

@@ -58,12 +58,26 @@ class TestRateChart:
 
 class TestForestPlot:
     def test_rows_are_a_valid_table_structure(self):
-        out = ui_kit.forest_plot([
-            {"trace_id": "a", "title": "Alpha", "effect": 0.2, "ci_95": [0.05, 0.35],
-             "verdict": "HELPS", "significant": True},
-            {"trace_id": "b", "title": "<b>Beta</b>", "effect": -0.1, "ci_95": [-0.3, 0.1],
-             "verdict": "UNDERPOWERED", "significant": False},
-        ])
+        out = ui_kit.forest_plot(
+            [
+                {
+                    "trace_id": "a",
+                    "title": "Alpha",
+                    "effect": 0.2,
+                    "ci_95": [0.05, 0.35],
+                    "verdict": "HELPS",
+                    "significant": True,
+                },
+                {
+                    "trace_id": "b",
+                    "title": "<b>Beta</b>",
+                    "effect": -0.1,
+                    "ci_95": [-0.3, 0.1],
+                    "verdict": "UNDERPOWERED",
+                    "significant": False,
+                },
+            ]
+        )
         assert out.count('role="row"') == 3
         assert out.count('role="cell"') == 6
         assert "<b>Beta</b>" not in out and "&lt;b&gt;Beta&lt;/b&gt;" in out

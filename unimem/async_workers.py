@@ -1,4 +1,5 @@
 """Bounded, cancellation-safe offloading of synchronous store operations."""
+
 from __future__ import annotations
 
 import asyncio
@@ -56,6 +57,7 @@ class BoundedWorkers:
     async def run(self, fn: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
         """Run off-loop or raise ``WorkerCapacityError`` without queueing."""
         ctx = contextvars.copy_context()
+
         def invoke() -> T:
             return ctx.run(fn, *args, **kwargs)
 

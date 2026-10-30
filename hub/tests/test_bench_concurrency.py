@@ -47,10 +47,7 @@ class TestVerdict:
         assert bench_concurrency.verdict(None) == "not measured"
 
     def test_the_bands_do_not_overlap_or_leave_a_gap(self):
-        seen = {
-            bench_concurrency.verdict(x / 10.0)
-            for x in range(1, 200)
-        }
+        seen = {bench_concurrency.verdict(x / 10.0) for x in range(1, 200)}
         assert seen == {"SERIALIZED", "partial", "scales"}
 
     def test_the_boundary_is_inclusive_on_the_serialized_side(self):

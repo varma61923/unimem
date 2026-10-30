@@ -1,10 +1,13 @@
 # ruff: noqa: E501 -- inline SVG paths, CSS and script source read best unwrapped
 """The customer console's design system: tokens, app shell, components, charts."""
+
 from __future__ import annotations
 
 import html
 import math
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from typing import SupportsFloat, SupportsIndex
 
 from unimem.ui_style import THEME_CSS
 
@@ -13,7 +16,9 @@ def h(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
-CSS = THEME_CSS + """
+CSS = (
+    THEME_CSS
+    + """
 *,*::before,*::after{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 var(--sans);
@@ -432,41 +437,42 @@ main.auth{max-width:none;margin:0;gap:0}
 }
 @media (forced-colors:active){.meter > span,.viz-bar{forced-color-adjust:none}}
 """
+)
 
 
 _ICON_PATHS = {
     "overview": '<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/>'
-                '<rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+    '<rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
     "proof": '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.3 2.4 2.4 4.7-5.2"/>',
     "memory": '<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.6 3.1 2.8 7 2.8s7-1.2 7-2.8V6"/>'
-              '<path d="M5 12v6c0 1.6 3.1 2.8 7 2.8s7-1.2 7-2.8v-6"/>',
+    '<path d="M5 12v6c0 1.6 3.1 2.8 7 2.8s7-1.2 7-2.8v-6"/>',
     "kb": '<path d="M5 5.2A2.2 2.2 0 0 1 7.2 3H19v14.5H7.2A2.2 2.2 0 0 0 5 19.7z"/><path d="M5 19.7A2.2 2.2 0 0 0 7.2 22H19"/>'
-          '<path d="M9 7.5h6"/>',
+    '<path d="M9 7.5h6"/>',
     "users": '<circle cx="9" cy="8.2" r="3.4"/><path d="M2.8 20c.7-3.4 3.2-5.4 6.2-5.4s5.5 2 6.2 5.4"/>'
-             '<path d="M15.6 4.9a3.4 3.4 0 0 1 0 6.6"/><path d="M18 14.9c1.7.8 2.8 2.5 3.2 5.1"/>',
+    '<path d="M15.6 4.9a3.4 3.4 0 0 1 0 6.6"/><path d="M18 14.9c1.7.8 2.8 2.5 3.2 5.1"/>',
     "keys": '<circle cx="7.8" cy="15.2" r="4.2"/><path d="m10.8 12.2 8.7-8.7"/><path d="m16.2 6.8 2.8 2.8"/><path d="m18.6 4.4 1.9 1.9"/>',
     "alerts": '<path d="M6 16.5v-5.3a6 6 0 0 1 12 0v5.3l1.6 2.1H4.4z"/><path d="M10 21a2.1 2.1 0 0 0 4 0"/>',
     "webhooks": '<path d="M9.6 8.1a3.6 3.6 0 1 1 4.6 3.4L11 17"/><path d="M14.6 16.4H19a3.6 3.6 0 1 1-3.4 4.6"/>'
-                '<path d="M7.1 11.9 4.4 16.6a3.6 3.6 0 1 0 5.4 3.1H15"/>',
+    '<path d="M7.1 11.9 4.4 16.6a3.6 3.6 0 1 0 5.4 3.1H15"/>',
     "audit": '<rect x="5" y="4" width="14" height="17" rx="2.2"/><path d="M9 3h6v2.5H9z"/><path d="M9 10.5h6"/>'
-             '<path d="M9 14h6"/><path d="M9 17.5h3.5"/>',
+    '<path d="M9 14h6"/><path d="M9 17.5h3.5"/>',
     "search": '<circle cx="11" cy="11" r="6.8"/><path d="m20 20-4-4"/>',
     "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2'
-           'M4.6 19.4 6 18M18 6l1.4-1.4"/>',
+    'M4.6 19.4 6 18M18 6l1.4-1.4"/>',
     "moon": '<path d="M20 14.6A8.2 8.2 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6z"/>',
     "system": '<rect x="3" y="4" width="18" height="12.5" rx="2.2"/><path d="M8.5 20.5h7M12 16.5v4"/>',
     "logout": '<path d="M14.5 4H18a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3.5"/><path d="m10 16-4-4 4-4"/><path d="M6 12h10"/>',
     "print": '<path d="M7 9V3.5h10V9"/><path d="M7 17.5H5a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2h-2"/>'
-             '<rect x="7" y="14" width="10" height="7" rx="1.2"/>',
+    '<rect x="7" y="14" width="10" height="7" rx="1.2"/>',
     "download": '<path d="M12 3.5v11.5"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20.5h16"/>',
     "shield": '<path d="M12 3 4.8 6v5.6c0 4.4 3 7.8 7.2 9.4 4.2-1.6 7.2-5 7.2-9.4V6z"/><path d="m9 12 2.1 2.1L15.2 10"/>',
     "lock": '<rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
     "inbox": '<path d="M3.5 13.5h5l1.5 3h4l1.5-3h5"/><path d="M6 5h12l2.5 8.5v5.3a1.7 1.7 0 0 1-1.7 1.7H5.2a1.7 1.7 0 0 1-1.7-1.7v-5.3z"/>',
     "plus": '<path d="M12 5v14M5 12h14"/>',
     "share": '<circle cx="17.5" cy="5.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/>'
-             '<path d="m8.7 10.8 6.6-4M8.7 13.2l6.6 4"/>',
+    '<path d="m8.7 10.8 6.6-4M8.7 13.2l6.6 4"/>',
     "command": '<path d="M9 6.5A2.5 2.5 0 1 0 6.5 9H9zm0 0v11m0-11h6m-6 11A2.5 2.5 0 1 1 6.5 15H9zm0 0h6m0 0v-11m0 11'
-               'a2.5 2.5 0 1 0 2.5-2.5H15zm0-11a2.5 2.5 0 1 1 2.5 2.5H15z"/>',
+    'a2.5 2.5 0 1 0 2.5-2.5H15zm0-11a2.5 2.5 0 1 1 2.5 2.5H15z"/>',
     "mark": '<path d="M3.5 15.5c2.6-6.5 4.8-6.5 7.2 0s4.6 6.5 7.3 0"/><circle cx="20" cy="9.5" r="1.4" fill="currentColor"/>',
 }
 
@@ -677,9 +683,14 @@ def time_html(value: object, *, empty: str = "—") -> str:
 
 def meter(used: object, limit: object, *, quota: bool = True) -> str:
     """A thin usage bar under a quota figure; nothing for an unlimited quota."""
+    numeric = (str, bytes, bytearray, SupportsFloat, SupportsIndex)
+    if not isinstance(used, numeric) and used is not None:
+        return ""
+    if not isinstance(limit, numeric) and limit is not None:
+        return ""
     try:
         used_f, limit_f = float(used or 0), float(limit or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return ""
     if limit_f <= 0:
         return ""
@@ -740,8 +751,7 @@ def bar_chart(chart_id: str, weeks: list[str], values: list[int], *, title: str,
     for value in range(0, int(peak) + 1, int(tick)):
         y = top + plot_h * (1 - value / peak)
         parts.append(f'<line x1="{left}" x2="{width - right}" y1="{y:.1f}" y2="{y:.1f}"/>')
-        parts.append(f'<text class="viz-axis" x="{left - 6}" y="{y + 3.5:.1f}" text-anchor="end">'
-                     f"{value:,}</text>")
+        parts.append(f'<text class="viz-axis" x="{left - 6}" y="{y + 3.5:.1f}" text-anchor="end">{value:,}</text>')
     parts.append("</g>")
     label_every = max(1, math.ceil(n / 6))
     for i, (week, value) in enumerate(zip(weeks, values)):
@@ -751,9 +761,11 @@ def bar_chart(chart_id: str, weeks: list[str], values: list[int], *, title: str,
         radius = min(4.0, bar_w / 2, bar_h)
         tip = f"Week of {_week_label(week)}\n{value:,} {unit}"
         if bar_h > 0:
-            path = (f"M{x:.1f},{top + plot_h:.1f} V{y + radius:.1f} Q{x:.1f},{y:.1f} {x + radius:.1f},{y:.1f} "
-                    f"H{x + bar_w - radius:.1f} Q{x + bar_w:.1f},{y:.1f} {x + bar_w:.1f},{y + radius:.1f} "
-                    f"V{top + plot_h:.1f} Z")
+            path = (
+                f"M{x:.1f},{top + plot_h:.1f} V{y + radius:.1f} Q{x:.1f},{y:.1f} {x + radius:.1f},{y:.1f} "
+                f"H{x + bar_w - radius:.1f} Q{x + bar_w:.1f},{y:.1f} {x + bar_w:.1f},{y + radius:.1f} "
+                f"V{top + plot_h:.1f} Z"
+            )
             mark = f'<path class="viz-bar" d="{path}"/>'
         else:
             mark = ""
@@ -763,12 +775,15 @@ def bar_chart(chart_id: str, weeks: list[str], values: list[int], *, title: str,
             f"{mark}</g>"
         )
         if i % label_every == 0 or i == n - 1:
-            parts.append(f'<text class="viz-axis" x="{left + band * i + band / 2:.1f}" y="{height - 6}" '
-                         f'text-anchor="middle">{h(_week_label(week))}</text>')
+            parts.append(
+                f'<text class="viz-axis" x="{left + band * i + band / 2:.1f}" y="{height - 6}" '
+                f'text-anchor="middle">{h(_week_label(week))}</text>'
+            )
     parts.append(f'<line class="viz-base" x1="{left}" x2="{width - right}" y1="{top + plot_h}" y2="{top + plot_h}"/>')
     parts.append("</svg>")
-    table = _table_view(title, ["Week of", unit.capitalize()],
-                        [[h(_week_label(w)), f"{v:,}"] for w, v in zip(weeks, values)])
+    table = _table_view(
+        title, ["Week of", unit.capitalize()], [[h(_week_label(w)), f"{v:,}"] for w, v in zip(weeks, values)]
+    )
     return f'<div class="chart"><div class="plot">{"".join(parts)}</div>{table}</div>'
 
 
@@ -809,19 +824,22 @@ def rate_chart(chart_id: str, weeks: list[str], treated: list, control: list, *,
         f'<title id="{chart_id}-t">{h(title)}</title>'
         f'<desc id="{chart_id}-d">Share of resolved occasions that succeeded each week, for occasions that '
         "received memory and occasions the experiment withheld it from. Weeks with fewer than "
-        f"{MIN_POINT_N} occasions in an arm are gaps in that arm's line.</desc><g class=\"viz-grid\">"
+        f'{MIN_POINT_N} occasions in an arm are gaps in that arm\'s line.</desc><g class="viz-grid">'
     ]
     for i in range(5):
         y = top + plot_h * i / 4
         parts.append(f'<line x1="{left}" x2="{left + plot_w}" y1="{y:.1f}" y2="{y:.1f}"/>')
-        parts.append(f'<text class="viz-axis" x="{left - 6}" y="{y + 3.5:.1f}" text-anchor="end">'
-                     f"{100 - 25 * i}%</text>")
+        parts.append(
+            f'<text class="viz-axis" x="{left - 6}" y="{y + 3.5:.1f}" text-anchor="end">{100 - 25 * i}%</text>'
+        )
     parts.append("</g>")
     label_every = max(1, math.ceil(n / 6))
     for i, week in enumerate(weeks):
         if i % label_every == 0 or i == n - 1:
-            parts.append(f'<text class="viz-axis" x="{x_at(i):.1f}" y="{height - 6}" text-anchor="middle">'
-                         f"{h(_week_label(week))}</text>")
+            parts.append(
+                f'<text class="viz-axis" x="{x_at(i):.1f}" y="{height - 6}" text-anchor="middle">'
+                f"{h(_week_label(week))}</text>"
+            )
     col_w = step if n > 1 else plot_w
     for i, week in enumerate(weeks):
         lines = [f"Week of {_week_label(week)}"]
@@ -841,17 +859,24 @@ def rate_chart(chart_id: str, weeks: list[str], treated: list, control: list, *,
     for dots, cls in ((d2, "viz-d2"), (d1, "viz-d1")):
         for x, y, _rate, _total in dots:
             parts.append(f'<circle class="viz-dot {cls}" cx="{x:.1f}" cy="{y:.1f}" r="4" pointer-events="none"/>')
-    ends = []
+
+    @dataclass
+    class EndLabel:
+        x: float
+        y: float
+        text: str
+
+    ends: list[EndLabel] = []
     for dots, name in ((d1, "With"), (d2, "Without")):
         if dots:
             x, y, rate, _t = dots[-1]
-            ends.append([x, y, f"{name} {rate:.0%}"])
-    if len(ends) == 2 and abs(ends[0][1] - ends[1][1]) < 14:
-        upper, lower = sorted(ends, key=lambda e: e[1])
-        mid = (upper[1] + lower[1]) / 2
-        upper[1], lower[1] = mid - 7, mid + 7
-    for x, y, text in ends:
-        parts.append(f'<text class="viz-label" x="{x + 8:.1f}" y="{y + 4:.1f}">{h(text)}</text>')
+            ends.append(EndLabel(x, y, f"{name} {rate:.0%}"))
+    if len(ends) == 2 and abs(ends[0].y - ends[1].y) < 14:
+        upper, lower = sorted(ends, key=lambda e: e.y)
+        mid = (upper.y + lower.y) / 2
+        upper.y, lower.y = mid - 7, mid + 7
+    for label in ends:
+        parts.append(f'<text class="viz-label" x="{label.x + 8:.1f}" y="{label.y + 4:.1f}">{h(label.text)}</text>')
     parts.append(f'<line class="viz-base" x1="{left}" x2="{left + plot_w}" y1="{top + plot_h}" y2="{top + plot_h}"/>')
     parts.append("</svg>")
 
@@ -859,11 +884,16 @@ def rate_chart(chart_id: str, weeks: list[str], treated: list, control: list, *,
         total, ok = (pair[0], pair[1]) if pair else (0, 0)
         return f"{ok / total:.0%} of {total:,}" if total else '<span class="faint">—</span>'
 
-    table = _table_view(title, ["Week of", "With memory", "Without memory"],
-                        [[h(_week_label(w)), cell(t), cell(c)] for w, t, c in zip(weeks, treated, control)])
-    legend = ('<div class="legend" aria-hidden="true"><span><i class="s1"></i>With memory</span>'
-              '<span><i class="s2"></i>Without memory (held out)</span>'
-              f'<span class="faint">weeks under {MIN_POINT_N} occasions in an arm are left as gaps</span></div>')
+    table = _table_view(
+        title,
+        ["Week of", "With memory", "Without memory"],
+        [[h(_week_label(w)), cell(t), cell(c)] for w, t, c in zip(weeks, treated, control)],
+    )
+    legend = (
+        '<div class="legend" aria-hidden="true"><span><i class="s1"></i>With memory</span>'
+        '<span><i class="s2"></i>Without memory (held out)</span>'
+        f'<span class="faint">weeks under {MIN_POINT_N} occasions in an arm are left as gaps</span></div>'
+    )
     return f'<div class="chart">{legend}<div class="plot">{"".join(parts)}</div>{table}</div>'
 
 
@@ -886,11 +916,13 @@ def forest_plot(effects: list[dict]) -> str:
     def pos(value: float) -> float:
         return (value - lo) / (hi - lo) * 100
 
-    out = ['<div class="forest" role="table" aria-label="Effect of each memory, with 95% confidence intervals">'
-           '<div class="fr" role="row">'
-           '<div class="fh" role="columnheader">Memory</div>'
-           '<div class="fh ft-h" role="columnheader">Effect on success rate, 95% interval</div>'
-           '<div class="fh" role="columnheader" style="text-align:right">Estimate</div></div>']
+    out = [
+        '<div class="forest" role="table" aria-label="Effect of each memory, with 95% confidence intervals">'
+        '<div class="fr" role="row">'
+        '<div class="fh" role="columnheader">Memory</div>'
+        '<div class="fh ft-h" role="columnheader">Effect on success rate, 95% interval</div>'
+        '<div class="fh" role="columnheader" style="text-align:right">Estimate</div></div>'
+    ]
     zero = pos(0.0)
     for e in rows:
         effect = float(e["effect"])
@@ -905,24 +937,34 @@ def forest_plot(effects: list[dict]) -> str:
             tone, pill = "f-mute", "mute"
         name = e.get("title") or e.get("trace_id")
         ci_text = f"[{ci[0]:+.1%}, {ci[1]:+.1%}]" if ci else ""
-        tip = (f"{name}\nEffect {effect:+.1%} {ci_text}\n"
-               f"With: {e.get('rate_injected', 0):.0%} (n={e.get('n_injected', 0)}) · "
-               f"Without: {e.get('rate_withheld', 0):.0%} (n={e.get('n_withheld', 0)})")
-        track = [f'<svg class="{tone}" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true">'
-                 f'<line class="fz" x1="{zero:.2f}" x2="{zero:.2f}" y1="0" y2="22" vector-effect="non-scaling-stroke"/>']
+        tip = (
+            f"{name}\nEffect {effect:+.1%} {ci_text}\n"
+            f"With: {e.get('rate_injected', 0):.0%} (n={e.get('n_injected', 0)}) · "
+            f"Without: {e.get('rate_withheld', 0):.0%} (n={e.get('n_withheld', 0)})"
+        )
+        track = [
+            f'<svg class="{tone}" viewBox="0 0 100 22" preserveAspectRatio="none" aria-hidden="true">'
+            f'<line class="fz" x1="{zero:.2f}" x2="{zero:.2f}" y1="0" y2="22" vector-effect="non-scaling-stroke"/>'
+        ]
         if ci:
-            track.append(f'<line class="fci" x1="{pos(float(ci[0])):.2f}" x2="{pos(float(ci[1])):.2f}" y1="11" y2="11" '
-                         'vector-effect="non-scaling-stroke"/>')
-        track.append(f'<line class="fring" x1="{pos(effect):.2f}" x2="{pos(effect):.2f}" y1="11" y2="11" '
-                     'vector-effect="non-scaling-stroke"/>'
-                     f'<line class="fpt" x1="{pos(effect):.2f}" x2="{pos(effect):.2f}" y1="11" y2="11" '
-                     'vector-effect="non-scaling-stroke"/></svg>')
+            track.append(
+                f'<line class="fci" x1="{pos(float(ci[0])):.2f}" x2="{pos(float(ci[1])):.2f}" y1="11" y2="11" '
+                'vector-effect="non-scaling-stroke"/>'
+            )
+        track.append(
+            f'<line class="fring" x1="{pos(effect):.2f}" x2="{pos(effect):.2f}" y1="11" y2="11" '
+            'vector-effect="non-scaling-stroke"/>'
+            f'<line class="fpt" x1="{pos(effect):.2f}" x2="{pos(effect):.2f}" y1="11" y2="11" '
+            'vector-effect="non-scaling-stroke"/></svg>'
+        )
         out.append(
             f'<div class="fr" role="row"><div class="fl" role="cell">{h(name)}<br><span class="pill {pill}">{h(verdict or "—")}</span></div>'
             f'<div class="ft" role="cell" tabindex="0" data-tip="{h(tip)}" aria-label="{h(tip)}">{"".join(track)}</div>'
             f'<div class="fv" role="cell"><b>{effect:+.1%}</b><br><span class="faint">{h(ci_text)}</span></div></div>'
         )
     out.append("</div>")
-    out.append(f'<div class="forest-axis" aria-hidden="true"><span>{lo:+.0%}</span>'
-               f'<span>0 = no effect</span><span>{hi:+.0%}</span></div>')
+    out.append(
+        f'<div class="forest-axis" aria-hidden="true"><span>{lo:+.0%}</span>'
+        f"<span>0 = no effect</span><span>{hi:+.0%}</span></div>"
+    )
     return "".join(out)

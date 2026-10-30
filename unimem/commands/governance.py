@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -454,8 +455,11 @@ def allocate_add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     pl = sub.add_parser("plan", help="Publish the next era's rates from every outcome so far.")
     pl.add_argument("--if-due", action="store_true", help="Only when the current era has run its occasions.")
-    pl.add_argument("--require-certificate", action="store_true",
-                    help="Refuse a Thompson schedule without a matching, unrevoked promotion certificate.")
+    pl.add_argument(
+        "--require-certificate",
+        action="store_true",
+        help="Refuse a Thompson schedule without a matching, unrevoked promotion certificate.",
+    )
     pl.set_defaults(func=allocate_run_plan)
 
     sh = sub.add_parser("show", help="The schedule in force and its rates.")
@@ -474,12 +478,17 @@ def allocate_add_parser(subparsers: argparse._SubParsersAction) -> None:
         "and an off-policy check of the gate on later occasions.",
     )
     ga.add_argument("--json", action="store_true")
-    ga.add_argument("--floor", type=float, default=allocation.MONITOR_RATE,
-                    help="Least withholding probability the gate may set (default 0.05).")
+    ga.add_argument(
+        "--floor",
+        type=float,
+        default=allocation.MONITOR_RATE,
+        help="Least withholding probability the gate may set (default 0.05).",
+    )
     ga.add_argument("--alpha", type=float, default=0.05, help="False-discovery rate for drift (default 0.05).")
     ga.add_argument("--min-arm", type=int, default=10, help="Least assignments per arm in a drift window.")
-    ga.add_argument("--practical", type=float, default=0.10,
-                    help="Smallest change in effect worth calling drift (default 0.10).")
+    ga.add_argument(
+        "--practical", type=float, default=0.10, help="Smallest change in effect worth calling drift (default 0.10)."
+    )
     ga.set_defaults(func=allocate_run_gate)
 
     for parser in (en, pl, sh, ve, di, ga):
@@ -519,8 +528,7 @@ def allocate_run_gate(args, root) -> int:
 
     from unimem import causal_gate, conformal_gate
 
-    out = causal_gate.report(root, alpha=args.alpha, min_arm=args.min_arm, practical=args.practical,
-                             floor=args.floor)
+    out = causal_gate.report(root, alpha=args.alpha, min_arm=args.min_arm, practical=args.practical, floor=args.floor)
     out["harm_budget"] = conformal_gate.report(root)
     if args.json:
         print(json.dumps(out, indent=2, sort_keys=True))
@@ -531,12 +539,17 @@ def allocate_run_gate(args, root) -> int:
         print(f"\nHarm budget (alpha={budget.get('alpha')}, {budget.get('kind')}):")
         for stratum, row in sorted(budget.get("strata", {}).items()):
             threshold = row.get("threshold", 1.01)
-            print(f"  {stratum or '(all contexts)'}: lambda = "
-                  + ("abstain (no admissible threshold)" if threshold > 1 else f"{threshold:.2f}"))
+            print(
+                f"  {stratum or '(all contexts)'}: lambda = "
+                + ("abstain (no admissible threshold)" if threshold > 1 else f"{threshold:.2f}")
+            )
         realized = budget.get("realized", {})
         rate = realized.get("ipw_injected_failure")
-        print("  realized IPW injected-failure rate since gating: "
-              + ("n/a" if rate is None else f"{rate:.4f}") + f" over {realized.get('n', 0)} occasion(s)")
+        print(
+            "  realized IPW injected-failure rate since gating: "
+            + ("n/a" if rate is None else f"{rate:.4f}")
+            + f" over {realized.get('n', 0)} occasion(s)"
+        )
     return 0
 
 
@@ -573,10 +586,15 @@ def allocate_run_show(args, root) -> int:
     if args.json:
         print(
             json.dumps(
-                None if schedule is None else {**schedule.body(), "digest": schedule.digest,
-                                               "policy_hash": allocation.policy_hash(
-                                                   allocation.Policy(**schedule.policy))},
-                indent=2, sort_keys=True,
+                None
+                if schedule is None
+                else {
+                    **schedule.body(),
+                    "digest": schedule.digest,
+                    "policy_hash": allocation.policy_hash(allocation.Policy(**schedule.policy)),
+                },
+                indent=2,
+                sort_keys=True,
             )
         )
         return 0
@@ -584,8 +602,10 @@ def allocate_run_show(args, root) -> int:
         print(f"[unimem] adaptive allocation is off; every memory is withheld at {config.rate:.0%}")
         return 0
     print(allocate__describe(schedule))
-    print(f"policy hash (certify with promote register artifact_hash): "
-          f"{allocation.policy_hash(allocation.Policy(**schedule.policy))}")
+    print(
+        f"policy hash (certify with promote register artifact_hash): "
+        f"{allocation.policy_hash(allocation.Policy(**schedule.policy))}"
+    )
     return 0
 
 
@@ -791,8 +811,7 @@ def reliability_run(args: argparse.Namespace) -> int:
         high = [c for c in contradictions if c.severity == "high"]
         if harmful or high:
             print(
-                f"\n[unimem] --strict: {len(harmful)} harmful lesson(s), "
-                f"{len(high)} high-severity contradiction(s).",
+                f"\n[unimem] --strict: {len(harmful)} harmful lesson(s), {len(high)} high-severity contradiction(s).",
                 file=sys.stderr,
             )
             return 1
@@ -856,10 +875,7 @@ def signals_run_list(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     signals, _by_id = signals__build(args, root)
     if not signals:
-        print(
-            "[unimem] no failure signals found (no traces recorded as a failure, "
-            "or none repeat enough to cluster)."
-        )
+        print("[unimem] no failure signals found (no traces recorded as a failure, or none repeat enough to cluster).")
         return 0
     if args.json:
         print(
@@ -900,8 +916,7 @@ def signals_run_export(args: argparse.Namespace) -> int:
     match = next((s for s in signals if s.name == args.name), None)
     if match is None:
         print(
-            f"[unimem] no signal named {args.name!r}. Run `unimem signals list` "
-            "for the exact names currently found.",
+            f"[unimem] no signal named {args.name!r}. Run `unimem signals list` for the exact names currently found.",
             file=sys.stderr,
         )
         return 1
@@ -1010,8 +1025,11 @@ def fleet_run_worldmodel(args: argparse.Namespace) -> int:
     body = json.loads(args.request)
     if not isinstance(body, dict):
         raise ValueError("world-model request must be an object")
-    operations = {"register": world_model_trust.register, "trust": world_model_trust.trust,
-                  "gate": world_model_trust.gate}
+    operations: dict[str, Callable[..., object]] = {
+        "register": world_model_trust.register,
+        "trust": world_model_trust.trust,
+        "gate": world_model_trust.gate,
+    }
     try:
         result = operations[args.worldmodel_action](paths.resolve_root(args.dest), **body)
     except TypeError as exc:
@@ -1029,7 +1047,11 @@ def fleet_run_signatures(args: argparse.Namespace) -> int:
     body = json.loads(args.request)
     if not isinstance(body, dict):
         raise ValueError("signature request must be a JSON object")
-    operations = {"build": signatures.build, "check": signatures.check, "drift": signatures.drift}
+    operations: dict[str, Callable[..., object]] = {
+        "build": signatures.build,
+        "check": signatures.check,
+        "drift": signatures.drift,
+    }
     try:
         result = operations[args.signature_action](paths.resolve_root(args.dest), **body)
     except TypeError as exc:
@@ -1048,6 +1070,7 @@ def fleet_run_site(args: argparse.Namespace) -> int:
     if not isinstance(body, dict):
         raise ValueError("site-memory request must be a JSON object")
     root = paths.resolve_root(args.dest)
+    result: dict | list[dict]
     if args.site_action == "ingest":
         message_type = body.pop("message_type", "state")
         if message_type == "order":
@@ -1059,12 +1082,16 @@ def fleet_run_site(args: argparse.Namespace) -> int:
         else:
             raise ValueError("site message_type must be state, zone or order")
     elif args.site_action == "merge":
-        result = {"scene": site_memory.scene_graph(root, site=body["site"], context=body.get("context", [])),
-                  "mesh": mesh_crdt.merge(root)}
+        result = {
+            "scene": site_memory.scene_graph(root, site=body["site"], context=body.get("context", [])),
+            "mesh": mesh_crdt.merge(root),
+        }
     elif args.site_action == "rules":
-        result = site_memory.rules(root, **body)
+        rule_rows = site_memory.rules(root, **body)
         if body.get("record_suggestion", False):
-            result = {"rules": result, "suggestion": site_memory.suggest(root, site=body["site"], ruleset=result)}
+            result = {"rules": rule_rows, "suggestion": site_memory.suggest(root, site=body["site"], ruleset=rule_rows)}
+        else:
+            result = rule_rows
     else:
         result = mesh_crdt.apply(root, body["operations"])
         result["view"] = mesh_crdt.merge(root)
@@ -1081,10 +1108,14 @@ def fleet_run_safetycase(args: argparse.Namespace) -> int:
     if not isinstance(body, dict):
         raise ValueError("safety-case request must be a JSON object")
     root = paths.resolve_root(args.dest)
-    operations = {
-        "build": safety_case.build, "claim": safety_case.add_claim, "argument": safety_case.add_argument,
-        "evidence": safety_case.add_evidence, "stale": safety_case.mark_changed,
-        "coverage": safety_case.coverage, "export": safety_case.export_scenario,
+    operations: dict[str, Callable[..., object]] = {
+        "build": safety_case.build,
+        "claim": safety_case.add_claim,
+        "argument": safety_case.add_argument,
+        "evidence": safety_case.add_evidence,
+        "stale": safety_case.mark_changed,
+        "coverage": safety_case.coverage,
+        "export": safety_case.export_scenario,
     }
     try:
         if args.safetycase_action == "export":
@@ -1123,12 +1154,22 @@ def fleet_run_human_help(args: argparse.Namespace) -> int:
 
     body = request(args.request)
     action = body.pop("action", "report")
-    operations = {
+    operations: dict[str, dict[str, Callable[..., object]]] = {
         "interventions": {"report": human_help.interventions, "record": human_help.intervention},
-        "operators": {"register": human_help.register_operator, "report": human_help.operator_quality,
-                      "appeal": human_help.appeal, "review": human_help.review},
-        "ask-policy": {"configure": human_help.configure_asking, "decide": human_help.should_ask,
-                       "report": human_help.asking_report, "cost": human_help.record_asking_cost}}
+        "operators": {
+            "register": human_help.register_operator,
+            "report": human_help.operator_quality,
+            "appeal": human_help.appeal,
+            "review": human_help.review,
+        },
+        "ask-policy": {
+            "configure": human_help.configure_asking,
+            "decide": human_help.should_ask,
+            "report": human_help.asking_report,
+            "cost": human_help.record_asking_cost,
+        },
+    }
+    result: object
     if args.fleet_cmd == "ask-policy" and action == "plan":
         result = human_help.plan(**body)
     else:

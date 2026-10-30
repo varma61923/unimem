@@ -26,19 +26,23 @@ def test_factories_expose_native_providers_and_never_import_from_configuration()
         LLMConfig(provider="os.system", model="test")
 
 
-@pytest.mark.parametrize("patch", [
-    {"base_url": "http://remote.example/v1"},
-    {"base_url": "https://user:password@api.example/v1"},
-    {"base_url": "https://api.example/v1?token=private"},
-    {"base_url": "https://api.example/v1\n"},
-    {"model": "\nprivate"},
-    {"api_key_env": "../credentials"},
-    {"api_key_env": "KEY"},
-])
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"base_url": "http://remote.example/v1"},
+        {"base_url": "https://user:password@api.example/v1"},
+        {"base_url": "https://api.example/v1?token=private"},
+        {"base_url": "https://api.example/v1\n"},
+        {"model": "\nprivate"},
+        {"api_key_env": "../credentials"},
+        {"api_key_env": "KEY"},
+    ],
+)
 def test_validation_errors_hide_inline_secrets(patch):
     with pytest.raises(ValidationError) as caught:
-        LLMConfig.model_validate({"provider": "anthropic", "model": "test",
-                                  "api_key": "fixture-secret-never-log", **patch})
+        LLMConfig.model_validate(
+            {"provider": "anthropic", "model": "test", "api_key": "fixture-secret-never-log", **patch}
+        )
     assert "fixture-secret-never-log" not in str(caught.value)
 
 
@@ -50,8 +54,14 @@ def test_public_configuration_and_schema_hide_credentials():
     schema = LLMConfig.model_json_schema()
     assert schema["additionalProperties"] is False
     assert schema["properties"]["api_key"]["anyOf"][0]["writeOnly"] is True
-    postgres = VectorStoreConfig(provider="postgres", owner="o", dataset="d", model="m", dimension=2,
-                                 dsn="postgresql://fixture:private@localhost/db")
+    postgres = VectorStoreConfig(
+        provider="postgres",
+        owner="o",
+        dataset="d",
+        model="m",
+        dimension=2,
+        dsn="postgresql://fixture:private@localhost/db",
+    )
     assert "private" not in repr(postgres) and "dsn" not in postgres.public_dict()
 
 
@@ -178,8 +188,9 @@ def test_legacy_wrong_dimension_vectors_are_recomputed(tmp_path, monkeypatch):
 def test_validated_sqlite_factory_preserves_scope_and_supports_real_operations(tmp_path):
     async def run():
         factory = providers.BackendFactory(str(tmp_path))
-        value = await factory.from_config({"provider": "sqlite", "owner": "account-a", "dataset": "project",
-                                           "model": "test", "dimension": 2})
+        value = await factory.from_config(
+            {"provider": "sqlite", "owner": "account-a", "dataset": "project", "model": "test", "dimension": 2}
+        )
         try:
             assert value.tenant == "account-a" and value.namespace == "project"
             await value.upsert([VectorRecord("one", (1.0, 0.0), "generation")])
@@ -207,7 +218,11 @@ def test_registered_backend_cannot_silently_override_authenticated_scope(tmp_pat
         monkeypatch.setitem(providers.VECTORS._factories, "fixture-store", lambda **kwargs: WrongScope())
         with pytest.raises(CapabilityError, match="authenticated scope"):
             await providers.BackendFactory(str(tmp_path)).vector(
-                "fixture-store", owner="account-a", dataset="project", model="test", dimension=2,
+                "fixture-store",
+                owner="account-a",
+                dataset="project",
+                model="test",
+                dimension=2,
             )
         assert closed == [True]
 
@@ -231,8 +246,12 @@ def test_insert_prepares_only_redacted_content_and_reuses_vectors(tmp_path, monk
     monkeypatch.setitem(embeddings._CUSTOM, "fixture2", Fixed)
     secret = "sk-" + "a" * 48
     with Store(str(tmp_path), "project") as store:
-        result = store.add("session", [{"speaker": "user", "text": "OPENAI_API_KEY=" + secret}],
-                           cache_vectors=True, embedder="fixture2:dense@32")
+        result = store.add(
+            "session",
+            [{"speaker": "user", "text": "OPENAI_API_KEY=" + secret}],
+            cache_vectors=True,
+            embedder="fixture2:dense@32",
+        )
         assert result["embedding_cache"]["ready"] is True
         assert all(isinstance(value, int) for value in result["embedding_cache"]["revision"])
         assert calls and all(secret not in text for text in calls)
@@ -254,8 +273,12 @@ def test_insert_cache_failure_preserves_source_and_hides_provider_secrets(tmp_pa
 
     monkeypatch.setitem(embeddings._CUSTOM, "fixture2", Broken)
     with Store(str(tmp_path), "project") as store:
-        result = store.add("session", [{"speaker": "user", "text": "Deploy on Friday"}],
-                           cache_vectors=True, embedder="fixture2:dense@32")
+        result = store.add(
+            "session",
+            [{"speaker": "user", "text": "Deploy on Friday"}],
+            cache_vectors=True,
+            embedder="fixture2:dense@32",
+        )
         assert result["added"] == 1
         assert result["embedding_cache"] == {"ready": False, "error_type": "RuntimeError"}
         assert store.db.execute("SELECT count(*) FROM turns").fetchone()[0] == 1
@@ -277,8 +300,13 @@ def test_gateway_insertion_cache_flags_are_typed_and_wired(tmp_path, monkeypatch
     monkeypatch.setitem(embeddings._CUSTOM, "fixture2", Fixed)
     app = gateway.Gateway(str(tmp_path), token="typed-insertion-cache")
     headers = {"Authorization": "Bearer typed-insertion-cache"}
-    request = {"space": "project", "session": "session", "messages": [{"speaker": "user", "text": "Deploy Friday"}],
-               "cache_vectors": True, "embedder": "fixture2:dense@32"}
+    request = {
+        "space": "project",
+        "session": "session",
+        "messages": [{"speaker": "user", "text": "Deploy Friday"}],
+        "cache_vectors": True,
+        "embedder": "fixture2:dense@32",
+    }
     response = app.handle("POST", "/v1/conversation/add", headers, json.dumps(request).encode())
     assert response.status == 200 and json.loads(response.body)["embedding_cache"]["ready"]
     jsonschema = pytest.importorskip("jsonschema")
@@ -286,15 +314,21 @@ def test_gateway_insertion_cache_flags_are_typed_and_wired(tmp_path, monkeypatch
     from tests.test_gateway_openapi_contract import _json_schema
 
     document = app._openapi({}, {})
-    schema = document["paths"]["/v1/conversation/add"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
+    schema = document["paths"]["/v1/conversation/add"]["post"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
     jsonschema.Draft4Validator(_json_schema(schema)).validate(json.loads(response.body))
     request["cache_vectors"] = "true"
     assert app.handle("POST", "/v1/conversation/add", headers, json.dumps(request).encode()).status == 400
 
 
-@pytest.mark.parametrize("provider,endpoint", [
-    ("openai", "https://api.openai.com/v1"), ("ollama", "http://localhost:11434/v1"),
-])
+@pytest.mark.parametrize(
+    "provider,endpoint",
+    [
+        ("openai", "https://api.openai.com/v1"),
+        ("ollama", "http://localhost:11434/v1"),
+    ],
+)
 def test_legacy_factory_aliases_keep_configuration_local_without_optional_models(monkeypatch, provider, endpoint):
     cfg = llm.Config(provider, "test-model", "fixture-key")
     monkeypatch.setattr(llm, "complete", lambda prompt, config: (prompt, {"provider": config.provider}))

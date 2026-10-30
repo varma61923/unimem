@@ -1,4 +1,5 @@
 """Verified generation reuse must still stat every leaf on every request."""
+
 from __future__ import annotations
 
 import mmap
@@ -6,6 +7,7 @@ import os
 import select
 import signal
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -27,8 +29,17 @@ def lesson(root, name="lesson_test"):
     folder = paths.lessons_dir(str(root))
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, name + ".md")
-    frontmatter.write(path, {"name": name, "status": "active", "scopes": ["container:alpha"],
-                             "description": "Retry failed payments", "importance": 3}, "## Rule\nRetry safely.\n")
+    frontmatter.write(
+        path,
+        {
+            "name": name,
+            "status": "active",
+            "scopes": ["container:alpha"],
+            "description": "Retry failed payments",
+            "importance": 3,
+        },
+        "## Rule\nRetry safely.\n",
+    )
     return path
 
 
@@ -63,7 +74,7 @@ def test_mmap_scope_change_with_restored_mtime_refreshes_metadata(tmp_path):
         with mmap.mmap(fh.fileno(), 0) as mapping:
             position = mapping.find(b"container:alpha")
             assert position >= 0
-            mapping[position:position + len(b"container:alpha")] = b"container:bravo"
+            mapping[position : position + len(b"container:alpha")] = b"container:bravo"
             mapping.flush()
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     assert lesson_cache.source_fingerprint(str(tmp_path)) != first_generation
@@ -164,7 +175,7 @@ def test_gateway_cold_changed_and_warm_recall_use_one_verified_scan(tmp_path, mo
     gateway._cached_active(str(tmp_path), frontmatter.read)
     assert len(scans) == 2
     before = os.stat(path)
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(text.replace("alpha", "bravo"))
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))

@@ -11,6 +11,7 @@ the switch, rather than attempting a connection. A model runtime on loopback
 No DNS lookup is made to decide this: a host is local only when it is a
 literal loopback address or ``localhost``.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -95,5 +96,4 @@ def check_url(url: str, purpose: str) -> None:
 
 
 def status() -> dict:
-    return {"offline": enabled(),
-            "model_hub_cache_only": all(os.environ.get(n) == "1" for n in MODEL_HUB_SWITCHES)}
+    return {"offline": enabled(), "model_hub_cache_only": all(os.environ.get(n) == "1" for n in MODEL_HUB_SWITCHES)}

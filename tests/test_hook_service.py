@@ -79,14 +79,19 @@ raise SystemExit(main(sys.argv[1:]))
             timeout=5,
             check=True,
         )
-        assert "hookSpecificOutput" not in json.loads(second.stdout)
+        second_output = json.loads(second.stdout)
+        assert "hookSpecificOutput" not in second_output
         assert stat_private(tmp_path / "memory" / "hooks.sock")
         with journal.connect() as db:
             before_fallback = db.execute("SELECT COUNT(*) FROM captures").fetchone()[0]
             before_exposures = db.execute("SELECT COUNT(*) FROM injected").fetchone()[0]
         ui_only = subprocess.run(
-            command + ["--format", "windsurf"], input=json.dumps({"trajectory_id": "capture-only"}),
-            text=True, capture_output=True, timeout=5, check=True,
+            command + ["--format", "windsurf"],
+            input=json.dumps({"trajectory_id": "capture-only"}),
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=True,
         )
         assert json.loads(ui_only.stdout) == {}
         ui_run = hashlib.sha256(json.dumps([{"agent": "agent"}, "capture-only"], sort_keys=True).encode()).hexdigest()
@@ -160,8 +165,9 @@ def test_native_bridge_closes_malformed_or_stalled_receipt_peer(tmp_path, reply)
         worker = threading.Thread(target=peer)
         worker.start()
         command = shlex.split(HookKit(str(tmp_path), "agent").manifest("claude")["events"]["UserPromptSubmit"])
-        result = subprocess.run(command, input='{"session_id":"s","prompt":"code"}',
-                                text=True, capture_output=True, timeout=15, check=True)
+        result = subprocess.run(
+            command, input='{"session_id":"s","prompt":"code"}', text=True, capture_output=True, timeout=15, check=True
+        )
         assert json.loads(result.stdout)["context"] == ""
         worker.join(timeout=5)
         assert disconnected.is_set()
@@ -280,8 +286,16 @@ def test_a_running_broker_bridges_a_lesson_approved_after_it_started(tmp_path):
     agent_id = "claude-" + repo
     setup(root, config={"agents": {"claude": {"config_path": "hooks.json"}}, "histories": []})
     broker = subprocess.Popen(
-        [sys.executable, "-c", "import sys\nfrom unimem.hook_service import main\nraise SystemExit(main(sys.argv[1:]))",
-         "--dest", root], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        [
+            sys.executable,
+            "-c",
+            "import sys\nfrom unimem.hook_service import main\nraise SystemExit(main(sys.argv[1:]))",
+            "--dest",
+            root,
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     try:
         ready_by = time.monotonic() + 15
         while not os.path.exists(tmp_path / "memory" / "hooks.sock"):
@@ -290,22 +304,54 @@ def test_a_running_broker_bridges_a_lesson_approved_after_it_started(tmp_path):
                 pytest.fail("native broker did not become ready within the startup budget")
             time.sleep(0.01)
         # A directive injects without embeddings, so this isolates the bridge from retrieval quality.
-        assert cli(["lesson", "new", "--slug", "never-print-secrets", "--domain", "security", "--importance", "5",
-                    "--description", "Never print credentials", "--importance-rationale", "leak prevention",
-                    "--applies-when", "any command touches credentials", "--dest", root]) == 0
+        assert (
+            cli(
+                [
+                    "lesson",
+                    "new",
+                    "--slug",
+                    "never-print-secrets",
+                    "--domain",
+                    "security",
+                    "--importance",
+                    "5",
+                    "--description",
+                    "Never print credentials",
+                    "--importance-rationale",
+                    "leak prevention",
+                    "--applies-when",
+                    "any command touches credentials",
+                    "--dest",
+                    root,
+                ]
+            )
+            == 0
+        )
         path = tmp_path / "memory" / "lessons" / "lesson_never-print-secrets.md"
         fm, _ = frontmatter.read(str(path))
         fm["lesson_kind"] = "directive"
-        frontmatter.write(str(path), fm, "## Rule\nNever print credentials to the terminal.\n\n## Why\nLeaks.\n\n"
-                          "## How to apply\nRedact before output.\n")
+        frontmatter.write(
+            str(path),
+            fm,
+            "## Rule\nNever print credentials to the terminal.\n\n## Why\nLeaks.\n\n"
+            "## How to apply\nRedact before output.\n",
+        )
         assert cli(["lesson", "approve", "never-print-secrets", "--force", "--dest", root]) == 0
-        native = shlex.split(HookKit(root, agent_id, scope={"repo": repo}).manifest("claude")["events"]["UserPromptSubmit"])
+        native = shlex.split(
+            HookKit(root, agent_id, scope={"repo": repo}).manifest("claude")["events"]["UserPromptSubmit"]
+        )
         command = functional_command(native) + ["--format", "claude"]
         deadline, context = time.monotonic() + 20, ""
         while time.monotonic() < deadline and "credentials" not in context:
             time.sleep(0.5)
-            reply = subprocess.run(command, input=json.dumps({"session_id": f"s-{time.monotonic()}", "prompt": "hello"}),
-                                   text=True, capture_output=True, timeout=10, check=True)
+            reply = subprocess.run(
+                command,
+                input=json.dumps({"session_id": f"s-{time.monotonic()}", "prompt": "hello"}),
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=True,
+            )
             context = json.loads(reply.stdout).get("hookSpecificOutput", {}).get("additionalContext", "")
         assert "Never print credentials to the terminal." in context
     finally:

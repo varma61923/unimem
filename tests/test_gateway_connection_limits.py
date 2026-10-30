@@ -1,4 +1,5 @@
 """HTTP connection admission, persistent framing, and worker cleanup."""
+
 import shutil
 import socket
 import ssl
@@ -67,14 +68,17 @@ def test_timeout_releases_connection_admission(server):
     assert_health_available(server)
 
 
-@pytest.mark.parametrize("headers, status", [
-    (b"Content-Length: 2\r\nContent-Length: 2\r\n", 400),
-    (b"Content-Length: +2\r\n", 400),
-    (b"Content-Length: 2, 2\r\n", 400),
-    (b"Transfer-Encoding: identity\r\nContent-Length: 2\r\n", 411),
-    (b"Transfer-Encoding: chunked\r\nContent-Length: 2\r\n", 411),
-    (b"Content-Length: " + b"9" * 5000 + b"\r\n", 413),
-])
+@pytest.mark.parametrize(
+    "headers, status",
+    [
+        (b"Content-Length: 2\r\nContent-Length: 2\r\n", 400),
+        (b"Content-Length: +2\r\n", 400),
+        (b"Content-Length: 2, 2\r\n", 400),
+        (b"Transfer-Encoding: identity\r\nContent-Length: 2\r\n", 411),
+        (b"Transfer-Encoding: chunked\r\nContent-Length: 2\r\n", 411),
+        (b"Content-Length: " + b"9" * 5000 + b"\r\n", 413),
+    ],
+)
 def test_ambiguous_or_unsupported_framing_closes_stream(server, headers, status):
     with connect(server) as client:
         client.sendall(b"POST /v1/recall HTTP/1.1\r\nHost: localhost\r\n" + headers + b"\r\n{}")
@@ -91,16 +95,21 @@ def test_get_body_cannot_be_reinterpreted_as_a_pipelined_request(server):
 
 def test_zero_padded_length_preserves_valid_http_requests(server):
     with connect(server) as client:
-        client.sendall(b"GET /v1/health HTTP/1.1\r\nHost: localhost\r\nContent-Length: "
-                       + b"0" * 5000 + b"\r\nConnection: close\r\n\r\n")
+        client.sendall(
+            b"GET /v1/health HTTP/1.1\r\nHost: localhost\r\nContent-Length: "
+            + b"0" * 5000
+            + b"\r\nConnection: close\r\n\r\n"
+        )
         assert b" 200 " in client.recv(4096).split(b"\r\n")[0]
     assert_health_available(server)
 
 
 def test_incomplete_post_body_releases_slot(server):
     with connect(server) as client:
-        client.sendall(b"POST /v1/recall HTTP/1.1\r\nHost: localhost\r\n"
-                       b"Content-Type: application/json\r\nContent-Length: 20\r\n\r\n{}")
+        client.sendall(
+            b"POST /v1/recall HTTP/1.1\r\nHost: localhost\r\n"
+            b"Content-Type: application/json\r\nContent-Length: 20\r\n\r\n{}"
+        )
         client.shutdown(socket.SHUT_WR)
         assert b" 400 " in client.recv(4096).split(b"\r\n")[0]
     assert_health_available(server)
@@ -133,12 +142,28 @@ def test_shutdown_allows_idle_worker_to_timeout_and_release_slot(server):
 @pytest.mark.skipif(shutil.which("openssl") is None, reason="requires openssl for a local test certificate")
 def test_excess_tls_connection_closes_without_plaintext_response(tmp_path):
     cert, key = str(tmp_path / "cert.pem"), str(tmp_path / "key.pem")
-    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",  # nosec B603 B607
-                    "-keyout", key, "-out", cert, "-days", "1", "-subj", "/CN=localhost"],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-nodes",  # nosec B603 B607
+            "-keyout",
+            key,
+            "-out",
+            cert,
+            "-days",
+            "1",
+            "-subj",
+            "/CN=localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
     app = gateway.Gateway(str(tmp_path / "store"), token="t" * 40)
-    srv = gateway.make_http_server(app, "127.0.0.1", 0, tls=(cert, key),
-                                   request_timeout=0.5, max_connections=1)
+    srv = gateway.make_http_server(app, "127.0.0.1", 0, tls=(cert, key), request_timeout=0.5, max_connections=1)
     worker = threading.Thread(target=srv.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     worker.start()
     try:
@@ -185,7 +210,8 @@ def test_tls_setup_failure_closes_bound_server_socket(tmp_path, monkeypatch):
     monkeypatch.setattr(gateway_transport.ThreadingHTTPServer, "__init__", capture_server)
     app = gateway.Gateway(str(tmp_path / "store"), token="t" * 40)
     with pytest.raises(FileNotFoundError):
-        gateway.make_http_server(app, "127.0.0.1", 0,
-                                 tls=(str(tmp_path / "missing-cert.pem"), str(tmp_path / "missing-key.pem")))
+        gateway.make_http_server(
+            app, "127.0.0.1", 0, tls=(str(tmp_path / "missing-cert.pem"), str(tmp_path / "missing-key.pem"))
+        )
     assert len(sockets) == 1
     assert sockets[0].fileno() == -1

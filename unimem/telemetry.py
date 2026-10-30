@@ -13,6 +13,7 @@
 
 Attribute values are redacted and truncated before export; spans never carry message
 bodies, only sizes and counts."""
+
 from __future__ import annotations
 
 import contextlib
@@ -46,6 +47,7 @@ _TRACER_STATE = {"tried": False, "error": ""}
 
 
 # --- redaction -------------------------------------------------------------------
+
 
 def redact(value: Any) -> Any:
     """A value safe to export: credentials replaced, long strings cut."""
@@ -121,6 +123,7 @@ def _safe_fields(fields: dict[str, Any]) -> dict[str, Any]:
 
 # --- context ---------------------------------------------------------------------
 
+
 def current() -> dict:
     return dict(_CONTEXT.get())
 
@@ -161,6 +164,7 @@ def spawn_background(
 
 
 # --- tracing ---------------------------------------------------------------------
+
 
 def otel_enabled() -> bool:
     from unimem import offline
@@ -247,12 +251,15 @@ def span(name: str, **attrs: Any) -> Iterator[Span]:
             elapsed_ms = (time.perf_counter() - started) * 1000
             observe("unimem_operation_ms", elapsed_ms, operation=name, outcome=outcome)
             if _LOG.isEnabledFor(logging.DEBUG):
-                _LOG.debug("span", extra={"span": name, "ms": round(elapsed_ms, 2), "outcome": outcome,
-                                          "attrs": handle.attributes})
+                _LOG.debug(
+                    "span",
+                    extra={"span": name, "ms": round(elapsed_ms, 2), "outcome": outcome, "attrs": handle.attributes},
+                )
 
 
 def traced(name: str | None = None):
     """Decorator form of `span`."""
+
     def wrap(func):
         label = name or f"{func.__module__.rsplit('.', 1)[-1]}.{func.__name__}"
 
@@ -264,6 +271,7 @@ def traced(name: str | None = None):
         inner.__doc__ = func.__doc__
         inner.__wrapped__ = func
         return inner
+
     return wrap
 
 
@@ -275,11 +283,13 @@ def wrap_tool(func, prefix: str = "mcp"):
 
     label = f"{prefix}.{func.__name__}"
     if inspect.iscoroutinefunction(func):
+
         @functools.wraps(func)
         async def run_async(*args, **kwargs):
             with bind(request_id=new_request_id(), tool=func.__name__), span(label):
                 count("unimem_tool_calls", tool=func.__name__, surface=prefix)
                 return await func(*args, **kwargs)
+
         return run_async
 
     @functools.wraps(func)
@@ -287,10 +297,12 @@ def wrap_tool(func, prefix: str = "mcp"):
         with bind(request_id=new_request_id(), tool=func.__name__), span(label):
             count("unimem_tool_calls", tool=func.__name__, surface=prefix)
             return func(*args, **kwargs)
+
     return run
 
 
 # --- metrics ---------------------------------------------------------------------
+
 
 def _labels(labels: dict) -> tuple:
     return tuple(sorted((k, str(v)[:64]) for k, v in _safe_fields(labels).items()))
@@ -334,10 +346,15 @@ def _valid_metric(name: str, value: float, labels: dict[str, Any]) -> bool:
     # Instrumentation must not break a request or create invalid scrape data.
     from unimem.validate import finite_number
 
-    return (isinstance(name, str) and len(name) <= 200 and _METRIC_NAME.fullmatch(name) is not None
-            and finite_number(value) and value >= 0
-            and len(labels) <= 16 and all(isinstance(key, str) and len(key) <= 200
-                                          and _LABEL_NAME.fullmatch(key) for key in labels))
+    return (
+        isinstance(name, str)
+        and len(name) <= 200
+        and _METRIC_NAME.fullmatch(name) is not None
+        and finite_number(value)
+        and value >= 0
+        and len(labels) <= 16
+        and all(isinstance(key, str) and len(key) <= 200 and _LABEL_NAME.fullmatch(key) for key in labels)
+    )
 
 
 def reset() -> None:
@@ -360,11 +377,22 @@ def metrics() -> dict:
     """{"counters": [...], "histograms": [...]} with p50/p95 upper bounds."""
     with _LOCK:
         counters = [{"name": n, "labels": dict(lbl), "value": v} for (n, lbl), v in sorted(_COUNTERS.items())]
-        counters.extend({"name": "unimem_telemetry_dropped_series", "labels": {"kind": kind}, "value": value}
-                        for kind, value in _DROPPED.items() if value)
-        hists = [{"name": n, "labels": dict(lbl), "count": h[2], "sum_ms": round(h[1], 3),
-                  "p50_ms": _quantile(h[0], h[2], 0.5), "p95_ms": _quantile(h[0], h[2], 0.95)}
-                 for (n, lbl), h in sorted(_HISTOGRAMS.items())]
+        counters.extend(
+            {"name": "unimem_telemetry_dropped_series", "labels": {"kind": kind}, "value": value}
+            for kind, value in _DROPPED.items()
+            if value
+        )
+        hists = [
+            {
+                "name": n,
+                "labels": dict(lbl),
+                "count": h[2],
+                "sum_ms": round(h[1], 3),
+                "p50_ms": _quantile(h[0], h[2], 0.5),
+                "p95_ms": _quantile(h[0], h[2], 0.95),
+            }
+            for (n, lbl), h in sorted(_HISTOGRAMS.items())
+        ]
     return {"counters": counters, "histograms": hists}
 
 
@@ -372,7 +400,7 @@ def _prom_labels(labels: tuple, extra: tuple = ()) -> str:
     pairs = [*labels, *extra]
     if not pairs:
         return ""
-    esc = (lambda v: v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n"))  # noqa: E731
+    esc = lambda v: v.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")  # noqa: E731
     return "{" + ",".join(f'{k}="{esc(v)}"' for k, v in pairs) + "}"
 
 
@@ -381,8 +409,9 @@ def prometheus() -> str:
     with _LOCK:
         counters = list(_COUNTERS.items())
         histograms = [(key, (list(h[0]), h[1], h[2])) for key, h in _HISTOGRAMS.items()]
-        counters.extend((("unimem_telemetry_dropped_series", (("kind", kind),)), value)
-                        for kind, value in _DROPPED.items() if value)
+        counters.extend(
+            (("unimem_telemetry_dropped_series", (("kind", kind),)), value) for kind, value in _DROPPED.items() if value
+        )
     lines: list[str] = []
     previous = None
     for (name, lbl), value in sorted(counters):
@@ -417,7 +446,9 @@ class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         entry: dict[str, Any] = {
             "ts": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(record.created)) + f".{int(record.msecs):03d}Z",
-            "level": record.levelname.lower(), "logger": record.name, "msg": redact(record.getMessage()),
+            "level": record.levelname.lower(),
+            "logger": record.name,
+            "msg": redact(record.getMessage()),
         }
         entry.update({k: redact(v) for k, v in current().items()})
         for key, value in vars(record).items():
@@ -439,9 +470,16 @@ class _RedactingFormatter(logging.Formatter):
 _CONFIGURED = {"done": False}
 
 
-def configure_logging(fmt: str | None = None, level: str | None = None, stream=None, *,
-                      log_file: str | None = None, max_bytes: int = 50*1024*1024, backups: int = 5,
-                      _logger_name: str = "unimem") -> None:
+def configure_logging(
+    fmt: str | None = None,
+    level: str | None = None,
+    stream=None,
+    *,
+    log_file: str | None = None,
+    max_bytes: int = 50 * 1024 * 1024,
+    backups: int = 5,
+    _logger_name: str = "unimem",
+) -> None:
     """Configure the `unimem` logger once (env: UNIMEM_LOG_FORMAT=json|text,
     UNIMEM_LOG_LEVEL). Without either variable nothing changes."""
     fmt = (fmt or _configuration_getenv("UNIMEM_LOG_FORMAT", "")).strip().lower()
@@ -449,8 +487,12 @@ def configure_logging(fmt: str | None = None, level: str | None = None, stream=N
     log_file = log_file or _configuration_getenv("UNIMEM_LOG_FILE", "").strip()
     if not fmt and not level and not log_file:
         return
-    if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 1024 or (
-            isinstance(backups, bool) or not isinstance(backups, int) or not 1 <= backups <= 10):
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or max_bytes < 1024
+        or (isinstance(backups, bool) or not isinstance(backups, int) or not 1 <= backups <= 10)
+    ):
         raise ValueError("rotation requires max_bytes >= 1024 and 1-10 backups")
     logger = logging.getLogger(_logger_name)
     for handler in list(logger.handlers):
@@ -459,8 +501,9 @@ def configure_logging(fmt: str | None = None, level: str | None = None, stream=N
             handler.close()
     handler = logging.StreamHandler(stream)
     handler._unimem = True  # type: ignore[attr-defined]
-    handler.setFormatter(JsonFormatter() if fmt == "json" else
-                         _RedactingFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler.setFormatter(
+        JsonFormatter() if fmt == "json" else _RedactingFormatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    )
     logger.addHandler(handler)
     if log_file:
         from logging.handlers import RotatingFileHandler
@@ -469,14 +512,16 @@ def configure_logging(fmt: str | None = None, level: str | None = None, stream=N
 
         safe = paths.safe_prepare_output_path(log_file, allow_unlink_leaf=False)
         # Existing symlink backups could otherwise become unintended rotation targets.
-        if any(os.path.islink(safe+"."+str(i)) for i in range(1, backups+1)):
+        if any(os.path.islink(safe + "." + str(i)) for i in range(1, backups + 1)):
             raise ValueError("log backups cannot be symbolic links")
+
         class PrivateRotatingFileHandler(RotatingFileHandler):
             def _open(self):
                 flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
                 fd = os.open(self.baseFilename, flags, 0o600)
                 os.chmod(self.baseFilename, 0o600)
                 return os.fdopen(fd, self.mode, encoding=self.encoding, errors=self.errors)
+
         file_handler = PrivateRotatingFileHandler(safe, maxBytes=max_bytes, backupCount=backups, encoding="utf-8")
         os.chmod(safe, 0o600)
         file_handler._unimem = True  # type: ignore[attr-defined]
@@ -496,7 +541,11 @@ def status() -> dict:
         otel_installed = True
     except ImportError:
         otel_installed = False
-    return {"otel_installed": otel_installed, "otel_enabled": otel_enabled(),
-            "tracing": tracer is not None, "note": _TRACER_STATE["error"],
-            "log_format": _configuration_getenv("UNIMEM_LOG_FORMAT", "") or "default",
-            "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")}
+    return {
+        "otel_installed": otel_installed,
+        "otel_enabled": otel_enabled(),
+        "tracing": tracer is not None,
+        "note": _TRACER_STATE["error"],
+        "log_format": _configuration_getenv("UNIMEM_LOG_FORMAT", "") or "default",
+        "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", ""),
+    }

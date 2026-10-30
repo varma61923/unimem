@@ -4,6 +4,7 @@ FILE takes precedence, then explicit AWS secret references, then environment.
 Provider failures never fall back to a stale plaintext secret. Values and SDK
 exception messages are excluded from diagnostics.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -29,8 +30,12 @@ class AWSSecretsProvider:
 
     def __init__(self, client=None, *, region: str | None = None, ttl: float = 60.0) -> None:
         self._client, self.region = client, region
-        self._cache = RuntimeCache[str](max_entries=128, max_bytes=1024 * 1024, ttl=ttl,
-                                       weigh=lambda k, v: 512 + sys.getsizeof(k) + sys.getsizeof(v))
+        self._cache = RuntimeCache[str](
+            max_entries=128,
+            max_bytes=1024 * 1024,
+            ttl=ttl,
+            weigh=lambda k, v: 512 + sys.getsizeof(k) + sys.getsizeof(v),
+        )
 
     def get(self, name: str) -> str:
         def load() -> str:
@@ -70,8 +75,9 @@ class AWSSecretsProvider:
 
 # SDK/provider objects are injected by callers; environment configuration uses
 # one provider per region, bounded to prevent unbounded configuration retention.
-_AWS_PROVIDERS = RuntimeCache[AWSSecretsProvider](max_entries=8, max_bytes=1024 * 1024,
-                                                ttl=3600, weigh=lambda _k, _v: 128 * 1024)
+_AWS_PROVIDERS = RuntimeCache[AWSSecretsProvider](
+    max_entries=8, max_bytes=1024 * 1024, ttl=3600, weigh=lambda _k, _v: 128 * 1024
+)
 
 
 def env_secret(name: str, default: str = "", *, provider: SecretProvider | None = None) -> str:

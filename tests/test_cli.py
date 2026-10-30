@@ -52,20 +52,34 @@ def test_lesson_new_then_validate_round_trips(store):
     main(["init", "--agent-type", "sales", "--dest", str(store)])
     rc = main(
         [
-            "lesson", "new",
-            "--slug", "lesson_handle_price_objection",
-            "--description", "Reframe price objections around ROI, not discount",
-            "--agent-type", "sales",
-            "--domain", "objection-handling",
-            "--tags", "pricing,objection",
-            "--applies-when", "prospect objects to price after seeing a demo",
-            "--do-not-apply-when", "prospect has not seen the product value yet",
-            "--importance", "4",
-            "--importance-rationale", "Leading with discount trains prospects to always ask for one",
-            "--scopes", "enterprise-sales,emea",
-            "--valid-from", "2026-01-01",
-            "--valid-until", "2027-01-01T00:00:00Z",
-            "--dest", str(store),
+            "lesson",
+            "new",
+            "--slug",
+            "lesson_handle_price_objection",
+            "--description",
+            "Reframe price objections around ROI, not discount",
+            "--agent-type",
+            "sales",
+            "--domain",
+            "objection-handling",
+            "--tags",
+            "pricing,objection",
+            "--applies-when",
+            "prospect objects to price after seeing a demo",
+            "--do-not-apply-when",
+            "prospect has not seen the product value yet",
+            "--importance",
+            "4",
+            "--importance-rationale",
+            "Leading with discount trains prospects to always ask for one",
+            "--scopes",
+            "enterprise-sales,emea",
+            "--valid-from",
+            "2026-01-01",
+            "--valid-until",
+            "2027-01-01T00:00:00Z",
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 0
@@ -88,11 +102,24 @@ def test_lesson_new_then_validate_round_trips(store):
 
 def test_lesson_new_refuses_an_invalid_validity_window(store, capsys):
     main(["init", "--agent-type", "sales", "--dest", str(store)])
-    rc = main([
-        "lesson", "new", "--slug", "invalid-window", "--description", "x",
-        "--domain", "sales", "--valid-from", "2027-01-01",
-        "--valid-until", "2026-01-01", "--dest", str(store),
-    ])
+    rc = main(
+        [
+            "lesson",
+            "new",
+            "--slug",
+            "invalid-window",
+            "--description",
+            "x",
+            "--domain",
+            "sales",
+            "--valid-from",
+            "2027-01-01",
+            "--valid-until",
+            "2026-01-01",
+            "--dest",
+            str(store),
+        ]
+    )
     assert rc == 1
     assert "must be later" in capsys.readouterr().err
 
@@ -152,12 +179,18 @@ def test_capture_writes_a_schema_valid_trace(store):
     rc = main(
         [
             "capture",
-            "--title", "Refund before apology increases churn",
-            "--context", "Agent offered a refund immediately without acknowledging frustration",
-            "--solution", "Acknowledge the issue first, then offer the remedy",
-            "--tags", "refunds,tone",
-            "--agent-type", "support",
-            "--dest", str(store),
+            "--title",
+            "Refund before apology increases churn",
+            "--context",
+            "Agent offered a refund immediately without acknowledging frustration",
+            "--solution",
+            "Acknowledge the issue first, then offer the remedy",
+            "--tags",
+            "refunds,tone",
+            "--agent-type",
+            "support",
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 0
@@ -180,17 +213,24 @@ def test_capture_with_outcome_flags_writes_pilot_metrics_fields(store):
     rc = main(
         [
             "capture",
-            "--title", "Escalated ticket resolved after lesson injection",
-            "--context", "Customer threatened to churn",
-            "--solution", "Applied the de-escalation lesson before replying",
-            "--agent-type", "support",
+            "--title",
+            "Escalated ticket resolved after lesson injection",
+            "--context",
+            "Customer threatened to churn",
+            "--solution",
+            "Applied the de-escalation lesson before replying",
+            "--agent-type",
+            "support",
             "--resolved",
             "--escalated",
             "--frustration",
-            "--tokens-used", "420",
-            "--llm-calls", "3",
+            "--tokens-used",
+            "420",
+            "--llm-calls",
+            "3",
             "--baseline",
-            "--dest", str(store),
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 0
@@ -216,11 +256,16 @@ def test_capture_without_outcome_flags_omits_outcome_field(store):
     main(
         [
             "capture",
-            "--title", "Plain capture",
-            "--context", "ctx",
-            "--solution", "sol",
-            "--agent-type", "support",
-            "--dest", str(store),
+            "--title",
+            "Plain capture",
+            "--context",
+            "ctx",
+            "--solution",
+            "sol",
+            "--agent-type",
+            "support",
+            "--dest",
+            str(store),
         ]
     )
     traces = [p for p in (store / "memory" / "traces").glob("*.md") if p.name != "README.md"]
@@ -232,12 +277,18 @@ def test_lesson_new_rejects_path_traversal_slug(store):
     main(["init", "--agent-type", "code", "--dest", str(store)])
     rc = main(
         [
-            "lesson", "new",
-            "--slug", "../../evil",
-            "--description", "x",
-            "--agent-type", "code",
-            "--domain", "testing",
-            "--dest", str(store),
+            "lesson",
+            "new",
+            "--slug",
+            "../../evil",
+            "--description",
+            "x",
+            "--agent-type",
+            "code",
+            "--domain",
+            "testing",
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 1
@@ -251,7 +302,9 @@ def test_validate_catches_invalid_nested_outcome_fields(store):
     frontmatter.write(
         str(bad_path),
         {
-            "id": "x", "title": "t", "agent_type": "code",
+            "id": "x",
+            "title": "t",
+            "agent_type": "code",
             "outcome": {"resolved": "not-a-boolean", "tokens_used": -50},
         },
         "## Context\nc\n\n## Solution\ns\n",
@@ -262,8 +315,13 @@ def test_validate_catches_invalid_nested_outcome_fields(store):
 def test_validate_rejects_bool_for_number_typed_field(store):
     schema = validate.load_schema("trace.schema.json")
     instance = {
-        "id": "x", "title": "t", "context_text": "c", "solution_text": "s",
-        "tags": [], "agent_type": "code", "trust": True,
+        "id": "x",
+        "title": "t",
+        "context_text": "c",
+        "solution_text": "s",
+        "tags": [],
+        "agent_type": "code",
+        "trust": True,
     }
     errors = validate.validate(instance, schema)
     assert any("trust" in e for e in errors)
@@ -286,10 +344,20 @@ def test_capture_can_record_a_definite_negative_for_every_outcome_flag(store):
     rc = main(
         [
             "capture",
-            "--title", "definitely fine", "--context", "c", "--solution", "s",
-            "--agent-type", "support",
-            "--not-resolved", "--not-escalated", "--not-repeated-error", "--not-frustration",
-            "--dest", str(store),
+            "--title",
+            "definitely fine",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "support",
+            "--not-resolved",
+            "--not-escalated",
+            "--not-repeated-error",
+            "--not-frustration",
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 0
@@ -375,15 +443,13 @@ def test_a_missing_pyyaml_install_is_a_clean_error_not_a_traceback():
         "class _Blocker:\n"
         "    def find_spec(self, name, path, target=None):\n"
         "        if name == 'yaml':\n"
-        "            raise ModuleNotFoundError(f\"No module named {name!r}\", name=name)\n"
+        '            raise ModuleNotFoundError(f"No module named {name!r}", name=name)\n'
         "        return None\n"
         "sys.meta_path.insert(0, _Blocker())\n"
         "from unimem.cli import main\n"
         "sys.exit(main(['doctor']))\n"
     )
-    result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=30
-    )
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, timeout=30)
     assert result.returncode == 1, f"stdout={result.stdout!r} stderr={result.stderr!r}"
     assert "Traceback" not in result.stderr
     assert "yaml" in result.stderr
@@ -455,17 +521,28 @@ def test_query_lexical_finds_matching_lesson(store, capsys):
     main(["init", "--agent-type", "sales", "--dest", str(store)])
     main(
         [
-            "lesson", "new",
-            "--slug", "lesson_handle_price_objection",
-            "--description", "Reframe price objections around ROI, not discount",
-            "--agent-type", "sales",
-            "--domain", "objection-handling",
-            "--tags", "pricing,objection",
-            "--applies-when", "prospect objects to price after seeing a demo",
-            "--do-not-apply-when", "prospect has not seen the product value yet",
-            "--importance", "4",
-            "--importance-rationale", "x",
-            "--dest", str(store),
+            "lesson",
+            "new",
+            "--slug",
+            "lesson_handle_price_objection",
+            "--description",
+            "Reframe price objections around ROI, not discount",
+            "--agent-type",
+            "sales",
+            "--domain",
+            "objection-handling",
+            "--tags",
+            "pricing,objection",
+            "--applies-when",
+            "prospect objects to price after seeing a demo",
+            "--do-not-apply-when",
+            "prospect has not seen the product value yet",
+            "--importance",
+            "4",
+            "--importance-rationale",
+            "x",
+            "--dest",
+            str(store),
         ]
     )
     lesson_path = store / "memory" / "lessons" / "lesson_handle_price_objection.md"
@@ -510,12 +587,18 @@ def test_query_lexical_excludes_review_status_lessons(store, capsys):
     main(["init", "--agent-type", "code", "--dest", str(store)])
     main(
         [
-            "lesson", "new",
-            "--slug", "lesson_pending_review",
-            "--description", "candidate lesson about widgets",
-            "--agent-type", "code",
-            "--domain", "other",
-            "--dest", str(store),
+            "lesson",
+            "new",
+            "--slug",
+            "lesson_pending_review",
+            "--description",
+            "candidate lesson about widgets",
+            "--agent-type",
+            "code",
+            "--domain",
+            "other",
+            "--dest",
+            str(store),
         ]
     )
     lesson_path = store / "memory" / "lessons" / "lesson_pending_review.md"
@@ -580,14 +663,24 @@ def test_a_permissive_additional_properties_is_accepted_as_a_genuine_no_op():
 class TestListingCommands:
     def _lesson(self, store, name, **overrides):
         fm = {
-            "name": name, "description": "d", "tags": ["t"], "agent_type": "support",
-            "domain": "other", "importance": 3, "applies_when": "when",
-            "do_not_apply_when": "not", "uses": 0, "last_hit": "NEVER",
-            "source_traces": [], "status": "active", "importance_rationale": "r",
+            "name": name,
+            "description": "d",
+            "tags": ["t"],
+            "agent_type": "support",
+            "domain": "other",
+            "importance": 3,
+            "applies_when": "when",
+            "do_not_apply_when": "not",
+            "uses": 0,
+            "last_hit": "NEVER",
+            "source_traces": [],
+            "status": "active",
+            "importance_rationale": "r",
             "importance_history": [],
         }
         fm.update(overrides)
         import yaml as _yaml
+
         path = store / "memory" / "lessons" / f"{name}.md"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("---\n" + _yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8")
@@ -662,8 +755,21 @@ class TestCaptureRefusesInvalidTraces:
     def test_a_negative_cost_is_refused_at_write_time(self, store, capsys):
         main(["init", "--agent-type", "support", "--dest", str(store)])
         capsys.readouterr()
-        rc = main(["capture", "--title", "t", "--context", "c", "--solution", "s",
-                   "--tokens-used", "-5", "--dest", str(store)])
+        rc = main(
+            [
+                "capture",
+                "--title",
+                "t",
+                "--context",
+                "c",
+                "--solution",
+                "s",
+                "--tokens-used",
+                "-5",
+                "--dest",
+                str(store),
+            ]
+        )
         assert rc == 1
         assert "refusing to write an invalid trace" in capsys.readouterr().err
         written = list((store / "memory" / "traces").glob("*.md"))
@@ -672,8 +778,25 @@ class TestCaptureRefusesInvalidTraces:
     def test_a_valid_trace_still_writes_and_validates(self, store, capsys):
         main(["init", "--agent-type", "support", "--dest", str(store)])
         capsys.readouterr()
-        assert main(["capture", "--title", "t", "--context", "c", "--solution", "s",
-                     "--tokens-used", "10", "--resolved", "--dest", str(store)]) == 0
+        assert (
+            main(
+                [
+                    "capture",
+                    "--title",
+                    "t",
+                    "--context",
+                    "c",
+                    "--solution",
+                    "s",
+                    "--tokens-used",
+                    "10",
+                    "--resolved",
+                    "--dest",
+                    str(store),
+                ]
+            )
+            == 0
+        )
         capsys.readouterr()
         assert main(["trace", "validate", "--dest", str(store)]) == 0
 

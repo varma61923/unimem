@@ -35,9 +35,16 @@ class LocalClient(af.FunctionInvocationLayer, af.BaseChatClient):
         self.requests.append((list(messages), dict(options)))
         await asyncio.sleep(0)  # Interleave concurrent sessions through SDK hooks.
         if self.use_tool and not any(message.role == "tool" for message in messages):
-            return af.ChatResponse(messages=[af.Message("assistant", [
-                af.Content.from_function_call("release-check", "verify_release", arguments={}),
-            ])])
+            return af.ChatResponse(
+                messages=[
+                    af.Message(
+                        "assistant",
+                        [
+                            af.Content.from_function_call("release-check", "verify_release", arguments={}),
+                        ],
+                    )
+                ]
+            )
         return af.ChatResponse(messages=[af.Message("assistant", ["Verified by the local test client."])])
 
 
@@ -48,10 +55,15 @@ def _buffer(root, scope, session):
 
 def _provider(root):
     memory = MemoryClient(str(root), agent_id="af-agent", context={"tenant": "acme"})
-    Journal(str(root)).put(MemoryRecord(
-        "alice-release", "directive", 1, {"text": "Always verify the blue release gate."},
-        scope={"agent": "af-agent", "tenant": "acme", "user": "alice"},
-    ))
+    Journal(str(root)).put(
+        MemoryRecord(
+            "alice-release",
+            "directive",
+            1,
+            {"text": "Always verify the blue release gate."},
+            scope={"agent": "af-agent", "tenant": "acme", "user": "alice"},
+        )
+    )
     return UniMemContextProvider(memory)
 
 
@@ -69,10 +81,12 @@ def test_real_agent_concurrent_sessions_inject_and_capture_scoped_turns(monkeypa
             return original_turn(memory, session, query, **kwargs)
 
         monkeypatch.setattr(MemoryClient, "turn", tracked_turn)
-        responses = await asyncio.gather(*(
-            agent.run("How should I verify the blue release gate?", session=session, options={"user_id": user})
-            for user, session in sessions.items()
-        ))
+        responses = await asyncio.gather(
+            *(
+                agent.run("How should I verify the blue release gate?", session=session, options={"user_id": user})
+                for user, session in sessions.items()
+            )
+        )
 
         assert isinstance(provider, af.ContextProvider)
         assert len(calls) == len(client.requests) == 2
@@ -154,8 +168,9 @@ def test_real_agent_loop_keeps_original_user_turn_and_captures_final_response(mo
 
         assert len(client.requests) == 2
         assert calls == [query]
-        assert all("Always verify the blue release gate." in options.get("instructions", "")
-                   for _, options in client.requests)
+        assert all(
+            "Always verify the blue release gate." in options.get("instructions", "") for _, options in client.requests
+        )
         events = _buffer(tmp_path, {"agent": "af-agent", "tenant": "acme", "user": "alice"}, session)
         users = [event for event in events if event["event"] == "UserMessage"]
         assert [event["payload"]["text"] for event in users] == [query]

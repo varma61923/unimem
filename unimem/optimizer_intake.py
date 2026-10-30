@@ -6,6 +6,7 @@ GEPA/DSPy serialization subsets are checked against pinned source and authored
 fixtures; other vendor formats remain unverified. Canonical randomized rows, never claimed validation scores, decide
 promotion and Pareto membership. This module executes no proposed code.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,7 +22,7 @@ DSPY_SCHEMA_COMMIT = "c7e9752debcce5715fee62cd5f1ae538c14d5ce4"
 
 
 def _text(value: Any, label: str, maximum: int) -> str:
-    if not isinstance(value, str) or not 0 < len(value) <= maximum or '\x00' in value:
+    if not isinstance(value, str) or not 0 < len(value) <= maximum or "\x00" in value:
         raise ValueError("UniMem invalid optimizer " + label)
     return value
 
@@ -39,9 +40,9 @@ def _digest(value: Any) -> str:
         if isinstance(item, dict):
             if any(not isinstance(key, str) for key in item):
                 raise ValueError("UniMem optimizer JSON keys must be strings")
-            pending.extend((child, depth+1) for child in item.values())
+            pending.extend((child, depth + 1) for child in item.values())
         elif isinstance(item, (list, tuple)):
-            pending.extend((child, depth+1) for child in item)
+            pending.extend((child, depth + 1) for child in item)
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
     if len(raw) > 128 * 1024:
         raise ValueError("UniMem optimizer candidate exceeds 128 KiB")
@@ -63,9 +64,14 @@ def candidate(value: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("UniMem claimed validation score must be finite or null")
     body = {"base_artifact": base, "delta": delta, "optimizer": optimizer, "parent": parent}
     identity = "delta:" + _digest(body)
-    return {"id": identity, **body, "claimed_validation_score": score,
-            "artifact_hash": _digest(body), "content_hash": _digest(delta),
-            "classification": "unverified proposal"}
+    return {
+        "id": identity,
+        **body,
+        "claimed_validation_score": score,
+        "artifact_hash": _digest(body),
+        "content_hash": _digest(delta),
+        "classification": "unverified proposal",
+    }
 
 
 def adapt(format: str, value: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -83,8 +89,13 @@ def adapt(format: str, value: Mapping[str, Any]) -> list[dict[str, Any]]:
         return _gepa(base, value["gepa_result"])
     if format == "dspy" and "dspy_state" in value:
         return _dspy(base, value["dspy_state"], parent)
-    field = {"gepa": "candidates", "ace": "bullets", "training-free-grpo": "experiences",
-             "dspy": "programs", "code-diff": "diffs"}[format]
+    field = {
+        "gepa": "candidates",
+        "ace": "bullets",
+        "training-free-grpo": "experiences",
+        "dspy": "programs",
+        "code-diff": "diffs",
+    }[format]
     edits = value.get(field)
     if not isinstance(edits, list) or not 1 <= len(edits) <= 64:
         raise ValueError("UniMem optimizer export must contain 1..64 edits in " + field)
@@ -97,17 +108,32 @@ def adapt(format: str, value: Mapping[str, Any]) -> list[dict[str, Any]]:
             delta, score = edit.get("delta"), edit.get("score")
         else:
             raise ValueError("UniMem optimizer export edits require delta, optional score and parent")
-        proposed = candidate({"base_artifact": base, "delta": delta, "optimizer": format,
-                              "claimed_validation_score": score,
-                              "parent": edit.get("parent", parent) if isinstance(edit, Mapping) else parent})
-        result.append({**proposed, "adapter": format, "format_status": "format unverified",
-                       "unit_kind": "bullet" if format == "ace" else "candidate"})
+        proposed = candidate(
+            {
+                "base_artifact": base,
+                "delta": delta,
+                "optimizer": format,
+                "claimed_validation_score": score,
+                "parent": edit.get("parent", parent) if isinstance(edit, Mapping) else parent,
+            }
+        )
+        result.append(
+            {
+                **proposed,
+                "adapter": format,
+                "format_status": "format unverified",
+                "unit_kind": "bullet" if format == "ace" else "candidate",
+            }
+        )
     return result
 
 
 def _json_text(value: Any) -> str:
-    return _text(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False),
-                 "serialized program", 60000)
+    return _text(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False),
+        "serialized program",
+        60000,
+    )
 
 
 def _gepa(base: str, state: Any) -> list[dict[str, Any]]:
@@ -115,9 +141,14 @@ def _gepa(base: str, state: Any) -> list[dict[str, Any]]:
     if not isinstance(state, dict):
         raise ValueError("UniMem GEPA result must be a JSON object")
     programs, parents, scores = (state.get(key) for key in ("candidates", "parents", "val_aggregate_scores"))
-    if (not isinstance(programs, list) or not 1 <= len(programs) <= 64
-            or not isinstance(parents, list) or not isinstance(scores, list)
-            or len(parents) != len(programs) or len(scores) != len(programs)):
+    if (
+        not isinstance(programs, list)
+        or not 1 <= len(programs) <= 64
+        or not isinstance(parents, list)
+        or not isinstance(scores, list)
+        or len(parents) != len(programs)
+        or len(scores) != len(programs)
+    ):
         raise ValueError("UniMem GEPA candidates, parents and scores must have matching bounded lengths")
     result = []
     for index, program in enumerate(programs):
@@ -137,11 +168,25 @@ def _gepa(base: str, state: Any) -> list[dict[str, Any]]:
                 raise ValueError("UniMem GEPA parent indices must be unique earlier candidates")
             indices.append(ancestor)
         parent = _digest([programs[i] for i in sorted(indices)]) if indices else None
-        value = candidate({"base_artifact": base, "delta": _json_text(program), "parent": parent,
-                           "optimizer": "gepa", "claimed_validation_score": scores[index]})
-        result.append({**value, "adapter": "gepa", "format_status": "verified serialization subset",
-                       "schema_commit": GEPA_SCHEMA_COMMIT, "delta_encoding": "replacement-prompt-map-json",
-                       "unit_kind": "candidate"})
+        value = candidate(
+            {
+                "base_artifact": base,
+                "delta": _json_text(program),
+                "parent": parent,
+                "optimizer": "gepa",
+                "claimed_validation_score": scores[index],
+            }
+        )
+        result.append(
+            {
+                **value,
+                "adapter": "gepa",
+                "format_status": "verified serialization subset",
+                "schema_commit": GEPA_SCHEMA_COMMIT,
+                "delta_encoding": "replacement-prompt-map-json",
+                "unit_kind": "candidate",
+            }
+        )
     return result
 
 
@@ -174,11 +219,26 @@ def _dspy(base: str, state: Any, parent: Any) -> list[dict[str, Any]]:
         predictors[name] = {"signature": {"instructions": instructions, "fields": clean_fields}, "demos": demos}
     if not 1 <= len(predictors) <= 16:
         raise ValueError("UniMem DSPy state requires 1..16 predictors")
-    value = candidate({"base_artifact": base, "delta": _json_text({"predictors": predictors}),
-                       "optimizer": "dspy", "claimed_validation_score": None, "parent": parent})
-    return [{**value, "adapter": "dspy", "format_status": "verified serialization subset",
-             "schema_commit": DSPY_SCHEMA_COMMIT, "delta_encoding": "replacement-predictors-json",
-             "dropped_runtime_configuration": True, "unit_kind": "candidate"}]
+    value = candidate(
+        {
+            "base_artifact": base,
+            "delta": _json_text({"predictors": predictors}),
+            "optimizer": "dspy",
+            "claimed_validation_score": None,
+            "parent": parent,
+        }
+    )
+    return [
+        {
+            **value,
+            "adapter": "dspy",
+            "format_status": "verified serialization subset",
+            "schema_commit": DSPY_SCHEMA_COMMIT,
+            "delta_encoding": "replacement-predictors-json",
+            "dropped_runtime_configuration": True,
+            "unit_kind": "candidate",
+        }
+    ]
 
 
 def pareto(points: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -203,6 +263,8 @@ def pareto(points: Sequence[Mapping[str, Any]]) -> list[str]:
             raise ValueError("UniMem frontier coordinates are outside their range")
         if point["supported"]:
             clean.append((identity, float(effect), float(harm)))
-    return sorted(identity for identity, effect, harm in clean
-                  if not any(e >= effect and h <= harm and (e > effect or h < harm)
-                             for other, e, h in clean if other != identity))
+    return sorted(
+        identity
+        for identity, effect, harm in clean
+        if not any(e >= effect and h <= harm and (e > effect or h < harm) for other, e, h in clean if other != identity)
+    )

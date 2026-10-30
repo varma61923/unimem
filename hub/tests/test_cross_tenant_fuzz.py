@@ -39,14 +39,20 @@ HOSTILE_IDS = [
 def _public_dns(monkeypatch):
     async def resolve(hostname):
         import socket
+
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("8.8.8.8", 0))]
+
     monkeypatch.setattr(events, "_default_resolve", resolve)
 
 
 def _app(session_factory, config) -> Starlette:
     app = Starlette()
     console.add_console_routes(
-        app, session_factory, console_secret=SECRET, signing_key=SIGNING_KEY, config=config,
+        app,
+        session_factory,
+        console_secret=SECRET,
+        signing_key=SIGNING_KEY,
+        config=config,
     )
     return app
 
@@ -62,16 +68,24 @@ async def tenants(session_factory):
         user = User(org_id=b.id, email=B_EMAIL, role=rbac.ROLE_VIEWER)
         session.add(user)
         rule = await alerts_module.create_rule(
-            session, b.id, alerts_module.METRIC_QUARANTINE_RATE, alerts_module.COMPARATOR_GT, 0.5,
+            session,
+            b.id,
+            alerts_module.METRIC_QUARANTINE_RATE,
+            alerts_module.COMPARATOR_GT,
+            0.5,
         )
         endpoint, _secret = await events.add_endpoint(session, b.id, B_WEBHOOK, signing_key=SIGNING_KEY)
         await session.flush()
         await incidents.freeze(session, b.id, "victim-incident", fp.now(), actor="fixture", secret=SIGNING_KEY)
         return {
-            "a_raw_key": a_key.raw_key, "b_org": b.id,
+            "a_raw_key": a_key.raw_key,
+            "b_org": b.id,
             "ids": {
-                "user_id": user.id, "key_id": b_key.key_id,
-                "rule_id": rule.id, "endpoint_id": endpoint.id, "incident_id": "victim-incident",
+                "user_id": user.id,
+                "key_id": b_key.key_id,
+                "rule_id": rule.id,
+                "endpoint_id": endpoint.id,
+                "incident_id": "victim-incident",
             },
         }
 
@@ -84,7 +98,10 @@ async def _snapshot(session_factory, tenants) -> dict:
         rule = await session.get(AlertRule, ids["rule_id"])
         endpoint = await session.get(WebhookEndpoint, ids["endpoint_id"])
         incident = await session.get(IncidentSnapshot, (org, ids["incident_id"]))
+        assert incident is not None
+        assert user is not None and key is not None and endpoint is not None
         hold = await session.get(LegalHold, incident.hold_id)
+        assert hold is not None
         return {
             "user": (user.role, user.disabled_at),
             "key": (key.revoked_at, key.key_hash if hasattr(key, "key_hash") else None),
@@ -98,7 +115,11 @@ async def _snapshot(session_factory, tenants) -> dict:
 def _param_routes(app: Starlette) -> list[tuple[str, str, list[str]]]:
     out = []
     for route in app.routes:
-        path = getattr(route, "path", "")
+        from starlette.routing import Route
+
+        if not isinstance(route, Route):
+            continue
+        path = route.path
         params = [p for p in path.replace("}", "{").split("{")[1::2]]
         if not params:
             continue
@@ -109,10 +130,7 @@ def _param_routes(app: Starlette) -> list[tuple[str, str, list[str]]]:
 
 async def test_every_console_route_with_an_id_is_mapped(session_factory, config):
     mapped = {"user_id", "key_id", "rule_id", "endpoint_id", "token", "incident_id"}
-    unmapped = {
-        (m, p) for m, p, params in _param_routes(_app(session_factory, config))
-        if set(params) - mapped
-    }
+    unmapped = {(m, p) for m, p, params in _param_routes(_app(session_factory, config)) if set(params) - mapped}
     assert not unmapped, f"console routes with an unmapped path parameter: {sorted(unmapped)}"
     assert _param_routes(_app(session_factory, config)), "found no parameterised routes to fuzz"
 
@@ -129,7 +147,10 @@ async def test_org_a_cannot_touch_org_b_through_any_id_route(session_factory, co
             for value in candidates:
                 path = template.replace("{" + params[0] + "}", urllib.parse.quote(value, safe=""))
                 response = await client.request(
-                    method, path, data={"role": rbac.ROLE_OWNER}, follow_redirects=True,
+                    method,
+                    path,
+                    data={"role": rbac.ROLE_OWNER},
+                    follow_redirects=True,
                 )
                 attempted += 1
                 assert response.status_code < 500, (method, template, value[:40], response.status_code)
@@ -148,8 +169,11 @@ async def test_no_admin_route_returns_5xx_for_a_malformed_id(session_factory, co
 
     app = Starlette()
     admin.add_admin_routes(
-        app, session_factory, admin_token="s3cret",
-        rate_limiter=RateLimiter(per_minute=100_000, burst=100_000), config=config,
+        app,
+        session_factory,
+        admin_token="s3cret",
+        rate_limiter=RateLimiter(per_minute=100_000, burst=100_000),
+        config=config,
     )
     headers = {"Authorization": "Basic " + base64.b64encode(b"op:s3cret").decode()}
     routes = _param_routes(app)
@@ -159,7 +183,11 @@ async def test_no_admin_route_returns_5xx_for_a_malformed_id(session_factory, co
             for value in HOSTILE_IDS[1:]:
                 path = template.replace("{" + params[0] + "}", urllib.parse.quote(value, safe=""))
                 response = await client.request(
-                    method, path, headers=headers, data={"role": "owner"}, follow_redirects=True,
+                    method,
+                    path,
+                    headers=headers,
+                    data={"role": "owner"},
+                    follow_redirects=True,
                 )
                 assert response.status_code < 500, (method, template, value[:40], response.status_code)
 
@@ -191,7 +219,9 @@ async def test_no_scim_route_returns_5xx_for_a_malformed_id(session_factory, con
         issued = await auth.issue_api_key(session, tenants["b_org"], scopes=["scim"])
     app = Starlette()
     scim.add_scim_routes(
-        app, session_factory, auth_rate_limiter=RateLimiter(per_minute=1_000_000, burst=1_000_000),
+        app,
+        session_factory,
+        auth_rate_limiter=RateLimiter(per_minute=1_000_000, burst=1_000_000),
     )
     headers = {"Authorization": f"Bearer {issued.raw_key}", "Content-Type": "application/scim+json"}
     routes = _param_routes(app)

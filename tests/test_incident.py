@@ -30,6 +30,7 @@ def test_freeze_replay_and_erasure_hold(tmp_path):
 
 def test_incident_surfaces_and_old_store(tmp_path):
     from unimem.mcp_server import build_server
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import call, cli
 
@@ -63,8 +64,14 @@ def test_replay_returns_delivered_bytes_after_later_correction(tmp_path):
     from unimem import frontmatter, lesson_io
 
     fm, _ = frontmatter.read(path)
-    lesson_io.write_lesson(path, fm, "Keep the arm inside bay B during calibration.", root=root,
-                           actor="test", reason="correction after the incident")
+    lesson_io.write_lesson(
+        path,
+        fm,
+        "Keep the arm inside bay B during calibration.",
+        root=root,
+        actor="test",
+        reason="correction after the incident",
+    )
     incident.freeze(root, "arm-incident", valid_time)
     replayed = incident.replay(root, "arm-incident", "incident-task")
     assert [row["body"] for row in replayed["injected"]] == [delivered["lessons"][0]["body"]]

@@ -3,7 +3,14 @@
 HTTP/TLS and stdio framing are implemented by ``gateway_transport``; the public
 factory functions here preserve existing CLI and embedding integrations.
 """
+
 from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from unimem.lesson_cache import TermCache
 
 import contextvars
 import copy
@@ -21,7 +28,7 @@ import threading
 import time
 import weakref
 from collections import OrderedDict
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from http.server import ThreadingHTTPServer
 from typing import Any, TextIO
@@ -71,7 +78,7 @@ EVENTS_STATUS_LIMIT = 2000
 
 # mtime-keyed active-lesson index cache (module-level, capped).
 _ACTIVE_CACHE_MAX = 8
-_ACTIVE_CACHE: dict[str, tuple[tuple, list, dict]] = {}
+_ACTIVE_CACHE: dict[str, tuple[tuple, list, TermCache]] = {}
 _ACTIVE_CACHE_LOCK = threading.Lock()
 
 # Lesson-body cache keyed by strong file identity (module-level, capped).
@@ -82,7 +89,7 @@ _BODY_CACHE: dict[tuple, str] = {}
 _BODY_CACHE_LOCK = threading.Lock()
 
 
-def _cached_active(root: str, reader) -> tuple[list, dict]:
+def _cached_active(root: str, reader) -> tuple[list, TermCache]:
     """Active lessons + term cache, re-parsed only when the listing changes."""
     from unimem import lesson_cache
 
@@ -181,8 +188,12 @@ def is_transient_auth_error(exc: BaseException) -> bool:
             return True
     err_str = str(exc).lower()
     transient_markers = (
-        "timeout", "timed out", "connection refused",
-        "econnreset", "temporarily unavailable", "try again",
+        "timeout",
+        "timed out",
+        "connection refused",
+        "econnreset",
+        "temporarily unavailable",
+        "try again",
     )
     if any(m in err_str for m in transient_markers):
         return True
@@ -206,12 +217,11 @@ def config_path(root: str) -> str:
 
 
 def _validate_config_values(env, prefixes) -> None:
-    if env is not None and (not isinstance(env, str)
-                            or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", env)):
+    if env is not None and (not isinstance(env, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,31}", env)):
         raise ValueError("gateway configuration contains an invalid environment slug")
-    if (not isinstance(prefixes, (list, tuple))
-            or any(not isinstance(prefix, str) or not prefix or len(prefix) > 512 or _CONTROL.search(prefix)
-                   for prefix in prefixes)):
+    if not isinstance(prefixes, (list, tuple)) or any(
+        not isinstance(prefix, str) or not prefix or len(prefix) > 512 or _CONTROL.search(prefix) for prefix in prefixes
+    ):
         raise ValueError("gateway configuration contains invalid protected prefixes")
 
 
@@ -254,10 +264,13 @@ def save_config(root: str, config: GatewayConfig) -> None:
     _validate_config_values(config.env, config.protected_prefixes)
     path = paths.safe_prepare_output_path(config_path(root))
     with _jsonl.locked(path):
-        _jsonl.write_json(path, {
-            "env": config.env,
-            "protected_prefixes": list(config.protected_prefixes),
-        })
+        _jsonl.write_json(
+            path,
+            {
+                "env": config.env,
+                "protected_prefixes": list(config.protected_prefixes),
+            },
+        )
 
 
 def merge_config(root: str, *, env: str | None, protect: list[str]) -> GatewayConfig:
@@ -272,7 +285,8 @@ def merge_config(root: str, *, env: str | None, protect: list[str]) -> GatewayCo
             if current.env and current.env != env:
                 raise ValueError(
                     f"this store measures {current.env!r}; refusing to start it as {env!r}. "
-                    "Use a separate store (--dest) for each environment so they are never pooled.")
+                    "Use a separate store (--dest) for each environment so they are never pooled."
+                )
         prefixes = tuple(dict.fromkeys((*current.protected_prefixes, *protect)))
         _validate_config_values(env or current.env, prefixes)
         merged = GatewayConfig(env=env or current.env, protected_prefixes=prefixes)
@@ -337,11 +351,14 @@ def _items(value) -> list[dict]:
         meta = raw.get("meta")
         if meta is not None and (not isinstance(meta, dict) or len(json.dumps(meta)) > 4096):
             raise _bad(f"items[{n}].meta must be a small object")
-        out.append({
-            "id": item_id, "text": _text(raw.get("text"), f"items[{n}].text", limit=MAX_TEXT_CHARS,
-                                         required=False),
-            "protected": protected, **({"meta": meta} if meta else {}),
-        })
+        out.append(
+            {
+                "id": item_id,
+                "text": _text(raw.get("text"), f"items[{n}].text", limit=MAX_TEXT_CHARS, required=False),
+                "protected": protected,
+                **({"meta": meta} if meta else {}),
+            }
+        )
     return out
 
 
@@ -411,8 +428,9 @@ class Response:
     stream: Iterator[bytes] | None = None
 
     @classmethod
-    def streaming(cls, status: int, chunks: Iterator[bytes], *, content_type: str,
-                  headers: dict | None = None) -> Response:
+    def streaming(
+        cls, status: int, chunks: Iterator[bytes], *, content_type: str, headers: dict | None = None
+    ) -> Response:
         """Bind deferred egress to the authorization context that created it."""
         context = contextvars.copy_context()
 
@@ -427,7 +445,7 @@ class Response:
                 if not isinstance(chunk, bytes):
                     raise ValueError("UniMem stream chunks must be bytes")
                 size += len(chunk)
-                if count > 4096 or len(chunk) > 256*1024 or size > 32*1024*1024:
+                if count > 4096 or len(chunk) > 256 * 1024 or size > 32 * 1024 * 1024:
                     raise ValueError("UniMem stream exceeds its bounded transfer budget")
                 yield chunk
 
@@ -440,10 +458,18 @@ def _json(status: int, payload) -> Response:
 
 class Gateway:
     def __init__(
-        self, root: str, *, token: str | None = None, config: GatewayConfig | None = None,
-        durable: bool = True, on_harm: str | None = None, check_every: int = 25,
-        allowed_hosts: tuple[str, ...] = (), allow_approval: bool = False,
-        token_provider: Callable[[], str | None] | None = None, allow_self_signup: bool = False,
+        self,
+        root: str,
+        *,
+        token: str | None = None,
+        config: GatewayConfig | None = None,
+        durable: bool = True,
+        on_harm: str | None = None,
+        check_every: int = 25,
+        allowed_hosts: tuple[str, ...] = (),
+        allow_approval: bool = False,
+        token_provider: Callable[[], str | None] | None = None,
+        allow_self_signup: bool = False,
     ) -> None:
         self.root = os.path.abspath(root)
         selected = current()
@@ -461,20 +487,35 @@ class Gateway:
         self._memo: OrderedDict[str, tuple] = OrderedDict()
         self._memo_work: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
         self._event_tail_lock = threading.Lock()
-        self._event_tail = None
+        self._event_tail: tuple[tuple[int, ...], list[bytes], dict[int, dict | None]] | None = None
         self._conversation_pool = None  # optional local adapter; requests cannot set it
         self.routes: dict[tuple[str, str], tuple[Callable, dict]] = {}
         self._register()
 
-
-    def _route(self, method: str, path: str, handler: Callable, *, summary: str, auth: bool = True,
-               request: dict | None = None, response: str = "object") -> None:
-        self.routes[(method, path)] = (handler, {
-            "summary": summary, "auth": auth, "request": request, "response": response})
+    def _route(
+        self,
+        method: str,
+        path: str,
+        handler: Callable,
+        *,
+        summary: str,
+        auth: bool = True,
+        request: dict | None = None,
+        response: str = "object",
+    ) -> None:
+        self.routes[(method, path)] = (
+            handler,
+            {"summary": summary, "auth": auth, "request": request, "response": response},
+        )
 
     def _register(self) -> None:
-        self._route("POST", "/v1/agent/enroll", self._agent_enroll,
-                    summary="Opt-in, rate-limited signup into a new isolated agent scope.", auth=False)
+        self._route(
+            "POST",
+            "/v1/agent/enroll",
+            self._agent_enroll,
+            summary="Opt-in, rate-limited signup into a new isolated agent scope.",
+            auth=False,
+        )
         self._route("POST", "/v1/agent/claim", self._agent_claim, summary="Owner claim of a self-enrolled agent.")
         self._route("POST", "/v1/agent/rotate", self._agent_rotate, summary="Owner-only scoped key rotation.")
         self._route("POST", "/v1/agent/revoke", self._agent_revoke, summary="Owner-only: disable an agent key.")
@@ -500,166 +541,333 @@ class Gateway:
             self._route(
                 "POST",
                 "/v1/memory/" + operation,
-                        lambda body, query, op=operation: self._memory_operation(op, body),
+                lambda body, query, op=operation: self._memory_operation(op, body),
                 summary="Scoped memory " + operation + ".",
             )
         self._route("GET", "/v1/palace", self._palace, summary="Overview, attention and memory suggestions.")
         for operation in ("directive", "question", "refresh", "reject-proposal", "review-foresight", "skill-review"):
-            self._route("POST", "/v1/control/" + operation,
-                        lambda body, query, op=operation: self._control_operation(op, body),
-                        summary="Governed memory " + operation + ".")
+            self._route(
+                "POST",
+                "/v1/control/" + operation,
+                lambda body, query, op=operation: self._control_operation(op, body),
+                summary="Governed memory " + operation + ".",
+            )
         self._route("GET", "/v1/health", self._health, summary="Liveness.", auth=False)
-        self._route("GET", "/v1/health/live", self._health_live,
-                    summary="Process liveness only; touches no storage.", auth=False)
-        self._route("GET", "/v1/health/ready", self._health_ready,
-                    summary="Readiness: store, schemas and free disk; 503 when not ready.", auth=False)
+        self._route(
+            "GET",
+            "/v1/health/live",
+            self._health_live,
+            summary="Process liveness only; touches no storage.",
+            auth=False,
+        )
+        self._route(
+            "GET",
+            "/v1/health/ready",
+            self._health_ready,
+            summary="Readiness: store, schemas and free disk; 503 when not ready.",
+            auth=False,
+        )
         self._route("GET", "/v1/capabilities", self._capabilities, summary="Tier and capability matrix.", auth=False)
         self._route("GET", "/v1/whoami", self._whoami, summary="Caller identity and scope.")
-        self._route("POST", "/v1/resolve_tag", self._resolve_tag, request={
-            "container_tag": "string: container/tenant identifier (alphanumeric, -, _)"
-        }, summary="Resolve and validate a container isolation tag.")
-        self._route("GET", "/v1/metrics", self._metrics,
-                    summary="Request, tool and operation counters and latencies (Prometheus text; ?format=json).")
+        self._route(
+            "POST",
+            "/v1/resolve_tag",
+            self._resolve_tag,
+            request={"container_tag": "string: container/tenant identifier (alphanumeric, -, _)"},
+            summary="Resolve and validate a container isolation tag.",
+        )
+        self._route(
+            "GET",
+            "/v1/metrics",
+            self._metrics,
+            summary="Request, tool and operation counters and latencies (Prometheus text; ?format=json).",
+        )
         self._route("GET", "/v1/openapi.json", self._openapi, summary="This API's schema.", auth=False)
         self._route("GET", "/v1/docs", self._swagger, summary="Swagger UI for this gateway's OpenAPI.", auth=False)
-        self._route("POST", "/v1/connectors/github/push", self._github_push,
-                    summary="HMAC-authenticated push sync for an operator-configured repository.", auth=False)
-        self._route("GET", "/v1/command-catalog", self._command_catalog,
-                    summary="CLI command catalog for the authenticated console.")
-        self._route("POST", "/v1/explore", self._explore, request={
-            "question": "string: what to retrieve",
-            "channels": "optional list of lessons, facts or conversations",
-            "space": "required for the conversations channel",
-            "budget": "optional context budget from 50 to 8000 tokens",
-            "evidence_budget": "optional fact evidence budget from 0 to 2000 tokens",
-            "fact_scorer": "optional overlap-v1 (default) or bm25-v1 fact ranking",
-            "as_of": "optional ISO date or timestamp",
-        }, summary="Inspect eligible memory and provenance without recording an occasion or outcome.")
-        self._route("POST", "/v1/command", self._command, request={
-            "command": "one command name from /v1/command-catalog",
-            "args": "optional array of command arguments; the gateway store root is implicit",
-        }, summary="Run one store-scoped UniMem CLI command.")
-        self._route("POST", "/v1/recall", self._recall, request={
-            "purpose": "optional exact purpose; must match the verified capability for an agent",
-            "occasion_id": "string, your id for one episode/task/ticket",
-            "items": "optional list of {id, text, protected?, meta?}: your candidate memories",
-            "query": "optional string; ranks this store's lessons when `items` is absent",
-            "top_k": "optional integer for store mode",
-            "agent_id": "optional string: which agent or robot",
-            "context": "optional string: a short label for the kind of occasion (task family, agent type); "
-                       "the causal gate learns where each memory helps per context",
-            "env": "optional string: must equal the store's environment if it has one",
-        }, summary="Which memories to deliver on this occasion, which to withhold, which are withdrawn.")
-        self._route("POST", "/v1/outcome", self._outcome, request={
-            "occasion_id": "string",
-            "succeeded": "boolean, or",
-            "signals": "list of {detector, args} evaluated three-valued; with `combine`: all|any",
-            "agent_id": "optional string",
-        }, summary="How the occasion went. Records nothing while the signals are undecided.")
-        self._route("POST", "/v1/tier", self._tier, request={
-            "operation": "status|hibernate|warm|residency|reembed|rollback",
-            "request": "bounded operation fields including namespace, region and optional scope context",
-        }, summary="UniMem managed namespace residency and hot/cold tier operations.")
+        self._route(
+            "POST",
+            "/v1/connectors/github/push",
+            self._github_push,
+            summary="HMAC-authenticated push sync for an operator-configured repository.",
+            auth=False,
+        )
+        self._route(
+            "GET",
+            "/v1/command-catalog",
+            self._command_catalog,
+            summary="CLI command catalog for the authenticated console.",
+        )
+        self._route(
+            "POST",
+            "/v1/explore",
+            self._explore,
+            request={
+                "question": "string: what to retrieve",
+                "channels": "optional list of lessons, facts or conversations",
+                "space": "required for the conversations channel",
+                "budget": "optional context budget from 50 to 8000 tokens",
+                "evidence_budget": "optional fact evidence budget from 0 to 2000 tokens",
+                "fact_scorer": "optional overlap-v1 (default) or bm25-v1 fact ranking",
+                "as_of": "optional ISO date or timestamp",
+            },
+            summary="Inspect eligible memory and provenance without recording an occasion or outcome.",
+        )
+        self._route(
+            "POST",
+            "/v1/command",
+            self._command,
+            request={
+                "command": "one command name from /v1/command-catalog",
+                "args": "optional array of command arguments; the gateway store root is implicit",
+            },
+            summary="Run one store-scoped UniMem CLI command.",
+        )
+        self._route(
+            "POST",
+            "/v1/recall",
+            self._recall,
+            request={
+                "purpose": "optional exact purpose; must match the verified capability for an agent",
+                "occasion_id": "string, your id for one episode/task/ticket",
+                "items": "optional list of {id, text, protected?, meta?}: your candidate memories",
+                "query": "optional string; ranks this store's lessons when `items` is absent",
+                "top_k": "optional integer for store mode",
+                "agent_id": "optional string: which agent or robot",
+                "context": "optional string: a short label for the kind of occasion (task family, agent type); "
+                "the causal gate learns where each memory helps per context",
+                "env": "optional string: must equal the store's environment if it has one",
+            },
+            summary="Which memories to deliver on this occasion, which to withhold, which are withdrawn.",
+        )
+        self._route(
+            "POST",
+            "/v1/outcome",
+            self._outcome,
+            request={
+                "occasion_id": "string",
+                "succeeded": "boolean, or",
+                "signals": "list of {detector, args} evaluated three-valued; with `combine`: all|any",
+                "agent_id": "optional string",
+            },
+            summary="How the occasion went. Records nothing while the signals are undecided.",
+        )
+        self._route(
+            "POST",
+            "/v1/tier",
+            self._tier,
+            request={
+                "operation": "status|hibernate|warm|residency|reembed|rollback",
+                "request": "bounded operation fields including namespace, region and optional scope context",
+            },
+            summary="UniMem managed namespace residency and hot/cold tier operations.",
+        )
         self._route("GET", "/v1/stream", self._stream, summary="UniMem admitted resumable belief changes as SSE.")
-        self._route("POST", "/v1/experiment/export-rl", self._export_rl, request={
-            "units": "list of admitted memory or skill unit IDs, at most 64",
-            "format": "dpo|advantage|replay; defaults to dpo",
-            "context": "list of caller scope labels; container header further narrows access",
-            "kl_budget": "optional finite sampled-token KL budget",
-            "alpha": "optional interval error budget", "exploitation": "optional replay weight",
-            "exploration": "optional replay weight", "connector": "generic|agent-lightning|grader",
-        }, summary="Stream UniMem governed randomized-arm training records as JSONL.")
-        self._route("POST", "/v1/episode", self._episode, request={
-            "occasion_id": "string", "summary": "what happened, in words",
-            "sensors": "optional {name: number|boolean|short text}, at most 64",
-            "media": "optional list of {kind: image|audio|video, mime, data_b64, caption}, at most 8 x 2 MiB",
-            "succeeded": "optional boolean", "agent_id": "optional string", "env": "optional string",
-        }, summary="Record a multimodal episode (summary, sensors, media) as a retrievable trace.")
-        self._route("POST", "/v1/conversation/add", self._conversation_add, request={
-            "space": "string: one user, agent or thread",
-            "session": "string: the session these messages belong to",
-            "messages": "list of {speaker|role, text|content, at?, id?}",
-            "session_at": "optional date the session took place",
-        }, summary="Remember messages; relative dates are resolved as they are stored.")
-        self._route("POST", "/v1/conversation/recall", self._conversation_recall, request={
-            "space": "string", "question": "string",
-            "budget": "optional integer: context size in tokens (default 1500)",
-            "now": "optional date the question is asked",
-            "sessions": "optional list of session ids", "speakers": "optional list of speakers",
-            "since": "optional date", "until": "optional date",
-            "context_strategy": "optional legacy, coverage-v1 or coverage-v2 context packing (default legacy)",
-            "adaptive_budget": "optional boolean: treat budget as a floor sized by the question's shape "
-                               "(summaries, orderings, counts, lists); explain.budget reports the decision",
-            "max_budget": "optional integer: with adaptive_budget, the largest context it may grow to "
-                          "(budget to 32000; default the larger of budget and 12000)",
-        }, summary="The turns that answer a question, as a dated context within a token budget.")
-        self._route("GET", "/v1/conversation/sessions", self._conversation_sessions,
-                    summary="A space's sessions with turn counts, time range and summary state "
-                            "(?space=, ?limit=, ?after=).")
-        self._route("POST", "/v1/conversation/summarize", self._conversation_summarize, request={
-            "space": "string", "session": "string",
-            "mode": "optional extractive (default, deterministic) or model (the configured LLM)",
-            "force": "optional boolean: rebuild from the first turn",
-            "verify": "optional full (default: re-hash every covered turn) or tail",
-        }, summary="Fold a session's new turns into its rolling summary; rebuilds when earlier turns changed.")
-        self._route("POST", "/v1/working-memory", self._working_memory, request={
-            "space": "string", "session": "string", "question": "string",
-            "budget": "optional integer: tokens from 50 to 32000 (default 2000)",
-            "recent_turns": "optional integer from 0 to 200 (default 6)",
-            "agent": "optional string: adds this agent's scoped memory blocks",
-            "now": "optional date the question is asked",
-            "refresh_summary": "optional boolean: fold new turns into the rolling summary first",
-        }, summary="Core blocks, rolling summary, recent turns and recalled evidence in one budgeted context.")
+        self._route(
+            "POST",
+            "/v1/experiment/export-rl",
+            self._export_rl,
+            request={
+                "units": "list of admitted memory or skill unit IDs, at most 64",
+                "format": "dpo|advantage|replay; defaults to dpo",
+                "context": "list of caller scope labels; container header further narrows access",
+                "kl_budget": "optional finite sampled-token KL budget",
+                "alpha": "optional interval error budget",
+                "exploitation": "optional replay weight",
+                "exploration": "optional replay weight",
+                "connector": "generic|agent-lightning|grader",
+            },
+            summary="Stream UniMem governed randomized-arm training records as JSONL.",
+        )
+        self._route(
+            "POST",
+            "/v1/episode",
+            self._episode,
+            request={
+                "occasion_id": "string",
+                "summary": "what happened, in words",
+                "sensors": "optional {name: number|boolean|short text}, at most 64",
+                "media": "optional list of {kind: image|audio|video, mime, data_b64, caption}, at most 8 x 2 MiB",
+                "succeeded": "optional boolean",
+                "agent_id": "optional string",
+                "env": "optional string",
+            },
+            summary="Record a multimodal episode (summary, sensors, media) as a retrievable trace.",
+        )
+        self._route(
+            "POST",
+            "/v1/conversation/add",
+            self._conversation_add,
+            request={
+                "space": "string: one user, agent or thread",
+                "session": "string: the session these messages belong to",
+                "messages": "list of {speaker|role, text|content, at?, id?}",
+                "session_at": "optional date the session took place",
+            },
+            summary="Remember messages; relative dates are resolved as they are stored.",
+        )
+        self._route(
+            "POST",
+            "/v1/conversation/recall",
+            self._conversation_recall,
+            request={
+                "space": "string",
+                "question": "string",
+                "budget": "optional integer: context size in tokens (default 1500)",
+                "now": "optional date the question is asked",
+                "sessions": "optional list of session ids",
+                "speakers": "optional list of speakers",
+                "since": "optional date",
+                "until": "optional date",
+                "context_strategy": "optional legacy, coverage-v1 or coverage-v2 context packing (default legacy)",
+                "adaptive_budget": "optional boolean: treat budget as a floor sized by the question's shape "
+                "(summaries, orderings, counts, lists); explain.budget reports the decision",
+                "max_budget": "optional integer: with adaptive_budget, the largest context it may grow to "
+                "(budget to 32000; default the larger of budget and 12000)",
+            },
+            summary="The turns that answer a question, as a dated context within a token budget.",
+        )
+        self._route(
+            "GET",
+            "/v1/conversation/sessions",
+            self._conversation_sessions,
+            summary="A space's sessions with turn counts, time range and summary state (?space=, ?limit=, ?after=).",
+        )
+        self._route(
+            "POST",
+            "/v1/conversation/summarize",
+            self._conversation_summarize,
+            request={
+                "space": "string",
+                "session": "string",
+                "mode": "optional extractive (default, deterministic) or model (the configured LLM)",
+                "force": "optional boolean: rebuild from the first turn",
+                "verify": "optional full (default: re-hash every covered turn) or tail",
+            },
+            summary="Fold a session's new turns into its rolling summary; rebuilds when earlier turns changed.",
+        )
+        self._route(
+            "POST",
+            "/v1/working-memory",
+            self._working_memory,
+            request={
+                "space": "string",
+                "session": "string",
+                "question": "string",
+                "budget": "optional integer: tokens from 50 to 32000 (default 2000)",
+                "recent_turns": "optional integer from 0 to 200 (default 6)",
+                "agent": "optional string: adds this agent's scoped memory blocks",
+                "now": "optional date the question is asked",
+                "refresh_summary": "optional boolean: fold new turns into the rolling summary first",
+            },
+            summary="Core blocks, rolling summary, recent turns and recalled evidence in one budgeted context.",
+        )
         self._route("GET", "/v1/status", self._status, summary="Experiment and proof progress.")
         self._route("GET", "/v1/memories", self._memories, summary="Each memory's measured verdict.")
         self._route("GET", "/v1/occasions", self._occasions, summary="Recent recalls and outcomes (?limit=).")
         self._route("GET", "/v1/agents", self._agents, summary="Per-agent activity.")
         self._route("GET", "/v1/traces", self._traces, summary="Operator trace history (?limit=, ?offset=).")
         self._route("GET", "/v1/trace", self._trace_detail, summary="One redacted source trace (?file=).")
-        self._route("GET", "/v1/benchmark-history", self._benchmark_history,
-                    summary="Saved operator benchmark scores and deltas (?limit=).")
+        self._route(
+            "GET",
+            "/v1/benchmark-history",
+            self._benchmark_history,
+            summary="Saved operator benchmark scores and deltas (?limit=).",
+        )
         self._route("GET", "/v1/lessons", self._lessons, summary="Lessons and what is waiting for review (?status=).")
         self._route("GET", "/v1/lesson", self._lesson, summary="One lesson: text, gates, history (?slug=).")
-        self._route("POST", "/v1/lesson/edit", self._lesson_edit, request={
-            "slug": "a lesson in review", "rule": "optional", "applies_when": "optional",
-            "do_not_apply_when": "optional"}, summary="Edit a review draft. Needs --allow-approval.")
-        self._route("POST", "/v1/lesson/approve", self._lesson_approve, request={
-            "slug": "a lesson in review", "rationale": "optional"},
-            summary="Approve a review draft through every gate. Needs --allow-approval.")
-        self._route("POST", "/v1/lesson/reject", self._lesson_reject, request={
-            "slug": "a lesson in review", "reason": "why"}, summary="Reject a review draft. Needs --allow-approval.")
-        self._route("GET", "/v1/ledger/executive", self._ledger_executive,
-                    summary="Proven value at the lower bound, harm withdrawn, lift per injected token.")
-        self._route("GET", "/v1/ledger/releases", self._ledger_releases,
-                    summary="Releases, or one release's diff against its parent (?to=ID[&from=ID]).")
-        self._route("GET", "/v1/ledger/design", self._ledger_design,
-                    summary="Experiment designer (?baseline=&effect=&rate=[&power=&daily=&budget=]).")
-        self._route("GET", "/v1/ledger/forensics", self._ledger_forensics,
-                    summary="One occasion: assignments, outcome, signed receipts and incident reports (?occasion=).")
+        self._route(
+            "POST",
+            "/v1/lesson/edit",
+            self._lesson_edit,
+            request={
+                "slug": "a lesson in review",
+                "rule": "optional",
+                "applies_when": "optional",
+                "do_not_apply_when": "optional",
+            },
+            summary="Edit a review draft. Needs --allow-approval.",
+        )
+        self._route(
+            "POST",
+            "/v1/lesson/approve",
+            self._lesson_approve,
+            request={"slug": "a lesson in review", "rationale": "optional"},
+            summary="Approve a review draft through every gate. Needs --allow-approval.",
+        )
+        self._route(
+            "POST",
+            "/v1/lesson/reject",
+            self._lesson_reject,
+            request={"slug": "a lesson in review", "reason": "why"},
+            summary="Reject a review draft. Needs --allow-approval.",
+        )
+        self._route(
+            "GET",
+            "/v1/ledger/executive",
+            self._ledger_executive,
+            summary="Proven value at the lower bound, harm withdrawn, lift per injected token.",
+        )
+        self._route(
+            "GET",
+            "/v1/ledger/releases",
+            self._ledger_releases,
+            summary="Releases, or one release's diff against its parent (?to=ID[&from=ID]).",
+        )
+        self._route(
+            "GET",
+            "/v1/ledger/design",
+            self._ledger_design,
+            summary="Experiment designer (?baseline=&effect=&rate=[&power=&daily=&budget=]).",
+        )
+        self._route(
+            "GET",
+            "/v1/ledger/forensics",
+            self._ledger_forensics,
+            summary="One occasion: assignments, outcome, signed receipts and incident reports (?occasion=).",
+        )
         self._route("GET", "/v1/ledger/digest", self._ledger_digest, summary="Markdown digest of the last ?days=7.")
-        self._route("GET", "/v1/market/listings", self._market_listings,
-                    summary="Marketplace catalog (?q=words, ?id=one full listing).")
-        self._route("POST", "/v1/market/listings", self._market_add, request={"listing": "a signed listing"},
-                    summary="Add a listing that verifies against this store's trusted keys.")
-        self._route("POST", "/v1/market/install", self._market_install, request={
-            "id": "a catalog listing id", "accept_licence": "its licence id"},
-            summary="Install a verified listing at status=review. Needs --allow-approval.")
+        self._route(
+            "GET",
+            "/v1/market/listings",
+            self._market_listings,
+            summary="Marketplace catalog (?q=words, ?id=one full listing).",
+        )
+        self._route(
+            "POST",
+            "/v1/market/listings",
+            self._market_add,
+            request={"listing": "a signed listing"},
+            summary="Add a listing that verifies against this store's trusted keys.",
+        )
+        self._route(
+            "POST",
+            "/v1/market/install",
+            self._market_install,
+            request={"id": "a catalog listing id", "accept_licence": "its licence id"},
+            summary="Install a verified listing at status=review. Needs --allow-approval.",
+        )
 
     @configured
     def handle(
-        self, method: str, target: str, headers: Mapping[str, str] | None = None,
-        body: bytes | None = None, *, trusted: bool = False,
+        self,
+        method: str,
+        target: str,
+        headers: Mapping[str, str] | None = None,
+        body: bytes | None = None,
+        *,
+        trusted: bool = False,
     ) -> Response:
         from unimem import telemetry
 
         headers = headers or {}
         supplied = next((v for k, v in headers.items() if k.lower() == "x-request-id"), "")
-        request_id = supplied if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied or "") else \
-            telemetry.new_request_id()
+        request_id = supplied if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied or "") else telemetry.new_request_id()
         container_tag = next((v for k, v in headers.items() if k.lower() in ("x-container-tag", "container-tag")), "")
         path_label = urlsplit(target).path if (method, urlsplit(target).path) in self.routes else "other"
-        with telemetry.bind(request_id=request_id, container_tag=container_tag, surface="gateway"), \
-                telemetry.span(f"gateway {method} {path_label}") as handle:
+        with (
+            telemetry.bind(request_id=request_id, container_tag=container_tag, surface="gateway"),
+            telemetry.span(f"gateway {method} {path_label}") as handle,
+        ):
             response = self._handle(method, target, headers, body, trusted=trusted)
             handle.set(status=response.status)
         telemetry.count("unimem_gateway_requests", method=method, path=path_label, status=response.status)
@@ -669,7 +877,13 @@ class Gateway:
         return response
 
     def _handle(
-        self, method: str, target: str, headers: Mapping[str, str], body: bytes | None, *, trusted: bool,
+        self,
+        method: str,
+        target: str,
+        headers: Mapping[str, str],
+        body: bytes | None,
+        *,
+        trusted: bool,
     ) -> Response:
         try:
             split = urlsplit(target)
@@ -690,7 +904,10 @@ class Gateway:
                 ):
                     raise ApiError(403, "bad_origin", "cross-origin memory operations are refused")
             if method == "GET" and path in (
-                "/benchmarks", "/benchmarks/", "/benchmarks/run.json", "/benchmarks/public-key.txt"
+                "/benchmarks",
+                "/benchmarks/",
+                "/benchmarks/run.json",
+                "/benchmarks/public-key.txt",
             ):
                 if path == "/benchmarks":
                     return Response(301, b"", headers={"Location": "/benchmarks/"})
@@ -737,9 +954,15 @@ class Gateway:
                         )
                     except oauth.KeysUnavailable as exc:
                         # The issuer is unreachable: a server-side outage, not a bad token.
-                        response = _json(503, {"error": {"code": "auth_unavailable",
-                                                         "message": "token verification is temporarily "
-                                                                    "unavailable"}})
+                        response = _json(
+                            503,
+                            {
+                                "error": {
+                                    "code": "auth_unavailable",
+                                    "message": "token verification is temporarily unavailable",
+                                }
+                            },
+                        )
                         response.headers["Retry-After"] = str(max(1, int(exc.retry_after + 0.999)))
                         return response
                     if claims.is_admin:
@@ -779,7 +1002,7 @@ class Gateway:
                     payload = {
                         "raw": body,
                         "signature": lowered.get("x-hub-signature-256", ""),
-                               "delivery": lowered.get("x-github-delivery", ""),
+                        "delivery": lowered.get("x-github-delivery", ""),
                         "event": lowered.get("x-github-event", ""),
                     }
                 # Never accept caller-supplied internal authorization context.
@@ -791,8 +1014,9 @@ class Gateway:
             from unimem import telemetry
 
             with self._delegated_request(method, target, path, headers, body or b"", principal, spec["auth"]):
-                with telemetry.bind(user_id=principal["id"] if principal else
-                                    "operator" if spec["auth"] else "anonymous"):
+                with telemetry.bind(
+                    user_id=principal["id"] if principal else "operator" if spec["auth"] else "anonymous"
+                ):
                     result = handler(payload, parse_qs(split.query))
             if isinstance(result, Response):
                 return result
@@ -805,8 +1029,16 @@ class Gateway:
                 response.headers["Retry-After"] = str(max(1, min(60, int(getattr(exc, "retry_after", 1)))))
             return response
         except ApiError as exc:
-            return _json(exc.status, {"error": {"code": exc.code, "message": exc.message,
-                                     **({"details": exc.details} if exc.details is not None else {})}})
+            return _json(
+                exc.status,
+                {
+                    "error": {
+                        "code": exc.code,
+                        "message": exc.message,
+                        **({"details": exc.details} if exc.details is not None else {}),
+                    }
+                },
+            )
         except Exception as exc:  # noqa: BLE001 - never leak a traceback to a client
             logger.error("Gateway %s request failed (%s)", method, type(exc).__name__)
             return _json(500, {"error": {"code": "internal", "message": f"{type(exc).__name__}"}})
@@ -833,32 +1065,46 @@ class Gateway:
                     raise PermissionError("UniMem enrolled delegate must supply capability and possession headers")
                 yield
                 return
-            operation = {("POST", "/v1/recall"): "read", ("POST", "/v1/memory/search"): "read",
-                         ("POST", "/v1/memory/team-read"): "read", ("POST", "/v1/memory/add"): "write",
-                         ("POST", "/v1/memory/batch"): "write", ("GET", "/v1/stream"): "read",
-                         ("POST", "/v1/memory/record-search"): "read",
-                         ("POST", "/v1/memory/record-put"): "write",
-                         ("POST", "/v1/memory/record-forget"): "forget"}.get((method, path))
+            operation = {
+                ("POST", "/v1/recall"): "read",
+                ("POST", "/v1/memory/search"): "read",
+                ("POST", "/v1/memory/team-read"): "read",
+                ("POST", "/v1/memory/add"): "write",
+                ("POST", "/v1/memory/batch"): "write",
+                ("GET", "/v1/stream"): "read",
+                ("POST", "/v1/memory/record-search"): "read",
+                ("POST", "/v1/memory/record-put"): "write",
+                ("POST", "/v1/memory/record-forget"): "forget",
+            }.get((method, path))
             if operation is None:
                 raise PermissionError("UniMem this gateway operation does not support delegated capabilities")
+
             def decode(value, bound):
                 import base64
 
                 if not value or len(value) > bound:
                     raise ValueError("UniMem invalid capability header size")
                 try:
-                    result = json.loads(base64.b64decode(value + "=" * (-len(value) % 4),
-                                                        altchars=b"-_", validate=True))
+                    result = json.loads(
+                        base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+                    )
                 except RecursionError:
                     raise ValueError("UniMem capability header nesting exceeds its bound") from None
                 if not isinstance(result, dict):
                     raise ValueError("UniMem capability headers must encode objects")
                 return result
+
             token, proof = decode(encoded, 96 * 1024), decode(possession, 8192)
             purpose = lowered.get("x-unimem-purpose", "")
-            authorization = capability_io.authenticate(self.root, token, proof,
-                request_digest=cap.request_digest(method, target, raw, purpose=purpose), operation=operation,
-                purpose=purpose, principal=principal_id if principal is not None else "")
+            authorization = capability_io.authenticate(
+                self.root,
+                token,
+                proof,
+                request_digest=cap.request_digest(method, target, raw, purpose=purpose),
+                operation=operation,
+                purpose=purpose,
+                principal=principal_id if principal is not None else "",
+            )
             with capability_io.activate(authorization):
                 with memory_authority.writer(authorization["principal"], authorization["authority"]):
                     yield
@@ -884,8 +1130,7 @@ class Gateway:
         from unimem import oauth
 
         response = _json(status, {"error": {"code": error or "unauthorized", "message": message}})
-        response.headers["WWW-Authenticate"] = oauth.www_authenticate(oauth.metadata_url(server.config),
-                                                                     error=error)
+        response.headers["WWW-Authenticate"] = oauth.www_authenticate(oauth.metadata_url(server.config), error=error)
         return response
 
     def _host_ok(self, headers: Mapping[str, str]) -> bool:
@@ -906,7 +1151,8 @@ class Gateway:
             if key.lower() == "authorization":
                 scheme, _, supplied = value.partition(" ")
                 return scheme.lower() == "bearer" and hmac.compare_digest(
-                    supplied.strip().encode("utf-8"), token.encode("utf-8"))
+                    supplied.strip().encode("utf-8"), token.encode("utf-8")
+                )
         return False
 
     @staticmethod
@@ -916,6 +1162,7 @@ class Gateway:
         if len(body) > MAX_BODY_BYTES:
             raise ApiError(413, "too_large", f"body is larger than {MAX_BODY_BYTES} bytes")
         try:
+
             def unique_object(pairs):
                 result = {}
                 for key, value in pairs:
@@ -935,21 +1182,38 @@ class Gateway:
         return payload
 
     def _static(self, path: str) -> Response:
-        name = {"/": "index.html", "/index.html": "index.html", "/ui/app.js": "app.js",
-                "/ui/app.css": "app.css", "/ui/tokens.css": "tokens.css", "/ui/favicon.svg": "favicon.svg"}[path]
-        types = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
-                 "css": "text/css; charset=utf-8", "svg": "image/svg+xml"}
+        name = {
+            "/": "index.html",
+            "/index.html": "index.html",
+            "/ui/app.js": "app.js",
+            "/ui/app.css": "app.css",
+            "/ui/tokens.css": "tokens.css",
+            "/ui/favicon.svg": "favicon.svg",
+        }[path]
+        types = {
+            "html": "text/html; charset=utf-8",
+            "js": "text/javascript; charset=utf-8",
+            "css": "text/css; charset=utf-8",
+            "svg": "image/svg+xml",
+        }
         try:
             with open(os.path.join(_UI_DIR, name), "rb") as fh:
                 data = fh.read()
         except OSError:
             raise ApiError(404, "no_ui", "the console is not installed in this build") from None
-        return Response(200, data, types[name.rsplit(".", 1)[1]], {
-            "Content-Security-Policy": (
-                "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
-                "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
-            "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
-        })
+        return Response(
+            200,
+            data,
+            types[name.rsplit(".", 1)[1]],
+            {
+                "Content-Security-Policy": (
+                    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; "
+                    "img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+                ),
+                "Referrer-Policy": "no-referrer",
+                "X-Frame-Options": "DENY",
+            },
+        )
 
     def _benchmark_site(self, path: str) -> Response:
         directory = os.path.join(self.root, "docs", "strategy", "leaderboard")
@@ -959,21 +1223,33 @@ class Gateway:
         try:
             with open(os.path.join(directory, "run.json"), encoding="utf-8") as fh:
                 report = json.load(fh)
-            public = (report.get("report", {}).get("public_aggregate_only") is True
-                      if release else report.get("synthetic") is True)
+            public = (
+                report.get("report", {}).get("public_aggregate_only") is True
+                if release
+                else report.get("synthetic") is True
+            )
             if not public:
-                raise ApiError(403, "private_benchmark",
-                               "only explicitly public aggregate benchmarks can be served publicly")
-            name = "public-key.txt" if release and path.endswith("public-key.txt") else (
-                "run.json" if path.endswith("run.json") else "index.html")
+                raise ApiError(
+                    403, "private_benchmark", "only explicitly public aggregate benchmarks can be served publicly"
+                )
+            name = (
+                "public-key.txt"
+                if release and path.endswith("public-key.txt")
+                else ("run.json" if path.endswith("run.json") else "index.html")
+            )
             with open(os.path.join(directory, name), "rb") as fh:
                 data = fh.read()
         except (OSError, ValueError):
             raise ApiError(404, "no_benchmark", "run ./reproduce.sh to generate the benchmark showcase") from None
-        return Response(200, data, "application/json" if name.endswith("json") else "text/html; charset=utf-8",
-                        {"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'",
-                         "X-Content-Type-Options": "nosniff"})
-
+        return Response(
+            200,
+            data,
+            "application/json" if name.endswith("json") else "text/html; charset=utf-8",
+            {
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     def _events_path(self) -> str:
         return os.path.join(paths.memory_dir(self.root), EVENTS_NAME)
@@ -1047,11 +1323,15 @@ class Gateway:
         from unimem import memory_authority, memory_control, subject_policy, team_io, team_isolation
 
         principal = body.get("_principal")
-        with (memory_authority.writer(principal["id"] if principal else "gateway-owner",
-                                      "agent" if principal else "operator"),
-              subject_policy.ingest(self.root, body.get("source"))):
+        with (
+            memory_authority.writer(
+                principal["id"] if principal else "gateway-owner", "agent" if principal else "operator"
+            ),
+            subject_policy.ingest(self.root, body.get("source")),
+        ):
             scope_token = memory_control.REQUIRED_PRINCIPAL_SCOPE.set(
-                "agent:" + principal["id"] if principal and principal.get("self_enrolled") else "")
+                "agent:" + principal["id"] if principal and principal.get("self_enrolled") else ""
+            )
             try:
                 if operation in ("add", "batch"):
                     context = principal["scopes"] if principal else body.get("context", [])
@@ -1084,8 +1364,9 @@ class Gateway:
             if operation == "team-read":
                 from unimem import team_io
 
-                return team_io.fetch(self.root, identities=body["identities"],
-                                     space=body.get("team_space", "default"), context=context)
+                return team_io.fetch(
+                    self.root, identities=body["identities"], space=body.get("team_space", "default"), context=context
+                )
             if operation.startswith("record-"):
                 from unimem.record_api import operate
 
@@ -1106,7 +1387,7 @@ class Gateway:
             if operation == "batch":
                 from unimem import ingestion_contract
 
-                return ingestion_contract.batch(self.root, body.get("items"), context=context)
+                return ingestion_contract.batch(self.root, body["items"], context=context)
             if operation == "add":
                 local = body.get("local", True)
                 if not isinstance(local, bool) or (principal and not local):
@@ -1116,7 +1397,7 @@ class Gateway:
                     body.get("text", ""),
                     scopes=context,
                     local=local,
-                                                 memory_type=body.get("memory_type", "general"),
+                    memory_type=body.get("memory_type", "general"),
                     entity_model_path=_configuration_getenv("UNIMEM_GLINER_MODEL_PATH"),
                 )
             query = body.get("query", "")
@@ -1143,9 +1424,9 @@ class Gateway:
                     query,
                     context=context,
                     budget=body.get("budget", 600),
-                                               occasion_id=occasion_id,
-                                               exploration_slots=body.get("exploration_slots", 0),
-                                               action_class=body.get("action_class", ""),
+                    occasion_id=occasion_id,
+                    exploration_slots=body.get("exploration_slots", 0),
+                    action_class=body.get("action_class", ""),
                     adaptive_budget=body.get("adaptive_budget", False),
                 )
             if operation == "outcome":
@@ -1164,8 +1445,12 @@ class Gateway:
                     sycophancy_io.record_metrics(self.root, occasion_id, body["secondary_metrics"])
                 policy.outcome(self.root, occasion_id, float(body["succeeded"]))
                 explored = causal_policy.record_outcome(self.root, occasion_id, float(body["succeeded"]))
-                return {"recorded": holdout_io.record_outcome(self.root, occasion_id, body["succeeded"],
-                        secondary_metrics=body.get("secondary_metrics")) or explored}
+                return {
+                    "recorded": holdout_io.record_outcome(
+                        self.root, occasion_id, body["succeeded"], secondary_metrics=body.get("secondary_metrics")
+                    )
+                    or explored
+                }
             if operation == "search":
                 return {
                     "results": REGISTRY.retrieve(
@@ -1210,31 +1495,54 @@ class Gateway:
             if operation == "directive":
                 if not self.allow_approval:
                     raise ApiError(403, "approval_disabled", "rule creation requires --allow-approval")
-                return memory_control.directive(self.root, body.get("text", ""),
-                        deny_tools=body.get("deny_tools", []), required_tags=body.get("required_tags", []),
-                        labels=body.get("context", []))
+                return memory_control.directive(
+                    self.root,
+                    body.get("text", ""),
+                    deny_tools=body.get("deny_tools", []),
+                    required_tags=body.get("required_tags", []),
+                    labels=body.get("context", []),
+                )
             if operation == "question":
-                return memory_control.standing_question(self.root, body.get("text", ""),
-                        context=body.get("context", []), budget=body.get("budget", 600),
-                        refresh_seconds=body.get("refresh_seconds", 3600))
+                return memory_control.standing_question(
+                    self.root,
+                    body.get("text", ""),
+                    context=body.get("context", []),
+                    budget=body.get("budget", 600),
+                    refresh_seconds=body.get("refresh_seconds", 3600),
+                )
             if operation == "refresh":
                 model_id = _ident(body.get("id"), "id")
                 return {"job_id": jobs.enqueue(self.root, "mental-model", {"id": model_id}).id}
             if operation == "reject-proposal":
                 if not self.allow_approval:
                     raise ApiError(403, "approval_disabled", "proposal rejection requires --allow-approval")
-                return memory_control.reject_proposal(self.root, body.get("id", ""),
-                        body.get("expected_revision", ""), body.get("reason", ""))
+                return memory_control.reject_proposal(
+                    self.root, body.get("id", ""), body.get("expected_revision", ""), body.get("reason", "")
+                )
             if operation in ("review-foresight", "skill-review"):
                 if not self.allow_approval:
                     raise ApiError(403, "approval_disabled", "review requires --allow-approval")
                 if operation == "review-foresight":
-                    return memory_control.review_foresight(self.root, body.get("id", ""),
-                        body.get("expected_revision", ""), actor="gateway-owner", approve=body.get("approve"))
+                    approve = body.get("approve")
+                    if not isinstance(approve, bool):
+                        raise _bad("approve must be boolean")
+                    return memory_control.review_foresight(
+                        self.root,
+                        body.get("id", ""),
+                        body.get("expected_revision", ""),
+                        actor="gateway-owner",
+                        approve=approve,
+                    )
                 from unimem import experience_skills
 
-                return experience_skills.review(self.root, body.get("id", ""), body.get("expected_revision", ""),
-                    actor="gateway-owner", verdict=body.get("verdict", ""), evidence=body.get("evidence", {}))
+                return experience_skills.review(
+                    self.root,
+                    body.get("id", ""),
+                    body.get("expected_revision", ""),
+                    actor="gateway-owner",
+                    verdict=body.get("verdict", ""),
+                    evidence=body.get("evidence", {}),
+                )
         except (ValueError, TypeError) as exc:
             raise _bad(str(exc)) from exc
         raise _bad("unknown operation")
@@ -1243,14 +1551,19 @@ class Gateway:
         from unimem import agent_registry, jobs, memory_control
 
         proposals = memory_control.records(self.root, "proposal")
-        return {"models": memory_control.records(self.root, "mental-model"),
-                "foresight": memory_control.records(self.root, "foresight"),
-                "directives": memory_control.records(self.root, "directive"),
-                "suggestions": [r for r in proposals if r["data"].get("status") == "review"],
-                "needs_attention": {"proposals": sum(r["data"].get("status") == "review" for r in proposals),
-                                    "jobs": jobs.counts(self.root)},
-                "agents": [{k: v for k, v in row.items() if k != "token_hash"}
-                           for row in agent_registry.load(self.root).values()]}
+        return {
+            "models": memory_control.records(self.root, "mental-model"),
+            "foresight": memory_control.records(self.root, "foresight"),
+            "directives": memory_control.records(self.root, "directive"),
+            "suggestions": [r for r in proposals if r["data"].get("status") == "review"],
+            "needs_attention": {
+                "proposals": sum(r["data"].get("status") == "review" for r in proposals),
+                "jobs": jobs.counts(self.root),
+            },
+            "agents": [
+                {k: v for k, v in row.items() if k != "token_hash"} for row in agent_registry.load(self.root).values()
+            ],
+        }
 
     def _log_event(self, event: dict) -> None:
         path = self._events_path()
@@ -1325,14 +1638,16 @@ class Gateway:
 
     def _memoized_flag(self, name: str, compute, extra_key=None) -> tuple[Any, bool]:
         """Like _memoized but also reports whether the value came from the memo."""
+
         def lookup():
             data_key = self._data_key()
             key = data_key if extra_key is None else (data_key, extra_key)
             now = time.monotonic()
             with self._memo_lock:
                 hit = self._memo.get(name)
-                if hit is not None and (now - hit[1] < REPORT_MIN_INTERVAL
-                                        or (hit[0] == key and now - hit[1] < REPORT_MAX_AGE)):
+                if hit is not None and (
+                    now - hit[1] < REPORT_MIN_INTERVAL or (hit[0] == key and now - hit[1] < REPORT_MAX_AGE)
+                ):
                     self._memo.move_to_end(name)
                     return key, now, hit
             return key, now, None
@@ -1367,9 +1682,9 @@ class Gateway:
             want = EVENTS_MAX_EVENTS
         ident = self._events_identity()
         events, cached = self._memoized_flag(
-            f"events:{want}", lambda: self._read_events(want, isolated=False), extra_key=ident)
+            f"events:{want}", lambda: self._read_events(want, isolated=False), extra_key=ident
+        )
         return list(events), cached, self._events_truncated()
-
 
     def _command_catalog(self, _body, _query) -> dict:
         from unimem import ui_commands
@@ -1392,8 +1707,9 @@ class Gateway:
 
         command = req.get("command")
         try:
-            return ui_commands.run(self.root, command, req.get("args"),
-                                   allow_approval=self.allow_approval, scope=self._request_scope())
+            return ui_commands.run(
+                self.root, command, req.get("args"), allow_approval=self.allow_approval, scope=self._request_scope()
+            )
         except ui_commands.UICommandError as exc:
             if exc.status != 400:
                 raise ApiError(exc.status, exc.code, str(exc)) from None
@@ -1413,10 +1729,16 @@ class Gateway:
         has_embed = bool(retrieval_io.parse_embedder(retrieval_config.fusion))
         has_rerank = retrieval_config.rerank != retrieval_io.RERANK_NONE
         provider = _configuration_getenv("UNIMEM_LLM_PROVIDER", "").strip().lower()
-        has_key = any(_configuration_getenv(name, "").strip() for name in (
-            "UNIMEM_LLM_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-            "GOOGLE_API_KEY", "GEMINI_API_KEY",
-        ))
+        has_key = any(
+            _configuration_getenv(name, "").strip()
+            for name in (
+                "UNIMEM_LLM_API_KEY",
+                "OPENAI_API_KEY",
+                "ANTHROPIC_API_KEY",
+                "GOOGLE_API_KEY",
+                "GEMINI_API_KEY",
+            )
+        )
         local_provider = provider in {"ollama", "local", "llama.cpp", "llamacpp"}
         has_llm = bool(has_key or local_provider)
         if has_llm and has_embed:
@@ -1433,12 +1755,14 @@ class Gateway:
             "rerank": has_rerank,
             "tier": tier,
             "degraded_paths": [
-                name for name, enabled in (
+                name
+                for name, enabled in (
                     ("lexical_retrieval", True),
                     ("llm_generation", has_llm),
                     ("semantic_retrieval", has_embed),
                     ("cross_encoder_rerank", has_rerank),
-                ) if not enabled
+                )
+                if not enabled
             ],
             "rbac": True,
             "container_scoping": True,
@@ -1462,8 +1786,14 @@ class Gateway:
 
         if set(body) != {"operation", "request"} or not isinstance(body.get("request"), dict):
             raise _bad("UniMem tier requires an operation and request object")
-        operations = {"status": tiering.status, "hibernate": tiering.hibernate, "warm": tiering.warm,
-                      "residency": tiering.configure, "reembed": tiering.reembed, "rollback": tiering.rollback}
+        operations: dict[str, Callable[..., dict]] = {
+            "status": tiering.status,
+            "hibernate": tiering.hibernate,
+            "warm": tiering.warm,
+            "residency": tiering.configure,
+            "reembed": tiering.reembed,
+            "rollback": tiering.rollback,
+        }
         try:
             operation = body["operation"]
             if operation not in operations:
@@ -1520,9 +1850,12 @@ class Gateway:
                 with memory_authority.writer("local", "operator"):
                     result = change_stream.poll(self.root, identity, cursor=cursor, context=context, limit=limit)
                     chunks = change_stream.render_sse(self.root, identity, result, context=context)
-                    return Response.streaming(200, chunks,
-                        content_type="text/event-stream", headers={"Cache-Control": "no-store",
-                                                                  "X-UniMem-Subscription": identity})
+                    return Response.streaming(
+                        200,
+                        chunks,
+                        content_type="text/event-stream",
+                        headers={"Cache-Control": "no-store", "X-UniMem-Subscription": identity},
+                    )
             finally:
                 memory_control.REQUIRED_PRINCIPAL_SCOPE.reset(token)
         except PermissionError as exc:
@@ -1551,9 +1884,15 @@ class Gateway:
             try:
                 with memory_authority.writer("gateway-owner", "operator"):
                     manifest = rl_io.prepare(self.root, **{**body, "context": context})
-                    return Response.streaming(200, rl_io.lines(self.root, manifest["id"], context=context),
-                        content_type="application/x-ndjson", headers={"X-UniMem-Manifest": manifest["manifest_digest"],
-                            "X-UniMem-Export-Id": manifest["id"]})
+                    return Response.streaming(
+                        200,
+                        rl_io.lines(self.root, manifest["id"], context=context),
+                        content_type="application/x-ndjson",
+                        headers={
+                            "X-UniMem-Manifest": manifest["manifest_digest"],
+                            "X-UniMem-Export-Id": manifest["id"],
+                        },
+                    )
             finally:
                 memory_control.REQUIRED_PRINCIPAL_SCOPE.reset(token)
         except PermissionError as exc:
@@ -1589,15 +1928,18 @@ class Gateway:
         except OSError:
             checks["disk"] = "unknown"
         ready = all(value == "ok" for key, value in checks.items() if key != "disk") and checks["disk"] != "low"
-        return _json(200 if ready else 503, {"ok": ready, "status": "ready" if ready else "not_ready",
-                                             "checks": checks, "version": __version__})
+        return _json(
+            200 if ready else 503,
+            {"ok": ready, "status": "ready" if ready else "not_ready", "checks": checks, "version": __version__},
+        )
 
     def _github_push(self, body, _query):
         from unimem.connectors import knowledge_streams
 
         try:
-            return knowledge_streams.github_push(self.root, body["raw"], body["signature"],
-                                                  body["delivery"], body["event"])
+            return knowledge_streams.github_push(
+                self.root, body["raw"], body["signature"], body["delivery"], body["event"]
+            )
         except PermissionError:
             raise ApiError(403, "webhook_signature", "Webhook identity or signature refused") from None
         except FileNotFoundError:
@@ -1667,15 +2009,20 @@ class Gateway:
         if not isinstance(asked, str):
             raise _bad("env must be a string")
         if self.config.env and asked != self.config.env:
-            raise ApiError(409, "wrong_environment",
-                           f"this store measures {self.config.env!r}, not {asked!r}; "
-                           "simulation and reality are never pooled")
+            raise ApiError(
+                409,
+                "wrong_environment",
+                f"this store measures {self.config.env!r}, not {asked!r}; simulation and reality are never pooled",
+            )
 
     def _protected(self, item: dict) -> bool:
         from unimem import safety
 
-        return item["id"] in safety.protected(self.root) or bool(item.get("protected")) or any(
-            item["id"].startswith(prefix) for prefix in self.config.protected_prefixes)
+        return (
+            item["id"] in safety.protected(self.root)
+            or bool(item.get("protected"))
+            or any(item["id"].startswith(prefix) for prefix in self.config.protected_prefixes)
+        )
 
     def _store_candidates(self, req: dict, *, scope: str = "") -> list[dict]:
         query = _text(req.get("query"), "query", limit=2000)
@@ -1707,12 +2054,23 @@ class Gateway:
             except (frontmatter.FrontmatterError, lesson_admission.AdmissionError):
                 continue
             if body != current_body or not lesson_cache.fresh_eligible(
-                    hit.path, fm, hit.slug, scope=scope, body=current_body, root=self.root,
-                    expected_core=dosage.is_core(projected.get(hit.path, {}))):
+                hit.path,
+                fm,
+                hit.slug,
+                scope=scope,
+                body=current_body,
+                root=self.root,
+                expected_core=dosage.is_core(projected.get(hit.path, {})),
+            ):
                 continue
-            out.append({"id": hit.slug, "text": current_body, "protected": dosage.is_core(fm),
-                        "meta": {"description": str(fm.get("description", "")),
-                                 "relevance": round(hit.relevance, 4)}})
+            out.append(
+                {
+                    "id": hit.slug,
+                    "text": current_body,
+                    "protected": dosage.is_core(fm),
+                    "meta": {"description": str(fm.get("description", "")), "relevance": round(hit.relevance, 4)},
+                }
+            )
         return out
 
     def _explore(self, req: dict, _query) -> dict:
@@ -1740,9 +2098,13 @@ class Gateway:
                 embedder = _text(embedder, "embedder", limit=512)
             space = self._scoped_space(_ident(req.get("space"), "space"))
             with Store(self.root, space) as store:
-                return store.add(_ident(req.get("session"), "session"), messages,
-                                 session_at=req.get("session_at") or None,
-                                 cache_vectors=cache_vectors, embedder=embedder)
+                return store.add(
+                    _ident(req.get("session"), "session"),
+                    messages,
+                    session_at=req.get("session_at") or None,
+                    cache_vectors=cache_vectors,
+                    embedder=embedder,
+                )
         except ConversationError as exc:
             raise _bad(str(exc)) from None
 
@@ -1817,9 +2179,17 @@ class Gateway:
                         except (ConversationError, UniMemError) as exc:
                             raise _bad(str(exc)) from None
                 advanced[key] = value
-        opts = Options(budget=budget, since=dates["since"], until=dates["until"],
-                       context_strategy=strategy, adaptive_budget=adaptive,
-                       max_budget=max_budget, **lists, **advanced)
+        opts = Options(
+            budget=budget,
+            since=dates["since"],
+            until=dates["until"],
+            context_strategy=strategy,
+            adaptive_budget=adaptive,
+            max_budget=max_budget,
+            sessions=lists["sessions"],
+            speakers=lists["speakers"],
+            **advanced,
+        )
         try:
             space = self._scoped_space(_ident(req.get("space"), "space"))
             pool = self._conversation_pool or READ_POOL
@@ -1902,10 +2272,18 @@ class Gateway:
         scoped = self._scoped_space(space)
         try:
             out = working_memory.assemble(
-                self.root, scoped, session, question, budget=budget, recent_turns=recent, agent=agent,
-                now=req.get("now") or None, refresh_summary=refresh,
+                self.root,
+                scoped,
+                session,
+                question,
+                budget=budget,
+                recent_turns=recent,
+                agent=agent,
+                now=req.get("now") or None,
+                refresh_summary=refresh,
                 # Tenants never read each other's session- or agent-scoped blocks.
-                block_namespace=scoped if scoped != space else "")
+                block_namespace=scoped if scoped != space else "",
+            )
         except ConversationError as exc:
             raise self._conversation_error(exc) from None
         return {**out, "space": space}
@@ -1914,8 +2292,11 @@ class Gateway:
         from unimem import capabilities, memory_authority, purpose
 
         principal = req.get("_principal")
-        authority = memory_authority.bound_writer() if capabilities.CURRENT.get() is not None else (
-            (principal["id"], "agent") if principal else ("gateway-owner", "operator"))
+        authority = (
+            memory_authority.bound_writer()
+            if capabilities.CURRENT.get() is not None
+            else ((principal["id"], "agent") if principal else ("gateway-owner", "operator"))
+        )
         try:
             with memory_authority.writer(*authority), purpose.request(self.root, req.get("purpose")):
                 return self._recall_for_purpose(req, _query)
@@ -1942,13 +2323,10 @@ class Gateway:
         self._check_env(req)
         mode = "items" if req.get("items") is not None else "store"
         scope = self._request_scope()
-        candidates = (
-            _items(req["items"])
-            if mode == "items"
-            else self._store_candidates(req, scope=scope)
-        )
+        candidates = _items(req["items"]) if mode == "items" else self._store_candidates(req, scope=scope)
 
-        clean, quarantined = [], []
+        clean: list[dict] = []
+        quarantined: list[dict] = []
         from unimem import purpose
 
         for item in candidates:
@@ -1956,7 +2334,8 @@ class Gateway:
                 continue
             labels = injection_guard.injection_labels({"body": item["text"]})
             (quarantined if labels else clean).append(
-                {"id": item["id"], "reason": "injection screen: " + ", ".join(labels)} if labels else item)
+                {"id": item["id"], "reason": "injection screen: " + ", ".join(labels)} if labels else item
+            )
         protected = {i["id"] for i in clean if self._protected(i)}
         by_id = {i["id"]: i for i in clean}
 
@@ -1964,9 +2343,15 @@ class Gateway:
         started = bool(config.started_at) and config.running
         if started:
             memory = CausalMemory(
-                lambda _q, **_kw: clean, root=self.root, key=lambda i: i["id"],
-                text=lambda i: i["text"] or None, pinned=protected, scorer=f"gateway:{mode}",
-                harm_watch=self._watch, durable=self.durable)
+                lambda _q, **_kw: clean,
+                root=self.root,
+                key=lambda i: i["id"],
+                text=lambda i: i["text"] or None,
+                pinned=protected,
+                scorer=f"gateway:{mode}",
+                harm_watch=self._watch,
+                durable=self.durable,
+            )
             result = memory.recall_detailed("", occasion_id=occasion, context=context)
             delivered = [dict(i) for i in result.items]
             withdrawn = result.withdrawn
@@ -1978,9 +2363,13 @@ class Gateway:
         delivered = [memory_ifc.safe_label(self.root, item) for item in delivered]
         withheld = [i["id"] for i in clean if i["id"] not in out_ids and i["id"] not in withdrawn]
         response = {
-            "occasion_id": occasion, "mode": mode, "deliver": delivered, "withheld": withheld,
-            "withdrawn": [{"id": k, "verdict": v.get("verdict"), "effect": v.get("effect")}
-                          for k, v in withdrawn.items()],
+            "occasion_id": occasion,
+            "mode": mode,
+            "deliver": delivered,
+            "withheld": withheld,
+            "withdrawn": [
+                {"id": k, "verdict": v.get("verdict"), "effect": v.get("effect")} for k, v in withdrawn.items()
+            ],
             "protected": sorted(protected & set(by_id)),
             "quarantined": quarantined,
             "holdout": {"running": started, "rate": config.rate if started else 0.0},
@@ -1996,9 +2385,19 @@ class Gateway:
                     response["independence"] = contagion.independence(self.root, identities, context=labels)
                 if read_graph is not None:
                     admitted = store.admit(self.root, identities, context=labels)
-                    response["read_graph"] = (contagion.record_read(self.root, list(admitted), agent, occasion,
-                        read_graph["output"], context=labels, retention_days=read_graph.get("retention_days", 7))
-                        if admitted else {"recorded": False, "reason": "no admitted canonical memories"})
+                    response["read_graph"] = (
+                        contagion.record_read(
+                            self.root,
+                            list(admitted),
+                            agent,
+                            occasion,
+                            read_graph["output"],
+                            context=labels,
+                            retention_days=read_graph.get("retention_days", 7),
+                        )
+                        if admitted
+                        else {"recorded": False, "reason": "no admitted canonical memories"}
+                    )
             except PermissionError as exc:
                 raise ApiError(403, "scope", str(exc)) from None
             except (ValueError, TypeError, KeyError) as exc:
@@ -2006,13 +2405,23 @@ class Gateway:
         if self.config.env:
             response["env"] = self.config.env
         if not started:
-            response["note"] = ("No experiment has been started, so everything is delivered and nothing "
-                                "causal can be measured. Start one on purpose with `unimem proof "
-                                "start` or `unimem experiment --configure`.")
-        self._log_event({"kind": "recall", "occasion_id": occasion, "agent_id": agent,
-                         "delivered": len(delivered), "withheld": len(withheld),
-                         "withdrawn": len(withdrawn), "protected": len(response["protected"]),
-                         "quarantined": len(quarantined)})
+            response["note"] = (
+                "No experiment has been started, so everything is delivered and nothing "
+                "causal can be measured. Start one on purpose with `unimem proof "
+                "start` or `unimem experiment --configure`."
+            )
+        self._log_event(
+            {
+                "kind": "recall",
+                "occasion_id": occasion,
+                "agent_id": agent,
+                "delivered": len(delivered),
+                "withheld": len(withheld),
+                "withdrawn": len(withdrawn),
+                "protected": len(response["protected"]),
+                "quarantined": len(quarantined),
+            }
+        )
         return response
 
     def _episode(self, req: dict, _query) -> dict:
@@ -2025,13 +2434,27 @@ class Gateway:
         if succeeded is not None and not isinstance(succeeded, bool):
             raise _bad("succeeded must be true or false")
         try:
-            out = episodes.record(self.root, occasion_id=occasion, summary=_text(req.get("summary"), "summary",
-                                  limit=MAX_TEXT_CHARS), agent_id=agent or "", env=self.config.env or req.get("env"),
-                                  sensors=req.get("sensors"), media=req.get("media"), outcome=succeeded)
+            out = episodes.record(
+                self.root,
+                occasion_id=occasion,
+                summary=_text(req.get("summary"), "summary", limit=MAX_TEXT_CHARS),
+                agent_id=agent or "",
+                env=self.config.env or req.get("env"),
+                sensors=req.get("sensors"),
+                media=req.get("media"),
+                outcome=succeeded,
+            )
         except (episodes.EpisodeError, ValueError) as exc:
             raise _bad(str(exc)) from None
-        self._log_event({"kind": "episode", "occasion_id": occasion, "agent_id": agent,
-                         "media": len(out["media"]), "sensors": out["sensors"]})
+        self._log_event(
+            {
+                "kind": "episode",
+                "occasion_id": occasion,
+                "agent_id": agent,
+                "media": len(out["media"]),
+                "sensors": out["sensors"],
+            }
+        )
         return out
 
     def _outcome(self, req: dict, _query) -> dict:
@@ -2048,26 +2471,39 @@ class Gateway:
             succeeded = evaluate_signals(req["signals"], req.get("combine"))
             if succeeded is None:
                 self._log_event({"kind": "undecided", "occasion_id": occasion, "agent_id": agent})
-                return {"occasion_id": occasion, "recorded": False, "undecided": True,
-                        "reason": "the signals do not settle this occasion yet; nothing was recorded"}
+                return {
+                    "occasion_id": occasion,
+                    "recorded": False,
+                    "undecided": True,
+                    "reason": "the signals do not settle this occasion yet; nothing was recorded",
+                }
         else:
             raise _bad("give `succeeded` (a boolean) or `signals`")
         try:
-            written = holdout_io.record_outcome(self.root, occasion, succeeded, self.durable,
-                                                secondary_metrics=req.get("secondary_metrics"))
+            written = holdout_io.record_outcome(
+                self.root, occasion, succeeded, self.durable, secondary_metrics=req.get("secondary_metrics")
+            )
         except holdout_io.ConflictingOutcome as exc:
             raise ApiError(409, "conflicting_outcome", str(exc)) from None
-        self._log_event({"kind": "outcome", "occasion_id": occasion, "agent_id": agent,
-                         "succeeded": succeeded})
-        return {"occasion_id": occasion, "recorded": written, "succeeded": succeeded,
-                **({} if written else {"note": "the same answer was already on record"})}
+        self._log_event({"kind": "outcome", "occasion_id": occasion, "agent_id": agent, "succeeded": succeeded})
+        return {
+            "occasion_id": occasion,
+            "recorded": written,
+            "succeeded": succeeded,
+            **({} if written else {"note": "the same answer was already on record"}),
+        }
 
     def _data_key(self) -> tuple:
-        key = []
-        for path in (holdout_io.holdout_log_path(self.root), holdout_io.outcomes_log_path(self.root),
-                     holdout_io.config_path(self.root), proof.state_path(self.root),
-                     retrieval_io.config_path(self.root), paths.episodes_dir(self.root),
-                     paths.traces_dir(self.root)):
+        key: list[tuple[int, ...] | None] = []
+        for path in (
+            holdout_io.holdout_log_path(self.root),
+            holdout_io.outcomes_log_path(self.root),
+            holdout_io.config_path(self.root),
+            proof.state_path(self.root),
+            retrieval_io.config_path(self.root),
+            paths.episodes_dir(self.root),
+            paths.traces_dir(self.root),
+        ):
             try:
                 st = os.stat(path)
                 key.append((st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns))
@@ -2088,30 +2524,45 @@ class Gateway:
             return state, rows, None
         mode = proof._mode(state) if state else "sequential"
         vpo = state.get("value_per_occasion") if state else None
-        return state, rows, proof.analyse_rows(
-            rows, mode, datetime.datetime.now(datetime.timezone.utc).isoformat(), vpo)
+        return (
+            state,
+            rows,
+            proof.analyse_rows(rows, mode, datetime.datetime.now(datetime.timezone.utc).isoformat(), vpo),
+        )
 
     def _status(self, _body, _query) -> dict:
         config = holdout_io.load_config(self.root)
         events, activity_cached, truncated = self._memoized_events(EVENTS_STATUS_LIMIT)
         out: dict = {
-            "gateway": {"api": API_VERSION, "version": __version__, "env": self.config.env,
-                        "protected_prefixes": list(self.config.protected_prefixes),
-                        "durable": self.durable, "harm_policy": retrieval_io.read_harm_policy(self.root),
-                        "approval_enabled": self.allow_approval},
-            "experiment": {"running": bool(config.started_at) and config.running,
-                           "rate": config.rate if config.started_at and config.running else 0.0},
-            "activity": {"recalls": sum(1 for e in events if e.get("kind") == "recall"),
-                         "outcomes": sum(1 for e in events if e.get("kind") == "outcome"),
-                         "window_events": len(events), "truncated": truncated,
-                         "cached": activity_cached, "limit": EVENTS_STATUS_LIMIT},
+            "gateway": {
+                "api": API_VERSION,
+                "version": __version__,
+                "env": self.config.env,
+                "protected_prefixes": list(self.config.protected_prefixes),
+                "durable": self.durable,
+                "harm_policy": retrieval_io.read_harm_policy(self.root),
+                "approval_enabled": self.allow_approval,
+            },
+            "experiment": {
+                "running": bool(config.started_at) and config.running,
+                "rate": config.rate if config.started_at and config.running else 0.0,
+            },
+            "activity": {
+                "recalls": sum(1 for e in events if e.get("kind") == "recall"),
+                "outcomes": sum(1 for e in events if e.get("kind") == "outcome"),
+                "window_events": len(events),
+                "truncated": truncated,
+                "cached": activity_cached,
+                "limit": EVENTS_STATUS_LIMIT,
+            },
             "proof": None,
             "cached": activity_cached,
         }
         if proof.load_state(self.root):
             try:
                 payload, proof_cached = self._memoized_flag(
-                    "proof", lambda: dataclasses.asdict(proof.status(self.root)))
+                    "proof", lambda: dataclasses.asdict(proof.status(self.root))
+                )
                 out["proof"] = payload
                 out["proof_cached"] = proof_cached
             except proof.ProofError as exc:
@@ -2128,11 +2579,9 @@ class Gateway:
         return {
             "integrity": {"verdict": analysis.report.verdict, "readable": analysis.report.readable},
             "mode": analysis.mode,
-            "memories": [{**dataclasses.asdict(e), "withdrawn": e.lesson_slug in harmful}
-                         for e in analysis.effects],
+            "memories": [{**dataclasses.asdict(e), "withdrawn": e.lesson_slug in harmful} for e in analysis.effects],
             "occasions": len({r.occasion_id for r in rows}),
         }
-
 
     def _workbench(self, call):
         from unimem import workbench
@@ -2144,8 +2593,11 @@ class Gateway:
 
     def _acting(self) -> None:
         if not self.allow_approval:
-            raise ApiError(403, "approval_disabled", "start the gateway with --allow-approval to edit, approve or "
-                                                       "reject lessons here")
+            raise ApiError(
+                403,
+                "approval_disabled",
+                "start the gateway with --allow-approval to edit, approve or reject lessons here",
+            )
 
     def _effects(self) -> list:
         _state, _rows, analysis = self._analysis()
@@ -2155,8 +2607,12 @@ class Gateway:
         from unimem import ledger_views
 
         state, _rows, _analysis = self._analysis()
-        return ledger_views.executive(self.root, self._effects(), harmful=set(self._watch.current()),
-                                      value_per_occasion=(state or {}).get("value_per_occasion"))
+        return ledger_views.executive(
+            self.root,
+            self._effects(),
+            harmful=set(self._watch.current()),
+            value_per_occasion=(state or {}).get("value_per_occasion"),
+        )
 
     def _ledger_releases(self, _body, query) -> dict:
         from unimem import ledger_views
@@ -2185,9 +2641,14 @@ class Gateway:
             return value
 
         try:
-            return ledger_views.design(baseline=number("baseline", 0.5), effect=number("effect", 0.1),
-                                       rate=number("rate", 0.1), power=number("power", 0.8),
-                                       daily=number("daily"), budget=number("budget", cast=int))
+            return ledger_views.design(
+                baseline=number("baseline", 0.5),
+                effect=number("effect", 0.1),
+                rate=number("rate", 0.1),
+                power=number("power", 0.8),
+                daily=number("daily"),
+                budget=number("budget", cast=int),
+            )
         except ValueError as exc:
             raise _bad(str(exc)) from None
 
@@ -2241,8 +2702,9 @@ class Gateway:
         if not match:
             raise ApiError(404, "not_found", "no listing with that id")
         try:
-            return marketplace.install(self.root, match[0], accept_licence=str(body.get("accept_licence", "")),
-                                       actor="console")
+            return marketplace.install(
+                self.root, match[0], accept_licence=str(body.get("accept_licence", "")), actor="console"
+            )
         except marketplace.MarketError as exc:
             raise ApiError(422, "market_refused", str(exc)) from None
 
@@ -2296,9 +2758,15 @@ class Gateway:
         scope = self._request_scope()
 
         lessons, total = self._workbench(
-            lambda w: w.lesson_page(self.root, status, limit=limit, offset=offset, scope=scope))
-        return {"lessons": lessons, "approval_enabled": self.allow_approval,
-                "total": total, "limit": limit, "offset": offset}
+            lambda w: w.lesson_page(self.root, status, limit=limit, offset=offset, scope=scope)
+        )
+        return {
+            "lessons": lessons,
+            "approval_enabled": self.allow_approval,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
     def _lesson(self, _body, query) -> dict:
         slug = (query.get("slug") or [""])[0]
@@ -2309,20 +2777,43 @@ class Gateway:
         self._acting()
         fields = {k: v for k, v in body.items() if k not in {"slug", "expected_revision"}}
         scope = self._request_scope()
-        return self._workbench(lambda w: w.edit(self.root, body.get("slug", ""), fields, "console", scope,
-                                                expected_revision=body.get("expected_revision")))
+        return self._workbench(
+            lambda w: w.edit(
+                self.root,
+                body.get("slug", ""),
+                fields,
+                "console",
+                scope,
+                expected_revision=body.get("expected_revision"),
+            )
+        )
 
     def _lesson_approve(self, body, _query) -> dict:
         self._acting()
         scope = self._request_scope()
-        return self._workbench(lambda w: w.approve(self.root, body.get("slug", ""), body.get("rationale"),
-                                                   "console", scope, expected_revision=body.get("expected_revision")))
+        return self._workbench(
+            lambda w: w.approve(
+                self.root,
+                body.get("slug", ""),
+                body.get("rationale"),
+                "console",
+                scope,
+                expected_revision=body.get("expected_revision"),
+            )
+        )
 
     def _lesson_reject(self, body, _query) -> dict:
         self._acting()
         scope = self._request_scope()
-        return self._workbench(lambda w: w.reject(self.root, body.get("slug", ""), body.get("reason", ""), scope,
-                                                  expected_revision=body.get("expected_revision")))
+        return self._workbench(
+            lambda w: w.reject(
+                self.root,
+                body.get("slug", ""),
+                body.get("reason", ""),
+                scope,
+                expected_revision=body.get("expected_revision"),
+            )
+        )
 
     @staticmethod
     def _limit(query: dict, default: int, cap: int) -> int:
@@ -2334,8 +2825,13 @@ class Gateway:
     def _occasions(self, _body, query) -> dict:
         limit = self._limit(query, 50, 500)
         events, cached, truncated = self._memoized_events(limit)
-        return {"events": list(reversed(events)), "cached": cached, "truncated": truncated,
-                "window_events": len(events), "limit": limit}
+        return {
+            "events": list(reversed(events)),
+            "cached": cached,
+            "truncated": truncated,
+            "window_events": len(events),
+            "limit": limit,
+        }
 
     def _agents(self, _body, _query) -> dict:
         ident = self._events_identity()
@@ -2347,8 +2843,19 @@ class Gateway:
             truncated = self._events_truncated()
             for e in events:
                 who = e.get("agent_id") or "(unattributed)"
-                a = agents.setdefault(who, {"agent_id": who, "recalls": 0, "outcomes": 0, "succeeded": 0,
-                                            "withheld": 0, "protected": 0, "quarantined": 0, "last_seen": ""})
+                a = agents.setdefault(
+                    who,
+                    {
+                        "agent_id": who,
+                        "recalls": 0,
+                        "outcomes": 0,
+                        "succeeded": 0,
+                        "withheld": 0,
+                        "protected": 0,
+                        "quarantined": 0,
+                        "last_seen": "",
+                    },
+                )
                 if e.get("kind") == "recall":
                     a["recalls"] += 1
                     a["withheld"] += int(e.get("withheld", 0))
@@ -2368,47 +2875,80 @@ class Gateway:
                 a["seconds_since_seen"] = None if age is None else round(max(age, 0.0), 1)
                 rows.append(a)
             rows.sort(key=lambda r: r["last_seen"], reverse=True)
-            return {"agents": rows, "window": "last 5000 events", "window_events": len(events),
-                    "truncated": truncated, "limit": EVENTS_MAX_EVENTS}
+            return {
+                "agents": rows,
+                "window": "last 5000 events",
+                "window_events": len(events),
+                "truncated": truncated,
+                "limit": EVENTS_MAX_EVENTS,
+            }
 
         payload, cached = self._memoized_flag("agents", compute, extra_key=ident)
-        return {"agents": [dict(a) for a in payload["agents"]], "window": payload["window"],
-                "window_events": payload["window_events"], "truncated": payload["truncated"],
-                "limit": payload["limit"], "cached": cached}
+        return {
+            "agents": [dict(a) for a in payload["agents"]],
+            "window": payload["window"],
+            "window_events": payload["window_events"],
+            "truncated": payload["truncated"],
+            "limit": payload["limit"],
+            "cached": cached,
+        }
 
     def _swagger(self, _body, _query) -> Response:
         import base64
         import hashlib
 
-        startup = ('window.onload=function(){SwaggerUIBundle({url:"/v1/openapi.json",dom_id:"#swagger-ui",'
-                   'persistAuthorization:false,validatorUrl:null});};')
+        startup = (
+            'window.onload=function(){SwaggerUIBundle({url:"/v1/openapi.json",dom_id:"#swagger-ui",'
+            "persistAuthorization:false,validatorUrl:null});};"
+        )
         digest = base64.b64encode(hashlib.sha256(startup.encode()).digest()).decode()
-        page = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
-                '<meta name="viewport" content="width=device-width,initial-scale=1">'
-                '<title>UniMem API</title><link rel="stylesheet" '
-                'href="https://unpkg.com/swagger-ui-dist@5.30.0/swagger-ui.css" '
-                'integrity="sha384-++DMKo1369T5pxDNqojF1F91bYxYiT1N7b1M15a7oCzEodfljztKlApQoH6eQSKI" '
-                'crossorigin="anonymous"></head><body><div id="swagger-ui"></div>'
-                '<script src="https://unpkg.com/swagger-ui-dist@5.30.0/swagger-ui-bundle.js" '
-                'integrity="sha384-9CJCDqW5gKboEGedI4f6FbRtGJUQDktyO4ALxunoU7Zh2AaMp93UH1iVtC0SzT9/" '
-                'crossorigin="anonymous"></script><script>'+startup+'</script></body></html>')
-        return Response(200, page.encode(), "text/html; charset=utf-8", {
-            "Content-Security-Policy": "default-src 'none'; script-src https://unpkg.com 'sha256-"+digest+
-                "'; style-src https://unpkg.com 'unsafe-inline'; connect-src 'self'; img-src data:; "
+        page = (
+            '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>UniMem API</title><link rel="stylesheet" '
+            'href="https://unpkg.com/swagger-ui-dist@5.30.0/swagger-ui.css" '
+            'integrity="sha384-++DMKo1369T5pxDNqojF1F91bYxYiT1N7b1M15a7oCzEodfljztKlApQoH6eQSKI" '
+            'crossorigin="anonymous"></head><body><div id="swagger-ui"></div>'
+            '<script src="https://unpkg.com/swagger-ui-dist@5.30.0/swagger-ui-bundle.js" '
+            'integrity="sha384-9CJCDqW5gKboEGedI4f6FbRtGJUQDktyO4ALxunoU7Zh2AaMp93UH1iVtC0SzT9/" '
+            'crossorigin="anonymous"></script><script>' + startup + "</script></body></html>"
+        )
+        return Response(
+            200,
+            page.encode(),
+            "text/html; charset=utf-8",
+            {
+                "Content-Security-Policy": "default-src 'none'; script-src https://unpkg.com 'sha256-"
+                + digest
+                + "'; style-src https://unpkg.com 'unsafe-inline'; connect-src 'self'; img-src data:; "
                 "base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
-            "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
 
     def _openapi(self, _body, _query) -> dict:
         from unimem import gateway_contract as contract
         from unimem.api_schema import components, model_name
 
         error = {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}
-        reasons = {400: "Invalid request", 401: "Missing or wrong credential", 403: "Refused by policy or scope",
-                   404: "Not found", 409: "Conflicts with recorded state", 413: "Body larger than 1 MiB",
-                   422: "Failed verification", 429: "Quota or rate limit", 500: "Internal error; no details",
-                   503: "Not ready or upstream unavailable"}
-        missing = [route for route in self.routes if route not in contract.OPERATIONS
-                   and not route[1].startswith("/v1/memory/")]
+        reasons = {
+            400: "Invalid request",
+            401: "Missing or wrong credential",
+            403: "Refused by policy or scope",
+            404: "Not found",
+            409: "Conflicts with recorded state",
+            413: "Body larger than 1 MiB",
+            422: "Failed verification",
+            429: "Quota or rate limit",
+            500: "Internal error; no details",
+            503: "Not ready or upstream unavailable",
+        }
+        missing = [
+            route
+            for route in self.routes
+            if route not in contract.OPERATIONS and not route[1].startswith("/v1/memory/")
+        ]
         stale = [route for route in contract.OPERATIONS if route not in self.routes]
         if missing or stale:
             raise RuntimeError(f"gateway contract out of date: undocumented {missing}, stale {stale}")
@@ -2416,33 +2956,55 @@ class Gateway:
         for (method, path), (_h, spec) in sorted(self.routes.items()):
             memory = path.startswith("/v1/memory/")
             entry = contract.memory_operation(path.rsplit("/", 1)[1]) if memory else contract.OPERATIONS[(method, path)]
-            op: dict = {"operationId": entry.operation_id, "tags": [entry.tag], "summary": spec["summary"],
-                        "parameters": [{"$ref": "#/components/parameters/RequestId"},
-                                       {"$ref": "#/components/parameters/ContainerTag"}]}
-            if path in {"/v1/memory/team-read", "/v1/memory/search", "/v1/memory/add", "/v1/memory/batch",
-                        "/v1/memory/record-put",
-                        "/v1/memory/record-search", "/v1/memory/record-forget", "/v1/stream"}:
+            op: dict = {
+                "operationId": entry.operation_id,
+                "tags": [entry.tag],
+                "summary": spec["summary"],
+                "parameters": [
+                    {"$ref": "#/components/parameters/RequestId"},
+                    {"$ref": "#/components/parameters/ContainerTag"},
+                ],
+            }
+            if path in {
+                "/v1/memory/team-read",
+                "/v1/memory/search",
+                "/v1/memory/add",
+                "/v1/memory/batch",
+                "/v1/memory/record-put",
+                "/v1/memory/record-search",
+                "/v1/memory/record-forget",
+                "/v1/stream",
+            }:
                 from unimem import capabilities
 
                 op["parameters"].extend(capabilities.header_parameters())
             if entry.description:
                 op["description"] = entry.description
             for name, schema, required, description in entry.query:
-                op["parameters"].append({"name": name, "in": "query", "required": required,
-                                         "description": description, "schema": schema})
+                op["parameters"].append(
+                    {"name": name, "in": "query", "required": required, "description": description, "schema": schema}
+                )
+            request: dict | None
+            statuses: tuple[int, ...]
             if memory:
                 name = model_name(path.rsplit("/", 1)[1])
-                request, response = ({"$ref": "#/components/schemas/" + name + "Request"},
-                                     {"$ref": "#/components/schemas/" + name + "Response"})
+                request, response = (
+                    {"$ref": "#/components/schemas/" + name + "Request"},
+                    {"$ref": "#/components/schemas/" + name + "Response"},
+                )
                 statuses = (400, 403, 409, 413, 429)
             else:
                 request, response = entry.request, entry.response
                 statuses = tuple(sorted(set(entry.errors) | ({400, 413} if method == "POST" else set())))
             if method == "POST" and request is not None:
                 op["requestBody"] = {"required": True, "content": {"application/json": {"schema": request}}}
-            op["responses"] = {"200": {"description": "OK", "headers": {
-                "X-Request-Id": {"$ref": "#/components/headers/RequestId"}},
-                "content": {entry.content_type: {"schema": response}}}}
+            op["responses"] = {
+                "200": {
+                    "description": "OK",
+                    "headers": {"X-Request-Id": {"$ref": "#/components/headers/RequestId"}},
+                    "content": {entry.content_type: {"schema": response}},
+                }
+            }
             if path == "/v1/metrics":
                 op["responses"]["200"]["content"]["text/plain"] = {"schema": {"type": "string"}}
             if spec["auth"]:
@@ -2454,36 +3016,58 @@ class Gateway:
         paths_doc.update(contract.EXTRA_PATHS)
         return {
             "openapi": "3.0.3",
-            "info": {"title": "UniMem gateway", "version": API_VERSION,
-                     "description": "Did the memory change how the occasion went? Language-neutral."},
+            "info": {
+                "title": "UniMem gateway",
+                "version": API_VERSION,
+                "description": "Did the memory change how the occasion went? Language-neutral.",
+            },
             "tags": [{"name": t} for t in sorted({e.tag for e in contract.OPERATIONS.values()} | {"Memory"})],
             "paths": paths_doc,
             "components": {
-                "securitySchemes": {"bearer": {
-                    "type": "http", "scheme": "bearer",
-                    "description": "The operator token, an agent key (cta_...) for /v1/memory and the agent "
-                                   "plugin/heartbeat routes, or an OAuth 2.1 access token when an issuer is "
-                                   "configured (see /.well-known/oauth-protected-resource)."}},
+                "securitySchemes": {
+                    "bearer": {
+                        "type": "http",
+                        "scheme": "bearer",
+                        "description": "The operator token, an agent key (cta_...) for /v1/memory and the agent "
+                        "plugin/heartbeat routes, or an OAuth 2.1 access token when an issuer is "
+                        "configured (see /.well-known/oauth-protected-resource).",
+                    }
+                },
                 "parameters": {
-                    "RequestId": {"name": "X-Request-Id", "in": "header", "required": False,
-                                  "description": "Echoed back; generated when absent or invalid.",
-                                  "schema": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"}},
-                    "ContainerTag": {"name": "X-Container-Tag", "in": "header", "required": False,
-                                     "description": "Isolates lessons, conversations and review to one tenant.",
-                                     "schema": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"}}},
-                "headers": {"RequestId": {"description": "Correlates logs and traces.",
-                                          "schema": {"type": "string"}}},
+                    "RequestId": {
+                        "name": "X-Request-Id",
+                        "in": "header",
+                        "required": False,
+                        "description": "Echoed back; generated when absent or invalid.",
+                        "schema": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+                    },
+                    "ContainerTag": {
+                        "name": "X-Container-Tag",
+                        "in": "header",
+                        "required": False,
+                        "description": "Isolates lessons, conversations and review to one tenant.",
+                        "schema": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,128}$"},
+                    },
+                },
+                "headers": {"RequestId": {"description": "Correlates logs and traces.", "schema": {"type": "string"}}},
                 "schemas": {**components(), **contract.components()},
             },
         }
 
-def make_http_server(gateway: Gateway, host: str, port: int, *, tls: tuple[str, str] | None = None,
-                     request_timeout: float = 10.0, max_connections: int = 128) -> ThreadingHTTPServer:
+
+def make_http_server(
+    gateway: Gateway,
+    host: str,
+    port: int,
+    *,
+    tls: tuple[str, str] | None = None,
+    request_timeout: float = 10.0,
+    max_connections: int = 128,
+) -> ThreadingHTTPServer:
     """Create the HTTP transport; retained here for import compatibility."""
     from unimem.gateway_transport import make_http_server as create_server
 
-    return create_server(gateway, host, port, tls=tls, request_timeout=request_timeout,
-                         max_connections=max_connections)
+    return create_server(gateway, host, port, tls=tls, request_timeout=request_timeout, max_connections=max_connections)
 
 
 def serve_stdio(gateway: Gateway, stdin: TextIO, stdout: TextIO) -> int:

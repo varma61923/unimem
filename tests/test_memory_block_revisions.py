@@ -23,13 +23,16 @@ def test_create_only_and_stale_revision_do_not_mutate_history(tmp_path):
     assert len(blocks.block_history(root)) == 1
 
 
-@pytest.mark.parametrize("mutation", [
-    lambda root, rev: blocks.set_block(root, "project", "Set", expected_revision=rev),
-    lambda root, rev: blocks.append_block(root, "project", "Append", expected_revision=rev),
-    lambda root, rev: blocks.replace_block(root, "project", "Initial", "Changed", expected_revision=rev),
-    lambda root, rev: blocks.insert_block(root, "project", "Inserted", expected_revision=rev),
-    lambda root, rev: blocks.delete_block(root, "project", expected_revision=rev),
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda root, rev: blocks.set_block(root, "project", "Set", expected_revision=rev),
+        lambda root, rev: blocks.append_block(root, "project", "Append", expected_revision=rev),
+        lambda root, rev: blocks.replace_block(root, "project", "Initial", "Changed", expected_revision=rev),
+        lambda root, rev: blocks.insert_block(root, "project", "Inserted", expected_revision=rev),
+        lambda root, rev: blocks.delete_block(root, "project", expected_revision=rev),
+    ],
+)
 def test_all_mutations_use_the_same_revision_guard(tmp_path, mutation):
     root = str(tmp_path)
     first = blocks.set_block(root, "project", "Initial")

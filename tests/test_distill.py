@@ -10,8 +10,13 @@ from unimem.commands import distill_cmd
 
 def _trace(id, title, context_text, tags=None, agent_type="support"):
     return distill.TraceCandidate(
-        id=id, path=f"/tmp/{id}.md", title=title, context_text=context_text,
-        solution_text="fix", tags=tags or [], agent_type=agent_type,
+        id=id,
+        path=f"/tmp/{id}.md",
+        title=title,
+        context_text=context_text,
+        solution_text="fix",
+        tags=tags or [],
+        agent_type=agent_type,
     )
 
 
@@ -71,7 +76,6 @@ class TestFindClusters:
         assert len(clusters[0].traces) == 3
         assert len(clusters[1].traces) == 2
 
-
     def test_disjoint_vocabulary_traces_never_cluster(self):
         traces = [
             _trace("t1", "alpha", "alpha beta gamma delta"),
@@ -85,9 +89,7 @@ class TestFindClusters:
             _trace("t1", "alpha", "alpha beta gamma delta"),
             _trace("t2", "epsilon", "epsilon zeta eta theta"),
         ]
-        clusters = distill.find_clusters(
-            traces, existing_lessons_source_traces=[], similarity_threshold=0
-        )
+        clusters = distill.find_clusters(traces, existing_lessons_source_traces=[], similarity_threshold=0)
         assert len(clusters) == 1
         assert {t.id for t in clusters[0].traces} == {"t1", "t2"}
 
@@ -131,8 +133,19 @@ def store(tmp_path, monkeypatch):
 def _capture(store, title, context, solution, tags="refunds,policy", agent_type="support"):
     rc = main(
         [
-            "capture", "--title", title, "--context", context, "--solution", solution,
-            "--tags", tags, "--agent-type", agent_type, "--dest", str(store),
+            "capture",
+            "--title",
+            title,
+            "--context",
+            context,
+            "--solution",
+            solution,
+            "--tags",
+            tags,
+            "--agent-type",
+            agent_type,
+            "--dest",
+            str(store),
         ]
     )
     assert rc == 0
@@ -202,8 +215,10 @@ class TestDistillCommand:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         for i in range(2):
             _capture(
-                store, f"Refund confusion {i}",
-                "customer confused about refund timeline contradictory docs", "fix",
+                store,
+                f"Refund confusion {i}",
+                "customer confused about refund timeline contradictory docs",
+                "fix",
             )
         capsys.readouterr()
         main(["distill", "--dest", str(store)])
@@ -233,7 +248,8 @@ class TestDistillCommand:
     def test_a_hand_edited_scalar_tags_field_does_not_split_into_characters(self, store, capsys):
         main(["init", "--agent-type", "support", "--dest", str(store)])
         _capture(
-            store, "Refund confusion 0",
+            store,
+            "Refund confusion 0",
             "customer confused about refund timeline contradictory docs escalated",
             "point to canonical refund policy page",
         )
@@ -259,9 +275,7 @@ class TestDistillCommand:
             )
         lessons_dir = store / "memory" / "lessons"
         os.makedirs(lessons_dir, exist_ok=True)
-        (lessons_dir / "lesson_corrupt.md").write_text(
-            "---\nname: [unclosed\n---\n\nbody\n", encoding="utf-8"
-        )
+        (lessons_dir / "lesson_corrupt.md").write_text("---\nname: [unclosed\n---\n\nbody\n", encoding="utf-8")
         capsys.readouterr()
         assert main(["distill", "--dest", str(store)]) == 0
         err = capsys.readouterr().err
@@ -274,8 +288,18 @@ class TestLessonApproveReject:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         main(
             [
-                "lesson", "new", "--slug", "lesson_candidate_test", "--description", "d",
-                "--agent-type", "support", "--domain", "refunds", "--dest", str(store),
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_candidate_test",
+                "--description",
+                "d",
+                "--agent-type",
+                "support",
+                "--domain",
+                "refunds",
+                "--dest",
+                str(store),
             ]
         )
         path = store / "memory" / "lessons" / "lesson_candidate_test.md"
@@ -314,8 +338,18 @@ class TestLessonApproveReject:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         main(
             [
-                "lesson", "new", "--slug", "lesson_already_active", "--description", "d",
-                "--agent-type", "support", "--domain", "refunds", "--dest", str(store),
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_already_active",
+                "--description",
+                "d",
+                "--agent-type",
+                "support",
+                "--domain",
+                "refunds",
+                "--dest",
+                str(store),
             ]
         )
         capsys.readouterr()
@@ -339,18 +373,20 @@ class TestLessonApproveReject:
 
 class TestACandidateCarriesItsEvidence:
     @staticmethod
-    def _cluster(n=6, context="A large CSV export returned a zero-byte file with no error.",
-                 solutions=None):
+    def _cluster(n=6, context="A large CSV export returned a zero-byte file with no error.", solutions=None):
         from unimem import distill
 
         solutions = solutions or ["The worker was OOM-killed silently. Re-ran with date chunking."]
         return distill.Cluster(
             traces=[
                 distill.TraceCandidate(
-                    id=f"t{i}", path=f"/x/t{i}.md",
+                    id=f"t{i}",
+                    path=f"/x/t{i}.md",
                     title="Export job silently produces an empty file",
-                    context_text=context, solution_text=solutions[i % len(solutions)],
-                    tags=["exports"], agent_type="support",
+                    context_text=context,
+                    solution_text=solutions[i % len(solutions)],
+                    tags=["exports"],
+                    agent_type="support",
                 )
                 for i in range(n)
             ],
@@ -373,11 +409,16 @@ class TestACandidateCarriesItsEvidence:
         assert "(12 of 12)" in body
 
     def test_divergent_solutions_are_all_shown_and_flagged(self):
-        body = self._body(self._cluster(n=9, solutions=[
-            "Their IdP clock had drifted; synced NTP.",
-            "The ACS URL pointed at our old domain; updated it.",
-            "A SameSite policy blocked the session cookie; set it to None; Secure.",
-        ]))
+        body = self._body(
+            self._cluster(
+                n=9,
+                solutions=[
+                    "Their IdP clock had drifted; synced NTP.",
+                    "The ACS URL pointed at our old domain; updated it.",
+                    "A SameSite policy blocked the session cookie; set it to None; Secure.",
+                ],
+            )
+        )
         assert "3 different resolutions" in body
         assert "consider splitting" in body
         for fragment in ("synced NTP", "ACS URL", "SameSite"):
@@ -394,8 +435,7 @@ class TestACandidateCarriesItsEvidence:
         assert templates.unfilled_placeholders({}, body)
 
     def test_variants_beyond_the_cap_are_counted_not_dropped(self):
-        body = self._body(self._cluster(
-            n=8, solutions=[f"Distinct resolution number {i}." for i in range(8)]))
+        body = self._body(self._cluster(n=8, solutions=[f"Distinct resolution number {i}." for i in range(8)]))
         assert "further variant(s)" in body
 
 
@@ -407,10 +447,13 @@ class TestTheProposedDescriptionIsReadable:
         return distill.Cluster(
             traces=[
                 distill.TraceCandidate(
-                    id=f"t{i}", path=f"/x/t{i}.md", title=title,
+                    id=f"t{i}",
+                    path=f"/x/t{i}.md",
+                    title=title,
                     context_text="Customer reported the reset email never arrived.",
                     solution_text="Removed the address from the suppression list.",
-                    tags=["email"], agent_type="support",
+                    tags=["email"],
+                    agent_type="support",
                 )
                 for i, title in enumerate(titles)
             ],
@@ -429,7 +472,8 @@ class TestTheProposedDescriptionIsReadable:
         from unimem import distill
 
         assert "and 3 more like it" in distill.propose_description(
-            self._cluster(["Password reset email never arrived"] * 4))
+            self._cluster(["Password reset email never arrived"] * 4)
+        )
 
     def test_a_single_trace_needs_no_suffix(self):
         from unimem import distill
@@ -445,12 +489,14 @@ class TestTheProposedDescriptionIsReadable:
     def test_it_picks_the_most_typical_trace_not_the_first(self):
         from unimem import distill
 
-        cluster = self._cluster([
-            "An unrelated outlier about billing invoices",
-            "Password reset email never arrived",
-            "Password reset email never arrived for a customer",
-            "Password reset email never arrived again",
-        ])
+        cluster = self._cluster(
+            [
+                "An unrelated outlier about billing invoices",
+                "Password reset email never arrived",
+                "Password reset email never arrived for a customer",
+                "Password reset email never arrived again",
+            ]
+        )
         assert "Password reset" in distill.representative(cluster).title
 
     def test_it_falls_back_when_there_is_no_title(self):
@@ -472,7 +518,8 @@ class TestDistillWithLLM:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         for i in range(3):
             _capture(
-                store, f"Refund confusion {i}",
+                store,
+                f"Refund confusion {i}",
                 "customer confused about refund timeline contradictory docs escalated",
                 "point to canonical refund policy page",
             )
@@ -483,7 +530,8 @@ class TestDistillWithLLM:
         self._repeated_pattern(store)
         monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
         monkeypatch.setattr(
-            llm, "_call_anthropic",
+            llm,
+            "_call_anthropic",
             lambda cfg, prompt: (json.dumps(dict(self._GOOD, evidence=[])), {}),
         )
         capsys.readouterr()
@@ -531,7 +579,8 @@ class TestDistillWithLLM:
         self._repeated_pattern(store)
         monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
         monkeypatch.setattr(
-            llm, "_call_anthropic",
+            llm,
+            "_call_anthropic",
             lambda cfg, prompt: (json.dumps(dict(self._GOOD, evidence=[])), {}),
         )
         capsys.readouterr()
@@ -540,13 +589,15 @@ class TestDistillWithLLM:
         assert main(["lesson", "validate", "--dest", str(store)]) == 0
 
     def test_an_llm_drafted_candidate_carries_the_models_judgements_into_every_section(
-            self, store, monkeypatch, capsys):
+        self, store, monkeypatch, capsys
+    ):
         from unimem import frontmatter, llm
 
         self._repeated_pattern(store)
         monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
         monkeypatch.setattr(
-            llm, "_call_anthropic",
+            llm,
+            "_call_anthropic",
             lambda cfg, prompt: (json.dumps(dict(self._GOOD, evidence=[])), {}),
         )
         capsys.readouterr()

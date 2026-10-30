@@ -24,7 +24,7 @@ def _directive(csp: str, name: str) -> str:
     for part in csp.split(";"):
         part = part.strip()
         if part.startswith(name + " "):
-            return part[len(name) + 1:]
+            return part[len(name) + 1 :]
     raise AssertionError(f"{name} missing from {csp!r}")
 
 
@@ -90,10 +90,13 @@ def test_the_page_offers_a_skip_link_to_its_content():
     assert '<a class="skip" href="#main">' in page and '<main id="main" tabindex="-1">' in page
 
 
-@pytest.mark.parametrize("render", [
-    lambda s: console._page("Your fleet", "", auto_refresh_seconds=s),
-    lambda s: admin._page("Overview", "", auto_refresh_seconds=s),
-])
+@pytest.mark.parametrize(
+    "render",
+    [
+        lambda s: console._page("Your fleet", "", auto_refresh_seconds=s),
+        lambda s: admin._page("Overview", "", auto_refresh_seconds=s),
+    ],
+)
 def test_a_live_page_can_be_paused(render):
     live = render(30).body.decode()
     assert '<button type="button" class="live-toggle" data-live-toggle hidden>' in live
@@ -108,25 +111,33 @@ def test_a_hidden_tab_does_not_reload():
 
 
 def _request(method: str, **headers: str) -> Request:
-    return Request({
-        "type": "http", "method": method, "path": "/app/keys/issue", "query_string": b"",
-        "headers": [(k.lower().replace("_", "-").encode(), v.encode()) for k, v in headers.items()],
-    })
+    return Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": "/app/keys/issue",
+            "query_string": b"",
+            "headers": [(k.lower().replace("_", "-").encode(), v.encode()) for k, v in headers.items()],
+        }
+    )
 
 
-@pytest.mark.parametrize(("method", "headers", "refused"), [
-    ("POST", {"sec_fetch_site": "same-origin"}, False),
-    ("POST", {"sec_fetch_site": "none"}, False),
-    ("POST", {"sec_fetch_site": "same-site"}, True),
-    ("POST", {"sec_fetch_site": "cross-site"}, True),
-    ("POST", {"sec_fetch_site": "same-origin", "origin": "https://evil.example"}, False),
-    ("POST", {"origin": "https://hub.example.com", "host": "hub.example.com"}, False),
-    ("POST", {"origin": "https://HUB.example.com", "host": "hub.example.com"}, False),
-    ("POST", {"origin": "https://evil.example", "host": "hub.example.com"}, True),
-    ("POST", {"origin": "null", "host": "hub.example.com"}, True),
-    ("POST", {"host": "hub.example.com"}, False),
-    ("GET", {"sec_fetch_site": "cross-site"}, False),
-])
+@pytest.mark.parametrize(
+    ("method", "headers", "refused"),
+    [
+        ("POST", {"sec_fetch_site": "same-origin"}, False),
+        ("POST", {"sec_fetch_site": "none"}, False),
+        ("POST", {"sec_fetch_site": "same-site"}, True),
+        ("POST", {"sec_fetch_site": "cross-site"}, True),
+        ("POST", {"sec_fetch_site": "same-origin", "origin": "https://evil.example"}, False),
+        ("POST", {"origin": "https://hub.example.com", "host": "hub.example.com"}, False),
+        ("POST", {"origin": "https://HUB.example.com", "host": "hub.example.com"}, False),
+        ("POST", {"origin": "https://evil.example", "host": "hub.example.com"}, True),
+        ("POST", {"origin": "null", "host": "hub.example.com"}, True),
+        ("POST", {"host": "hub.example.com"}, False),
+        ("GET", {"sec_fetch_site": "cross-site"}, False),
+    ],
+)
 def test_a_state_changing_request_from_another_origin_is_refused(method, headers, refused):
     assert admin.cross_origin_refused(_request(method, **headers)) is refused
 
@@ -147,8 +158,9 @@ def test_a_shown_once_secret_is_labelled_and_copyable():
     assert '<button type="button" class="btn" data-copy hidden>Copy</button>' in field
     assert 'role="status"' in field
     assert "button[data-copy]" in admin._FORM_GUARD_SCRIPT
-    page = signup._page("Account created", signup._ISSUED.format(
-        key_field=field, org_id="o", console_path="/app")).body.decode()
+    page = signup._page(
+        "Account created", signup._ISSUED.format(key_field=field, org_id="o", console_path="/app")
+    ).body.decode()
     assert 'id="api-key-label"' in page and "data-copy" in page
 
 
@@ -165,8 +177,8 @@ def test_an_irreversible_action_asks_first(module):
     for m in re.finditer(r'<form method="post" action="([^"]*)"', source):
         if not _IRREVERSIBLE.search(m.group(1)):
             continue
-        opening = source[m.start():]
-        opening = opening[:min(i for i in (opening.find("<input"), opening.find("<button"), 800) if i > 0)]
+        opening = source[m.start() :]
+        opening = opening[: min(i for i in (opening.find("<input"), opening.find("<button"), 800) if i > 0)]
         assert "data-confirm=" in opening, m.group(1)
         checked += 1
     assert checked

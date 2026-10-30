@@ -1,5 +1,6 @@
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -8,12 +9,27 @@ from unimem.conversation import Store
 
 
 def _dataset(path, count=5):
-    payload = [{"sample_id": "conversation", "conversation": {
-        "session_1_date_time": "2025-01-01", "session_1": [
-            {"dia_id": "D1:1", "speaker": "Nia", "text": "The garden grows lavender."},
-            {"dia_id": "D1:2", "speaker": "Sol", "text": "The bakery sells sourdough."}]},
-        "qa": [{"question": f"Question {i} about the garden?", "answer": "PRIVATE_GOLD_ANSWER",
-                "evidence": ["D1:1"], "category": 4} for i in range(count)]}]
+    payload = [
+        {
+            "sample_id": "conversation",
+            "conversation": {
+                "session_1_date_time": "2025-01-01",
+                "session_1": [
+                    {"dia_id": "D1:1", "speaker": "Nia", "text": "The garden grows lavender."},
+                    {"dia_id": "D1:2", "speaker": "Sol", "text": "The bakery sells sourdough."},
+                ],
+            },
+            "qa": [
+                {
+                    "question": f"Question {i} about the garden?",
+                    "answer": "PRIVATE_GOLD_ANSWER",
+                    "evidence": ["D1:1"],
+                    "category": 4,
+                }
+                for i in range(count)
+            ],
+        }
+    ]
     path.write_text(json.dumps(payload), encoding="utf-8")
     return str(path)
 
@@ -34,7 +50,7 @@ def test_exact_seeded_sampling_preserves_entire_history_and_excludes_labels(tmp_
 
 def test_unresolvable_annotations_are_retained_as_misses_instead_of_excluded(tmp_path):
     data = _dataset(tmp_path / "dataset.json", count=1)
-    payload = json.loads(open(data).read())
+    payload = json.loads(Path(data).read_text())
     payload[0]["qa"][0]["evidence"] = ["D1:1", "D1:2 D4:3", "D:11:26"]
     with open(data, "w") as handle:
         json.dump(payload, handle)
@@ -44,17 +60,23 @@ def test_unresolvable_annotations_are_retained_as_misses_instead_of_excluded(tmp
 
 def test_selected_source_does_not_prove_omitted_text_or_missing_references(tmp_path):
     with Store(str(tmp_path), "evidence") as store:
-        store.add("s", [{"id": "ref", "text": "The bicycle is blue. Its serial number is XYZ."}],
-                  session_at="2025-01-01")
+        store.add(
+            "s", [{"id": "ref", "text": "The bicycle is blue. Its serial number is XYZ."}], session_at="2025-01-01"
+        )
         ids = [int(row[0]) for row in store.db.execute("SELECT id FROM turns")]
         selected, full, complete, missing = source_retention(
-            store, ids, "The bicycle is blue.", frozenset({"ref", "missing"}))
+            store, ids, "The bicycle is blue.", frozenset({"ref", "missing"})
+        )
         assert selected == 0.5
         assert full == 0
         assert complete is False
         assert missing == 1
-        assert source_retention(store, ids, "The bicycle is blue. Its serial number is XYZ.",
-                                frozenset({"ref"})) == (1.0, 1.0, True, 0)
+        assert source_retention(store, ids, "The bicycle is blue. Its serial number is XYZ.", frozenset({"ref"})) == (
+            1.0,
+            1.0,
+            True,
+            0,
+        )
         assert source_retention(store, ids, "", frozenset()) == (None, None, None, 0)
 
 
@@ -89,9 +111,15 @@ def test_missing_pairs_duplicates_and_empty_evidence_are_not_fabricated_as_succe
         clustered_delta([_row(), _row()], "latency_ms")
     with pytest.raises(ValueError, match="unsupported"):
         clustered_delta([], "accuracy")
-    rows = [replace(_row(), selected_source_recall=None, full_source_text_recall=None, complete_sources=None),
-            replace(_row(strategy="coverage-v1"), selected_source_recall=None,
-                    full_source_text_recall=None, complete_sources=None)]
+    rows = [
+        replace(_row(), selected_source_recall=None, full_source_text_recall=None, complete_sources=None),
+        replace(
+            _row(strategy="coverage-v1"),
+            selected_source_recall=None,
+            full_source_text_recall=None,
+            complete_sources=None,
+        ),
+    ]
     assert clustered_delta(rows, "full_source_text_recall")["candidate_minus_baseline"] is None
 
 
@@ -102,9 +130,17 @@ def test_mismatched_budgets_and_categories_cannot_create_a_comparison():
         clustered_delta([_row(), replace(_row(strategy="coverage-v1"), category="temporal")], "latency_ms")
 
 
-@pytest.mark.parametrize("changes", [{"latency_ms": float("nan")}, {"latency_ms": -1},
-                                    {"budget": True}, {"full_source_text_recall": 2},
-                                    {"estimated_tokens": 101}, {"unresolved_sources": -1}])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"latency_ms": float("nan")},
+        {"latency_ms": -1},
+        {"budget": True},
+        {"full_source_text_recall": 2},
+        {"estimated_tokens": 101},
+        {"unresolved_sources": -1},
+    ],
+)
 def test_malformed_measurements_are_rejected(changes):
     with pytest.raises(ValueError):
         replace(_row(), **changes)

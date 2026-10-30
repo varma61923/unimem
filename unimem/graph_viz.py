@@ -1,4 +1,5 @@
 """Self-contained interactive graph viz export (offline, no CDN)."""
+
 from __future__ import annotations
 
 import html

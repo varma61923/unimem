@@ -333,9 +333,7 @@ def _print(report: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m hub.bench_retrieval", description=__doc__.split("\n\n")[0]
-    )
+    parser = argparse.ArgumentParser(prog="python -m hub.bench_retrieval", description=__doc__.split("\n\n")[0])
     parser.add_argument("--probes", default="v1", choices=["v1", "v2", "all"])
     parser.add_argument(
         "--distractors",

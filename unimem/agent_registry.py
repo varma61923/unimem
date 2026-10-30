@@ -1,4 +1,5 @@
 """Authenticated self-registration and per-agent SDK skills/plugin manifests."""
+
 from __future__ import annotations
 
 import hashlib
@@ -61,9 +62,13 @@ def signup(root: str, agent_id: str, *, labels: list[str] | None = None) -> dict
         if agent_id in agents:
             raise ValueError("agent already registered; credentials cannot be replayed")
         token = "cta_" + secrets.token_urlsafe(32)
-        row = {"id": agent_id, "scopes": sorted(set(["agent:" + agent_id, *labels])),
-               "created_at": datetime.now(timezone.utc).isoformat(),
-               "token_hash": hashlib.sha256(token.encode()).hexdigest(), "heartbeat_at": None}
+        row = {
+            "id": agent_id,
+            "scopes": sorted(set(["agent:" + agent_id, *labels])),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "heartbeat_at": None,
+        }
         agents[agent_id] = row
         _jsonl.write_json(path, agents)
     return {"agent_id": agent_id, "token": token, "scopes": row["scopes"], "plugin": plugin(root, agent_id)}
@@ -82,9 +87,13 @@ def authenticate(root: str, token: str) -> dict | None:
 def plugin(root: str, agent_id: str) -> dict:
     if agent_id not in load(root):
         raise ValueError("unknown agent")
-    return {"name": "unimem-" + agent_id, "agent_id": agent_id, "version": "1.0.0",
-            "skills": [{"name": "unimem-sdk", "path": "skills/unimem-sdk/SKILL.md", "content": SDK_SKILL}],
-            "api": {"version": "v1", "auth": "bearer", "token_env": "UNIMEM_AGENT_TOKEN"}}
+    return {
+        "name": "unimem-" + agent_id,
+        "agent_id": agent_id,
+        "version": "1.0.0",
+        "skills": [{"name": "unimem-sdk", "path": "skills/unimem-sdk/SKILL.md", "content": SDK_SKILL}],
+        "api": {"version": "v1", "auth": "bearer", "token_env": "UNIMEM_AGENT_TOKEN"},
+    }
 
 
 def heartbeat(root: str, agent_id: str) -> dict:
@@ -130,13 +139,17 @@ def rotate(root: str, agent_id: str, *, reinstate: bool = False) -> dict:
             raise ValueError("agent is revoked; rotate with reinstate to restore it")
         token = "cta_" + secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc).isoformat()
-        update = {"token_hash": hashlib.sha256(token.encode()).hexdigest(), "rotated_at": now}
+        update: dict[str, str | bool] = {"token_hash": hashlib.sha256(token.encode()).hexdigest(), "rotated_at": now}
         if agents[agent_id].get("revoked"):
             update.update(revoked=False, reinstated_at=now)
         agents[agent_id].update(update)
         _jsonl.write_json(path, agents)
-    return {"agent_id": agent_id, "token": token, "scopes": agents[agent_id]["scopes"],
-            "plugin": plugin(root, agent_id)}
+    return {
+        "agent_id": agent_id,
+        "token": token,
+        "scopes": agents[agent_id]["scopes"],
+        "plugin": plugin(root, agent_id),
+    }
 
 
 def enroll(root: str) -> dict:

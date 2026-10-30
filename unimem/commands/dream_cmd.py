@@ -1,4 +1,5 @@
 """`unimem dream`: the scheduled consolidation pass, and the recipe to schedule it."""
+
 from __future__ import annotations
 
 import argparse
@@ -18,21 +19,32 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "dream",
         help="One consolidation pass for a schedule: draft from failures, propose fusions, list what waits "
-             "for review. Writes only status=review drafts.",
+        "for review. Writes only status=review drafts.",
     )
-    p.add_argument("--no-draft", action="store_true",
-                   help="Do not call a model: report only (the default when UNIMEM_LLM_API_KEY, or a cloud "
-                        "provider, is not configured).")
-    p.add_argument("--recipe", choices=RECIPES, default=None,
-                   help="Print the schedule entry for this runner and exit; installs nothing.")
+    p.add_argument(
+        "--no-draft",
+        action="store_true",
+        help="Do not call a model: report only (the default when UNIMEM_LLM_API_KEY, or a cloud "
+        "provider, is not configured).",
+    )
+    p.add_argument(
+        "--recipe",
+        choices=RECIPES,
+        default=None,
+        help="Print the schedule entry for this runner and exit; installs nothing.",
+    )
     p.add_argument("--every", choices=("daily", "weekly"), default="weekly", help="With --recipe.")
     p.add_argument("--dest", default=None)
     p.add_argument("--causal", action="store_true", help="Report an itemized effect-weighted dream budget.")
     p.add_argument("--max-model-calls", type=int, default=10)
     p.add_argument("--max-tokens", type=int, default=50000)
     p.add_argument("--max-cost-usd", type=float, default=None)
-    p.add_argument("--max-seconds", type=float, default=120,
-                   help="Stop starting work after this budget; an in-flight provider call may finish later.")
+    p.add_argument(
+        "--max-seconds",
+        type=float,
+        default=120,
+        help="Stop starting work after this budget; an in-flight provider call may finish later.",
+    )
     p.set_defaults(func=run)
 
 
@@ -48,18 +60,20 @@ def recipe(kind: str, every: str, dest: str | None) -> str:
             "# ~/.config/systemd/user/unimem-dream.service\n[Unit]\nDescription=UniMem dream pass\n\n"
             f"[Service]\nType=oneshot\nExecStart={command}\n\n"
             "# ~/.config/systemd/user/unimem-dream.timer\n[Unit]\nDescription=Schedule the dream pass\n\n"
-            f"[Timer]\nOnCalendar={calendar}\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n")
+            f"[Timer]\nOnCalendar={calendar}\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n"
+        )
     cron = "17 3 * * *" if every == "daily" else "17 3 * * 1"
     return (
         "# .github/workflows/unimem-dream.yml: runs on a schedule, opens no PR, activates nothing\n"
         "name: unimem dream\non:\n  schedule:\n"
-        f"    - cron: \"{cron}\"\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  dream:\n"
+        f'    - cron: "{cron}"\n  workflow_dispatch:\n\npermissions:\n  contents: read\n\njobs:\n  dream:\n'
         "    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n"
         "      - run: python3 -m pip install unimem\n"
         f"      - run: {command}\n"
         "        env:\n          UNIMEM_LLM_API_KEY: ${{ secrets.UNIMEM_LLM_API_KEY }}\n"
         "      - uses: actions/upload-artifact@v4\n        with:\n          name: dream\n"
-        "          path: memory/dream/\n")
+        "          path: memory/dream/\n"
+    )
 
 
 def _llm_configured() -> bool:
@@ -87,9 +101,16 @@ def run(args: argparse.Namespace) -> int:
         print(recipe(args.recipe, args.every, args.dest), end="")
         return 0
     root = paths.resolve_root(args.dest)
-    runtime = LLMRuntime(root, "dream-" + str(time.time_ns()), budget=Budget(
-        calls=getattr(args, "max_model_calls", 10), tokens=getattr(args, "max_tokens", 50000),
-        cost_usd=getattr(args, "max_cost_usd", None), seconds=getattr(args, "max_seconds", 120)))
+    runtime = LLMRuntime(
+        root,
+        "dream-" + str(time.time_ns()),
+        budget=Budget(
+            calls=getattr(args, "max_model_calls", 10),
+            tokens=getattr(args, "max_tokens", 50000),
+            cost_usd=getattr(args, "max_cost_usd", None),
+            seconds=getattr(args, "max_seconds", 120),
+        ),
+    )
     try:
         with runtime.scope():
             return _run_pass(args)
@@ -127,8 +148,11 @@ def _run_pass(args: argparse.Namespace) -> int:
             with purpose("distill"), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
                 cli(["distill", "--draft", "--signal", s.name, "--dest", root])
     elif signals:
-        lines += ["_No model configured, so nothing was drafted. Run `unimem distill --failed` for "
-                  "evidence-only candidates._", ""]
+        lines += [
+            "_No model configured, so nothing was drafted. Run `unimem distill --failed` for "
+            "evidence-only candidates._",
+            "",
+        ]
 
     out = io.StringIO()
     from unimem.llm_runtime import purpose
@@ -175,7 +199,8 @@ def _run_pass(args: argparse.Namespace) -> int:
     ]
 
     profile_lines = [
-        f"# UniMem Active Space Profile ({now.strftime('%Y-%m-%d %H:%M')}Z)", "",
+        f"# UniMem Active Space Profile ({now.strftime('%Y-%m-%d %H:%M')}Z)",
+        "",
         "## Working Memory Blocks",
     ]
     if blocks:
@@ -209,10 +234,15 @@ def _run_pass(args: argparse.Namespace) -> int:
 
     if time.monotonic() - started < max_seconds:
         consolidated = observations.consolidate_facts(root)
-        offline = memory_control.offline_pass(root, max_jobs=20,
-                    seconds=max(0, max_seconds - (time.monotonic() - started)))
-        lines += ["## Standing questions and observations",
-                  f"- Observations consolidated: {len(consolidated)}", f"- Model refresh jobs: {offline}", ""]
+        offline = memory_control.offline_pass(
+            root, max_jobs=20, seconds=max(0, max_seconds - (time.monotonic() - started))
+        )
+        lines += [
+            "## Standing questions and observations",
+            f"- Observations consolidated: {len(consolidated)}",
+            f"- Model refresh jobs: {offline}",
+            "",
+        ]
     if time.monotonic() - started < max_seconds:
         from unimem import experience_skills
 
@@ -257,6 +287,7 @@ def _review(root: str) -> list[str]:
 def main_dream(root: str, draft: bool = False) -> int:
     """Run a dreaming pass programmatically (used by agent_loop and tests)."""
     import argparse
+
     args = argparse.Namespace(
         recipe=None,
         every="weekly",
@@ -264,4 +295,3 @@ def main_dream(root: str, draft: bool = False) -> int:
         no_draft=not draft,
     )
     return run(args)
-

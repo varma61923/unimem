@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from functools import lru_cache, wraps
 from typing import Any, Callable, ParamSpec, TypeVar, overload
 
-_ACTIVE = ContextVar("unimem_configuration", default=None)
+_ACTIVE: ContextVar[dict | None] = ContextVar("unimem_configuration", default=None)
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
 with open(os.path.join(os.path.dirname(__file__), "configuration.schema.json"), encoding="utf-8") as _stream:

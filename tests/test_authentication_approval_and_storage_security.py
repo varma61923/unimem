@@ -26,6 +26,7 @@ from unimem.commands import import_cmd  # noqa: E402
 try:
     from hub import auth, crud  # noqa: E402
     from hub.models import ApiKey, Trace  # noqa: E402
+
     _has_hub = True
 except ImportError:
     _has_hub = False
@@ -69,17 +70,21 @@ class TestArgon2HardeningAndFailClosed:
         assert auth._verify_argon2("any_secret", "") is False
 
     def test_argon2_missing_hash_raises_runtime_error(self):
-        with patch.object(auth, "_has_argon2", False), \
-             patch.object(auth, "PasswordHasher", None), \
-             patch.object(auth, "_hasher", None):
+        with (
+            patch.object(auth, "_has_argon2", False),
+            patch.object(auth, "PasswordHasher", None),
+            patch.object(auth, "_hasher", None),
+        ):
             with pytest.raises(RuntimeError, match="argon2-cffi is required for API key legacy hashing/issuance"):
                 auth._hash_argon2("test_secret")
 
     def test_argon2_missing_verify_returns_false_and_logs_warning(self, caplog):
         with caplog.at_level(logging.WARNING, logger="hub.auth"):
-            with patch.object(auth, "_has_argon2", False), \
-                 patch.object(auth, "PasswordHasher", None), \
-                 patch.object(auth, "_hasher", None):
+            with (
+                patch.object(auth, "_has_argon2", False),
+                patch.object(auth, "PasswordHasher", None),
+                patch.object(auth, "_hasher", None),
+            ):
                 result = auth._verify_argon2("test_secret", "$argon2id$v=19$dummy")
                 assert result is False
                 assert any("argon2-cffi is not installed" in record.message for record in caplog.records)
@@ -90,9 +95,11 @@ class TestArgon2HardeningAndFailClosed:
             org = MagicMock()
             session.get.return_value = org
 
-            with patch.object(auth, "_has_argon2", False), \
-                 patch.object(auth, "PasswordHasher", None), \
-                 patch.object(auth, "_hasher", None):
+            with (
+                patch.object(auth, "_has_argon2", False),
+                patch.object(auth, "PasswordHasher", None),
+                patch.object(auth, "_hasher", None),
+            ):
                 with pytest.raises(RuntimeError, match="argon2-cffi is required for API key issuance"):
                     await auth.issue_api_key(session, "test-org-id")
 
@@ -103,9 +110,11 @@ class TestArgon2HardeningAndFailClosed:
             session = AsyncMock()
             now = datetime.now(timezone.utc)
             with caplog.at_level(logging.WARNING, logger="hub.auth"):
-                with patch.object(auth, "_has_argon2", False), \
-                     patch.object(auth, "PasswordHasher", None), \
-                     patch.object(auth, "_hasher", None):
+                with (
+                    patch.object(auth, "_has_argon2", False),
+                    patch.object(auth, "PasswordHasher", None),
+                    patch.object(auth, "_hasher", None),
+                ):
                     res = await auth._verify_by_legacy_scan(session, "unimem_live_candidate_raw_key_123", now)
                     assert res is None
                     assert any("argon2-cffi is not installed" in record.message for record in caplog.records)
@@ -134,7 +143,7 @@ class TestHubPepperRotationAndTenantIsolation:
             candidate = ApiKey(
                 id="key_test_123",
                 org_id="org_test_tenant",
-                key_prefix=raw_key[:auth._PREFIX_LEN],
+                key_prefix=raw_key[: auth._PREFIX_LEN],
                 key_hash=auth._hasher.hash(raw_key),
                 key_hmac=old_hmac,
                 revoked_at=None,
@@ -177,7 +186,7 @@ class TestHubPepperRotationAndTenantIsolation:
             candidate = ApiKey(
                 id="key_test_456",
                 org_id="org_test_tenant_2",
-                key_prefix=raw_key[:auth._PREFIX_LEN],
+                key_prefix=raw_key[: auth._PREFIX_LEN],
                 key_hash=auth._hasher.hash(raw_key),
                 key_hmac=current_hmac,
                 revoked_at=None,
@@ -233,8 +242,7 @@ class TestHubPepperRotationAndTenantIsolation:
                 assert res["id"] == trace_id
 
             update_calls = [
-                call for call in session.execute.call_args_list
-                if len(call[0]) > 0 and isinstance(call[0][0], Update)
+                call for call in session.execute.call_args_list if len(call[0]) > 0 and isinstance(call[0][0], Update)
             ]
             assert len(update_calls) == 1, "Expected exactly one UPDATE statement"
             stmt = update_calls[0][0][0]
@@ -266,8 +274,7 @@ class TestHubPepperRotationAndTenantIsolation:
             assert res is None
 
             update_calls = [
-                call for call in session.execute.call_args_list
-                if len(call[0]) > 0 and isinstance(call[0][0], Update)
+                call for call in session.execute.call_args_list if len(call[0]) > 0 and isinstance(call[0][0], Update)
             ]
             assert len(update_calls) == 0, "No UPDATE statement should be executed for missing/foreign trace"
 
@@ -512,6 +519,7 @@ class TestMcpServerLockSafetyAndTraceIo:
                 def decorator(fn):
                     self.tools[fn.__name__] = fn
                     return fn
+
                 return decorator
 
         mcp_mcpserver_mod.MCPServer = StubMCPServer
@@ -576,8 +584,8 @@ class TestMcpServerLockSafetyAndTraceIo:
             "title: Whitespace Frontmatter\n"
             "agent_type: code\n"
             "tags: [test]\n"
-            "context_text: \"   \\n\\t  \"\n"
-            "solution_text: \"   \"\n"
+            'context_text: "   \\n\\t  "\n'
+            'solution_text: "   "\n'
             "outcome:\n"
             "  resolved: true\n"
             "---\n\n"

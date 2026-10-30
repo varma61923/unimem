@@ -165,8 +165,9 @@ def test_preference_capture_recovers_invalid_observation_metadata(tmp_path, obse
     scope = {"agent": "a"}
     identity, content = preference_candidates("I prefer pytest.", scope)[0]
     journal = Journal(str(tmp_path))
-    journal.put(MemoryRecord(identity, "profile", 1,
-                             {**content, "weight": 1, "observations": observations}, scope=scope))
+    journal.put(
+        MemoryRecord(identity, "profile", 1, {**content, "weight": 1, "observations": observations}, scope=scope)
+    )
     maintain_preferences(journal, "I prefer pytest.", scope)
     updated = journal.latest(identity)
     assert updated.version == 2

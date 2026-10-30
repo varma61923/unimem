@@ -67,7 +67,7 @@ def checked_jar(path: Path) -> Path:
                         raise
                 # Immutable artifacts can briefly 404 on a mirror or CDN.
                 # Retry with a delay; the pinned digest remains authoritative.
-                time.sleep(min(16, 2 ** attempt))
+                time.sleep(min(16, 2**attempt))
             if digest.hexdigest() != SHA256:
                 raise ValueError("OpenAPI Generator checksum mismatch")
             os.replace(temporary, path)
@@ -104,13 +104,13 @@ def kotlin_compatible_spec(source: Path, target: Path) -> Path:
                 normalize(child)
 
     normalize(document)
-    target.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n",
-                      encoding="utf-8")
+    target.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     return target
 
 
-def generate(command: list[str], spec: Path, language: str, target: Path, *,
-             package_version: str | None = None) -> None:
+def generate(
+    command: list[str], spec: Path, language: str, target: Path, *, package_version: str | None = None
+) -> None:
     subprocess.run(
         [
             *command,
@@ -126,9 +126,13 @@ def generate(command: list[str], spec: Path, language: str, target: Path, *,
             "--git-repo-id",
             "unimem",
             "--additional-properties",
-            PROPERTIES[language] if package_version is None else re.sub(
+            PROPERTIES[language]
+            if package_version is None
+            else re.sub(
                 r"(npmVersion|packageVersion|artifactVersion)=[^,]+",
-                lambda match: match.group(1) + "=" + package_version, PROPERTIES[language]),
+                lambda match: match.group(1) + "=" + package_version,
+                PROPERTIES[language],
+            ),
             "--global-property",
             "apiDocs=false,modelDocs=false,apiTests=false,modelTests=false",
         ],
@@ -160,21 +164,28 @@ def main() -> int:
     parser.add_argument("--jar", type=Path)
     parser.add_argument("--languages", nargs="+", choices=GENERATORS, default=list(GENERATORS))
     parser.add_argument("--validate-only", action="store_true")
-    parser.add_argument("--api", choices=("memory", "gateway", "hub"), default="memory",
-                        help="Generate the memory subset (default), all gateway routes, or the Hub REST API")
+    parser.add_argument(
+        "--api",
+        choices=("memory", "gateway", "hub"),
+        default="memory",
+        help="Generate the memory subset (default), all gateway routes, or the Hub REST API",
+    )
     parser.add_argument("--package-version", help="release version for generated package manifests (SemVer)")
     args = parser.parse_args()
     if args.package_version is not None and not re.fullmatch(
-            r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?",
-            args.package_version):
+        r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?",
+        args.package_version,
+    ):
         parser.error("--package-version must be a SemVer release or prerelease")
     jar = checked_jar(args.jar or ROOT / "build" / ("openapi-generator-cli-" + VERSION + ".jar"))
-    spec = {"memory": ROOT / "sdk" / "openapi.json", "gateway": ROOT / "openapi" / "gateway.json",
-            "hub": ROOT / "hub" / "openapi.json"}[args.api]
+    spec = {
+        "memory": ROOT / "sdk" / "openapi.json",
+        "gateway": ROOT / "openapi" / "gateway.json",
+        "hub": ROOT / "hub" / "openapi.json",
+    }[args.api]
     command = ["java", "-jar", str(jar)]
     # Validate every published contract before generating the selected API surface.
-    for document in (ROOT / "sdk" / "openapi.json", ROOT / "openapi" / "gateway.json",
-                     ROOT / "hub" / "openapi.json"):
+    for document in (ROOT / "sdk" / "openapi.json", ROOT / "openapi" / "gateway.json", ROOT / "hub" / "openapi.json"):
         subprocess.run([*command, "validate", "-i", str(document)], check=True)
     if args.validate_only:
         return 0

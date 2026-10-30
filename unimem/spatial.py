@@ -5,6 +5,7 @@ summaries without claiming binary compatibility with their native formats.
 All queries authorize tenant/site/robot labels before matching objects. Event
 validity and record time are distinct; corrections never erase prior beliefs.
 """
+
 from __future__ import annotations
 
 import copy
@@ -68,8 +69,11 @@ def _state(root: str) -> _Spatial:
         if cached is not None and cached.count == count and cached.tip == tip:
             _STATES.move_to_end(key)
             return cached
-        if cached is None or count < cached.count or (cached.count and fp.digest(
-                fp.signed_at(root, JOURNAL, cached.count - 1)) != cached.tip):
+        if (
+            cached is None
+            or count < cached.count
+            or (cached.count and fp.digest(fp.signed_at(root, JOURNAL, cached.count - 1)) != cached.tip)
+        ):
             cached = _Spatial()
         count, tip, events = fp.event_snapshot(root, JOURNAL, cached.count)
         for row in events:
@@ -88,24 +92,34 @@ def _state(root: str) -> _Spatial:
 
 
 def _same_placement(before: dict[str, Any], after: dict[str, Any]) -> bool:
-    return (before["frame"] == after["frame"] and before["class"] == after["class"]
-            and len(before["pose"]) == len(after["pose"])
-            and all(abs(a - b) <= PLACEMENT_TOLERANCE for a, b in zip(before["pose"], after["pose"])))
+    return (
+        before["frame"] == after["frame"]
+        and before["class"] == after["class"]
+        and len(before["pose"]) == len(after["pose"])
+        and all(abs(a - b) <= PLACEMENT_TOLERANCE for a, b in zip(before["pose"], after["pose"]))
+    )
 
 
-def update(root: str, delta: dict[str, Any], *, context: dict[str, str],
-           correction_of: str | None = None) -> dict[str, Any]:
+def update(
+    root: str, delta: dict[str, Any], *, context: dict[str, str], correction_of: str | None = None
+) -> dict[str, Any]:
     from unimem.household import assert_spatial_persistable
 
     assert_spatial_persistable(root, delta, context)
     # Household identity proof is an admission token, not scene content. Never
     # duplicate it into the spatial journal after the pre-write gate succeeds.
-    delta = {key: value for key, value in delta.items()
-             if key not in {"household_gate", "contains_person", "room_id"}}
+    delta = {key: value for key, value in delta.items() if key not in {"household_gate", "contains_person", "room_id"}}
     scopes = _context(context)
     required = {"object_id", "class", "pose", "frame", "robot_id", "timestamp", "confidence"}
-    allowed = required | {"embedding_ref", "relations", "keyframe", "media", "room_id",
-                          "contains_person", "household_gate"}
+    allowed = required | {
+        "embedding_ref",
+        "relations",
+        "keyframe",
+        "media",
+        "room_id",
+        "contains_person",
+        "household_gate",
+    }
     if not required <= set(delta) or not set(delta) <= allowed:
         raise ValueError("spatial delta requires bounded object, class, pose/frame, robot, timestamp and confidence")
     for key in ("object_id", "class", "frame", "robot_id"):
@@ -145,8 +159,11 @@ def update(root: str, delta: dict[str, Any], *, context: dict[str, str],
         if correction_of:
             with fp._GUARD:
                 original = state.by_id.get(correction_of)
-            if (original is None or original["context"] != context
-                    or original["delta"]["object_id"] != delta["object_id"]):
+            if (
+                original is None
+                or original["context"] != context
+                or original["delta"]["object_id"] != delta["object_id"]
+            ):
                 raise PermissionError("correction must refer to the same authenticated object and owner")
         minute = datetime.fromisoformat(fp.now()) - timedelta(minutes=1)
         with fp._GUARD:
@@ -172,21 +189,36 @@ def update(root: str, delta: dict[str, Any], *, context: dict[str, str],
             if previous["fact_id"] in search_recipes.admit(root, [previous["fact_id"]], context=scopes):
                 reused = previous["fact_id"]
         if reused is None:
-            statement = (f"Object {delta['object_id']} ({delta['class']}) at {delta['pose']} in {delta['frame']} "
-                         f"observed by {delta['robot_id']} at {delta['timestamp']}; observation {identity}")
+            statement = (
+                f"Object {delta['object_id']} ({delta['class']}) at {delta['pose']} in {delta['frame']} "
+                f"observed by {delta['robot_id']} at {delta['timestamp']}; observation {identity}"
+            )
             fact, _ = hierarchical.add_fact(root, statement, scopes=scopes, valid_from=delta["timestamp"])
             reused = fact.id
-        body = {"id": identity, "fact_id": reused, "context": context, "scopes": scopes,
-                "delta": delta, "correction_of": correction_of, "wire_bytes": size}
+        body = {
+            "id": identity,
+            "fact_id": reused,
+            "context": context,
+            "scopes": scopes,
+            "delta": delta,
+            "correction_of": correction_of,
+            "wire_bytes": size,
+        }
         lineage.attest(root, body, fp.sign(root, body), inputs=[], operation="spatial-object-delta")
         signed = fp.append(root, JOURNAL, body)
         log.append(root, "spatial-update", {"id": identity, "digest": fp.digest(signed)}, receipt=False)
         return cast(dict[str, Any], signed["record"])
 
 
-def history(root: str, object_id: str | None = None, *, context: dict[str, str],
-            known_at: str | None = None, since: str | None = None,
-            as_of: str | None = None) -> list[dict[str, Any]]:
+def history(
+    root: str,
+    object_id: str | None = None,
+    *,
+    context: dict[str, str],
+    known_at: str | None = None,
+    since: str | None = None,
+    as_of: str | None = None,
+) -> list[dict[str, Any]]:
     scopes = _context(context)
     if object_id is not None:
         fp.text(object_id, "object id", 128)
@@ -194,25 +226,38 @@ def history(root: str, object_id: str | None = None, *, context: dict[str, str],
     start = fp.moment(since) if since else None
     with fp._GUARD:
         snapshot = list(_state(root).rows)
-    candidates = [row for row in snapshot if _visible(row, context) and row["recorded_at"] <= known
-                  and (object_id is None or row["delta"]["object_id"] == object_id)
-                  and (start is None or row["recorded_at"] > start)]
-    admitted = search_recipes.admit(root, sorted({r["fact_id"] for r in candidates}),
-                                    context=scopes, as_of=as_of, known_at=known_at)
+    candidates = [
+        row
+        for row in snapshot
+        if _visible(row, context)
+        and row["recorded_at"] <= known
+        and (object_id is None or row["delta"]["object_id"] == object_id)
+        and (start is None or row["recorded_at"] > start)
+    ]
+    admitted = search_recipes.admit(
+        root, sorted({r["fact_id"] for r in candidates}), context=scopes, as_of=as_of, known_at=known_at
+    )
     rows = []
     for row in candidates:
         if row["fact_id"] not in admitted:
             continue
         if memory_authority.lineage_blocked(root, row["fact_id"]) or memory_authority.lineage_blocked(root, row["id"]):
             continue
-        rows.append(memory_ifc.safe_label(root, {**copy.deepcopy(row),
-                                                 "text": f"{row['delta']['object_id']} at {row['delta']['pose']} "
-                                                         f"in {row['delta']['frame']}"}))
+        rows.append(
+            memory_ifc.safe_label(
+                root,
+                {
+                    **copy.deepcopy(row),
+                    "text": f"{row['delta']['object_id']} at {row['delta']['pose']} in {row['delta']['frame']}",
+                },
+            )
+        )
     return rows
 
 
-def where_is(root: str, object_id: str, *, context: dict[str, str], when: str | None = None,
-             known_at: str | None = None) -> dict[str, Any] | None:
+def where_is(
+    root: str, object_id: str, *, context: dict[str, str], when: str | None = None, known_at: str | None = None
+) -> dict[str, Any] | None:
     at = fp.moment(when) if when else fp.now()
     rows = history(root, object_id, context=context, known_at=known_at, as_of=at)
     corrected = {r["correction_of"] for r in rows if r.get("correction_of")}
@@ -254,8 +299,13 @@ def sharing_record(row: dict[str, Any], *, tenant: str) -> Any:
 
     if row["context"]["tenant"] != tenant:
         raise PermissionError("site maps cannot cross tenants")
-    return MemoryRecord(id=row["id"], kind="entity", version=1,
+    return MemoryRecord(
+        id=row["id"],
+        kind="entity",
+        version=1,
         payload={"text": row["text"] if "text" in row else str(row["delta"]), "spatial": row["delta"]},
         scope={"tenant": tenant, "labels": ["site:" + row["context"]["site"]]},
         provenance={"format": "unimem.spatial-object.v1", "lineage_id": row["id"]},
-        valid_from=row["delta"]["timestamp"], created_at=row["recorded_at"])
+        valid_from=row["delta"]["timestamp"],
+        created_at=row["recorded_at"],
+    )

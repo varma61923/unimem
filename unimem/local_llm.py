@@ -13,6 +13,7 @@ Small CPU models are slow and much weaker than hosted ones. Use this for
 air-gapped deployments and for reproducible local measurement, not as a
 stand-in for a frontier model's answer quality.
 """
+
 from __future__ import annotations
 
 import threading
@@ -23,40 +24,48 @@ DEFAULT_MODEL = "Qwen/Qwen2.5-1.5B-Instruct"
 DEFAULT_MAX_NEW_TOKENS = 512
 
 _LOCK = threading.Lock()
-_LOADED: dict[str, tuple] = {}
+_LOADED: dict[tuple[str, str | None], tuple] = {}
 
 
 def _load(model: str):
     from unimem import offline
     from unimem.llm import LLMUnavailable
 
+    revision = _configuration_getenv("UNIMEM_LOCAL_LLM_REVISION", "").strip() or None
+    identity = (model, revision)
     with _LOCK:
-        if model in _LOADED:
-            return _LOADED[model]
+        if identity in _LOADED:
+            return _LOADED[identity]
         try:
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError:
-            raise LLMUnavailable("UNIMEM_LLM_PROVIDER=local needs the optional transformers and torch "
-                                 "packages: pip install transformers torch") from None
+            raise LLMUnavailable(
+                "UNIMEM_LLM_PROVIDER=local needs the optional transformers and torch "
+                "packages: pip install transformers torch"
+            ) from None
         cached_only = offline.enabled()
-        revision = _configuration_getenv("UNIMEM_LOCAL_LLM_REVISION", "").strip() or None
         try:
             tokenizer = AutoTokenizer.from_pretrained(model, local_files_only=cached_only, revision=revision)
-            network = AutoModelForCausalLM.from_pretrained(model, local_files_only=cached_only, revision=revision,
-                                                           dtype=torch.float32)
-        except OSError as exc:
+            network = AutoModelForCausalLM.from_pretrained(
+                model, local_files_only=cached_only, revision=revision, dtype=torch.float32
+            )
+        except (OSError, ValueError) as exc:
             hint = " (offline mode loads only cached weights)" if cached_only else ""
             raise LLMUnavailable(f"local model {model!r} could not be loaded{hint}: {exc}") from None
         network.eval()
-        _LOADED[model] = (tokenizer, network, torch)
-        return _LOADED[model]
+        _LOADED[identity] = (tokenizer, network, torch)
+        return _LOADED[identity]
 
 
 def complete(config, prompt: str, *, max_new_tokens: int | None = None) -> tuple[str, dict]:
     """Greedy completion: (text, usage with exact input/output token counts)."""
-    limit = max_new_tokens or int(_configuration_getenv("UNIMEM_LLM_MAX_TOKENS", DEFAULT_MAX_NEW_TOKENS))
-    if limit < 1:
+    limit = (
+        int(_configuration_getenv("UNIMEM_LLM_MAX_TOKENS", str(DEFAULT_MAX_NEW_TOKENS)))
+        if max_new_tokens is None
+        else max_new_tokens
+    )
+    if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("max_new_tokens must be positive")
     tokenizer, network, torch = _load(config.model)
     messages = [{"role": "user", "content": prompt}]
@@ -67,8 +76,12 @@ def complete(config, prompt: str, *, max_new_tokens: int | None = None) -> tuple
     encoded = tokenizer(text, return_tensors="pt")
     input_tokens = int(encoded["input_ids"].shape[-1])
     with torch.inference_mode():
-        output = network.generate(**encoded, max_new_tokens=limit, do_sample=False,
-                                  pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id)
+        output = network.generate(
+            **encoded,
+            max_new_tokens=limit,
+            do_sample=False,
+            pad_token_id=(tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id),
+        )
     generated = output[0][input_tokens:]
     answer = tokenizer.decode(generated, skip_special_tokens=True)
     return answer.strip(), {"input_tokens": input_tokens, "output_tokens": int(generated.shape[-1])}

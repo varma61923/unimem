@@ -104,24 +104,40 @@ class TestOpenAIAgents:
             async def get_response(self, *args, **kwargs):
                 self.turn += 1
                 if self.turn == 1:
-                    output = [ResponseFunctionToolCall(
-                        type="function_call", call_id="c1", name="recall_memory",
-                        arguments='{"query": "refund"}', id="fc1", status="completed",
-                    )]
+                    output = [
+                        ResponseFunctionToolCall(
+                            type="function_call",
+                            call_id="c1",
+                            name="recall_memory",
+                            arguments='{"query": "refund"}',
+                            id="fc1",
+                            status="completed",
+                        )
+                    ]
                 else:
-                    output = [ResponseOutputMessage(
-                        type="message", id="m1", role="assistant", status="completed",
-                        content=[ResponseOutputText(type="output_text", text="done", annotations=[])],
-                    )]
+                    output = [
+                        ResponseOutputMessage(
+                            type="message",
+                            id="m1",
+                            role="assistant",
+                            status="completed",
+                            content=[ResponseOutputText(type="output_text", text="done", annotations=[])],
+                        )
+                    ]
                 return ModelResponse(output=output, usage=Usage(), response_id=None)
 
             def stream_response(self, *args, **kwargs):
                 raise NotImplementedError
 
         agent = Agent(name="a", model=Scripted(), tools=[unimem_integration.memory_tool(memory)])
-        return asyncio.run(Runner.run(
-            agent, "help", context=context, run_config=RunConfig(group_id=group_id),
-        ))
+        return asyncio.run(
+            Runner.run(
+                agent,
+                "help",
+                context=context,
+                run_config=RunConfig(group_id=group_id),
+            )
+        )
 
     def test_the_occasion_comes_from_the_run_context_even_with_tracing_off(self, tmp_path):
         self._tracing(False)

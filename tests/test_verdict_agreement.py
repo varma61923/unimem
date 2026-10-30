@@ -21,7 +21,8 @@ def _fresh_cache():
 @pytest.fixture
 def modest_harm(tmp_path):
     root, _server = _store(
-        tmp_path, n=160,
+        tmp_path,
+        n=160,
         report=lambda i, injected: (i % 5) < (2 if BAD in injected else 3),
     )
     return root
@@ -35,9 +36,7 @@ def _cli_verdicts(root, *extra):
 
 def test_the_fixture_sits_where_the_two_readings_disagree(modest_harm):
     assert _cli_verdicts(modest_harm, "--fixed-horizon")[BAD] == experiment.VERDICT_HURTS
-    assert evidence.for_lessons(modest_harm)["by_lesson"][BAD]["verdict"] == (
-        experiment.VERDICT_UNDERPOWERED
-    )
+    assert evidence.for_lessons(modest_harm)["by_lesson"][BAD]["verdict"] == (experiment.VERDICT_UNDERPOWERED)
 
 
 def test_the_experiment_report_agrees_with_what_agents_are_told(modest_harm):

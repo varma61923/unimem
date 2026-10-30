@@ -7,11 +7,15 @@ from unimem import lesson_io, revision, templates
 
 def lesson(**overrides) -> tuple[dict, str]:
     fm = templates.lesson_frontmatter(
-        slug="lesson_x", description="Retry with exponential backoff.",
-        agent_type="code", domain="net", tags=["retry", "http"],
+        slug="lesson_x",
+        description="Retry with exponential backoff.",
+        agent_type="code",
+        domain="net",
+        tags=["retry", "http"],
         applies_when="A request fails with 429.",
         do_not_apply_when="The failure is a 4xx other than 429.",
-        importance=4, importance_rationale="Common.",
+        importance=4,
+        importance_rationale="Common.",
     )
     body = "## Rule\nRetry with exponential backoff.\n\n## Why\nThe server is shedding load.\n"
     fm.update(overrides.pop("fm", {}))
@@ -19,33 +23,39 @@ def lesson(**overrides) -> tuple[dict, str]:
 
 
 class TestWhatCountsAsTheSameTreatment:
-    @pytest.mark.parametrize("field,value", [
-        ("uses", 41),
-        ("last_hit", "2026-09-02"),
-        ("hub_trace_id", "abc-123"),
-        ("source_traces", ["t1", "t2"]),
-        ("source_episodes", ["e1"]),
-        ("importance_history", [{"from": 3, "to": 4}]),
-        ("status", "archived"),
-        ("name", "lesson_renamed"),
-    ])
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("uses", 41),
+            ("last_hit", "2026-09-02"),
+            ("hub_trace_id", "abc-123"),
+            ("source_traces", ["t1", "t2"]),
+            ("source_episodes", ["e1"]),
+            ("importance_history", [{"from": 3, "to": 4}]),
+            ("status", "archived"),
+            ("name", "lesson_renamed"),
+        ],
+    )
     def test_bookkeeping_does_not_count_as_a_change(self, field, value):
         fm, body = lesson()
         before = revision.revision_of(fm, body)
         fm[field] = value
         assert revision.revision_of(fm, body) == before
 
-    @pytest.mark.parametrize("field,value", [
-        ("description", "Retry with jitter."),
-        ("applies_when", "A request fails with any 5xx."),
-        ("do_not_apply_when", "Never."),
-        ("importance", 1),
-        ("domain", "storage"),
-        ("tags", ["retry", "http", "backoff"]),
-        ("scopes", ["payments"]),
-        ("valid_from", "2026-01-01"),
-        ("valid_until", "2027-01-01"),
-    ])
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("description", "Retry with jitter."),
+            ("applies_when", "A request fails with any 5xx."),
+            ("do_not_apply_when", "Never."),
+            ("importance", 1),
+            ("domain", "storage"),
+            ("tags", ["retry", "http", "backoff"]),
+            ("scopes", ["payments"]),
+            ("valid_from", "2026-01-01"),
+            ("valid_until", "2027-01-01"),
+        ],
+    )
     def test_anything_the_agent_reads_counts(self, field, value):
         fm, body = lesson()
         before = revision.revision_of(fm, body)
@@ -57,13 +67,16 @@ class TestWhatCountsAsTheSameTreatment:
         before = revision.revision_of(fm, body)
         assert revision.revision_of(fm, body.replace("exponential", "linear")) != before
 
-    @pytest.mark.parametrize("mutate", [
-        lambda b: b + "\n\n\n",
-        lambda b: b.replace("\n", "  \n"),
-        lambda b: b.replace("\n\n", "\n\n\n\n"),
-        lambda b: b.replace("\n", "\r\n"),
-        lambda b: "\n" + b,
-    ])
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda b: b + "\n\n\n",
+            lambda b: b.replace("\n", "  \n"),
+            lambda b: b.replace("\n\n", "\n\n\n\n"),
+            lambda b: b.replace("\n", "\r\n"),
+            lambda b: "\n" + b,
+        ],
+    )
     def test_whitespace_does_not_count(self, mutate):
         fm, body = lesson()
         assert revision.revision_of(fm, mutate(body)) == revision.revision_of(fm, body)
@@ -82,8 +95,7 @@ class TestWhatCountsAsTheSameTreatment:
 
     def test_yaml_key_order_does_not_count(self):
         fm, body = lesson()
-        assert revision.revision_of(dict(reversed(list(fm.items()))), body) == \
-            revision.revision_of(fm, body)
+        assert revision.revision_of(dict(reversed(list(fm.items()))), body) == revision.revision_of(fm, body)
 
     def test_it_is_stable_across_calls(self):
         fm, body = lesson()
@@ -101,8 +113,16 @@ class TestItCoversWhatTheAgentIsActuallyHanded:
         fm, body = lesson()
         wire = mcp_server._lesson_wire(fm, body, include_body=True)
         not_treatment = {
-            "slug", "uses", "source_traces", "status", "agent_type",
-            "unfilled", "revision", "body", "score", "matched",
+            "slug",
+            "uses",
+            "source_traces",
+            "status",
+            "agent_type",
+            "unfilled",
+            "revision",
+            "body",
+            "score",
+            "matched",
         }
         carried = set(wire) - not_treatment
         assert carried <= set(revision.INJECTED_FIELDS), (
@@ -123,8 +143,9 @@ class TestTraceRevision:
         assert revision.revision_of_trace("t", "c", "s", ["b"]) != base
 
     def test_reordered_tags_and_whitespace_do_not_count(self):
-        assert revision.revision_of_trace("t", "c", "s", ["a", "b"]) == \
-            revision.revision_of_trace("t ", "c\n\n\n", "s", ["b", "a"])
+        assert revision.revision_of_trace("t", "c", "s", ["a", "b"]) == revision.revision_of_trace(
+            "t ", "c\n\n\n", "s", ["b", "a"]
+        )
 
     def test_it_uses_the_same_digest_length_as_a_lesson(self):
         assert len(revision.revision_of_trace("t", "c", "s")) == revision.REVISION_LENGTH
@@ -137,11 +158,9 @@ class TestTheRevisionJournal:
         __import__("os").makedirs(__import__("os").path.dirname(path), exist_ok=True)
         fm, body = lesson()
 
-        first = lesson_io.write_lesson(path, fm, body, root=root,
-                                       actor="cli:alice", reason="initial")
+        first = lesson_io.write_lesson(path, fm, body, root=root, actor="cli:alice", reason="initial")
         fm["applies_when"] = "A request fails with any 5xx."
-        second = lesson_io.write_lesson(path, fm, body, root=root,
-                                        actor="mcp:agent", reason="widened")
+        second = lesson_io.write_lesson(path, fm, body, root=root, actor="mcp:agent", reason="widened")
 
         history = lesson_io.history(root, "lesson_x")
         assert [r["to"] for r in history] == [first, second]
@@ -196,8 +215,9 @@ class TestTheHistoryCommand:
         import sys
 
         repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return subprocess.run([sys.executable, "-m", "unimem.cli", *argv],
-                              capture_output=True, text=True, cwd=repo, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", *argv], capture_output=True, text=True, cwd=repo, check=False
+        )
 
     def test_it_shows_each_change_in_the_order_it_happened(self, tmp_path):
         import os
@@ -206,11 +226,9 @@ class TestTheHistoryCommand:
         assert self._cli("init", "--dest", root, "--agent-type", "code").returncode == 0
         path = os.path.join(root, "memory", "lessons", "lesson_x.md")
         fm, body = lesson()
-        first = lesson_io.write_lesson(path, fm, body, root=root,
-                                       actor="cli:alice", reason="initial")
+        first = lesson_io.write_lesson(path, fm, body, root=root, actor="cli:alice", reason="initial")
         fm["applies_when"] = "A request fails with any 5xx."
-        second = lesson_io.write_lesson(path, fm, body, root=root,
-                                        actor="mcp:agent", reason="widened after new traces")
+        second = lesson_io.write_lesson(path, fm, body, root=root, actor="mcp:agent", reason="widened after new traces")
 
         result = self._cli("lesson", "history", "lesson_x", "--dest", root)
         assert result.returncode == 0, result.stderr
@@ -244,8 +262,9 @@ class TestTheHistoryCommand:
     def test_curating_through_the_cli_records_history(self, tmp_path):
         root = str(tmp_path / "fleet")
         assert self._cli("init", "--dest", root, "--agent-type", "code").returncode == 0
-        result = self._cli("lesson", "new", "--slug", "thing", "--description", "A thing.",
-                           "--domain", "net", "--dest", root)
+        result = self._cli(
+            "lesson", "new", "--slug", "thing", "--description", "A thing.", "--domain", "net", "--dest", root
+        )
         assert result.returncode == 0, result.stderr
 
         history = lesson_io.history(root, "thing")

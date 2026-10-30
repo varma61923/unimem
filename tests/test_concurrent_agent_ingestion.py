@@ -1,4 +1,5 @@
 """Real concurrent sessions retain evidence, scope and idempotency under load."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,11 +11,15 @@ from unimem.conversation import AsyncStore, Options, Store
 def test_concurrent_agent_load_preserves_sessions_and_invalidates_recall(tmp_path: Path) -> None:
     async def drive() -> None:
         async with await AsyncStore.open(str(tmp_path), "fleet", max_pending=16, batch_size=8) as writer:
+
             async def agent(number: int) -> int:
                 added = 0
                 for turn in range(50):
-                    message = {"id": f"turn-{turn}", "role": "user",
-                               "text": f"Agent {number} deployment evidence number {turn}: bounded retry with jitter"}
+                    message = {
+                        "id": f"turn-{turn}",
+                        "role": "user",
+                        "text": f"Agent {number} deployment evidence number {turn}: bounded retry with jitter",
+                    }
                     result = await writer.add(f"agent-{number}", [message], extract_profile=False)
                     added += result["added"]
                     if turn % 10 == 0:
@@ -24,8 +29,14 @@ def test_concurrent_agent_load_preserves_sessions_and_invalidates_recall(tmp_pat
 
             assert sum(await asyncio.gather(*(agent(number) for number in range(12)))) == 600
             assert (await writer.stats())["turns"] == 600
-            options = Options(embedder=None, rerank=None, sessions=("agent-7",),
-                              neighbours_before=0, neighbours_after=0, summaries=False)
+            options = Options(
+                embedder=None,
+                rerank=None,
+                sessions=("agent-7",),
+                neighbours_before=0,
+                neighbours_after=0,
+                summaries=False,
+            )
             result = await writer.recall("deployment bounded retry", options=options)
             assert result.turns
             with Store(str(tmp_path), "fleet") as external:

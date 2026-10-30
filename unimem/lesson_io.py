@@ -18,7 +18,7 @@ def canonical_slug(raw: str) -> str:
     if stem.endswith(".md"):
         stem = stem[: -len(".md")]
     if stem.startswith("lesson_"):
-        stem = stem[len("lesson_"):]
+        stem = stem[len("lesson_") :]
     return stem
 
 
@@ -85,8 +85,9 @@ def write_lesson(
     """Write one lesson, journaling the change if the content moved."""
     from unimem import policy_io
 
-    policy_io.assert_write(root, {"id": canonical_slug(os.path.basename(path)),
-                                "memory_type": "lesson", "scopes": fm.get("scopes", [])})
+    policy_io.assert_write(
+        root, {"id": canonical_slug(os.path.basename(path)), "memory_type": "lesson", "scopes": fm.get("scopes", [])}
+    )
     before_fm: dict | None = None
     before_body: str | None = None
     before: str | None = None
@@ -96,8 +97,12 @@ def write_lesson(
             before = revision.revision_of(before_fm, before_body)
         except Exception:  # noqa: BLE001 - an unreadable prior file has no revision
             before = None
-    if before_fm is not None and before_fm.get("approval_receipt") is not None \
-            and before_fm.get("status") == "active" and fm.get("status") != "active":
+    if (
+        before_fm is not None
+        and before_fm.get("approval_receipt") is not None
+        and before_fm.get("status") == "active"
+        and fm.get("status") != "active"
+    ):
         from unimem import lesson_admission
 
         # Revocation commits first: a failed subsequent document write still
@@ -113,8 +118,14 @@ def write_lesson(
         safety.assert_mutable(root, [identity])
         # Attestation lives beside the legacy lesson, preserving revision bytes.
         content = {"id": identity, "text": body, "scopes": fm.get("scopes", [])}
-        lineage.attest(root, content, fp.sign(root, content), inputs=fm.get("source_traces", []),
-                       operation="lesson", model_id=str(fm.get("model_id") or "unspecified"))
+        lineage.attest(
+            root,
+            content,
+            fp.sign(root, content),
+            inputs=fm.get("source_traces", []),
+            operation="lesson",
+            model_id=str(fm.get("model_id") or "unspecified"),
+        )
         from unimem import transparency_log
 
         transparency_log.append(root, "lesson-write", {"id": identity, "revision": after}, receipt=False)
@@ -202,16 +213,13 @@ def _parse_at(value: str) -> datetime.datetime | None:
     return parsed
 
 
-class ContentAsOfError(Exception):
-    ...
+class ContentAsOfError(Exception): ...
 
 
 def content_as_of(root: str, slug: str, at: str) -> tuple[dict, str]:
     target = _parse_at(at)
     if target is None:
-        raise ContentAsOfError(
-            f"could not parse {at!r} as a date/time -- use YYYY-MM-DD or full ISO 8601."
-        )
+        raise ContentAsOfError(f"could not parse {at!r} as a date/time -- use YYYY-MM-DD or full ISO 8601.")
 
     records = history(root, slug)
     for record in records:

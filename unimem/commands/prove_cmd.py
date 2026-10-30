@@ -1,4 +1,5 @@
 """`unimem prove` — is the memory actually helping, and can you show it?"""
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +34,9 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
         child.add_argument("--dest")
         child.set_defaults(func=run_measurements)
     effect = sub.add_parser("effect", help="Commit and prove complete fixed-point effect cohorts.")
-    effect.add_argument("request", nargs="?", default="{}",
-                        help="JSON action: register, challenge, assign, observe, prove.")
+    effect.add_argument(
+        "request", nargs="?", default="{}", help="JSON action: register, challenge, assign, observe, prove."
+    )
     effect.add_argument("--dest")
     effect.set_defaults(func=run_effect)
     verify = sub.add_parser("verify", help="Verify an effect statement against an independently pinned challenge.")
@@ -54,9 +56,7 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
         "outcomes",
         help="Has your fleet's recorded performance changed, and does the holdout say why?",
     )
-    outcomes.add_argument(
-        "--agent-type", default="", help="Narrow to one agent type (default: the whole fleet)."
-    )
+    outcomes.add_argument("--agent-type", default="", help="Narrow to one agent type (default: the whole fleet).")
     outcomes.add_argument("--json", action="store_true", help="Raw JSON instead of a report.")
     outcomes.add_argument("--hub-url", default=None, help="Default: $UNIMEM_HUB_URL")
     outcomes.add_argument("--hub-api-key", default=None, help="Default: $UNIMEM_HUB_API_KEY")
@@ -67,17 +67,13 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
         help="Which of these traces to inject on this occasion, and which to withhold.",
     )
     assign.add_argument("occasion_id", help="Your own id for one unit of work.")
-    assign.add_argument(
-        "trace_ids", nargs="+", help="The traces eligible on this occasion."
-    )
+    assign.add_argument("trace_ids", nargs="+", help="The traces eligible on this occasion.")
     assign.add_argument("--json", action="store_true")
     assign.add_argument("--hub-url", default=None)
     assign.add_argument("--hub-api-key", default=None)
     assign.set_defaults(func=run_assign)
 
-    record = sub.add_parser(
-        "record", help="Report how an occasion went, resolving both holdout arms."
-    )
+    record = sub.add_parser("record", help="Report how an occasion went, resolving both holdout arms.")
     record.add_argument("occasion_id")
     outcome = record.add_mutually_exclusive_group(required=True)
     outcome.add_argument("--succeeded", action="store_true", help="The task succeeded.")
@@ -97,8 +93,9 @@ def run_oblivious(args: argparse.Namespace) -> int:
     centroids = body["centroids"]
     block_bytes = int(body.get("block_bytes", 4096))
     labels = body.get("labels", ("public", "internal", "confidential", "restricted"))
-    database = oblivious.cluster_records(body["records"], centroids, clearance=args.clearance,
-                                         labels=labels, block_bytes=block_bytes)
+    database = oblivious.cluster_records(
+        body["records"], centroids, clearance=args.clearance, labels=labels, block_bytes=block_bytes
+    )
     first = oblivious.XorPIRReplica(database, block_bytes=block_bytes)
     second = oblivious.XorPIRReplica(database, block_bytes=block_bytes)
 
@@ -107,9 +104,15 @@ def run_oblivious(args: argparse.Namespace) -> int:
             return first.handle(cluster, None)
         return first.handle_many(cluster, query0), second.handle_many(cluster, query1)
 
-    result = oblivious.client_recall(centroids, body["query_vector"], clearance=args.clearance,
-                                     limit=args.limit, clusters_to_fetch=args.clusters, fetch_pair=fetch,
-                                     labels=labels)
+    result = oblivious.client_recall(
+        centroids,
+        body["query_vector"],
+        clearance=args.clearance,
+        limit=args.limit,
+        clusters_to_fetch=args.clusters,
+        fetch_pair=fetch,
+        labels=labels,
+    )
     print(json.dumps(result, indent=2, allow_nan=False))
     return 0
 
@@ -136,9 +139,15 @@ def run_effect(args: argparse.Namespace) -> int:
 
     body = request(args.request)
     action = body.pop("action", "prove")
-    operations: dict[str, Callable[..., Any]] = {"register": zk_effect_io.register, "challenge": zk_effect_io.challenge,
-        "assign": zk_effect_io.assign, "observe": zk_effect_io.observe, "prove": zk_effect_io.prove,
-        "configure-prover": zk_effect_io.configure_prover, "witness": zk_effect_io.export_witness}
+    operations: dict[str, Callable[..., Any]] = {
+        "register": zk_effect_io.register,
+        "challenge": zk_effect_io.challenge,
+        "assign": zk_effect_io.assign,
+        "observe": zk_effect_io.observe,
+        "prove": zk_effect_io.prove,
+        "configure-prover": zk_effect_io.configure_prover,
+        "witness": zk_effect_io.export_witness,
+    }
     if action not in operations:
         raise ValueError("UniMem unsupported effect proof action")
     try:
@@ -161,8 +170,8 @@ def run_effect_verify(args: argparse.Namespace) -> int:
         if "witness" in body:
             raise ValueError("UniMem choose a witness object or --witness-file")
         with Path(args.witness_file).open("rb") as stream:
-            raw = stream.read(16*1024*1024+1)
-        if len(raw) > 16*1024*1024:
+            raw = stream.read(16 * 1024 * 1024 + 1)
+        if len(raw) > 16 * 1024 * 1024:
             raise ValueError("UniMem proof witness file exceeds 16 MiB")
         body["witness"] = json.loads(raw)
     try:
@@ -178,8 +187,12 @@ def run_policy(args: argparse.Namespace) -> int:
     from unimem.commands.nextwave import request
 
     operations: dict[str, Callable[..., Any]] = {
-        "current": policy_io.current, "diff": policy_io.diff, "certify": policy_io.certify,
-        "review": policy_io.review, "activate": policy_io.activate}
+        "current": policy_io.current,
+        "diff": policy_io.diff,
+        "certify": policy_io.certify,
+        "review": policy_io.review,
+        "activate": policy_io.activate,
+    }
     try:
         result = operations[args.policy_operation](paths.resolve_root(args.dest), **request(args.request))
     except TypeError as exc:
@@ -208,8 +221,7 @@ def _validity_lines(report: dict[str, Any]) -> list[str]:
         weak = [f for f in report.get("findings", []) if f.get("severity") == "WEAKENS"]
         return [
             "> **Weakened.** Still an estimate, with less behind it than its "
-            "confidence interval implies. "
-            + " ".join(f.get("headline", "") for f in weak),
+            "confidence interval implies. " + " ".join(f.get("headline", "") for f in weak),
             "",
         ]
     return [
@@ -248,9 +260,7 @@ def render_outcomes(report: dict[str, Any]) -> str:
                 f"effect **{e['effect']:+.1%}**"
             )
             if e["verdict"] in ("HELPS", "HURTS"):
-                lines.append(
-                    f"- 95% CI [{e['ci_95'][0]:+.1%}, {e['ci_95'][1]:+.1%}], p={e['p_value']:.4f}"
-                )
+                lines.append(f"- 95% CI [{e['ci_95'][0]:+.1%}, {e['ci_95'][1]:+.1%}], p={e['p_value']:.4f}")
             if e.get("note"):
                 lines.append(f"- {e['note']}")
             lines.append("")
@@ -296,9 +306,7 @@ def run_outcomes(args: argparse.Namespace) -> int:
         return 1
     hub_url, api_key = resolved
     try:
-        report = asyncio.run(
-            hub_client.fleet_outcomes(hub_url, api_key, agent_type=args.agent_type)
-        )
+        report = asyncio.run(hub_client.fleet_outcomes(hub_url, api_key, agent_type=args.agent_type))
     except hub_client.HubConnectionError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -312,9 +320,7 @@ def run_assign(args: argparse.Namespace) -> int:
         return 1
     hub_url, api_key = resolved
     try:
-        result = asyncio.run(
-            hub_client.holdout_assign(hub_url, api_key, args.trace_ids, args.occasion_id)
-        )
+        result = asyncio.run(hub_client.holdout_assign(hub_url, api_key, args.trace_ids, args.occasion_id))
     except hub_client.HubConnectionError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -340,9 +346,7 @@ def run_record(args: argparse.Namespace) -> int:
     hub_url, api_key = resolved
     try:
         result = asyncio.run(
-            hub_client.record_occasion_outcome(
-                hub_url, api_key, args.occasion_id, succeeded=args.succeeded
-            )
+            hub_client.record_occasion_outcome(hub_url, api_key, args.occasion_id, succeeded=args.succeeded)
         )
     except hub_client.HubConnectionError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)

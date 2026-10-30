@@ -1,4 +1,5 @@
 """Malformed persistent settings stay safe across retrieval entry points."""
+
 from __future__ import annotations
 
 import json
@@ -55,7 +56,7 @@ def test_valid_graph_weight_and_floor_roundtrip(root):
 
 
 def test_numeric_fallback_handles_float_conversion_overflow():
-    assert retrieval_io._float_or(10 ** 10000, 0.3) == 0.3
+    assert retrieval_io._float_or(10**10000, 0.3) == 0.3
 
 
 def test_gateway_unexpected_failure_logs_cause_but_keeps_response_private(root, caplog):

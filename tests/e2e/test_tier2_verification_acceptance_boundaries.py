@@ -262,7 +262,7 @@ def test_boundary_fast_importances_loader_latency(tmp_path: Path) -> None:
     assert res is not None
     imp_dict = res.importances if hasattr(res, "importances") else (res[0] if isinstance(res, tuple) else res)
     assert len(imp_dict) == n
-    assert elapsed < 0.05, f"Fast load exceeded 50ms latency limit: {elapsed*1000:.2f}ms"
+    assert elapsed < 0.05, f"Fast load exceeded 50ms latency limit: {elapsed * 1000:.2f}ms"
 
 
 def test_boundary_lexical_index_latency_100_docs() -> None:
@@ -290,10 +290,7 @@ def test_boundary_frontmatter_parse_50_files_latency(
 ) -> None:
     from unimem import frontmatter
 
-    file_paths = [
-        lesson_factory(isolated_store, slug=f"fm_perf_{i:02d}", title=f"FM Perf {i}")
-        for i in range(50)
-    ]
+    file_paths = [lesson_factory(isolated_store, slug=f"fm_perf_{i:02d}", title=f"FM Perf {i}") for i in range(50)]
 
     timings = []
     for _ in range(3):
@@ -313,7 +310,11 @@ def test_boundary_bench_zero_episodes_clean(
 ) -> None:
     res = cli_runner(isolated_store, "bench")
     assert res.exit_code == 0
-    assert "not enough episodes" in res.stdout.lower() or "0 episodes" in res.stdout.lower() or "benchmark" in res.stdout.lower()
+    assert (
+        "not enough episodes" in res.stdout.lower()
+        or "0 episodes" in res.stdout.lower()
+        or "benchmark" in res.stdout.lower()
+    )
     assert "Traceback" not in res.stderr
 
 
@@ -381,20 +382,28 @@ def test_boundary_multi_profile_trace_separation(
     res1 = cli_runner(
         isolated_store,
         "capture",
-        "--title", "Profile A Trace",
-        "--context", "Context A",
-        "--solution", "Solution A",
-        "--profile", "fleet-alpha",
+        "--title",
+        "Profile A Trace",
+        "--context",
+        "Context A",
+        "--solution",
+        "Solution A",
+        "--profile",
+        "fleet-alpha",
     )
     assert res1.exit_code == 0
 
     res2 = cli_runner(
         isolated_store,
         "capture",
-        "--title", "Profile B Trace",
-        "--context", "Context B",
-        "--solution", "Solution B",
-        "--profile", "fleet-beta",
+        "--title",
+        "Profile B Trace",
+        "--context",
+        "Context B",
+        "--solution",
+        "Solution B",
+        "--profile",
+        "fleet-beta",
     )
     assert res2.exit_code == 0
 
@@ -438,10 +447,14 @@ def test_boundary_full_trace_capture_and_export_lifecycle(
     res_cap = cli_runner(
         isolated_store,
         "capture",
-        "--title", "Lifecycle Trace",
-        "--context", "Lifecycle Context",
-        "--solution", "Lifecycle Solution",
-        "--tags", "lifecycle,e2e",
+        "--title",
+        "Lifecycle Trace",
+        "--context",
+        "Lifecycle Context",
+        "--solution",
+        "Lifecycle Solution",
+        "--tags",
+        "lifecycle,e2e",
     )
     assert res_cap.exit_code == 0
 
@@ -450,12 +463,17 @@ def test_boundary_full_trace_capture_and_export_lifecycle(
     assert "lifecycle" in res_list.stdout.lower()
 
     export_file = tmp_path / "lifecycle_export.jsonl"
-    res_exp = cli_runner([
-        "export",
-        "--kind", "traces",
-        "--out", str(export_file),
-        "--dest", str(isolated_store),
-    ])
+    res_exp = cli_runner(
+        [
+            "export",
+            "--kind",
+            "traces",
+            "--out",
+            str(export_file),
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res_exp.exit_code == 0
     assert export_file.exists()
     assert "Lifecycle Trace" in export_file.read_text(encoding="utf-8")
@@ -469,9 +487,12 @@ def test_boundary_adversarial_zalgo_text(
     res = cli_runner(
         isolated_store,
         "capture",
-        "--title", zalgo_title,
-        "--context", "Zalgo context",
-        "--solution", "Zalgo solution",
+        "--title",
+        zalgo_title,
+        "--context",
+        "Zalgo context",
+        "--solution",
+        "Zalgo solution",
     )
     assert res.exit_code == 0
     assert "Traceback" not in res.stderr
@@ -497,10 +518,14 @@ def test_boundary_extremely_long_tags_list(
     res = cli_runner(
         isolated_store,
         "capture",
-        "--title", "Many Tags Trace",
-        "--context", "Many tags context",
-        "--solution", "Many tags solution",
-        "--tags", tags_arg,
+        "--title",
+        "Many Tags Trace",
+        "--context",
+        "Many tags context",
+        "--solution",
+        "Many tags solution",
+        "--tags",
+        tags_arg,
     )
     assert res.exit_code == 0
     assert "Traceback" not in res.stderr
@@ -528,9 +553,12 @@ def test_boundary_newlines_in_title_and_context(
     res = cli_runner(
         isolated_store,
         "capture",
-        "--title", "Multiline Field Trace",
-        "--context", multi_line_ctx,
-        "--solution", multi_line_sol,
+        "--title",
+        "Multiline Field Trace",
+        "--context",
+        multi_line_ctx,
+        "--solution",
+        multi_line_sol,
     )
     assert res.exit_code == 0
     assert "Traceback" not in res.stderr

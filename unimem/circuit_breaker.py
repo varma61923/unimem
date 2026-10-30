@@ -1,4 +1,5 @@
 """Thread-safe provider circuit with one recovery probe and generation fencing."""
+
 from __future__ import annotations
 
 import math
@@ -24,8 +25,9 @@ class CircuitBreaker:
     declaring an unavailable provider healthy.
     """
 
-    def __init__(self, *, threshold: int = 5, recovery_seconds: float = 30,
-                 clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, *, threshold: int = 5, recovery_seconds: float = 30, clock: Callable[[], float] = time.monotonic
+    ) -> None:
         if threshold < 1 or not math.isfinite(recovery_seconds) or recovery_seconds <= 0:
             raise ValueError("circuit threshold and recovery interval must be positive and finite")
         self.threshold, self.recovery_seconds, self._clock = threshold, recovery_seconds, clock
@@ -37,9 +39,10 @@ class CircuitBreaker:
     def call(self, fn: Callable[[], T], *, transient: Callable[[BaseException], bool]) -> T:
         with self._lock:
             now = self._clock()
-            probe = self._opened is not None
-            if probe:
-                remaining = self.recovery_seconds - (now - self._opened)
+            opened = self._opened
+            probe = opened is not None
+            if opened is not None:
+                remaining = self.recovery_seconds - (now - opened)
                 if remaining > 0 or self._probe:
                     raise CircuitOpenError(remaining)
                 self._probe = True

@@ -80,9 +80,7 @@ class TestMinimalYamlParser:
     def test_block_list_of_dicts(self):
         text = "importance_history:\n- date: '2026-01-01'\n  old: 3\n  new: 4\n  reason: r\n"
         result = bm.parse_yaml_minimal(text)
-        assert result["importance_history"] == [
-            {"date": "2026-01-01", "old": 3, "new": 4, "reason": "r"}
-        ]
+        assert result["importance_history"] == [{"date": "2026-01-01", "old": 3, "new": 4, "reason": "r"}]
 
     def test_keys_after_a_block_list_are_not_dropped(self):
         text = "tags:\n- a\n- b\nagent_type: support\nstatus: active\n"
@@ -113,6 +111,7 @@ class TestMinimalYamlParser:
             "uses: 0\nstatus: active\n"
         )
         import yaml as _yaml
+
         wrapped = _yaml.safe_dump(_yaml.safe_load(text), sort_keys=False)
         result = bm.parse_yaml_minimal(wrapped)
         assert result["uses"] == 0
@@ -148,9 +147,7 @@ class TestMinimalYamlParser:
 
         text = "importance_history: [{date: 2026-01-01, old: 3, new: 4, reason: bumped}]\n"
         result = bm.parse_yaml_minimal(text)
-        assert result["importance_history"] == [
-            {"date": _dt.date(2026, 1, 1), "old": 3, "new": 4, "reason": "bumped"}
-        ]
+        assert result["importance_history"] == [{"date": _dt.date(2026, 1, 1), "old": 3, "new": 4, "reason": "bumped"}]
 
     def test_hyphenated_and_numeric_keys_do_not_break_the_whole_document(self):
         text = "agent-type: support\n2026: x\nafter: y\n"
@@ -261,9 +258,7 @@ class TestFrontmatterRejectsYamlAnchorsAndAliases:
         from unimem import frontmatter
 
         path = tmp_path / "alias.md"
-        path.write_text(
-            "---\na: &a [1, 2, 3]\nb: *a\n---\nbody\n", encoding="utf-8"
-        )
+        path.write_text("---\na: &a [1, 2, 3]\nb: *a\n---\nbody\n", encoding="utf-8")
         with pytest.raises(frontmatter.FrontmatterError):
             frontmatter.read(str(path))
 
@@ -379,14 +374,29 @@ class TestTraceIoSectionParsing:
 
 class TestLessonFrontmatterRequiredFields:
     REQUIRED_FIELDS = [
-        "name", "description", "tags", "agent_type", "domain", "importance",
-        "importance_rationale", "applies_when", "do_not_apply_when",
-        "uses", "last_hit", "source_traces", "status",
+        "name",
+        "description",
+        "tags",
+        "agent_type",
+        "domain",
+        "importance",
+        "importance_rationale",
+        "applies_when",
+        "do_not_apply_when",
+        "uses",
+        "last_hit",
+        "source_traces",
+        "status",
     ]
 
     CODE_PROFILE_DOMAINS = {
-        "git-safety", "cuda-gpu", "refactor", "testing",
-        "subagents", "performance", "other",
+        "git-safety",
+        "cuda-gpu",
+        "refactor",
+        "testing",
+        "subagents",
+        "performance",
+        "other",
     }
 
     VALID_STATUSES = {"active", "review", "archived"}
@@ -396,10 +406,10 @@ class TestLessonFrontmatterRequiredFields:
             content = fh.read()
         return bm.parse_frontmatter(content)
 
-
     def test_example_lessons_have_required_fields(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         lessons_dir = os.path.join(repo_root, "memory", "lessons")
         for path in glob.glob(os.path.join(lessons_dir, "lesson_*.md")):
             if path.endswith("lesson_template.md"):
@@ -412,6 +422,7 @@ class TestLessonFrontmatterRequiredFields:
     def test_example_lessons_domain_is_nonempty_string(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         lessons_dir = os.path.join(repo_root, "memory", "lessons")
         for path in glob.glob(os.path.join(lessons_dir, "lesson_*.md")):
             if path.endswith("lesson_template.md"):
@@ -425,6 +436,7 @@ class TestLessonFrontmatterRequiredFields:
     def test_example_lessons_have_agent_type(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         lessons_dir = os.path.join(repo_root, "memory", "lessons")
         for path in glob.glob(os.path.join(lessons_dir, "lesson_*.md")):
             if path.endswith("lesson_template.md"):
@@ -438,6 +450,7 @@ class TestLessonFrontmatterRequiredFields:
     def test_example_lessons_status_valid(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         lessons_dir = os.path.join(repo_root, "memory", "lessons")
         for path in glob.glob(os.path.join(lessons_dir, "lesson_*.md")):
             if path.endswith("lesson_template.md"):
@@ -451,6 +464,7 @@ class TestLessonFrontmatterRequiredFields:
     def test_example_lessons_importance_range(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         lessons_dir = os.path.join(repo_root, "memory", "lessons")
         for path in glob.glob(os.path.join(lessons_dir, "lesson_*.md")):
             if path.endswith("lesson_template.md"):
@@ -465,10 +479,21 @@ class TestLessonFrontmatterRequiredFields:
 
 class TestEpisodeFrontmatterRequiredFields:
     REQUIRED_FIELDS = [
-        "name", "description", "agent_type", "task_invocation", "tags", "project", "verdict",
-        "importance", "n_iterations", "commit_sha", "duration_minutes",
-        "lessons_retrieved_by_alpha", "lessons_hit",
-        "lessons_proposed_by_omega", "lessons_validated_by_lambda",
+        "name",
+        "description",
+        "agent_type",
+        "task_invocation",
+        "tags",
+        "project",
+        "verdict",
+        "importance",
+        "n_iterations",
+        "commit_sha",
+        "duration_minutes",
+        "lessons_retrieved_by_alpha",
+        "lessons_hit",
+        "lessons_proposed_by_omega",
+        "lessons_validated_by_lambda",
     ]
 
     VALID_VERDICTS = {"CONFORM", "ARBITRATION", "ABANDON"}
@@ -478,10 +503,10 @@ class TestEpisodeFrontmatterRequiredFields:
             content = fh.read()
         return bm.parse_frontmatter(content)
 
-
     def test_example_episodes_verdict_valid(self):
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         import glob
+
         episodes_dir = os.path.join(repo_root, "memory", "episodes")
         for path in glob.glob(os.path.join(episodes_dir, "2*.md")):
             fm = self._load_episode(path)
@@ -555,7 +580,7 @@ class TestParsedFrontmatterIsMemoised:
 class TestTheStrictParseOnLibyaml:
     SAMPLES = [
         "name: on\ndomain: NO\ntags: [on, off, yes]\nlast_hit: 2026-07-01\nflag: true\nn: 3\nf: 1.5\nz: null\n",
-        "description: \"quoted: value\"\napplies_when: |\n  a block\n  of text\nlist:\n  - a\n  - b\n",
+        'description: "quoted: value"\napplies_when: |\n  a block\n  of text\nlist:\n  - a\n  - b\n',
         "desc: R&D costs 5*3\n",
         "unicode: café — 日本語\n",
         "",

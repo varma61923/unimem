@@ -1,4 +1,5 @@
 """Zendesk: ticket events -> signals."""
+
 from __future__ import annotations
 
 import base64
@@ -57,8 +58,7 @@ def signals(headers: Mapping[str, str], payload: dict, config: dict) -> list[bas
     prefix = config.get("occasion_prefix", "")
     occasion = prefix + base.clean_id(detail.get("id"), "detail.id")
     event_id = base.clean_id(payload.get("id"), "event id")
-    at = base.parse_timestamp(str(payload.get("time") or "")) if payload.get("time") else \
-        datetime.now(timezone.utc)
+    at = base.parse_timestamp(str(payload.get("time") or "")) if payload.get("time") else datetime.now(timezone.utc)
 
     if kind == _STATUS:
         current = str(event.get("current") or "").upper()

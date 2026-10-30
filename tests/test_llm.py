@@ -23,6 +23,7 @@ class FakeResponse(io.BytesIO):
 def _fake_urlopen(payload: dict):
     def _opener(request, timeout=None):
         return FakeResponse(json.dumps(payload).encode("utf-8"))
+
     return _opener
 
 
@@ -94,9 +95,17 @@ def _config(**kwargs):
 
 class TestDraftParsing:
     def test_a_complete_reply_produces_a_draft(self, monkeypatch):
-        monkeypatch.setattr(llm, "_call_anthropic", lambda cfg, prompt: (json.dumps(_GOOD), {
-            "input_tokens": 100, "output_tokens": 40,
-        }))
+        monkeypatch.setattr(
+            llm,
+            "_call_anthropic",
+            lambda cfg, prompt: (
+                json.dumps(_GOOD),
+                {
+                    "input_tokens": 100,
+                    "output_tokens": 40,
+                },
+            ),
+        )
         result = llm.draft("prompt", allowed_evidence_ids={"occ-1", "occ-2"}, config=_config())
         assert result.rule == _GOOD["rule"]
         assert result.applies_when == _GOOD["applies_when"]
@@ -183,12 +192,18 @@ class TestHttpLayer:
             captured["url"] = request.full_url
             captured["headers"] = {k.lower(): v for k, v in request.headers.items()}
             captured["body"] = json.loads(request.data)
-            return FakeResponse(json.dumps({
-                "content": [{"type": "text", "text": json.dumps(_GOOD)}],
-                "usage": {"input_tokens": 10, "output_tokens": 5},
-            }).encode("utf-8"))
+            return FakeResponse(
+                json.dumps(
+                    {
+                        "content": [{"type": "text", "text": json.dumps(_GOOD)}],
+                        "usage": {"input_tokens": 10, "output_tokens": 5},
+                    }
+                ).encode("utf-8")
+            )
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         result = llm.draft("do the thing", config=_config(model="claude-sonnet-5"))
         assert captured["url"] == llm._ANTHROPIC_URL
         assert captured["headers"]["x-api-key"] == "k"
@@ -203,11 +218,17 @@ class TestHttpLayer:
         def fake_urlopen(request, timeout=None):
             captured["url"] = request.full_url
             captured["headers"] = {k.lower(): v for k, v in request.headers.items()}
-            return FakeResponse(json.dumps({
-                "choices": [{"message": {"content": json.dumps(_GOOD)}}],
-            }).encode("utf-8"))
+            return FakeResponse(
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": json.dumps(_GOOD)}}],
+                    }
+                ).encode("utf-8")
+            )
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         config = _config(provider="openai-compatible", base_url="http://localhost:11434/v1")
         llm.draft("do the thing", config=config)
         assert captured["url"] == "http://localhost:11434/v1/chat/completions"
@@ -217,7 +238,9 @@ class TestHttpLayer:
         def fake_urlopen(request, timeout=None):
             raise urllib.error.HTTPError(request.full_url, 401, "unauthorized", {}, io.BytesIO(b"bad key"))
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         with pytest.raises(llm.LLMUnavailable, match="401"):
             llm.draft("prompt", config=_config())
 
@@ -225,17 +248,25 @@ class TestHttpLayer:
         def fake_urlopen(request, timeout=None):
             raise urllib.error.URLError("no route to host")
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         with pytest.raises(llm.LLMUnavailable, match="request failed"):
             llm.draft("prompt", config=_config())
 
 
 class TestCloudProviders:
-    REPLY = ('{"rule": "r", "applies_when": "a", "do_not_apply_when": "d", "evidence": ["e1"]}')
+    REPLY = '{"rule": "r", "applies_when": "a", "do_not_apply_when": "d", "evidence": ["e1"]}'
 
     def _env(self, monkeypatch, provider, **extra):
-        for k in ("UNIMEM_LLM_API_KEY", "UNIMEM_LLM_MODEL", "UNIMEM_LLM_REGION",
-                  "UNIMEM_LLM_PROJECT", "AWS_REGION", "UNIMEM_LLM_PRICES"):
+        for k in (
+            "UNIMEM_LLM_API_KEY",
+            "UNIMEM_LLM_MODEL",
+            "UNIMEM_LLM_REGION",
+            "UNIMEM_LLM_PROJECT",
+            "AWS_REGION",
+            "UNIMEM_LLM_PRICES",
+        ):
             monkeypatch.delenv(k, raising=False)
         monkeypatch.setenv("UNIMEM_LLM_PROVIDER", provider)
         for k, v in extra.items():
@@ -262,11 +293,14 @@ class TestCloudProviders:
         class Client:
             def converse(self, **kw):
                 calls.update(kw)
-                return {"output": {"message": {"role": "assistant", "content": [{"text": TestCloudProviders.REPLY}]}},
-                        "usage": {"inputTokens": 11, "outputTokens": 7}}
+                return {
+                    "output": {"message": {"role": "assistant", "content": [{"text": TestCloudProviders.REPLY}]}},
+                    "usage": {"inputTokens": 11, "outputTokens": 7},
+                }
 
-        fake = types.SimpleNamespace(client=lambda service, region_name=None: (
-            calls.update(service=service, region=region_name), Client())[1])
+        fake = types.SimpleNamespace(
+            client=lambda service, region_name=None: (calls.update(service=service, region=region_name), Client())[1]
+        )
         monkeypatch.setitem(sys.modules, "boto3", fake)
         cfg = llm.Config(provider="bedrock", model="m-1", api_key="", region="eu-west-1")
         d = llm.draft("p", allowed_evidence_ids={"e1"}, config=cfg)
@@ -283,7 +317,8 @@ class TestCloudProviders:
                 seen.update(model=model, contents=contents, temperature=config.temperature)
                 return types.SimpleNamespace(
                     text=TestCloudProviders.REPLY,
-                    usage_metadata=types.SimpleNamespace(prompt_token_count=5, candidates_token_count=3))
+                    usage_metadata=types.SimpleNamespace(prompt_token_count=5, candidates_token_count=3),
+                )
 
         class Client:
             def __init__(self, **kw):
@@ -332,8 +367,11 @@ class TestCost:
         assert llm.cost_usd(usage, "m") is None
 
     def test_a_draft_carries_cost_when_a_table_exists_and_not_otherwise(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(llm, "_call_anthropic", lambda cfg, prompt: (
-            TestCloudProviders.REPLY, {"input_tokens": 1000, "output_tokens": 100}))
+        monkeypatch.setattr(
+            llm,
+            "_call_anthropic",
+            lambda cfg, prompt: (TestCloudProviders.REPLY, {"input_tokens": 1000, "output_tokens": 100}),
+        )
         cfg = llm.Config(provider="anthropic", model="m", api_key="k")
         monkeypatch.delenv("UNIMEM_LLM_PRICES", raising=False)
         assert "cost_usd" not in llm.draft("p", config=cfg).provenance

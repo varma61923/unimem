@@ -1,4 +1,5 @@
 """Prescribed entity properties: full optional JSON Schema, conservative core fallback."""
+
 from __future__ import annotations
 
 from unimem.ontology import OntologyError
@@ -13,9 +14,18 @@ def validate_properties(value: dict, schema: dict) -> None:
         def strip_annotations(spec):
             if not isinstance(spec, dict):
                 return spec
-            return {k: ({name: strip_annotations(s) for name, s in v.items()} if k == "properties"
-                        else strip_annotations(v) if k == "items" else v)
-                    for k, v in spec.items() if k not in ("$defs", "$schema", "title", "description", "default")}
+            return {
+                k: (
+                    {name: strip_annotations(s) for name, s in v.items()}
+                    if k == "properties"
+                    else strip_annotations(v)
+                    if k == "items"
+                    else v
+                )
+                for k, v in spec.items()
+                if k not in ("$defs", "$schema", "title", "description", "default")
+            }
+
         simple = strip_annotations(schema)
         extra = simple.pop("additionalProperties", True)
         try:

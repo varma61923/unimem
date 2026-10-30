@@ -30,21 +30,16 @@ class TestMinHashEstimator:
         for _ in range(40):
             a = set(rng.sample(universe, 60))
             b = set(rng.sample(universe, 60))
-            est = overlap.estimate_jaccard(
-                overlap.minhash(" ".join(a)), overlap.minhash(" ".join(b))
-            )
+            est = overlap.estimate_jaccard(overlap.minhash(" ".join(a)), overlap.minhash(" ".join(b)))
             errors.append(abs(est - _true_jaccard(a, b)))
-        theoretical = 1 / (overlap.DEFAULT_NUM_PERM ** 0.5)
+        theoretical = 1 / (overlap.DEFAULT_NUM_PERM**0.5)
         assert sum(errors) / len(errors) < theoretical
 
     def test_signatures_are_stable_across_processes(self):
         import subprocess
         import sys
 
-        code = (
-            "from unimem import overlap; "
-            "print(overlap.minhash('stripe webhook idempotency')[:4])"
-        )
+        code = "from unimem import overlap; print(overlap.minhash('stripe webhook idempotency')[:4])"
         env = dict(os.environ, PYTHONHASHSEED="0")
         a = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env).stdout
         env["PYTHONHASHSEED"] = "12345"
@@ -68,33 +63,57 @@ class TestMinHashEstimator:
 
 def _item(label, kind, text, domain="", tags=None):
     return overlap.SignedItem(
-        label=label, kind=kind, domain=domain, tags=tags or [],
+        label=label,
+        kind=kind,
+        domain=domain,
+        tags=tags or [],
         signature=overlap.minhash(text),
     )
 
 
 class TestReport:
     def test_counts_only_failures_a_lesson_actually_covers(self):
-        provider = overlap.FleetSignature("a", overlap.DEFAULT_NUM_PERM, [
-            _item("lesson_pool", "lesson",
-                  "rolling deploy exhausts postgres connections pool size replicas max_connections"),
-        ])
-        consumer = overlap.FleetSignature("b", overlap.DEFAULT_NUM_PERM, [
-            _item("f1", "failure", "rolling deploy exhausted postgres connections pool size replicas max_connections"),
-            _item("f2", "failure", "our bespoke enterprise discount margin formula miscalculated internally"),
-        ])
+        provider = overlap.FleetSignature(
+            "a",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item(
+                    "lesson_pool",
+                    "lesson",
+                    "rolling deploy exhausts postgres connections pool size replicas max_connections",
+                ),
+            ],
+        )
+        consumer = overlap.FleetSignature(
+            "b",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item(
+                    "f1", "failure", "rolling deploy exhausted postgres connections pool size replicas max_connections"
+                ),
+                _item("f2", "failure", "our bespoke enterprise discount margin formula miscalculated internally"),
+            ],
+        )
         r = overlap.build_report(consumer, provider)
         assert r.n_failures == 2
         assert r.n_covered == 1
         assert r.matches[0].failure_label == "f1"
 
     def test_report_is_asymmetric(self):
-        big = overlap.FleetSignature("big", overlap.DEFAULT_NUM_PERM, [
-            _item("l1", "lesson", "postgres connection pool exhausted rolling deploy"),
-        ])
-        small = overlap.FleetSignature("small", overlap.DEFAULT_NUM_PERM, [
-            _item("f1", "failure", "postgres connection pool exhausted rolling deploy"),
-        ])
+        big = overlap.FleetSignature(
+            "big",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item("l1", "lesson", "postgres connection pool exhausted rolling deploy"),
+            ],
+        )
+        small = overlap.FleetSignature(
+            "small",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item("f1", "failure", "postgres connection pool exhausted rolling deploy"),
+            ],
+        )
         assert overlap.build_report(small, big).n_covered == 1
         assert overlap.build_report(big, small).n_failures == 0
 
@@ -119,14 +138,24 @@ class TestReport:
         assert "directional" in overlap.build_report(consumer, provider).note
 
     def test_higher_threshold_is_stricter(self):
-        provider = overlap.FleetSignature("a", overlap.DEFAULT_NUM_PERM, [
-            _item("l", "lesson", "postgres pool exhausted deploy replicas"),
-        ])
-        consumer = overlap.FleetSignature("b", overlap.DEFAULT_NUM_PERM, [
-            _item("f", "failure", "postgres pool exhausted deploy something entirely different here"),
-        ])
-        assert overlap.build_report(consumer, provider, threshold=0.05).n_covered >= \
-               overlap.build_report(consumer, provider, threshold=0.95).n_covered
+        provider = overlap.FleetSignature(
+            "a",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item("l", "lesson", "postgres pool exhausted deploy replicas"),
+            ],
+        )
+        consumer = overlap.FleetSignature(
+            "b",
+            overlap.DEFAULT_NUM_PERM,
+            [
+                _item("f", "failure", "postgres pool exhausted deploy something entirely different here"),
+            ],
+        )
+        assert (
+            overlap.build_report(consumer, provider, threshold=0.05).n_covered
+            >= overlap.build_report(consumer, provider, threshold=0.95).n_covered
+        )
 
     def test_render_does_not_crash_on_an_empty_report(self):
         out = overlap.render_report(
@@ -163,19 +192,46 @@ def store(tmp_path, monkeypatch):
 class TestOverlapCLI:
     def _seed(self, store):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        main([
-            "lesson", "new", "--slug", "lesson_stripe_idempotency",
-            "--description", "use idempotency keys on stripe webhooks",
-            "--agent-type", "code", "--domain", "other", "--tags", "stripe,webhooks",
-            "--applies-when", "a stripe webhook retries and creates duplicate charges",
-            "--do-not-apply-when", "n/a", "--dest", str(store),
-        ])
-        main([
-            "capture", "--title", "dup charges", "--context",
-            "a stripe webhook retried and created duplicate charges",
-            "--solution", "add key", "--tags", "stripe", "--agent-type", "code",
-            "--repeated-error", "--dest", str(store),
-        ])
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_stripe_idempotency",
+                "--description",
+                "use idempotency keys on stripe webhooks",
+                "--agent-type",
+                "code",
+                "--domain",
+                "other",
+                "--tags",
+                "stripe,webhooks",
+                "--applies-when",
+                "a stripe webhook retries and creates duplicate charges",
+                "--do-not-apply-when",
+                "n/a",
+                "--dest",
+                str(store),
+            ]
+        )
+        main(
+            [
+                "capture",
+                "--title",
+                "dup charges",
+                "--context",
+                "a stripe webhook retried and created duplicate charges",
+                "--solution",
+                "add key",
+                "--tags",
+                "stripe",
+                "--agent-type",
+                "code",
+                "--repeated-error",
+                "--dest",
+                str(store),
+            ]
+        )
 
     def test_sign_then_report_round_trip(self, store, tmp_path, capsys):
         self._seed(store)
@@ -197,10 +253,20 @@ class TestOverlapCLI:
     def test_redacted_sign_leaks_no_source_terms(self, store, tmp_path, capsys):
         self._seed(store)
         out = tmp_path / "sig.json"
-        main([
-            "overlap", "sign", "--fleet-label", "f", "--out", str(out),
-            "--dest", str(store), "--redact-labels", "--redact-tags",
-        ])
+        main(
+            [
+                "overlap",
+                "sign",
+                "--fleet-label",
+                "f",
+                "--out",
+                str(out),
+                "--dest",
+                str(store),
+                "--redact-labels",
+                "--redact-tags",
+            ]
+        )
         blob = out.read_text(encoding="utf-8").lower()
         for term in ("stripe", "idempotency", "webhook", "charges"):
             assert term not in blob, f"{term!r} leaked into the signature file"
@@ -209,8 +275,20 @@ class TestOverlapCLI:
         self._seed(store)
         plain, red = tmp_path / "p.json", tmp_path / "r.json"
         main(["overlap", "sign", "--fleet-label", "f", "--out", str(plain), "--dest", str(store)])
-        main(["overlap", "sign", "--fleet-label", "f", "--out", str(red),
-              "--dest", str(store), "--redact-labels", "--redact-tags"])
+        main(
+            [
+                "overlap",
+                "sign",
+                "--fleet-label",
+                "f",
+                "--out",
+                str(red),
+                "--dest",
+                str(store),
+                "--redact-labels",
+                "--redact-tags",
+            ]
+        )
         p = overlap.FleetSignature.from_dict(json.loads(plain.read_text()))
         r = overlap.FleetSignature.from_dict(json.loads(red.read_text()))
         assert overlap.build_report(p, p).n_covered == overlap.build_report(r, r).n_covered
@@ -219,3 +297,14 @@ class TestOverlapCLI:
         capsys.readouterr()
         assert main(["overlap", "report", "--ours", "/no/such.json", "--theirs", "/no/such.json"]) == 1
         assert "no such signature file" in capsys.readouterr().err
+
+
+def test_numpy_signature_sequences_preserve_exact_similarity():
+    import pytest
+
+    numpy = pytest.importorskip("numpy")
+    left = numpy.array([1, 2, 3, 4], dtype=numpy.uint64)
+    right = numpy.array([1, 9, 3, 8], dtype=numpy.uint64)
+    assert overlap.estimate_jaccard(left, right) == overlap.estimate_jaccard(left.tolist(), right.tolist()) == 0.5
+    with pytest.raises(ValueError, match="non-empty"):
+        overlap.estimate_jaccard(numpy.array([], dtype=numpy.uint64), left)

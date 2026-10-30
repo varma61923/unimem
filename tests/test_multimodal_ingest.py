@@ -21,7 +21,9 @@ def _minimal_pdf(secret: str = SECRET) -> bytes:
         b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> endobj\n"
         b"4 0 obj << /Length 200 >> stream\n"
         b"BT /F1 12 Tf 72 720 Td (Hello multimodal world) Tj ET\n"
-        + b"BT /F1 12 Tf 72 700 Td (Secret " + secret.encode() + b" here) Tj ET\n"
+        + b"BT /F1 12 Tf 72 700 Td (Secret "
+        + secret.encode()
+        + b" here) Tj ET\n"
         + b"endstream endobj\n"
         b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n"
         b"trailer << /Root 1 0 R >>\n%%EOF\n"
@@ -77,8 +79,7 @@ def _minimal_png() -> bytes:
     return sig + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
 
 
-def _minimal_wav(channels: int = 1, rate: int = 8000, bits: int = 16,
-                 seconds: int = 1) -> bytes:
+def _minimal_wav(channels: int = 1, rate: int = 8000, bits: int = 16, seconds: int = 1) -> bytes:
     block_align = channels * bits // 8
     byte_rate = rate * block_align
     data = b"\x00" * (rate * seconds * block_align)
@@ -98,7 +99,8 @@ def _minimal_mp3() -> bytes:
 
 def _minimal_ogg(serial: int = 0x12345678) -> bytes:
     header = (
-        b"OggS" + bytes([0, 0x02])
+        b"OggS"
+        + bytes([0, 0x02])
         + struct.pack("<q", 0)
         + struct.pack("<I", serial)
         + struct.pack("<I", 0)
@@ -108,17 +110,13 @@ def _minimal_ogg(serial: int = 0x12345678) -> bytes:
     return header + b"abcd"
 
 
-def _minimal_flac(sample_rate: int = 44100, channels: int = 2,
-                  bits: int = 16, total_samples: int = 44100) -> bytes:
-    packed = (
-        (sample_rate << 44)
-        | ((channels - 1) << 41)
-        | ((bits - 1) << 36)
-        | total_samples
-    )
+def _minimal_flac(sample_rate: int = 44100, channels: int = 2, bits: int = 16, total_samples: int = 44100) -> bytes:
+    packed = (sample_rate << 44) | ((channels - 1) << 41) | ((bits - 1) << 36) | total_samples
     body = (
-        struct.pack(">H", 4096) + struct.pack(">H", 4096)
-        + b"\x00\x00\x00" + b"\x00\x00\x00"
+        struct.pack(">H", 4096)
+        + struct.pack(">H", 4096)
+        + b"\x00\x00\x00"
+        + b"\x00\x00\x00"
         + packed.to_bytes(8, "big")
         + b"\x00" * 16
     )
@@ -404,8 +402,21 @@ class TestSubtitles:
 class TestDispatch:
     def test_ingest_fns_keys(self):
         assert set(INGEST_FNS) == {
-            ".pdf", ".docx", ".xlsx", ".pptx", ".html", ".htm", ".png", ".jpg", ".jpeg",
-            ".wav", ".mp3", ".ogg", ".flac", ".vtt", ".srt",
+            ".pdf",
+            ".docx",
+            ".xlsx",
+            ".pptx",
+            ".html",
+            ".htm",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".wav",
+            ".mp3",
+            ".ogg",
+            ".flac",
+            ".vtt",
+            ".srt",
         }
 
     def test_all_exts_dispatch(self, tmp_path):

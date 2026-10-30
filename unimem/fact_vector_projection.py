@@ -30,8 +30,11 @@ def _backend(root):
 
 
 def _exists(root, backend):
-    return os.path.isfile(index_path(root)) if backend == "sqlite" else os.path.isdir(
-        os.path.join(paths.memory_dir(root), "lance"))
+    return (
+        os.path.isfile(index_path(root))
+        if backend == "sqlite"
+        else os.path.isdir(os.path.join(paths.memory_dir(root), "lance"))
+    )
 
 
 def _watermark(model, backend):
@@ -41,6 +44,7 @@ def _watermark(model, backend):
 async def _index(root, model, dimension, backend="sqlite"):
     if backend == "lance":
         from unimem.vector_lance import LanceVectorIndex
+
         return LanceVectorIndex(root, tenant="local", namespace="facts", model=model, dimension=dimension)
     filename = index_path(root)
     paths.enforce_boundary(root, filename)
@@ -144,8 +148,9 @@ def search(root: str, query: str, *, model="bge-small", limit=200, allowed_ids=N
         pending = {
             row[0]
             for row in canonical.connection.execute(
-                "SELECT DISTINCT fact_id FROM events WHERE seq>? AND fact_id IN (SELECT value FROM json_each(?))",
-                (cursor, json.dumps(identities)),
+                "SELECT candidate.value FROM json_each(?) AS candidate "
+                "WHERE EXISTS (SELECT 1 FROM events e WHERE e.fact_id=candidate.value AND e.seq>?)",
+                (json.dumps(identities), cursor),
             )
         }
     return [(identity, score) for identity, score in hits if identity not in pending]

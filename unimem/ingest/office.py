@@ -1,4 +1,5 @@
 """Bounded, offline OOXML text extraction; no formulas, macros or links execute."""
+
 from __future__ import annotations
 
 import io
@@ -24,12 +25,18 @@ MAX_XML_DEPTH = 128
 MAX_MEMBERS = 4096
 MAX_PARTS = 1024
 MAX_DIRECTORY_BYTES = 4 * 1024 * 1024
-_REL_NS = ("http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-           "http://purl.oclc.org/ooxml/officeDocument/relationships")
-_SHEET_NS = ("http://schemas.openxmlformats.org/spreadsheetml/2006/main",
-             "http://purl.oclc.org/ooxml/spreadsheetml/main")
-_SLIDE_NS = ("http://schemas.openxmlformats.org/presentationml/2006/main",
-             "http://purl.oclc.org/ooxml/presentationml/main")
+_REL_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "http://purl.oclc.org/ooxml/officeDocument/relationships",
+)
+_SHEET_NS = (
+    "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "http://purl.oclc.org/ooxml/spreadsheetml/main",
+)
+_SLIDE_NS = (
+    "http://schemas.openxmlformats.org/presentationml/2006/main",
+    "http://purl.oclc.org/ooxml/presentationml/main",
+)
 
 
 def _local(tag: str) -> str:
@@ -47,13 +54,19 @@ def _directory_guard(handle) -> None:
         offset = match.start()
         if offset + 22 > length:
             continue
-        _, disk, directory_disk, disk_entries, entries, directory_size, directory_at, comment = \
-            struct.unpack_from("<4s4H2LH", tail, offset)
+        _, disk, directory_disk, disk_entries, entries, directory_size, directory_at, comment = struct.unpack_from(
+            "<4s4H2LH", tail, offset
+        )
         if offset + 22 + comment != length:
             continue
-        if (disk or directory_disk or disk_entries != entries or entries > MAX_MEMBERS
-                or directory_size > MAX_DIRECTORY_BYTES
-                or directory_at + directory_size != size - length + offset):
+        if (
+            disk
+            or directory_disk
+            or disk_entries != entries
+            or entries > MAX_MEMBERS
+            or directory_size > MAX_DIRECTORY_BYTES
+            or directory_at + directory_size != size - length + offset
+        ):
             raise ValueError("Office archive exceeds central-directory budget or uses unsupported ZIP layout")
         handle.seek(0)
         return
@@ -130,8 +143,9 @@ class _Package:
             decoded = urllib.parse.unquote(url.path)
             if url.scheme or url.netloc or url.query or url.fragment or "\\" in decoded or ":" in decoded:
                 raise ValueError("Office relationship must name an internal package part")
-            resolved = posixpath.normpath(decoded.lstrip("/") if decoded.startswith("/")
-                                         else posixpath.join(folder, decoded))
+            resolved = posixpath.normpath(
+                decoded.lstrip("/") if decoded.startswith("/") else posixpath.join(folder, decoded)
+            )
             if resolved in ("", ".", "..") or resolved.startswith("../"):
                 raise ValueError("Office relationship escapes the package")
             result[identity] = (resolved, kind.rsplit("/", 1)[-1])
@@ -147,22 +161,32 @@ def _package(path: str):
             names = set()
             for info in archive.infolist():
                 name = info.filename
-                if (name in names or len(name) > 512 or name.startswith("/") or "\\" in name
-                        or ".." in name.split("/") or info.flag_bits & 1
-                        or stat.S_ISLNK(info.external_attr >> 16)
-                        or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)):
+                if (
+                    name in names
+                    or len(name) > 512
+                    or name.startswith("/")
+                    or "\\" in name
+                    or ".." in name.split("/")
+                    or info.flag_bits & 1
+                    or stat.S_ISLNK(info.external_attr >> 16)
+                    or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+                ):
                     raise ValueError("Office archive contains ambiguous or unsupported members")
                 names.add(name)
             yield _Package(archive)
         final = os.fstat(handle.fileno())
-        if (initial.st_size, initial.st_mtime_ns, initial.st_ctime_ns) != \
-                (final.st_size, final.st_mtime_ns, final.st_ctime_ns):
+        if (initial.st_size, initial.st_mtime_ns, initial.st_ctime_ns) != (
+            final.st_size,
+            final.st_mtime_ns,
+            final.st_ctime_ns,
+        ):
             raise ValueError("Office source changed during extraction; retry required")
 
 
 def _relationship_id(node: ET.Element) -> str:
-    return next((node.get("{" + namespace + "}id", "") for namespace in _REL_NS
-                 if node.get("{" + namespace + "}id")), "")
+    return next(
+        (node.get("{" + namespace + "}id", "") for namespace in _REL_NS if node.get("{" + namespace + "}id")), ""
+    )
 
 
 def _root_kind(root: ET.Element, namespaces: tuple[str, ...], kind: str) -> None:
@@ -174,7 +198,8 @@ def _chunks(path: str, modality: str, text: str, breadcrumb: str, metadata: dict
     from unimem.ingest.multimodal import _MAX_MM_CHUNK, _make_chunk
 
     text = _redact_secrets(text)
-    chunks, start = [], 0
+    chunks: list[Chunk] = []
+    start = 0
     while start < len(text):
         end = min(start + _MAX_MM_CHUNK, len(text))
         if end < len(text):
@@ -212,9 +237,12 @@ def _cell_value(cell: ET.Element, strings: list[str]) -> str:
 
 def _rich_text(root: ET.Element) -> str:
     # Phonetic rPh annotations are not displayed cell values.
-    return "".join(node.text or "" for child in root
-                   for node in ([child] if _local(child.tag) == "t" else child if _local(child.tag) == "r" else [])
-                   if _local(node.tag) == "t")
+    return "".join(
+        node.text or ""
+        for child in root
+        for node in ([child] if _local(child.tag) == "t" else child if _local(child.tag) == "r" else [])
+        if _local(node.tag) == "t"
+    )
 
 
 def chunk_xlsx(path: str) -> list[Chunk]:
@@ -251,7 +279,9 @@ def chunk_xlsx(path: str) -> list[Chunk]:
                     raise ValueError("spreadsheet has invalid or duplicate row addresses")
                 seen_rows.add(index)
                 previous_row = int(index)
-                values, seen_cells, previous_column = [], set(), 0
+                values: list[str] = []
+                seen_cells: set[str] = set()
+                previous_column = 0
                 for cell in (node for node in row if _local(node.tag) == "c"):
                     address = cell.get("r", "")
                     if not address:
@@ -273,19 +303,39 @@ def chunk_xlsx(path: str) -> list[Chunk]:
                     value = _cell_value(cell, strings)
                     if value:
                         cell_type = cell.get("t", "n")
-                        encoded = json.dumps(value, ensure_ascii=False) if cell_type in ("s", "str", "d", "inlineStr") \
+                        encoded = (
+                            json.dumps(value, ensure_ascii=False)
+                            if cell_type in ("s", "str", "d", "inlineStr")
                             else value
-                        values.append(package.text((" | " if values else "") + address + "[" + cell_type + "]="
-                                                   + encoded))
+                        )
+                        values.append(
+                            package.text((" | " if values else "") + address + "[" + cell_type + "]=" + encoded)
+                        )
                 if values:
                     breadcrumb = f"{os.path.basename(path)} / sheet {name} / row {index}"
-                    chunks.extend(_chunks(path, "xlsx", "".join(values), breadcrumb,
-                                          {"source_part": part, "sheet": name, "row": int(index),
-                                           "sheet_state": sheet.get("state", "visible"),
-                                           "value_policy": "stored-values-no-formatting-no-evaluation"}))
+                    chunks.extend(
+                        _chunks(
+                            path,
+                            "xlsx",
+                            "".join(values),
+                            breadcrumb,
+                            {
+                                "source_part": part,
+                                "sheet": name,
+                                "row": int(index),
+                                "sheet_state": sheet.get("state", "visible"),
+                                "value_policy": "stored-values-no-formatting-no-evaluation",
+                            },
+                        )
+                    )
         if not chunks:
-            chunks = _chunks(path, "xlsx", "[XLSX] No stored cell values.", os.path.basename(path),
-                             {"source_part": "xl/workbook.xml", "kind": "empty_document"})
+            chunks = _chunks(
+                path,
+                "xlsx",
+                "[XLSX] No stored cell values.",
+                os.path.basename(path),
+                {"source_part": "xl/workbook.xml", "kind": "empty_document"},
+            )
         return chunks
 
 
@@ -317,23 +367,38 @@ def chunk_pptx(path: str) -> list[Chunk]:
                 paragraph = 0
                 for shape in (node for node in content.iter() if _local(node.tag) in ("sp", "graphicFrame")):
                     if category == "speaker_notes" and any(
-                            _local(node.tag) == "ph" and node.get("type") in ("sldNum", "hdr", "ftr", "dt")
-                            for node in shape.iter()):
+                        _local(node.tag) == "ph" and node.get("type") in ("sldNum", "hdr", "ftr", "dt")
+                        for node in shape.iter()
+                    ):
                         continue
                     for node in shape.iter():
                         if _local(node.tag) != "p":
                             continue
-                        text = "".join(child.text or "" if _local(child.tag) == "t" else "\n"
-                                       for child in node.iter() if _local(child.tag) in ("t", "br")).strip()
+                        text = "".join(
+                            child.text or "" if _local(child.tag) == "t" else "\n"
+                            for child in node.iter()
+                            if _local(child.tag) in ("t", "br")
+                        ).strip()
                         if not text:
                             continue
                         paragraph += 1
                         text = package.text(text)
                         breadcrumb = f"{os.path.basename(path)} / slide {index} / {category} / paragraph {paragraph}"
-                        chunks.extend(_chunks(path, "pptx", text, breadcrumb,
-                                              {"source_part": source_part, "slide": index, "kind": category,
-                                               "paragraph": paragraph}))
+                        chunks.extend(
+                            _chunks(
+                                path,
+                                "pptx",
+                                text,
+                                breadcrumb,
+                                {"source_part": source_part, "slide": index, "kind": category, "paragraph": paragraph},
+                            )
+                        )
         if not chunks:
-            chunks = _chunks(path, "pptx", "[PPTX] No extractable slide text.", os.path.basename(path),
-                             {"source_part": "ppt/presentation.xml", "kind": "empty_document"})
+            chunks = _chunks(
+                path,
+                "pptx",
+                "[PPTX] No extractable slide text.",
+                os.path.basename(path),
+                {"source_part": "ppt/presentation.xml", "kind": "empty_document"},
+            )
         return chunks

@@ -16,8 +16,14 @@ ROLE_BILLING_ADMIN = "billing_admin"
 ROLE_OWNER = "owner"
 
 ROLES = (
-    ROLE_VIEWER, ROLE_ANALYST, ROLE_CURATOR, ROLE_VALIDATOR, ROLE_DEPLOYER,
-    ROLE_SECURITY_ADMIN, ROLE_BILLING_ADMIN, ROLE_OWNER,
+    ROLE_VIEWER,
+    ROLE_ANALYST,
+    ROLE_CURATOR,
+    ROLE_VALIDATOR,
+    ROLE_DEPLOYER,
+    ROLE_SECURITY_ADMIN,
+    ROLE_BILLING_ADMIN,
+    ROLE_OWNER,
 )
 
 PRIVILEGED_ROLES = (ROLE_SECURITY_ADMIN, ROLE_OWNER)
@@ -33,8 +39,14 @@ CAP_BILLING = "billing"
 CAP_MANAGE_USERS = "manage_users"
 
 CAPABILITIES = (
-    CAP_VIEW, CAP_ANALYZE, CAP_CURATE, CAP_VALIDATE, CAP_DEPLOY,
-    CAP_SECURITY, CAP_BILLING, CAP_MANAGE_USERS,
+    CAP_VIEW,
+    CAP_ANALYZE,
+    CAP_CURATE,
+    CAP_VALIDATE,
+    CAP_DEPLOY,
+    CAP_SECURITY,
+    CAP_BILLING,
+    CAP_MANAGE_USERS,
 )
 
 ROLE_CAPABILITIES: dict[str, frozenset[str]] = {
@@ -105,9 +117,7 @@ class CapabilityDenied(PermissionError):
     """A user's role does not grant the capability a tool requires."""
 
     def __init__(self, required: str, role: str):
-        super().__init__(
-            f"role {role!r} does not grant the {required!r} capability"
-        )
+        super().__init__(f"role {role!r} does not grant the {required!r} capability")
         self.required = required
         self.role = role
 

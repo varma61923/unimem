@@ -41,8 +41,9 @@ def test_corroboration_counts_independent_roots(tmp_path, monkeypatch):
         bind(root, f"echo{i}", ["target"])
     with pytest.raises(ValueError, match="quorum"):
         lineage.corroborate(root, "target", [f"echo{i}" for i in range(3)])
-    model = causal_gate.Model(sources={f"org{i}": causal_gate.SourceReputation(f"org{i}", 10, .2, .01, .99)
-                                     for i in range(3)})
+    model = causal_gate.Model(
+        sources={f"org{i}": causal_gate.SourceReputation(f"org{i}", 10, 0.2, 0.01, 0.99) for i in range(3)}
+    )
     monkeypatch.setattr(causal_gate, "fit", lambda *a, **kw: model)
     for i in range(3):
         bind(root, f"source{i}", principal=f"org{i}")
@@ -77,6 +78,7 @@ def test_forged_replayed_and_oversized_attestations_fail(tmp_path):
 
 def test_lineage_surfaces(tmp_path):
     from unimem.mcp_server import build_server
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import call, cli
 

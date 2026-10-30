@@ -1,4 +1,5 @@
 """Machine-readable requests for the identical local and hosted memory API."""
+
 from __future__ import annotations
 
 import math
@@ -6,59 +7,149 @@ import math
 OCCASION = {"type": ["string", "null"], "maxLength": 256}
 TEXT = {"type": "string", "maxLength": 20000}
 CONTEXT = {"type": "array", "items": {"type": "string", "maxLength": 256}, "maxItems": 100}
-SECONDARY_METRICS = {"type": "object", "properties": {
-    name: {"oneOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "boolean"}]}
-    for name in ("accuracy", "agreement")},
-    "required": ["accuracy", "agreement"], "additionalProperties": False}
-FIELDS = {
-    "team-read": ({"identities": {"type": "array", "maxItems": 256,
-                     "items": {"type": "string", "minLength": 1, "maxLength": 256}},
-                   "team_space": {"type": "string", "minLength": 1, "maxLength": 128}}, ["identities"]),
+SECONDARY_METRICS = {
+    "type": "object",
+    "properties": {
+        name: {"oneOf": [{"type": "number", "minimum": 0, "maximum": 1}, {"type": "boolean"}]}
+        for name in ("accuracy", "agreement")
+    },
+    "required": ["accuracy", "agreement"],
+    "additionalProperties": False,
+}
+FIELDS: dict[str, tuple[dict[str, dict], list[str]]] = {
+    "team-read": (
+        {
+            "identities": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {"type": "string", "minLength": 1, "maxLength": 256},
+            },
+            "team_space": {"type": "string", "minLength": 1, "maxLength": 128},
+        },
+        ["identities"],
+    ),
     "record-put": ({"record": {"type": "object"}}, ["record"]),
     "record-search": ({"query": TEXT, "limit": {"type": "integer", "minimum": 0, "maximum": 1000}}, []),
-    "record-forget": ({"id": {**TEXT, "minLength": 1, "maxLength": 256},
-                        "reason": {**TEXT, "minLength": 1}}, ["id", "reason"]),
+    "record-forget": (
+        {"id": {**TEXT, "minLength": 1, "maxLength": 256}, "reason": {**TEXT, "minLength": 1}},
+        ["id", "reason"],
+    ),
     "record-reap-due": ({"limit": {"type": "integer", "minimum": 1, "maximum": 100}}, []),
-    "turn": ({"session_id": {"type": "string", "minLength": 1, "maxLength": 256},
-              "query": TEXT, "text": TEXT, "event": TEXT, "payload": {"type": "object"},
-            "budget": {"type": "integer", "minimum": 0, "maximum": 8000}},
-             ["session_id", "query"]),
+    "turn": (
+        {
+            "session_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "query": TEXT,
+            "text": TEXT,
+            "event": TEXT,
+            "payload": {"type": "object"},
+            "budget": {"type": "integer", "minimum": 0, "maximum": 8000},
+        },
+        ["session_id", "query"],
+    ),
     "add": ({"text": {**TEXT, "minLength": 1}, "local": {"type": "boolean"}, "memory_type": TEXT}, ["text"]),
     "batch": ({"items": {"type": "array", "items": {"type": "object"}, "maxItems": 200}}, ["items"]),
-    "search": ({"query": TEXT, "recipe": TEXT, "retriever": TEXT, "center": TEXT,
-                "as_of": {"type": ["string", "null"]}, "known_at": {"type": ["string", "null"]},
-                "graph_hops": {"type": "integer", "minimum": 0, "maximum": 4},
-                "reranker": {"type": ["string", "null"], "enum": [None, "none", "mmr", "cross-encoder",
-                             "cross-encoder-fast", "bge-reranker-v2-m3", "mxbai-rerank"]}, "action_class": TEXT,
-                "limit": {"type": "integer", "minimum": 0, "maximum": 1000}}, ["query"]),
-    "profile": ({"query": TEXT, "action_class": TEXT, "occasion_id": OCCASION,
-                 "limit": {"type": "integer", "minimum": 0, "maximum": 1000}}, []),
-    "reflect": ({"query": TEXT, "action_class": TEXT, "occasion_id": OCCASION,
-                 "budget": {"type": "integer", "minimum": 0, "maximum": 100000},
-                 "adaptive_budget": {"type": "boolean"},
-                 "exploration_slots": {"type": "integer", "minimum": 0, "maximum": 100}}, ["query"]),
-    "outcome": ({"occasion_id": {"type": "string", "minLength": 1, "maxLength": 256},
-                 "succeeded": {"type": "boolean"}, "secondary_metrics": SECONDARY_METRICS},
-                ["occasion_id", "succeeded"]),
+    "search": (
+        {
+            "query": TEXT,
+            "recipe": TEXT,
+            "retriever": TEXT,
+            "center": TEXT,
+            "as_of": {"type": ["string", "null"]},
+            "known_at": {"type": ["string", "null"]},
+            "graph_hops": {"type": "integer", "minimum": 0, "maximum": 4},
+            "reranker": {
+                "type": ["string", "null"],
+                "enum": [
+                    None,
+                    "none",
+                    "mmr",
+                    "cross-encoder",
+                    "cross-encoder-fast",
+                    "bge-reranker-v2-m3",
+                    "mxbai-rerank",
+                ],
+            },
+            "action_class": TEXT,
+            "limit": {"type": "integer", "minimum": 0, "maximum": 1000},
+        },
+        ["query"],
+    ),
+    "profile": (
+        {
+            "query": TEXT,
+            "action_class": TEXT,
+            "occasion_id": OCCASION,
+            "limit": {"type": "integer", "minimum": 0, "maximum": 1000},
+        },
+        [],
+    ),
+    "reflect": (
+        {
+            "query": TEXT,
+            "action_class": TEXT,
+            "occasion_id": OCCASION,
+            "budget": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "adaptive_budget": {"type": "boolean"},
+            "exploration_slots": {"type": "integer", "minimum": 0, "maximum": 100},
+        },
+        ["query"],
+    ),
+    "outcome": (
+        {
+            "occasion_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "succeeded": {"type": "boolean"},
+            "secondary_metrics": SECONDARY_METRICS,
+        },
+        ["occasion_id", "succeeded"],
+    ),
     "check-action": ({"tool": {**TEXT, "minLength": 1}, "tags": CONTEXT}, ["tool"]),
     "propose": ({"text": {**TEXT, "minLength": 1}, "sources": {**CONTEXT, "minItems": 1}}, ["text", "sources"]),
 }
 
 
-SOURCE = {"type": "object", "properties": {
-    "modality": {"type": "string", "enum": ["text", "voice", "face", "physiology", "image", "video", "tactile",
-                                              "force", "position", "temperature", "system", "unknown"]},
-    "labels": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 256}},
-    "inferred": {"type": "boolean"}}, "additionalProperties": False}
+SOURCE = {
+    "type": "object",
+    "properties": {
+        "modality": {
+            "type": "string",
+            "enum": [
+                "text",
+                "voice",
+                "face",
+                "physiology",
+                "image",
+                "video",
+                "tactile",
+                "force",
+                "position",
+                "temperature",
+                "system",
+                "unknown",
+            ],
+        },
+        "labels": {"type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 256}},
+        "inferred": {"type": "boolean"},
+    },
+    "additionalProperties": False,
+}
 for _source_write in ("add", "batch", "record-put", "turn"):
     FIELDS[_source_write][0]["source"] = SOURCE
 
 
-TEAM_FIELDS = {
-    "read_set": {"type": "array", "maxItems": 256, "items": {"type": "object",
-        "properties": {"id": {"type": "string", "minLength": 1, "maxLength": 256},
-                       "transaction_time": {"type": "string", "minLength": 68, "maxLength": 68}},
-        "required": ["id", "transaction_time"], "additionalProperties": False}},
+TEAM_FIELDS: dict[str, dict] = {
+    "read_set": {
+        "type": "array",
+        "maxItems": 256,
+        "items": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "string", "minLength": 1, "maxLength": 256},
+                "transaction_time": {"type": "string", "minLength": 68, "maxLength": 68},
+            },
+            "required": ["id", "transaction_time"],
+            "additionalProperties": False,
+        },
+    },
     "team_space": {"type": "string", "minLength": 1, "maxLength": 128},
     "work_item": {"type": "string", "minLength": 1, "maxLength": 128},
     "fencing_token": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
@@ -71,12 +162,17 @@ for _team_write in ("add", "batch"):
 
 def request_schema(operation: str) -> dict:
     fields, required = FIELDS[operation]
-    return {"type": "object", "properties": {**fields, "context": CONTEXT},
-            "required": required, "additionalProperties": False}
+    return {
+        "type": "object",
+        "properties": {**fields, "context": CONTEXT},
+        "required": required,
+        "additionalProperties": False,
+    }
 
 
 def validate_request(operation: str, body: dict) -> None:
     """Enforce this contract's bounded structural subset without an extra dependency."""
+
     def check(value, schema, path):
         if "oneOf" in schema:
             matched = 0
@@ -87,45 +183,65 @@ def validate_request(operation: str, body: dict) -> None:
                     continue
                 matched += 1
             if matched != 1:
-                raise ValueError(path+" must match exactly one documented type")
+                raise ValueError(path + " must match exactly one documented type")
             return
         types = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
-        kind = ("null" if value is None else "boolean" if isinstance(value, bool) else
-                "string" if isinstance(value, str) else "integer" if isinstance(value, int) else
-                "number" if isinstance(value, float) else
-                "array" if isinstance(value, list) else "object" if isinstance(value, dict) else "invalid")
+        kind = (
+            "null"
+            if value is None
+            else "boolean"
+            if isinstance(value, bool)
+            else "string"
+            if isinstance(value, str)
+            else "integer"
+            if isinstance(value, int)
+            else "number"
+            if isinstance(value, float)
+            else "array"
+            if isinstance(value, list)
+            else "object"
+            if isinstance(value, dict)
+            else "invalid"
+        )
         if kind == "integer" and "number" in types:
             kind = "number"
         if kind not in types:
-            raise ValueError(path+" has the wrong type")
+            raise ValueError(path + " has the wrong type")
         if kind == "string" and not schema.get("minLength", 0) <= len(value) <= schema.get("maxLength", 20000):
-            raise ValueError(path+" exceeds its text bounds")
+            raise ValueError(path + " exceeds its text bounds")
         if kind == "integer" and not schema.get("minimum", value) <= value <= schema.get("maximum", value):
-            raise ValueError(path+" exceeds its integer bounds")
-        if kind == "number" and (not schema.get("minimum", -1e100) <= value <= schema.get("maximum", 1e100)
-                                  or not math.isfinite(value)):
-            raise ValueError(path+" exceeds its finite numeric bounds")
+            raise ValueError(path + " exceeds its integer bounds")
+        if kind == "number" and (
+            not schema.get("minimum", -1e100) <= value <= schema.get("maximum", 1e100) or not math.isfinite(value)
+        ):
+            raise ValueError(path + " exceeds its finite numeric bounds")
         if kind == "array":
             if not schema.get("minItems", 0) <= len(value) <= schema.get("maxItems", 1000):
-                raise ValueError(path+" exceeds its item bounds")
+                raise ValueError(path + " exceeds its item bounds")
             for index, item in enumerate(value):
-                check(item, schema["items"], path+"["+str(index)+"]")
+                check(item, schema["items"], path + "[" + str(index) + "]")
         if kind == "object":
             fields = schema.get("properties", {})
             if not set(schema.get("required", [])) <= value.keys():
-                raise ValueError(path+" is missing required fields")
-            if schema.get("additionalProperties") is False and set(value)-fields.keys():
-                raise ValueError(path+" contains undocumented fields")
+                raise ValueError(path + " is missing required fields")
+            if schema.get("additionalProperties") is False and set(value) - fields.keys():
+                raise ValueError(path + " contains undocumented fields")
             for key in value.keys() & fields.keys():
-                check(value[key], fields[key], path+"."+key)
+                check(value[key], fields[key], path + "." + key)
+
     check(body, request_schema(operation), "request")
 
 
 def openapi_schema(schema: dict) -> dict:
     """Translate nullable JSON Schema types into OpenAPI 3.0 nullable syntax."""
-    value = {key: openapi_schema(item) if isinstance(item, dict) else
-             [openapi_schema(v) if isinstance(v, dict) else v for v in item] if isinstance(item, list) else item
-             for key, item in schema.items()}
+    value = {
+        key: openapi_schema(item)
+        if isinstance(item, dict)
+        else [openapi_schema(v) if isinstance(v, dict) else v for v in item]
+        if isinstance(item, list)
+        else item
+        for key, item in schema.items()
+    }
     if isinstance(value.get("type"), list):
         kinds = [kind for kind in value["type"] if kind != "null"]
         if len(kinds) != 1 or "null" not in value["type"]:
@@ -142,62 +258,141 @@ def components() -> dict:
     """Typed request/response contracts consumed by standard Swagger generators."""
     string_array = {"type": "array", "items": {"type": "string"}}
     obj = {"type": "object", "additionalProperties": True}
-    evidence = {"type": "object", "properties": {"id": {"type": "string"}, "text": {"type": "string"},
-        "score": {"type": "number"}, "layer": {"type": "string"}, "source_traces": string_array,
-        "sources": string_array},
-        "required": ["id", "text"], "additionalProperties": True}
-    fact = {"type": "object", "properties": {"id": {"type": "string"}, "statement": TEXT,
-        "action": {"type": "string", "enum": ["ADD", "NOOP"]}, "scopes": string_array,
-        "source_traces": string_array, "origin": obj}, "required": ["id", "statement", "action"],
-        "additionalProperties": True}
-    control = {"type": "object", "properties": {"id": {"type": "string"}, "kind": {"type": "string"},
-        "text": TEXT, "revision": {"type": "string"}, "scopes": string_array, "data": obj, "origin": obj},
-        "required": ["id", "kind", "text", "revision"], "additionalProperties": True}
+    evidence = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "text": {"type": "string"},
+            "score": {"type": "number"},
+            "layer": {"type": "string"},
+            "source_traces": string_array,
+            "sources": string_array,
+        },
+        "required": ["id", "text"],
+        "additionalProperties": True,
+    }
+    fact = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "statement": TEXT,
+            "action": {"type": "string", "enum": ["ADD", "NOOP"]},
+            "scopes": string_array,
+            "source_traces": string_array,
+            "origin": obj,
+        },
+        "required": ["id", "statement", "action"],
+        "additionalProperties": True,
+    }
+    control = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "kind": {"type": "string"},
+            "text": TEXT,
+            "revision": {"type": "string"},
+            "scopes": string_array,
+            "data": obj,
+            "origin": obj,
+        },
+        "required": ["id", "kind", "text", "revision"],
+        "additionalProperties": True,
+    }
+
     def array(name):
-        return {"type": "array", "items": {"$ref": "#/components/schemas/"+name}}
-    responses = {
-        "team-read": {"space": {"type": "string"}, "level": {"type": "string"},
-                      "facts": {"type": "array", "items": obj},
-                      "read_set": TEAM_FIELDS["read_set"]},
+        return {"type": "array", "items": {"$ref": "#/components/schemas/" + name}}
+
+    responses: dict[str, dict[str, dict]] = {
+        "team-read": {
+            "space": {"type": "string"},
+            "level": {"type": "string"},
+            "facts": {"type": "array", "items": obj},
+            "read_set": TEAM_FIELDS["read_set"],
+        },
         "record-put": {"record": obj},
         "record-search": {"results": {"type": "array", "items": obj}},
         "record-forget": {"deleted": string_array, "reason": {"type": "string"}, "at": {"type": "string"}},
         "record-reap-due": {"results": {"type": "array", "items": obj}},
-        "turn": {"context": {"type": "string"}, "injected": string_array,
-                 "profile": obj, "buffer": {"type": "array", "items": obj},
-                 "session_id": {"type": "string"}, "scope": obj, "results": array("Evidence")},
-        "add": {"calls": {"type": "integer"}, "add_only": {"type": "boolean"}, "facts": array("Fact"),
-                "entity_ids": string_array},
+        "turn": {
+            "context": {"type": "string"},
+            "injected": string_array,
+            "profile": obj,
+            "buffer": {"type": "array", "items": obj},
+            "session_id": {"type": "string"},
+            "scope": obj,
+            "results": array("Evidence"),
+        },
+        "add": {
+            "calls": {"type": "integer"},
+            "add_only": {"type": "boolean"},
+            "facts": array("Fact"),
+            "entity_ids": string_array,
+        },
         "batch": {"add_only": {"type": "boolean"}, "facts": array("Fact")},
         "search": {"results": array("Evidence")},
-        "profile": {"static": array("Evidence"), "dynamic": array("Evidence"),
-                    "directives": array("ControlRecord"), "occasion_id": {"type": "string"},
-                    "recent_activity": {"type": "array", "items": {"type": "object", "properties": {
-                        "id": {"type": "string"}, "activity_type": {"type": "string"},
-                        "text": {"type": "string"}, "recorded_at": {"type": "string"}},
-                        "required": ["id", "activity_type", "text", "recorded_at"]}},
-                    "withheld": string_array},
-        "reflect": {"context": {"type": "string"}, "tokens_estimate": {"type": "integer"},
-                    "budget": {"type": "integer"}, "evidence": array("Evidence"),
-                    "occasion_id": {"type": "string"}, "withheld": string_array,
-                    "withdrawn": {"type": "object", "additionalProperties": obj},
-                    "exploration": {"type": "array", "items": obj}, "authority_sources": string_array},
+        "profile": {
+            "static": array("Evidence"),
+            "dynamic": array("Evidence"),
+            "directives": array("ControlRecord"),
+            "occasion_id": {"type": "string"},
+            "recent_activity": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "activity_type": {"type": "string"},
+                        "text": {"type": "string"},
+                        "recorded_at": {"type": "string"},
+                    },
+                    "required": ["id", "activity_type", "text", "recorded_at"],
+                },
+            },
+            "withheld": string_array,
+        },
+        "reflect": {
+            "context": {"type": "string"},
+            "tokens_estimate": {"type": "integer"},
+            "budget": {"type": "integer"},
+            "evidence": array("Evidence"),
+            "occasion_id": {"type": "string"},
+            "withheld": string_array,
+            "withdrawn": {"type": "object", "additionalProperties": obj},
+            "exploration": {"type": "array", "items": obj},
+            "authority_sources": string_array,
+        },
         "outcome": {"recorded": {"type": "boolean"}},
         "check-action": {"allowed": {"type": "boolean"}},
     }
-    schemas = {"Evidence": evidence, "Fact": fact, "ControlRecord": control,
-               "ErrorResponse": {"type": "object", "properties": {"error": {"type": "object", "properties": {
-                   "code": {"type": "string"}, "message": {"type": "string"}}, "required": ["code", "message"]}}}}
+    schemas: dict[str, dict] = {
+        "Evidence": evidence,
+        "Fact": fact,
+        "ControlRecord": control,
+        "ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "object",
+                    "properties": {"code": {"type": "string"}, "message": {"type": "string"}},
+                    "required": ["code", "message"],
+                }
+            },
+        },
+    }
     for operation in FIELDS:
         name = model_name(operation)
         request = openapi_schema(request_schema(operation))
         if not request["required"]:
             del request["required"]  # OpenAPI 3.0 requires a non-empty list when present
-        schemas[name+"Request"] = request
+        schemas[name + "Request"] = request
         if operation == "propose":
-            schemas[name+"Response"] = {"allOf": [{"$ref": "#/components/schemas/ControlRecord"}]}
+            schemas[name + "Response"] = {"allOf": [{"$ref": "#/components/schemas/ControlRecord"}]}
         else:
             properties = responses[operation]
-            schemas[name+"Response"] = {"type": "object", "properties": properties,
-                "required": list(properties), "additionalProperties": True}
+            schemas[name + "Response"] = {
+                "type": "object",
+                "properties": properties,
+                "required": list(properties),
+                "additionalProperties": True,
+            }
     return schemas

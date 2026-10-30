@@ -73,9 +73,7 @@ def test_as_of_filtering(store):
     graph.add_node(store, "tool:old", "tool", "Old")
     graph.add_node(store, "tool:future", "tool", "Future")
     graph.add_edge(store, "service:s", "tool:old", "uses", valid_at="2024-01-01T00:00:00Z")
-    graph.add_edge(
-        store, "service:s", "tool:future", "depends_on", valid_at="2030-01-01T00:00:00Z"
-    )
+    graph.add_edge(store, "service:s", "tool:future", "depends_on", valid_at="2030-01-01T00:00:00Z")
     early = render_html(store, as_of="2024-06-01T00:00:00Z")
     late = render_html(store, as_of="2031-01-01T00:00:00Z")
     assert "tool:old" in early

@@ -18,9 +18,11 @@ class TestSubprocessHardening:
 
         def mock_subprocess_run(cmd, **kwargs):
             recorded_calls.append((cmd, kwargs))
+
             class DummyResult:
                 returncode = 0
                 stdout = "output"
+
             return DummyResult()
 
         monkeypatch.setattr(subprocess, "run", mock_subprocess_run)
@@ -79,9 +81,7 @@ class TestShadowModuleImmunity:
 
         target_script = malicious_dir / "test_import.py"
         target_script.write_text(
-            "import json\n"
-            "import argparse\n"
-            "print('SUCCESS_NOT_HIJACKED')\n",
+            "import json\nimport argparse\nprint('SUCCESS_NOT_HIJACKED')\n",
             encoding="utf-8",
         )
 

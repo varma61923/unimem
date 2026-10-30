@@ -21,26 +21,38 @@ def _active_lesson(root: str, slug: str, **fm_extra) -> str:
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fm = {
-        "name": slug, "description": "A lesson under test", "status": "active",
-        "importance": 3, "tags": [], "domain": "testing", "agent_type": "code",
+        "name": slug,
+        "description": "A lesson under test",
+        "status": "active",
+        "importance": 3,
+        "tags": [],
+        "domain": "testing",
+        "agent_type": "code",
         "applies_when": "the situation broadly resembles this one",
         "do_not_apply_when": "n/a",
     }
     fm.update(fm_extra)
     lesson_io.write_lesson(
-        path, fm, "## Rule\nDo the thing.\n\n## Why\nBecause.\n\n"
-        "## How to apply\nJust do it.\n\n## Counter-examples\nNone.\n",
-        root=root, actor="test", reason="fixture",
+        path,
+        fm,
+        "## Rule\nDo the thing.\n\n## Why\nBecause.\n\n## How to apply\nJust do it.\n\n## Counter-examples\nNone.\n",
+        root=root,
+        actor="test",
+        reason="fixture",
     )
     return path
 
 
-def _episode(root: str, name: str, verdict: str, retrieved: str, hit: str,
-             task_invocation: str = "") -> None:
+def _episode(root: str, name: str, verdict: str, retrieved: str, hit: str, task_invocation: str = "") -> None:
     eps = os.path.join(root, "memory", "episodes")
     os.makedirs(eps, exist_ok=True)
-    fm = {"name": name, "verdict": verdict, "task_invocation": task_invocation,
-          "lessons_retrieved_by_alpha": [retrieved], "lessons_hit": [hit]}
+    fm = {
+        "name": name,
+        "verdict": verdict,
+        "task_invocation": task_invocation,
+        "lessons_retrieved_by_alpha": [retrieved],
+        "lessons_hit": [hit],
+    }
     with open(os.path.join(eps, f"{name}.md"), "w", encoding="utf-8") as fh:
         fh.write("---\n" + yaml.safe_dump(fm) + "---\n\nbody\n")
 
@@ -50,8 +62,7 @@ def _miscalibrated_lesson(store) -> None:
     _active_lesson(str(store), "broad")
     for i in range(12):
         hit = "broad" if i < 2 else "not_this_one"
-        _episode(str(store), f"ep{i}", "CONFORM", "broad", hit,
-                 task_invocation=f"task about widget {i}")
+        _episode(str(store), f"ep{i}", "CONFORM", "broad", hit, task_invocation=f"task about widget {i}")
 
 
 def _harmful_lesson(store) -> None:
@@ -60,8 +71,7 @@ def _harmful_lesson(store) -> None:
     for i in range(12):
         _episode(str(store), f"ok{i}", "CONFORM", "other", "other")
     for i in range(8):
-        _episode(str(store), f"bad{i}", "ABANDON", "bad", "bad",
-                 task_invocation=f"task about gadget {i}")
+        _episode(str(store), f"bad{i}", "ABANDON", "bad", "bad", task_invocation=f"task about gadget {i}")
 
 
 _GOOD_DRAFT_JSON = {
@@ -112,17 +122,13 @@ class TestRefusesEverythingExceptMiscalibrated:
         main(["init", "--dest", str(store)])
         _active_lesson(str(store), "untested")
         main(["lesson", "suggest-revision", "untested", "--dest", str(store)])
-        assert not os.path.exists(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_untested-revision.md")
-        )
+        assert not os.path.exists(os.path.join(paths.lessons_dir(str(store)), "lesson_untested-revision.md"))
 
 
 class TestDraftingARevision:
     def test_writes_a_new_review_status_draft_and_leaves_the_original_untouched(self, store, capsys):
         _miscalibrated_lesson(store)
-        before_fm, before_body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_broad.md")
-        )
+        before_fm, before_body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_broad.md"))
         rc = main(["lesson", "suggest-revision", "broad", "--dest", str(store)])
         assert rc == 0
 
@@ -132,9 +138,7 @@ class TestDraftingARevision:
         assert draft_fm["status"] == "review"
         assert draft_fm["revises"] == "broad"
 
-        after_fm, after_body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_broad.md")
-        )
+        after_fm, after_body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_broad.md"))
         assert after_fm == before_fm
         assert after_body == before_body
 
@@ -149,9 +153,7 @@ class TestDraftingARevision:
     def test_the_draft_lists_hit_and_miss_occasions_with_their_task_text(self, store, capsys):
         _miscalibrated_lesson(store)
         main(["lesson", "suggest-revision", "broad", "--dest", str(store)])
-        _fm, body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_broad-revision.md")
-        )
+        _fm, body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_broad-revision.md"))
         assert "## Evidence for revision" in body
         assert "Fired and helped" in body
         assert "Fired but did not help" in body
@@ -169,10 +171,20 @@ class TestDraftingARevision:
         _miscalibrated_lesson(store)
         main(["lesson", "suggest-revision", "broad", "--dest", str(store)])
         capsys.readouterr()
-        assert main([
-            "lesson", "reject", "broad-revision", "--reason", "starting over",
-            "--dest", str(store),
-        ]) == 0
+        assert (
+            main(
+                [
+                    "lesson",
+                    "reject",
+                    "broad-revision",
+                    "--reason",
+                    "starting over",
+                    "--dest",
+                    str(store),
+                ]
+            )
+            == 0
+        )
         rc = main(["lesson", "suggest-revision", "broad", "--dest", str(store)])
         assert rc == 0
 
@@ -183,12 +195,18 @@ class TestDraftingARevision:
         fm, body = frontmatter.read(draft_path)
         fm["applies_when"] = "the task is specifically about widget provisioning"
         fm["do_not_apply_when"] = "the task is about anything else"
-        lesson_io.write_lesson(draft_path, fm, body, root=str(store), actor="test",
-                               reason="tightened by hand")
+        lesson_io.write_lesson(draft_path, fm, body, root=str(store), actor="test", reason="tightened by hand")
         capsys.readouterr()
-        rc = main([
-            "lesson", "approve", "broad-revision", "--force", "--dest", str(store),
-        ])
+        rc = main(
+            [
+                "lesson",
+                "approve",
+                "broad-revision",
+                "--force",
+                "--dest",
+                str(store),
+            ]
+        )
         assert rc == 0
 
 
@@ -266,14 +284,11 @@ class TestSuggestRewrite:
         monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
 
         def fake_call(cfg, prompt):
-            payload = dict(_GOOD_DRAFT_JSON, rule="Never do the thing for gadgets.",
-                          evidence=["bad0", "bad1"])
+            payload = dict(_GOOD_DRAFT_JSON, rule="Never do the thing for gadgets.", evidence=["bad0", "bad1"])
             return json.dumps(payload), {}
 
         monkeypatch.setattr(llm, "_call_anthropic", fake_call)
-        before_fm, before_body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_bad.md")
-        )
+        before_fm, before_body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_bad.md"))
         rc = main(["lesson", "suggest-rewrite", "bad", "--dest", str(store)])
         assert rc == 0
 
@@ -283,9 +298,7 @@ class TestSuggestRewrite:
         assert draft_fm["revises"] == "bad"
         assert "Never do the thing for gadgets." in draft_body
 
-        after_fm, after_body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_bad.md")
-        )
+        after_fm, after_body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_bad.md"))
         assert after_fm == before_fm
         assert after_body == before_body
 
@@ -294,9 +307,7 @@ class TestSuggestRewrite:
         monkeypatch.delenv("UNIMEM_LLM_API_KEY", raising=False)
         rc = main(["lesson", "suggest-rewrite", "bad", "--dest", str(store)])
         assert rc == 0
-        _draft_fm, draft_body = frontmatter.read(
-            os.path.join(paths.lessons_dir(str(store)), "lesson_bad-rewrite.md")
-        )
+        _draft_fm, draft_body = frontmatter.read(os.path.join(paths.lessons_dir(str(store)), "lesson_bad-rewrite.md"))
         assert "TODO: rewrite this rule" in draft_body
         assert "no LLM draft was available" in capsys.readouterr().err
 

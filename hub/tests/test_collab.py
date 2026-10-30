@@ -33,7 +33,10 @@ async def other_org(session_factory) -> str:
 async def _trace(session_factory, org_id) -> str:
     async with session_scope(session_factory) as session:
         trace = Trace(
-            org_id=org_id, title="t", context_text="c", solution_text="s",
+            org_id=org_id,
+            title="t",
+            context_text="c",
+            solution_text="s",
             agent_type="support",
         )
         session.add(trace)
@@ -109,7 +112,11 @@ class TestAddComment:
         async with session_scope(session_factory) as session:
             with pytest.raises(collab.CollabNotFound):
                 await collab.add_comment(
-                    session, org, author, "00000000-0000-0000-0000-000000000000", "hi",
+                    session,
+                    org,
+                    author,
+                    "00000000-0000-0000-0000-000000000000",
+                    "hi",
                 )
 
     @pytest.mark.parametrize("bad_id", ["not-a-uuid", "", "1; DROP TABLE traces"])
@@ -126,9 +133,7 @@ class TestAddComment:
         async with session_scope(session_factory) as session:
             assert await collab.mark_notification_read(session, org, person, bad_id) is False
 
-    async def test_commenting_on_another_orgs_trace_is_not_found(
-        self, session_factory, org, other_org
-    ):
+    async def test_commenting_on_another_orgs_trace_is_not_found(self, session_factory, org, other_org):
         trace_id = await _trace(session_factory, other_org)
         author_id = await _user(session_factory, org)
         author = _as_authenticated(author_id, org, rbac.ROLE_CURATOR, "p@x.test")
@@ -136,9 +141,7 @@ class TestAddComment:
             with pytest.raises(collab.CollabNotFound):
                 await collab.add_comment(session, org, author, trace_id, "hi")
 
-    async def test_a_comment_notifies_the_current_assignee_not_the_author(
-        self, session_factory, org
-    ):
+    async def test_a_comment_notifies_the_current_assignee_not_the_author(self, session_factory, org):
         trace_id = await _trace(session_factory, org)
         assignee_id = await _user(session_factory, org, email="assignee@x.test")
         author_id = await _user(session_factory, org, email="author@x.test")
@@ -155,9 +158,7 @@ class TestAddComment:
         assert notes[0]["kind"] == "comment"
         assert author_notes == []
 
-    async def test_commenting_on_your_own_assigned_trace_notifies_no_one(
-        self, session_factory, org
-    ):
+    async def test_commenting_on_your_own_assigned_trace_notifies_no_one(self, session_factory, org):
         trace_id = await _trace(session_factory, org)
         person_id = await _user(session_factory, org)
         person = _as_authenticated(person_id, org, rbac.ROLE_CURATOR, "p@x.test")
@@ -220,9 +221,7 @@ class TestAssign:
             with pytest.raises(collab.CollabError):
                 await collab.assign(session, org, assigner, trace_id, disabled_id)
 
-    async def test_assigning_to_a_user_in_another_org_is_not_found(
-        self, session_factory, org, other_org
-    ):
+    async def test_assigning_to_a_user_in_another_org_is_not_found(self, session_factory, org, other_org):
         trace_id = await _trace(session_factory, org)
         assigner_id = await _user(session_factory, org, email="mgr@x.test")
         outsider_id = await _user(session_factory, other_org, email="outsider@x.test")
@@ -278,9 +277,7 @@ class TestNotifications:
             unread = await collab.list_my_notifications(session, org, assignee, unread_only=True)
         assert unread == []
 
-    async def test_marking_someone_elses_notification_read_fails_closed(
-        self, session_factory, org
-    ):
+    async def test_marking_someone_elses_notification_read_fails_closed(self, session_factory, org):
         trace_id = await _trace(session_factory, org)
         assigner_id = await _user(session_factory, org, email="mgr@x.test")
         assignee_id = await _user(session_factory, org, email="dev@x.test")
@@ -304,7 +301,10 @@ class TestNotifications:
         person = _as_authenticated(person_id, org, rbac.ROLE_CURATOR, "p@x.test")
         async with session_scope(session_factory) as session:
             ok = await collab.mark_notification_read(
-                session, org, person, "00000000-0000-0000-0000-000000000000",
+                session,
+                org,
+                person,
+                "00000000-0000-0000-0000-000000000000",
             )
         assert ok is False
 
@@ -319,6 +319,7 @@ def _payload(result) -> dict:
         sc = result.structured_content
         return sc.get("result", sc)
     import json
+
     return json.loads(result.content[0].text)
 
 
@@ -331,9 +332,15 @@ class TestToolsRequireAPerson:
         actor_token = auth.current_actor.set("unimem_live_test")
         scope_token = auth.current_scopes.set(scopes.ALL_SCOPES)
         try:
-            result = _payload(await mcp.call_tool("add_comment", {
-                "trace_id": trace_id, "body": "hi",
-            }))
+            result = _payload(
+                await mcp.call_tool(
+                    "add_comment",
+                    {
+                        "trace_id": trace_id,
+                        "body": "hi",
+                    },
+                )
+            )
         finally:
             auth.current_scopes.reset(scope_token)
             auth.current_actor.reset(actor_token)
@@ -361,9 +368,15 @@ class TestToolsThroughARealPerson:
         person_id = await _user(session_factory, org, email="c@x.test")
         person = _as_authenticated(person_id, org, rbac.ROLE_CURATOR, "c@x.test")
         with _AsUser(org, person):
-            add_result = _payload(await mcp.call_tool("add_comment", {
-                "trace_id": trace_id, "body": "looks solid",
-            }))
+            add_result = _payload(
+                await mcp.call_tool(
+                    "add_comment",
+                    {
+                        "trace_id": trace_id,
+                        "body": "looks solid",
+                    },
+                )
+            )
             list_result = _payload(await mcp.call_tool("list_comments", {"trace_id": trace_id}))
         assert add_result["body"] == "looks solid"
         assert len(list_result["comments"]) == 1
@@ -373,9 +386,15 @@ class TestToolsThroughARealPerson:
         person_id = await _user(session_factory, org, role=rbac.ROLE_ANALYST, email="an@x.test")
         person = _as_authenticated(person_id, org, rbac.ROLE_ANALYST, "an@x.test")
         with _AsUser(org, person):
-            result = _payload(await mcp.call_tool("add_comment", {
-                "trace_id": trace_id, "body": "hi",
-            }))
+            result = _payload(
+                await mcp.call_tool(
+                    "add_comment",
+                    {
+                        "trace_id": trace_id,
+                        "body": "hi",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
         assert result["required_capability"] == rbac.CAP_CURATE
 
@@ -392,9 +411,7 @@ class TestToolsThroughARealPerson:
             result = _payload(await mcp.call_tool("list_comments", {"trace_id": trace_id}))
         assert len(result["comments"]) == 1
 
-    async def test_assign_then_notification_then_mark_read_end_to_end(
-        self, mcp, session_factory, org
-    ):
+    async def test_assign_then_notification_then_mark_read_end_to_end(self, mcp, session_factory, org):
         trace_id = await _trace(session_factory, org)
         manager_id = await _user(session_factory, org, email="mgr@x.test")
         assignee_id = await _user(session_factory, org, email="dev@x.test")
@@ -402,27 +419,37 @@ class TestToolsThroughARealPerson:
         assignee = _as_authenticated(assignee_id, org, rbac.ROLE_CURATOR, "dev@x.test")
 
         with _AsUser(org, manager):
-            assign_result = _payload(await mcp.call_tool("assign_trace", {
-                "trace_id": trace_id, "user_id": assignee_id,
-            }))
+            assign_result = _payload(
+                await mcp.call_tool(
+                    "assign_trace",
+                    {
+                        "trace_id": trace_id,
+                        "user_id": assignee_id,
+                    },
+                )
+            )
         assert assign_result["assignee_email"] == "dev@x.test"
 
         with _AsUser(org, assignee):
             inbox = _payload(await mcp.call_tool("list_my_notifications", {}))
             assert len(inbox["notifications"]) == 1
             notification_id = inbox["notifications"][0]["id"]
-            marked = _payload(await mcp.call_tool(
-                "mark_notification_read", {"notification_id": notification_id},
-            ))
+            marked = _payload(
+                await mcp.call_tool(
+                    "mark_notification_read",
+                    {"notification_id": notification_id},
+                )
+            )
             assert marked["read"] is True
-            unread = _payload(await mcp.call_tool(
-                "list_my_notifications", {"unread_only": True},
-            ))
+            unread = _payload(
+                await mcp.call_tool(
+                    "list_my_notifications",
+                    {"unread_only": True},
+                )
+            )
         assert unread["notifications"] == []
 
-    async def test_unassign_then_reassigning_clears_prior_assignee(
-        self, mcp, session_factory, org
-    ):
+    async def test_unassign_then_reassigning_clears_prior_assignee(self, mcp, session_factory, org):
         trace_id = await _trace(session_factory, org)
         manager_id = await _user(session_factory, org, email="mgr@x.test")
         manager = _as_authenticated(manager_id, org, rbac.ROLE_CURATOR, "mgr@x.test")
@@ -431,23 +458,31 @@ class TestToolsThroughARealPerson:
             result = _payload(await mcp.call_tool("unassign_trace", {"trace_id": trace_id}))
         assert result["cleared"] is True
 
-    async def test_commenting_on_an_unknown_trace_is_not_found_through_the_tool(
-        self, mcp, session_factory, org
-    ):
+    async def test_commenting_on_an_unknown_trace_is_not_found_through_the_tool(self, mcp, session_factory, org):
         person_id = await _user(session_factory, org)
         person = _as_authenticated(person_id, org, rbac.ROLE_CURATOR, "p@x.test")
         with _AsUser(org, person):
-            result = _payload(await mcp.call_tool("add_comment", {
-                "trace_id": "00000000-0000-0000-0000-000000000000", "body": "hi",
-            }))
+            result = _payload(
+                await mcp.call_tool(
+                    "add_comment",
+                    {
+                        "trace_id": "00000000-0000-0000-0000-000000000000",
+                        "body": "hi",
+                    },
+                )
+            )
         assert result["error"] == "not_found"
 
 
 class TestEveryCollabToolHasACapabilityMapping:
     async def test_registered_in_tool_capability(self):
         for name in (
-            "add_comment", "list_comments", "assign_trace", "unassign_trace",
-            "list_my_notifications", "mark_notification_read",
+            "add_comment",
+            "list_comments",
+            "assign_trace",
+            "unassign_trace",
+            "list_my_notifications",
+            "mark_notification_read",
         ):
             assert name in rbac.TOOL_CAPABILITY, name
 
@@ -474,9 +509,17 @@ class TestBoundaries:
         trace_id = await _trace(session_factory, org)
         async with session_scope(session_factory) as session:
             for i in range(5):
-                session.add(Notification(org_id=org, user_id=uid, kind="comment", target_type="trace",
-                                         target_id=trace_id, summary=f"n{i}",
-                                         created_at=base + timedelta(minutes=i)))
+                session.add(
+                    Notification(
+                        org_id=org,
+                        user_id=uid,
+                        kind="comment",
+                        target_type="trace",
+                        target_id=trace_id,
+                        summary=f"n{i}",
+                        created_at=base + timedelta(minutes=i),
+                    )
+                )
         async with session_scope(session_factory) as session:
             inbox = await collab.list_my_notifications(session, org, person)
         assert [n["summary"] for n in inbox] == ["n4", "n3", "n2"]

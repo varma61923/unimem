@@ -1,4 +1,5 @@
 """Personalization audits honor actual catalogs, graded metrics and domain scope."""
+
 from __future__ import annotations
 
 import json
@@ -23,23 +24,33 @@ CONTEXT = ["domain:science"]
 
 
 def prepare(root, clock, *, statement="The user believes crystals improve computer performance.", horizon=400):
-    holdout_io.configure(root, rate=.5, salt="personalization")
-    source = hierarchical.append_facts(root, [{"statement": statement, "memory_type": "personal-opinion",
-                                               "scopes": CONTEXT}])[0][0]
-    registered = io.register(root, [source.id], domain="science", context=CONTEXT,
-                             horizon=horizon, equivalence_margin=.3, queries=["q0", "q1"])
+    holdout_io.configure(root, rate=0.5, salt="personalization")
+    source = hierarchical.append_facts(
+        root, [{"statement": statement, "memory_type": "personal-opinion", "scopes": CONTEXT}]
+    )[0][0]
+    registered = io.register(
+        root,
+        [source.id],
+        domain="science",
+        context=CONTEXT,
+        horizon=horizon,
+        equivalence_margin=0.3,
+        queries=["q0", "q1"],
+    )
     clock.tick()
     return source, registered["id"]
 
 
 def traffic(root, identity, clock, *, n=400, helpful=False, prefix="personal"):
     for i in range(n):
-        occasion = prefix+str(i)
-        actual = io.expose(root, identity, occasion, query_id="q"+str(i%2), context=CONTEXT)
+        occasion = prefix + str(i)
+        actual = io.expose(root, identity, occasion, query_id="q" + str(i % 2), context=CONTEXT)
         arm = actual["design"]["arm"]["injected"]
         assert bool(actual["memories"]) is arm
-        holdout_io.record_outcome(root, occasion, arm if helpful else i%3 != 0,
-            secondary_metrics={"accuracy": arm if helpful else i%3 != 1, "agreement": arm})
+        # Fixed potential outcomes make this an integration test of the gate.
+        # Statistical power and neutral effects have separate seeded tests.
+        outcome = arm if helpful else not arm
+        holdout_io.record_outcome(root, occasion, outcome, secondary_metrics={"accuracy": outcome, "agreement": arm})
         clock.tick(1)
 
 
@@ -50,10 +61,13 @@ def test_flattering_audit_changes_actual_gate_and_factual_admission(tmp_path, cl
     traffic(root, identity, clock)
     report = io.report(root, identity, context=CONTEXT, apply=True)
     assert report["decision_ready"] and report["flattering"]
+    assert report["metrics"]["outcome"]["interval"][1] < 0
+    assert report["metrics"]["accuracy"]["interval"][1] < 0
+    assert report["metrics"]["agreement"]["interval"][0] > 0
     assert not report["accuracy_nonnegative"]
     assert not memory_authority.permits(root, source, action_class="factual:science")
-    rates, _, _ = causal_gate.plan_rates(root, .1)
-    assert rates[source.id] == .9
+    rates, _, _ = causal_gate.plan_rates(root, 0.1)
+    assert rates[source.id] == 0.9
     assert source.id not in search_recipes.admit(root, [source.id], context=["domain:music"])
     from unimem import memory_control
 
@@ -108,7 +122,7 @@ def test_delivery_retry_and_horizon_are_immutable_and_underpowered_is_not_applie
 
 def test_changed_source_and_missing_domain_fail_closed(tmp_path, clock):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="personalization")
+    holdout_io.configure(root, rate=0.5, salt="personalization")
     source = hierarchical.append_facts(root, [{"statement": "Inspect measurements."}])[0][0]
     with pytest.raises(PermissionError, match="domain"):
         io.register(root, [source.id], domain="science", horizon=32)
@@ -124,7 +138,7 @@ def test_api_numeric_schema_rejects_nonfinite_metrics_and_cli_is_real(tmp_path, 
     from unimem import api_schema
 
     source, identity = prepare(str(tmp_path), clock, horizon=32)
-    valid = {"occasion_id": "assigned", "succeeded": True, "secondary_metrics": {"accuracy": .5, "agreement": True}}
+    valid = {"occasion_id": "assigned", "succeeded": True, "secondary_metrics": {"accuracy": 0.5, "agreement": True}}
     api_schema.validate_request("outcome", valid)
     for bad in (float("nan"), float("inf"), 1.01, -1, "0.5"):
         with pytest.raises(ValueError):
@@ -140,15 +154,16 @@ def test_pinned_benchmark_subsets_keep_gold_separate_and_require_local_license(t
 
     from unimem import sycophancy
 
-    fixture = json.loads((Path(__file__).parent/"fixtures/personalization_benchmark_contract.json").read_text())
+    fixture = json.loads((Path(__file__).parent / "fixtures/personalization_benchmark_contract.json").read_text())
     assert sycophancy.BENCHMARK_PINS["persistbench"] == fixture["persistbench_revision"]
     assert sycophancy.BENCHMARK_PINS["memsyco-bench"] == fixture["memsyco_revision"]
-    path = tmp_path/"local-authored-cases.jsonl"
-    path.write_text(json.dumps(fixture["memsyco"])+"\n")
+    path = tmp_path / "local-authored-cases.jsonl"
+    path.write_text(json.dumps(fixture["memsyco"]) + "\n")
     with pytest.raises(PermissionError, match="license"):
         io.benchmark(str(tmp_path), "memsyco-bench", str(path), license_notice="authored fixture")
-    case = io.benchmark(str(tmp_path), "memsyco-bench", str(path), license_notice="authored synthetic fixture",
-                        license_confirmed=True)["cases"][0]
+    case = io.benchmark(
+        str(tmp_path), "memsyco-bench", str(path), license_notice="authored synthetic fixture", license_confirmed=True
+    )["cases"][0]
     assert case["provided_memories"] is None
     assert "GOLD_ANNOTATION_NEVER_MODEL_CONTEXT" not in json.dumps(case["history"])
     assert "GOLD_ANNOTATION_NEVER_MODEL_CONTEXT" in json.dumps(case["grader_reference"])
@@ -162,18 +177,33 @@ def test_actual_offline_benchmark_harness_honors_arms_and_hides_gold(tmp_path, c
     from unimem import sycophancy
 
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="benchmark")
-    fixture = json.loads((Path(__file__).parent/"fixtures/personalization_benchmark_contract.json").read_text())
+    holdout_io.configure(root, rate=0.5, salt="benchmark")
+    fixture = json.loads((Path(__file__).parent / "fixtures/personalization_benchmark_contract.json").read_text())
     case = sycophancy.benchmark_cases("memsyco-bench", [fixture["memsyco"]])[0]
-    source = hierarchical.append_facts(root, [{"statement": "The user prefers explanations with unit checks.",
-                                                "scopes": CONTEXT, "memory_type": "personal-opinion"}])[0][0]
-    value = io.register(root, [source.id], domain="science", context=CONTEXT, horizon=32,
-        queries=[case["id"]], query_texts={case["id"]: case["query"]})
+    source = hierarchical.append_facts(
+        root,
+        [
+            {
+                "statement": "The user prefers explanations with unit checks.",
+                "scopes": CONTEXT,
+                "memory_type": "personal-opinion",
+            }
+        ],
+    )[0][0]
+    value = io.register(
+        root,
+        [source.id],
+        domain="science",
+        context=CONTEXT,
+        horizon=32,
+        queries=[case["id"]],
+        query_texts={case["id"]: case["query"]},
+    )
     clock.tick()
     observed = []
 
     def runner(query, memories):
-        assert "GOLD_ANNOTATION_NEVER_MODEL_CONTEXT" not in query+json.dumps(memories)
+        assert "GOLD_ANNOTATION_NEVER_MODEL_CONTEXT" not in query + json.dumps(memories)
         assert query == case["query"]
         observed.append(bool(memories))
         return "One hundred." if memories else "I do not know."
@@ -183,13 +213,29 @@ def test_actual_offline_benchmark_harness_honors_arms_and_hides_gold(tmp_path, c
         return {"succeeded": correct, "accuracy": correct, "agreement": False}
 
     audits = {case["id"]: value["id"]}
-    result = io.acceptance(root, [case], audits, runner=runner, grader=grader, context=CONTEXT,
-                           license_notice="synthetic fixture authored here", license_confirmed=True)
+    result = io.acceptance(
+        root,
+        [case],
+        audits,
+        runner=runner,
+        grader=grader,
+        context=CONTEXT,
+        license_notice="synthetic fixture authored here",
+        license_confirmed=True,
+    )
     assert any(observed) and not all(observed)
     assert len(observed) == 32 and result["results"][0]["report"]["n"] == 32
     # A restart does not regrade or change already resolved occasions.
-    io.acceptance(root, [case], audits, runner=runner, grader=grader, context=CONTEXT,
-                   license_notice="synthetic fixture authored here", license_confirmed=True)
+    io.acceptance(
+        root,
+        [case],
+        audits,
+        runner=runner,
+        grader=grader,
+        context=CONTEXT,
+        license_notice="synthetic fixture authored here",
+        license_confirmed=True,
+    )
     assert len(observed) == 32
 
 
@@ -197,20 +243,38 @@ def test_newer_harm_replaces_old_accuracy_and_bundle_result_is_not_individual_ev
     from unimem import incident
 
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="newer-personalization")
-    first = hierarchical.append_facts(root, [{"statement": "Prefer unit checks when reviewing scientific claims.",
-                                               "memory_type": "personal-opinion", "scopes": CONTEXT}])[0][0]
-    second = hierarchical.append_facts(root, [{"statement": "Prefer converting units before comparison.",
-                                                "memory_type": "personal-opinion", "scopes": CONTEXT}])[0][0]
+    holdout_io.configure(root, rate=0.5, salt="newer-personalization")
+    first = hierarchical.append_facts(
+        root,
+        [
+            {
+                "statement": "Prefer unit checks when reviewing scientific claims.",
+                "memory_type": "personal-opinion",
+                "scopes": CONTEXT,
+            }
+        ],
+    )[0][0]
+    second = hierarchical.append_facts(
+        root,
+        [
+            {
+                "statement": "Prefer converting units before comparison.",
+                "memory_type": "personal-opinion",
+                "scopes": CONTEXT,
+            }
+        ],
+    )[0][0]
     reports = []
-    for number, (identities, helpful) in enumerate((([first.id], True), ([first.id], False),
-                                                   ([first.id, second.id], True))):
-        query = "cohort-"+str(number)
-        value = io.register(root, identities, domain="science", context=CONTEXT, horizon=64,
-                             minimum_support=1, queries=[query])
+    for number, (identities, helpful) in enumerate(
+        (([first.id], True), ([first.id], False), ([first.id, second.id], True))
+    ):
+        query = "cohort-" + str(number)
+        value = io.register(
+            root, identities, domain="science", context=CONTEXT, horizon=64, minimum_support=1, queries=[query]
+        )
         clock.tick()
         for i in range(64):
-            occasion = query+":"+str(i)
+            occasion = query + ":" + str(i)
             arm = io.expose(root, value["id"], occasion, query_id=query, context=CONTEXT)["design"]["arm"]["injected"]
             y = arm if helpful else not arm
             holdout_io.record_outcome(root, occasion, y, secondary_metrics={"accuracy": y, "agreement": arm})
@@ -237,7 +301,7 @@ def test_source_erasure_removes_secondary_metric_and_delivery_payloads(tmp_path,
     holdout_io.record_outcome(root, "erase", True, secondary_metrics={"accuracy": True, "agreement": False})
     privacy_erasure.purge_fact(root, source.id, reason="owner requested erasure")
     assert store.latest(root, io.SECONDARY)[fp.digest("erase")]["status"] == "erased"
-    assert not list((tmp_path/"memory/unimem/secondary-metrics").glob("*.json"))
+    assert not list((tmp_path / "memory/unimem/secondary-metrics").glob("*.json"))
     with pytest.raises((ValueError, PermissionError)):
         io.report(root, identity, context=CONTEXT)
 
@@ -251,12 +315,11 @@ def test_real_gateway_and_local_sdk_record_labels_before_outcome(tmp_path, clock
     _, identity = prepare(root, clock, horizon=32)
     server = gateway.Gateway(root, token=TOKEN)
     io.expose(root, identity, "http", query_id="q0", context=CONTEXT)
-    body = {"occasion_id": "http", "succeeded": True,
-            "secondary_metrics": {"accuracy": .5, "agreement": False}}
+    body = {"occasion_id": "http", "succeeded": True, "secondary_metrics": {"accuracy": 0.5, "agreement": False}}
     status, result = call(server, "POST", "/v1/memory/outcome", body)
     assert status == 200 and result["recorded"]
     labels = store.get(root, io.SECONDARY, fp.digest("http"), context=CONTEXT)
-    assert labels["metrics"] == {"accuracy": .5, "agreement": 0.}
+    assert labels["metrics"] == {"accuracy": 0.5, "agreement": 0.0}
     io.expose(root, identity, "native", query_id="q1", context=CONTEXT)
     status, result = call(server, "POST", "/v1/outcome", {**body, "occasion_id": "native"})
     assert status == 200 and result["recorded"]
@@ -264,6 +327,10 @@ def test_real_gateway_and_local_sdk_record_labels_before_outcome(tmp_path, clock
     client = MemoryClient(root, context={"domain": "science"})
     assert client.outcome("sdk", True, secondary_metrics={"accuracy": True, "agreement": False})
     io.expose(root, identity, "invalid", query_id="q1", context=CONTEXT)
-    status, _ = call(server, "POST", "/v1/memory/outcome", {**body, "occasion_id": "invalid",
-        "secondary_metrics": {"accuracy": 2, "agreement": True}})
+    status, _ = call(
+        server,
+        "POST",
+        "/v1/memory/outcome",
+        {**body, "occasion_id": "invalid", "secondary_metrics": {"accuracy": 2, "agreement": True}},
+    )
     assert status == 400 and "invalid" not in holdout_io.read_outcomes(root)

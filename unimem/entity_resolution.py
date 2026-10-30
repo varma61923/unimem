@@ -10,16 +10,28 @@ at or above the stricter `apply_threshold`, through `entities.merge`, with the
 method and score kept as provenance. Entities of incompatible ontology types (neither
 an ancestor of the other, and neither the untyped fallback) are reported as blocked
 and never merged."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TypedDict
 
 from unimem import kg_similarity
 
 THRESHOLDS = {"embedding": (0.85, 0.95), "ngram": (0.6, 0.85)}
 MAX_ENTITIES = 2000
 SKIPPED_TYPES = frozenset({"lesson", "memory", "scope"})
-TIERED_THRESHOLDS = {"entropy": 2.0, "minhash": 0.8, "jaccard": 0.8, "cosine": 0.6, "top_k": 15}
+
+
+class _TieredThresholds(TypedDict):
+    entropy: float
+    minhash: float
+    jaccard: float
+    cosine: float
+    top_k: int
+
+
+TIERED_THRESHOLDS: _TieredThresholds = {"entropy": 2.0, "minhash": 0.8, "jaccard": 0.8, "cosine": 0.6, "top_k": 15}
 
 
 def _forms(node) -> list[str]:
@@ -37,17 +49,21 @@ def compatible(onto, a: str, b: str) -> bool:
 def _candidates_nodes(root: str) -> list:
     from unimem import graph
 
-    nodes = [n for n in graph.load_nodes(root).values()
-             if n.entity_type not in SKIPPED_TYPES and not n.is_forgotten
-             and not (n.properties or {}).get("merged_into")]
+    nodes = [
+        n
+        for n in graph.load_nodes(root).values()
+        if n.entity_type not in SKIPPED_TYPES and not n.is_forgotten and not (n.properties or {}).get("merged_into")
+    ]
     return sorted(nodes, key=lambda n: n.id)[:MAX_ENTITIES]
 
 
 def _context(root: str, node_ids: list[str]) -> dict[str, str]:
     from unimem import graph
 
-    return {node_id: "; ".join(f"{n['relation']} {n['neighbor_name']}"
-                               for n in graph.get_neighbors(root, node_id)[:8]) for node_id in node_ids}
+    return {
+        node_id: "; ".join(f"{n['relation']} {n['neighbor_name']}" for n in graph.get_neighbors(root, node_id)[:8])
+        for node_id in node_ids
+    }
 
 
 def _ngram_scores(nodes) -> dict[tuple[int, int], float]:
@@ -62,7 +78,7 @@ def _ngram_scores(nodes) -> dict[tuple[int, int], float]:
         if len(members) > 200:  # a trigram most names share says nothing
             continue
         ordered = sorted(members)
-        pairs.update((a, b) for i, a in enumerate(ordered) for b in ordered[i + 1:])
+        pairs.update((a, b) for i, a in enumerate(ordered) for b in ordered[i + 1 :])
     return {(a, b): max(kg_similarity.jaccard(x, y) for x in grams[a] for y in grams[b]) for a, b in pairs}
 
 
@@ -134,7 +150,7 @@ def _tiered_exact_pairs(surfaces: list[_TieredSurface]) -> set[tuple[int, int]]:
     pairs: set[tuple[int, int]] = set()
     for members in by_form.values():
         for offset, a in enumerate(members):
-            for b in members[offset + 1:]:
+            for b in members[offset + 1 :]:
                 pairs.add((a, b))
     return pairs
 
@@ -154,22 +170,13 @@ def _tiered_minhash_pairs(
 
     from unimem.overlap import DEFAULT_NUM_PERM
 
-    eligible = [
-        index for index, surface in enumerate(surfaces)
-        if surface.entropy >= entropy_threshold
-    ]
+    eligible = [index for index, surface in enumerate(surfaces) if surface.entropy >= entropy_threshold]
     if len(eligible) < 2:
         return set()
 
-    signatures_match_expected = all(
-        len(surfaces[index].signature) == DEFAULT_NUM_PERM for index in eligible
-    )
+    signatures_match_expected = all(len(surfaces[index].signature) == DEFAULT_NUM_PERM for index in eligible)
     if minhash_threshold <= 0.75 or not signatures_match_expected:
-        return {
-            (a, b)
-            for offset, a in enumerate(eligible)
-            for b in eligible[offset + 1:]
-        }
+        return {(a, b) for offset, a in enumerate(eligible) for b in eligible[offset + 1 :]}
 
     band_size = 4
     buckets: dict[tuple[int, tuple[int, ...]], list[int]] = defaultdict(list)
@@ -177,7 +184,7 @@ def _tiered_minhash_pairs(
     for index in eligible:
         signature = surfaces[index].signature
         for band_index, start in enumerate(range(0, DEFAULT_NUM_PERM, band_size)):
-            band = tuple(signature[start:start + band_size])
+            band = tuple(signature[start : start + band_size])
             key = (band_index, band)
             for other in buckets[key]:
                 pairs.add((other, index))
@@ -185,8 +192,9 @@ def _tiered_minhash_pairs(
     return pairs
 
 
-def candidates(root: str, *, embedder=None, threshold: float | None = None, context: bool = False,
-               limit: int = 100) -> dict:
+def candidates(
+    root: str, *, embedder=None, threshold: float | None = None, context: bool = False, limit: int = 100
+) -> dict:
     """Merge candidates, best first: {"method", "threshold", "pairs": [{a, b, score,
     a_type, b_type, compatible}]}."""
     from unimem import ontology
@@ -198,16 +206,29 @@ def candidates(root: str, *, embedder=None, threshold: float | None = None, cont
     floor = THRESHOLDS[method][0] if threshold is None else float(threshold)
     if not 0.0 < floor <= 1.0:
         raise ValueError("threshold must be in (0, 1]")
-    scores = _embedding_scores(root, nodes, provider, context) if provider is not None and len(nodes) > 1 \
-        else _ngram_scores(nodes) if provider is None else {}
+    scores = (
+        _embedding_scores(root, nodes, provider, context)
+        if provider is not None and len(nodes) > 1
+        else _ngram_scores(nodes)
+        if provider is None
+        else {}
+    )
     pairs = []
     for (a, b), score in scores.items():
         if score >= floor:
             x, y = nodes[a], nodes[b]
-            pairs.append({"a": x.id, "b": y.id, "score": round(score, 4), "a_type": x.entity_type,
-                          "b_type": y.entity_type, "compatible": compatible(onto, x.entity_type, y.entity_type)})
+            pairs.append(
+                {
+                    "a": x.id,
+                    "b": y.id,
+                    "score": round(score, 4),
+                    "a_type": x.entity_type,
+                    "b_type": y.entity_type,
+                    "compatible": compatible(onto, x.entity_type, y.entity_type),
+                }
+            )
     pairs.sort(key=lambda p: (-p["score"], p["a"], p["b"]))
-    return {"method": method, "threshold": floor, "entities": len(nodes), "pairs": pairs[:max(1, int(limit))]}
+    return {"method": method, "threshold": floor, "entities": len(nodes), "pairs": pairs[: max(1, int(limit))]}
 
 
 def _keeper(onto, x, y):
@@ -215,29 +236,46 @@ def _keeper(onto, x, y):
     from unimem.ontology import FALLBACK_TYPE
 
     def rank(n):
-        return (n.entity_type == FALLBACK_TYPE, -len(onto.ancestors(n.entity_type)),
-                -int((n.properties or {}).get("mentions", 0) or 0), n.id)
+        return (
+            n.entity_type == FALLBACK_TYPE,
+            -len(onto.ancestors(n.entity_type)),
+            -int((n.properties or {}).get("mentions", 0) or 0),
+            n.id,
+        )
 
     return (x, y) if rank(x) <= rank(y) else (y, x)
 
 
-def resolve(root: str, *, embedder=None, threshold: float | None = None, apply: bool = False,
-            apply_threshold: float | None = None, context: bool = False, limit: int = 100,
-            tiered: bool = False, complete=None) -> dict:
+def resolve(
+    root: str,
+    *,
+    embedder=None,
+    threshold: float | None = None,
+    apply: bool = False,
+    apply_threshold: float | None = None,
+    context: bool = False,
+    limit: int = 100,
+    tiered: bool = False,
+    complete=None,
+) -> dict:
     """`candidates`, and with `apply`, merge each compatible pair at or above
     `apply_threshold`; an entity takes part in at most one merge per run."""
     from unimem import entities, graph, ontology
 
-    found = (tiered_candidates(root, embedder=embedder, complete=complete, limit=limit) if tiered
-             else candidates(root, embedder=embedder, threshold=threshold, context=context, limit=limit))
-    found.setdefault('threshold', .6)
-    strict = THRESHOLDS.get(found["method"], (.6, .95))[1] if apply_threshold is None else float(apply_threshold)
+    found = (
+        tiered_candidates(root, embedder=embedder, complete=complete, limit=limit)
+        if tiered
+        else candidates(root, embedder=embedder, threshold=threshold, context=context, limit=limit)
+    )
+    found.setdefault("threshold", 0.6)
+    strict = THRESHOLDS.get(found["method"], (0.6, 0.95))[1] if apply_threshold is None else float(apply_threshold)
     if strict < found["threshold"]:
         raise ValueError("the apply threshold must not be below the reporting threshold")
     found.update(apply_threshold=strict, merged=[], skipped=[])
     if not apply:
         return found
-    onto, nodes, touched = ontology.load(root), graph.load_nodes(root), set()
+    onto, nodes = ontology.load(root), graph.load_nodes(root)
+    touched: set[str] = set()
     for pair in found["pairs"]:
         if pair["score"] < strict:
             continue
@@ -249,19 +287,30 @@ def resolve(root: str, *, embedder=None, threshold: float | None = None, apply: 
             continue
         keep, dup = _keeper(onto, nodes[pair["a"]], nodes[pair["b"]])
         evidence = {"method": found["method"], "score": pair["score"], "apply_threshold": strict}
-        out = entities.merge(root, keep.id, dup.id, evidence=evidence,
-                             provenance={"source_path": "entity_resolution", "detail": evidence})
+        out = entities.merge(
+            root,
+            keep.id,
+            dup.id,
+            evidence=evidence,
+            provenance={"source_path": "entity_resolution", "detail": evidence},
+        )
         touched.update((keep.id, dup.id))
         found["merged"].append({**out, **evidence})
     return found
 
 
-def tiered_candidates(root: str, *, embedder=None, complete=None, limit=100,
-                      entropy_threshold: float = TIERED_THRESHOLDS["entropy"],
-                      minhash_threshold: float = TIERED_THRESHOLDS["minhash"],
-                      jaccard_threshold: float = TIERED_THRESHOLDS["jaccard"],
-                      cosine_threshold: float = TIERED_THRESHOLDS["cosine"],
-                      top_k: int = TIERED_THRESHOLDS["top_k"]) -> dict:
+def tiered_candidates(
+    root: str,
+    *,
+    embedder=None,
+    complete=None,
+    limit=100,
+    entropy_threshold: float = TIERED_THRESHOLDS["entropy"],
+    minhash_threshold: float = TIERED_THRESHOLDS["minhash"],
+    jaccard_threshold: float = TIERED_THRESHOLDS["jaccard"],
+    cosine_threshold: float = TIERED_THRESHOLDS["cosine"],
+    top_k: int = TIERED_THRESHOLDS["top_k"],
+) -> dict:
     """Exact aliases → entropy-gated MinHash → top-15 cosine → one batched judge.
 
     Suggestions remain reviewable; ontology compatibility still gates merging.
@@ -274,8 +323,11 @@ def tiered_candidates(root: str, *, embedder=None, complete=None, limit=100,
     from unimem.llm_runtime import purpose
     from unimem.overlap import estimate_jaccard
 
-    for name, value in (("minhash_threshold", minhash_threshold), ("jaccard_threshold", jaccard_threshold),
-                        ("cosine_threshold", cosine_threshold)):
+    for name, value in (
+        ("minhash_threshold", minhash_threshold),
+        ("jaccard_threshold", jaccard_threshold),
+        ("cosine_threshold", cosine_threshold),
+    ):
         if not math.isfinite(value) or not 0.0 <= value <= 1.0:
             raise ValueError(f"{name} must be in [0, 1]")
     if not math.isfinite(entropy_threshold) or entropy_threshold < 0:
@@ -299,7 +351,8 @@ def tiered_candidates(root: str, *, embedder=None, complete=None, limit=100,
             continue
         similarity = (
             estimate_jaccard(surfaces[a].signature, surfaces[b].signature)
-            if surfaces[a].signature and surfaces[b].signature else 0.0
+            if surfaces[a].signature and surfaces[b].signature
+            else 0.0
         )
         jaccard = kg_similarity.jaccard(surfaces[a].grams, surfaces[b].grams)
         if similarity >= minhash_threshold and jaccard >= jaccard_threshold:
@@ -317,8 +370,12 @@ def tiered_candidates(root: str, *, embedder=None, complete=None, limit=100,
                     remainder[(a, b)] = score
     if remainder and complete is not None:
         offered = [
-            {"a": nodes[a].id, "b": nodes[b].id, "a_names": sorted(surfaces[a].forms),
-             "b_names": sorted(surfaces[b].forms)}
+            {
+                "a": nodes[a].id,
+                "b": nodes[b].id,
+                "a_names": sorted(surfaces[a].forms),
+                "b_names": sorted(surfaces[b].forms),
+            }
             for a, b in list(remainder)[: max(1, min(limit, 100))]
         ]
         with purpose("entity-dedup"):
@@ -353,6 +410,11 @@ def tiered_candidates(root: str, *, embedder=None, complete=None, limit=100,
         "entities": len(nodes),
         "pairs": sorted(pairs, key=lambda pair: (-pair["score"], pair["a"], pair["b"]))[:limit],
         "llm_batches": int(bool(remainder and complete)),
-        "thresholds": {"entropy": entropy_threshold, "minhash": minhash_threshold,
-                       "jaccard": jaccard_threshold, "cosine": cosine_threshold, "top_k": top_k},
+        "thresholds": {
+            "entropy": entropy_threshold,
+            "minhash": minhash_threshold,
+            "jaccard": jaccard_threshold,
+            "cosine": cosine_threshold,
+            "top_k": top_k,
+        },
     }

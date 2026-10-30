@@ -20,6 +20,7 @@ What is measured, and what is deliberately not:
   when HUB_DATABASE_URL is not set.
 * install -- exit status of `unimem install` for each target.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -60,7 +61,10 @@ def cli(*args: str, cwd: str | None = None) -> tuple[float, subprocess.Completed
     start = time.perf_counter()
     done = subprocess.run(
         [sys.executable, "-m", "unimem.cli", *args],
-        capture_output=True, text=True, cwd=cwd or REPO, check=False,
+        capture_output=True,
+        text=True,
+        cwd=cwd or REPO,
+        check=False,
         env={**os.environ, "PYTHONPATH": REPO},
     )
     return time.perf_counter() - start, done
@@ -79,21 +83,46 @@ def activation(seed: int = 0) -> dict:
         t0 = time.perf_counter()
         must("init", "--function", "support", "--dest", root)
         must(
-            "capture", "--title", "Password reset email never arrived",
-            "--context", "Customer requested a reset; no email arrived.",
-            "--solution", "The address was on the suppression list after a bounce; removed it.",
-            "--tags", "email,reset", "--occasion-id", "T-1", "--resolved", "--dest", root,
+            "capture",
+            "--title",
+            "Password reset email never arrived",
+            "--context",
+            "Customer requested a reset; no email arrived.",
+            "--solution",
+            "The address was on the suppression list after a bounce; removed it.",
+            "--tags",
+            "email,reset",
+            "--occasion-id",
+            "T-1",
+            "--resolved",
+            "--dest",
+            root,
         )
         first_trace = time.perf_counter() - t0
 
         must(
-            "lesson", "new", "--slug", LESSON,
-            "--description", "Check the suppression list before re-sending a reset email",
-            "--agent-type", "support", "--domain", "troubleshooting", "--tags", "email,reset",
-            "--applies-when", "A customer reports a missing password-reset email",
-            "--do-not-apply-when", "The customer received the email but the link failed",
-            "--importance", "4", "--importance-rationale", "Blocks login entirely",
-            "--dest", root,
+            "lesson",
+            "new",
+            "--slug",
+            LESSON,
+            "--description",
+            "Check the suppression list before re-sending a reset email",
+            "--agent-type",
+            "support",
+            "--domain",
+            "troubleshooting",
+            "--tags",
+            "email,reset",
+            "--applies-when",
+            "A customer reports a missing password-reset email",
+            "--do-not-apply-when",
+            "The customer received the email but the link failed",
+            "--importance",
+            "4",
+            "--importance-rationale",
+            "Blocks login entirely",
+            "--dest",
+            root,
         )
         path = os.path.join(root, "memory", "lessons", f"{LESSON}.md")
         with open(path, encoding="utf-8") as fh:
@@ -115,7 +144,11 @@ def activation(seed: int = 0) -> dict:
         for i in range(per_arm * 2):
             occasion = f"occ-{i}"
             withheld = holdout_io.assign_and_log(
-                root, [LESSON], occasion_id=occasion, rate=rate, salt=config.salt,
+                root,
+                [LESSON],
+                occasion_id=occasion,
+                rate=rate,
+                salt=config.salt,
             )
             p = baseline if LESSON in withheld else baseline + true_effect
             holdout_io.record_outcome(root, occasion, rng.random() < p)
@@ -157,7 +190,9 @@ def query_latency(n_lessons: int = 1000, runs: int = 40) -> dict:
             cli("query", q, "--dest", root)
         times = sorted(cli("query", q, "--dest", root)[0] * 1000 for q in queries[3:])
         return {
-            "lessons": n_lessons, "runs": runs, "process": "cold subprocess per query",
+            "lessons": n_lessons,
+            "runs": runs,
+            "process": "cold subprocess per query",
             "p50_ms": round(statistics.median(times), 1),
             "p95_ms": round(times[int(0.95 * (len(times) - 1))], 1),
         }
@@ -169,9 +204,11 @@ def hub_floor() -> dict:
     if not os.environ.get("HUB_DATABASE_URL"):
         return {"skipped": "HUB_DATABASE_URL not set (needs a migrated Postgres)"}
     done = subprocess.run(
-        [sys.executable, "-m", "hub.bench_concurrency", "--clients", "1,8,32",
-         "--backend", "both", "--json"],
-        capture_output=True, text=True, cwd=REPO, check=False,
+        [sys.executable, "-m", "hub.bench_concurrency", "--clients", "1,8,32", "--backend", "both", "--json"],
+        capture_output=True,
+        text=True,
+        cwd=REPO,
+        check=False,
     )
     if done.returncode != 0:
         return {"skipped": f"bench_concurrency exited {done.returncode}", "stderr_tail": done.stderr[-300:]}
@@ -183,10 +220,7 @@ def hub_floor() -> dict:
     out: dict = {"what": "per-request floor (auth + rate limit) under concurrency, not search latency"}
     for backend, rows in (raw.get("backends") or {}).items():
         if isinstance(rows, list):
-            out[backend] = {
-                str(r["clients"]): {"rps": round(r["rps"]), "p95_ms": round(r["p95_ms"], 1)}
-                for r in rows
-            }
+            out[backend] = {str(r["clients"]): {"rps": round(r["rps"]), "p95_ms": round(r["p95_ms"], 1)} for r in rows}
     return out
 
 
@@ -213,7 +247,8 @@ def main() -> int:
         "schema": 1,
         "unimem": __version__,
         "machine": {
-            "python": platform.python_version(), "platform": platform.platform(),
+            "python": platform.python_version(),
+            "platform": platform.platform(),
             "cpus": os.cpu_count(),
         },
         "activation": activation(),

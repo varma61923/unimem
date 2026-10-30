@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import re
 import shlex
+from itertools import islice
 
 from unimem import memory_guard
 
@@ -22,7 +23,7 @@ def render_context(lines: list[str], *, budget: int, previous: str = "") -> str:
     if not lines:
         return prefix
     start, end = "<memory_update>\n" + NOTICE + "\n", "\n</memory_update>"
-    kept = []
+    kept: list[str] = []
     for line in lines:
         safe = html.escape(memory_guard.sanitize_metadata({"text": line}, pii=True)[0]["text"])
         if len((start + "\n".join([*kept, safe]) + end).encode()) <= budget * 4:
@@ -41,6 +42,8 @@ def select(template: str, slots: dict) -> list[dict]:
     result, seen = [], set()
     for match in matches[:16]:
         parts = shlex.split(match.group(1))
+        if not parts:
+            raise ValueError("context slot requires a name")
         name = parts[0]
         if name not in SLOTS:
             raise ValueError("unknown context slot")
@@ -57,8 +60,8 @@ def select(template: str, slots: dict) -> list[dict]:
         if types is not None and not re.fullmatch(r"\[[a-z,-]*\]", types):
             raise ValueError("slot types use a bounded literal list")
         allowed = set(types[1:-1].split(",")) if types else None
-        eligible = [row for row in slots.get(name, []) if allowed is None or row.get("kind") in allowed]
-        for row in eligible[:limit]:
+        eligible = (row for row in slots.get(name, []) if allowed is None or row.get("kind") in allowed)
+        for row in islice(eligible, limit):
             if row["id"] not in seen:
                 result.append(row)
                 seen.add(row["id"])

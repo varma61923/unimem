@@ -1,9 +1,11 @@
 """The store as a versioned filesystem: validation, the pre-commit hook, conflict
 repair, restore and signed handoffs."""
+
 import os
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -71,8 +73,14 @@ def test_commit_refuses_invalid_memory_and_hook_blocks_git(store):
         memfs.commit(store, "bad")
     env = {**os.environ, "PYTHONPATH": os.path.dirname(os.path.dirname(os.path.abspath(memfs.__file__)))}
     _git(store, "add", "-A")
-    done = subprocess.run(["git", "commit", "-qm", "bad"], cwd=store, capture_output=True, text=True,  # nosec
-                          env=env, check=False)
+    done = subprocess.run(
+        ["git", "commit", "-qm", "bad"],
+        cwd=store,
+        capture_output=True,
+        text=True,  # nosec
+        env=env,
+        check=False,
+    )
     assert done.returncode != 0
     assert "not a JSON object" in done.stderr
     assert memfs.commit(store, "forced", verify=False)["committed"]
@@ -177,10 +185,10 @@ def test_keygen_is_private_and_required(store, monkeypatch):
 def test_forced_keygen_replaces_a_loose_key_privately_without_following_links(store, tmp_path):
     path = memfs.keygen(store)
     os.chmod(path, 0o644)
-    old = open(path).read()
+    old = Path(path).read_text()
     memfs.keygen(store, force=True)
     assert os.stat(path).st_mode & 0o077 == 0
-    assert open(path).read() != old
+    assert Path(path).read_text() != old
     if hasattr(os, "symlink"):
         decoy = tmp_path / "decoy"
         os.remove(path)
@@ -193,8 +201,13 @@ def test_forced_keygen_replaces_a_loose_key_privately_without_following_links(st
 
 def test_cli_memory_commands(store):
     def ct(*args):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "memory", *args, "--dest", store],  # nosec
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "memory", *args, "--dest", store],  # nosec
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     assert ct("status").stdout.startswith("head:")
     _append(store, "facts.jsonl", '{"id": "b"}\n')
     assert "committed" in ct("commit", "-m", "b").stdout

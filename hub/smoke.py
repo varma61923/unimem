@@ -1,4 +1,5 @@
 """Post-deploy smoke check: prove a running Hub actually works."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,7 @@ import asyncio
 import json
 import sys
 import uuid
+from contextlib import asynccontextmanager
 
 from hub import plans
 
@@ -61,26 +63,34 @@ class Reporter:
         return condition
 
 
-def _session(url: str, api_key: str):
-    import httpx
+@asynccontextmanager
+async def _session(url: str, api_key: str):
+    import httpx2
     from mcp.client.streamable_http import streamable_http_client
 
-    return streamable_http_client(
-        url, http_client=httpx.AsyncClient(headers={"Authorization": f"Bearer {api_key}"}, timeout=30.0)
-    )
+    async with httpx2.AsyncClient(headers={"Authorization": f"Bearer {api_key}"}, timeout=30.0) as client:
+        async with streamable_http_client(url, http_client=client) as streams:
+            yield streams
 
 
 def _preflight(url: str, api_key: str) -> str | None:
-    import httpx
+    import httpx2
 
     payload = {
-        "jsonrpc": "2.0", "id": 1, "method": "initialize",
-        "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                   "clientInfo": {"name": "unimem-smoke", "version": "1"}},
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "unimem-smoke", "version": "1"},
+        },
     }
     try:
-        response = httpx.post(
-            url, json=payload, timeout=15.0,
+        response = httpx2.post(
+            url,
+            json=payload,
+            timeout=15.0,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
@@ -88,45 +98,69 @@ def _preflight(url: str, api_key: str) -> str | None:
             },
         )
     except Exception as exc:
-        return (f"could not reach {url} ({type(exc).__name__}). Check the --url, that the "
-                "deployment is up, and that /readyz answers.")
+        return (
+            f"could not reach {url} ({type(exc).__name__}). Check the --url, that the "
+            "deployment is up, and that /readyz answers."
+        )
 
     if response.status_code in (401, 403):
-        return (f"the server rejected the API key (HTTP {response.status_code}). "
-                "It may be wrong, revoked, or expired.")
+        return f"the server rejected the API key (HTTP {response.status_code}). It may be wrong, revoked, or expired."
     if response.status_code == 404:
-        return (f"HTTP 404 at {url}. The MCP endpoint path is probably wrong -- "
-                "it defaults to /mcp (HUB_STREAMABLE_HTTP_PATH).")
+        return (
+            f"HTTP 404 at {url}. The MCP endpoint path is probably wrong -- "
+            "it defaults to /mcp (HUB_STREAMABLE_HTTP_PATH)."
+        )
     if response.status_code == 429:
-        return ("the server rate-limited this request (HTTP 429) before it could evaluate "
-                "the API key -- inconclusive, not a rejection or an acceptance. This can be "
-                "the smoke check's own request volume tripping HUB_AUTH_ATTEMPTS_BURST; wait "
-                "a few seconds and re-run.")
+        return (
+            "the server rate-limited this request (HTTP 429) before it could evaluate "
+            "the API key -- inconclusive, not a rejection or an acceptance. This can be "
+            "the smoke check's own request volume tripping HUB_AUTH_ATTEMPTS_BURST; wait "
+            "a few seconds and re-run."
+        )
     if response.status_code >= 500:
-        return (f"the server returned HTTP {response.status_code}. It is reachable but "
-                "failing; check its logs and /readyz.")
+        return (
+            f"the server returned HTTP {response.status_code}. It is reachable but failing; check its logs and /readyz."
+        )
     return None
 
 
 CORE_TOOLS = [
-            "get_traces_batch", "contribute_traces_batch", "delete_traces_batch",
-    "amend_trace", "contribute_trace", "get_trace", "list_tags",
-    "search_traces", "vote_trace",
-    "delete_trace", "request_account_deletion", "cancel_account_deletion",
+    "get_traces_batch",
+    "contribute_traces_batch",
+    "delete_traces_batch",
+    "amend_trace",
+    "contribute_trace",
+    "get_trace",
+    "list_tags",
+    "search_traces",
+    "vote_trace",
+    "delete_trace",
+    "request_account_deletion",
+    "cancel_account_deletion",
     "confirm_account_deletion",
     "account_usage",
     "fleet_outcomes",
-    "holdout_assign", "record_occasion_outcome",
+    "holdout_assign",
+    "record_occasion_outcome",
     "value_delivered",
     "working_set",
-    "add_comment", "list_comments", "assign_trace", "unassign_trace",
-    "list_my_notifications", "mark_notification_read",
+    "add_comment",
+    "list_comments",
+    "assign_trace",
+    "unassign_trace",
+    "list_my_notifications",
+    "mark_notification_read",
     "search_trace_content",
-    "tag_trace_subjects", "find_traces_by_subject", "purge_traces_by_subject",
+    "tag_trace_subjects",
+    "find_traces_by_subject",
+    "purge_traces_by_subject",
 ]
 COMMONS_TOOLS = [
-    "commons_overlap", "commons_search", "commons_export",
-    "submit_kb_entry", "list_my_kb_submissions",
+    "commons_overlap",
+    "commons_search",
+    "commons_export",
+    "submit_kb_entry",
+    "list_my_kb_submissions",
 ]
 EXPECTED_TOOLS = CORE_TOOLS + COMMONS_TOOLS
 
@@ -144,25 +178,34 @@ async def _tool_surface(session, report: Reporter) -> bool:
     core_only = names == core
     ok = commons_enabled or core_only
     mode = (
-        "commons enabled" if commons_enabled
-        else "commons disabled (HUB_COMMONS_ENABLED=false)" if core_only
+        "commons enabled"
+        if commons_enabled
+        else "commons disabled (HUB_COMMONS_ENABLED=false)"
+        if core_only
         else "UNEXPECTED"
     )
     report.check(
-        label, ok,
+        label,
+        ok,
         f"{mode} -- " + (f"got {names}" if not ok else ", ".join(names)),
     )
     return commons_enabled
 
 
 async def _round_trip(session, report: Reporter, marker: str) -> str | None:
-    created = await _call(session, report, "contribute_trace writes", "contribute_trace", {
-        "title": f"smoke check {marker}",
-        "context_text": f"Automated post-deploy smoke check {marker}. Safe to delete.",
-        "solution_text": "No action required; this trace exists to prove the write path works.",
-        "tags": [SMOKE_TAG],
-        "agent_type": "custom",
-    })
+    created = await _call(
+        session,
+        report,
+        "contribute_trace writes",
+        "contribute_trace",
+        {
+            "title": f"smoke check {marker}",
+            "context_text": f"Automated post-deploy smoke check {marker}. Safe to delete.",
+            "solution_text": "No action required; this trace exists to prove the write path works.",
+            "tags": [SMOKE_TAG],
+            "agent_type": "custom",
+        },
+    )
     if created is None:
         return None
     trace_id = created.get("id") if isinstance(created, dict) else None
@@ -172,17 +215,20 @@ async def _round_trip(session, report: Reporter, marker: str) -> str | None:
     found = await _call(session, report, "search_traces finds it", "search_traces", {"query": marker})
     if found is not None:
         ids = [t["id"] for t in found.get("traces", [])] if isinstance(found, dict) else []
-        report.check("search_traces finds it", trace_id in ids,
-                     f"searched for {marker!r}, got {len(ids)} result(s)")
+        report.check("search_traces finds it", trace_id in ids, f"searched for {marker!r}, got {len(ids)} result(s)")
 
     phrased = await _call(
-        session, report, "search_traces finds it from a natural-language description",
-        "search_traces", {"query": f"automated deploy verification {marker} nothing needs doing here"},
+        session,
+        report,
+        "search_traces finds it from a natural-language description",
+        "search_traces",
+        {"query": f"automated deploy verification {marker} nothing needs doing here"},
     )
     if phrased is not None:
         phrased_ids = [t["id"] for t in phrased.get("traces", [])] if isinstance(phrased, dict) else []
         report.check(
-            "search_traces finds it from a natural-language description", trace_id in phrased_ids,
+            "search_traces finds it from a natural-language description",
+            trace_id in phrased_ids,
             detail=f"a sentence-length query returned it among {len(phrased_ids)} result(s)",
             fail_detail=(
                 f"a sentence-length query returned {len(phrased_ids)} result(s) and not the "
@@ -193,20 +239,27 @@ async def _round_trip(session, report: Reporter, marker: str) -> str | None:
 
     fetched = await _call(session, report, "get_trace returns it", "get_trace", {"id": trace_id})
     if fetched is not None:
-        report.check("get_trace returns it", isinstance(fetched, dict) and fetched.get("id") == trace_id,
-                     f"got {fetched!r}" if not isinstance(fetched, dict) else "")
+        report.check(
+            "get_trace returns it",
+            isinstance(fetched, dict) and fetched.get("id") == trace_id,
+            f"got {fetched!r}" if not isinstance(fetched, dict) else "",
+        )
 
-    voted = await _call(session, report, "vote_trace updates trust", "vote_trace",
-                         {"id": trace_id, "vote": "up"})
+    voted = await _call(session, report, "vote_trace updates trust", "vote_trace", {"id": trace_id, "vote": "up"})
     if voted is not None:
         trust_moved = isinstance(voted, dict) and voted.get("trust", 0) > 0.5
-        report.check("vote_trace updates trust", trust_moved,
-                     f"trust={voted.get('trust') if isinstance(voted, dict) else voted!r}")
+        report.check(
+            "vote_trace updates trust",
+            trust_moved,
+            f"trust={voted.get('trust') if isinstance(voted, dict) else voted!r}",
+        )
 
-    amend_args = {"id": trace_id, "solution_text": "Amended by the smoke check.",
-                  "idempotency_key": f"smoke-amend-{marker}"}
-    amended = await _call(session, report, "amend_trace supersedes rather than mutating",
-                           "amend_trace", amend_args)
+    amend_args = {
+        "id": trace_id,
+        "solution_text": "Amended by the smoke check.",
+        "idempotency_key": f"smoke-amend-{marker}",
+    }
+    amended = await _call(session, report, "amend_trace supersedes rather than mutating", "amend_trace", amend_args)
     amended_id = None
     if amended is not None:
         is_new_immutable_record = (
@@ -215,19 +268,20 @@ async def _round_trip(session, report: Reporter, marker: str) -> str | None:
             and amended.get("supersedes_trace_id") == trace_id
         )
         report.check(
-            "amend_trace supersedes rather than mutating", is_new_immutable_record,
-            detail=(
-                f"{amended.get('id')!r} supersedes {trace_id!r}"
-                if is_new_immutable_record else ""
-            ),
+            "amend_trace supersedes rather than mutating",
+            is_new_immutable_record,
+            detail=(f"{amended.get('id')!r} supersedes {trace_id!r}" if is_new_immutable_record else ""),
             fail_detail="an amendment must create a new trace that supersedes the original",
         )
         amended_id = amended.get("id") if isinstance(amended, dict) else None
 
     if amended_id is not None:
         retried = await _call(
-            session, report, "amend_trace with a repeated idempotency_key returns the original, not a fork",
-            "amend_trace", amend_args,
+            session,
+            report,
+            "amend_trace with a repeated idempotency_key returns the original, not a fork",
+            "amend_trace",
+            amend_args,
         )
         if retried is not None:
             report.check(
@@ -239,8 +293,7 @@ async def _round_trip(session, report: Reporter, marker: str) -> str | None:
 
     tags = await _call(session, report, "list_tags includes the smoke tag", "list_tags", {})
     if tags is not None:
-        report.check("list_tags includes the smoke tag",
-                     isinstance(tags, dict) and SMOKE_TAG in tags.get("tags", []))
+        report.check("list_tags includes the smoke tag", isinstance(tags, dict) and SMOKE_TAG in tags.get("tags", []))
     return trace_id
 
 
@@ -281,7 +334,11 @@ async def _rejects_bad_credentials(url: str, report: Reporter) -> None:
 
 
 async def _tenant_isolation(
-    url: str, other_key: str, foreign_id: str, marker: str, report: Reporter,
+    url: str,
+    other_key: str,
+    foreign_id: str,
+    marker: str,
+    report: Reporter,
     commons_enabled: bool = True,
 ) -> None:
     from mcp import ClientSession
@@ -301,7 +358,8 @@ async def _tenant_isolation(
                     continue
                 denied = isinstance(result, dict) and result.get("error") == "not_found"
                 report.check(
-                    label, denied,
+                    label,
+                    denied,
                     detail="refused with error=not_found, disclosing nothing about the id",
                     fail_detail=f"expected error=not_found, got {result!r}",
                 )
@@ -318,7 +376,10 @@ async def _tenant_isolation(
             )
             overlap_label = "a customer's trace never surfaces through the Knowledge Base"
             overlap = await _call(
-                session, report, overlap_label, "commons_overlap",
+                session,
+                report,
+                overlap_label,
+                "commons_overlap",
                 {"failures": [{"label": "probe", "signature": probe}]},
             )
             if overlap is not None:
@@ -362,15 +423,21 @@ async def run(args: argparse.Namespace) -> int:
 
     print("\nTenant isolation")
     if not args.other_api_key:
-        print("  [SKIP] needs --other-api-key from a SECOND organization.\n"
-              "         Isolation is the property most worth proving before a\n"
-              "         customer's data lands here -- issue a throwaway org's key\n"
-              "         and re-run rather than skipping this on a real deployment.")
+        print(
+            "  [SKIP] needs --other-api-key from a SECOND organization.\n"
+            "         Isolation is the property most worth proving before a\n"
+            "         customer's data lands here -- issue a throwaway org's key\n"
+            "         and re-run rather than skipping this on a real deployment."
+        )
     elif not trace_id:
         report.fail("tenant isolation", "no trace was created, so nothing could be tested")
     else:
         await _tenant_isolation(
-            args.url, args.other_api_key, trace_id, marker, report,
+            args.url,
+            args.other_api_key,
+            trace_id,
+            marker,
+            report,
             commons_enabled=commons_enabled,
         )
 
@@ -379,8 +446,7 @@ async def run(args: argparse.Namespace) -> int:
 
     print()
     if report.failures:
-        print(f"[smoke] FAILED: {len(report.failures)} check(s) - "
-              + ", ".join(report.failures), file=sys.stderr)
+        print(f"[smoke] FAILED: {len(report.failures)} check(s) - " + ", ".join(report.failures), file=sys.stderr)
         return 1
 
     print("[smoke] all checks passed.")
@@ -451,25 +517,29 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", required=True, help="MCP endpoint, e.g. https://hub.example.com/mcp")
     parser.add_argument("--api-key", required=True, help="An API key for the org to write under.")
     parser.add_argument(
-        "--other-api-key", default=None,
+        "--other-api-key",
+        default=None,
         help="A key from a DIFFERENT org. Enables the tenant-isolation checks, "
-             "which are the ones worth caring about most.",
+        "which are the ones worth caring about most.",
     )
     parser.add_argument(
-        "--keep", action="store_true",
+        "--keep",
+        action="store_true",
         help="Leave the traces this check writes in place. By default they are "
-             "deleted when the run finishes, so repeatedly smoking a production "
-             "deployment does not accumulate them in a real org's corpus.",
+        "deleted when the run finishes, so repeatedly smoking a production "
+        "deployment does not accumulate them in a real org's corpus.",
     )
     args = parser.parse_args(argv)
     if not args.url.rstrip("/").endswith("/mcp"):
-        print(f"[smoke] note: {args.url} does not end in /mcp, which is the default "
-              "endpoint path (HUB_STREAMABLE_HTTP_PATH).", file=sys.stderr)
+        print(
+            f"[smoke] note: {args.url} does not end in /mcp, which is the default "
+            "endpoint path (HUB_STREAMABLE_HTTP_PATH).",
+            file=sys.stderr,
+        )
     try:
         return asyncio.run(run(args))
     except ImportError:
-        print("[smoke] needs the MCP client library: pip install 'unimem[hub-sync]'",
-              file=sys.stderr)
+        print("[smoke] needs the MCP client library: pip install 'unimem[hub-sync]'", file=sys.stderr)
         return 2
     except Exception as exc:
         print(f"[smoke] FAILED: {_diagnose(exc)}", file=sys.stderr)

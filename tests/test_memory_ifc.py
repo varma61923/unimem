@@ -17,11 +17,15 @@ def test_laundering_labels_and_confidentiality_join(tmp_path):
     labelled = memory_ifc.label(root, {"id": "summary", "text": "summarized procedure"})
     assert not labelled["procedure"] and labelled["quoted_text"].startswith("> ")
     assert labelled["integrity"] == "external" and labelled["lineage_digest"]
-    memory_authority.bind(root, {"id": "private", "record_kind": "markdown-store", "text": "secret",
-                                 "scopes": ["tenant:a"]})
+    memory_authority.bind(
+        root, {"id": "private", "record_kind": "markdown-store", "text": "secret", "scopes": ["tenant:a"]}
+    )
     with pytest.raises(PermissionError, match="scope"):
-        memory_authority.bind(root, {"id": "public", "record_kind": "markdown-store", "text": "summary",
-                                     "scopes": ["tenant:b"]}, sources=["private"])
+        memory_authority.bind(
+            root,
+            {"id": "public", "record_kind": "markdown-store", "text": "summary", "scopes": ["tenant:b"]},
+            sources=["private"],
+        )
 
 
 def test_origin_group_budget_and_fresh_sensor_signature(tmp_path):
@@ -59,6 +63,7 @@ def test_seeded_shadow_report_and_cli(tmp_path):
 
 def test_ifc_gateway_and_mcp_surfaces(tmp_path):
     from unimem.mcp_server import build_server
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import _write_lesson, call
 

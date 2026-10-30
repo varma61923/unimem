@@ -20,8 +20,7 @@ class ApprovalDenied(PermissionError):
     """This approver may not activate this lesson under the store's policy."""
 
 
-class PolicyError(ValueError):
-    ...
+class PolicyError(ValueError): ...
 
 
 @dataclass(frozen=True)
@@ -66,9 +65,7 @@ def validate_policy(raw: dict, path: str = "approval-policy.yaml") -> None:
             if value.strip().lower() not in VALID_BOOL_STRINGS:
                 raise PolicyError(f"{path}: {key} must be a boolean (true/false), got {value!r}")
         elif not isinstance(value, bool):
-            raise PolicyError(
-                f"{path}: {key} must be a boolean (true/false), got {type(value).__name__}"
-            )
+            raise PolicyError(f"{path}: {key} must be a boolean (true/false), got {type(value).__name__}")
 
     if _as_bool(raw.get("require_human", False)) and _as_bool(raw.get("auto_approve_drafts", False)):
         raise PolicyError(
@@ -112,9 +109,7 @@ def _parse_policy_yaml(text: str) -> dict:
         if not stripped:
             continue
         if ":" not in stripped:
-            raise PolicyError(
-                f"line {lineno}: expected `key: value`, got {line.strip()!r}"
-            )
+            raise PolicyError(f"line {lineno}: expected `key: value`, got {line.strip()!r}")
         key, _, value = stripped.partition(":")
         clean_key = key.strip().strip("'\"")
         if not clean_key:
@@ -138,9 +133,7 @@ def authors_of(root: str, slug: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def check(
-    policy: ApprovalPolicy, *, slug: str, approver: str, authors: tuple[str, ...]
-) -> None:
+def check(policy: ApprovalPolicy, *, slug: str, approver: str, authors: tuple[str, ...]) -> None:
     """Raise `ApprovalDenied` if this approval does not satisfy the policy."""
     approver = str(approver or "").strip()
 

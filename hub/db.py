@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from hub import auth
 from hub.config import HubConfig
@@ -17,21 +18,26 @@ logger = logging.getLogger("unimem.hub")
 _SIGNERS: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 
 
-def make_engine(config: HubConfig) -> AsyncEngine:
+def make_engine(config: HubConfig, *, pooled: bool = True) -> AsyncEngine:
     connect_args = {}
     if config.db_statement_timeout_ms > 0:
-        connect_args["server_settings"] = {
-            "statement_timeout": str(config.db_statement_timeout_ms)
-        }
+        connect_args["server_settings"] = {"statement_timeout": str(config.db_statement_timeout_ms)}
 
+    pool_options: dict[str, object] = (
+        {
+            "pool_size": config.db_pool_size,
+            "max_overflow": config.db_max_overflow,
+            "pool_timeout": config.db_pool_timeout,
+            "pool_recycle": config.db_pool_recycle,
+        }
+        if pooled
+        else {"poolclass": NullPool}
+    )
     engine = create_async_engine(
         config.database_url,
         pool_pre_ping=True,
         connect_args=connect_args,
-        pool_size=config.db_pool_size,
-        max_overflow=config.db_max_overflow,
-        pool_timeout=config.db_pool_timeout,
-        pool_recycle=config.db_pool_recycle,
+        **pool_options,
     )
     _SIGNERS[engine] = (config.ledger_signing_key, config.transparency_algorithm)
     return engine
@@ -46,7 +52,8 @@ def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession
 @asynccontextmanager
 async def session_scope(
     session_factory: async_sessionmaker[AsyncSession],
-    *, org_id: str | None = None,
+    *,
+    org_id: str | None = None,
 ) -> AsyncIterator[AsyncSession]:
     """Commit one transaction, optionally binding it to an authenticated org.
 
@@ -78,16 +85,11 @@ async def _scope_to_current_org(session: AsyncSession) -> None:
     org_id = auth.current_org_id.get(None)
     if not org_id:
         return
-    await session.execute(
-        text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)}
-    )
+    await session.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)})
 
-_RLS_BYPASS_SQL = text(
-    "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user"
-)
-_RLS_POLICIES_SQL = text(
-    "SELECT count(*) FROM pg_policies WHERE schemaname = current_schema()"
-)
+
+_RLS_BYPASS_SQL = text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user")
+_RLS_POLICIES_SQL = text("SELECT count(*) FROM pg_policies WHERE schemaname = current_schema()")
 _RLS_UNPROTECTED_SQL = text(
     "SELECT DISTINCT p.tablename FROM pg_policies p "
     "JOIN pg_namespace n ON n.nspname = p.schemaname "
@@ -112,13 +114,10 @@ async def rls_status(session) -> dict:
     }
 
 
-class RowLevelSecurityError(RuntimeError):
-    ...
+class RowLevelSecurityError(RuntimeError): ...
 
 
-async def check_row_level_security(
-    session_factory, *, allow_bypass: bool = True, require: bool = False
-) -> dict | None:
+async def check_row_level_security(session_factory, *, allow_bypass: bool = True, require: bool = False) -> dict | None:
     try:
         async with session_factory() as session:
             status = await rls_status(session)
@@ -163,11 +162,13 @@ async def check_row_level_security(
             "exist, and connect as a role that cannot bypass them."
         )
     elif status["unprotected_tables"]:
-        logger.warning("row-level security is not enforced on policy-backed tables: %s",
-                       ", ".join(status["unprotected_tables"]))
+        logger.warning(
+            "row-level security is not enforced on policy-backed tables: %s", ", ".join(status["unprotected_tables"])
+        )
     elif status["enforced"]:
         logger.info(
             "row-level security active: %d policies enforced for role %r",
-            status["policy_count"], status["role"],
+            status["policy_count"],
+            status["role"],
         )
     return status

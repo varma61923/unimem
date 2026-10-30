@@ -86,8 +86,9 @@ class PostgresJournal:
         self.factory, self.org_id, self.vector_index = session_factory, org_id, vector_index
         self.projection_factory = projection_factory
 
-    async def put_targeted(self, record: MemoryRecord, policy: dict, *, context: str, features: dict,
-                           environment: str, verify_policy) -> MemoryRecord:
+    async def put_targeted(
+        self, record: MemoryRecord, policy: dict, *, context: str, features: dict, environment: str, verify_policy
+    ) -> MemoryRecord:
         """Promote into a measured fleet class only; ownership still comes from org_id.
 
         Trusted coordinator code supplies the pinned policy verifier. This is a
@@ -99,10 +100,12 @@ class PostgresJournal:
         if not verify_policy(policy):
             raise PermissionError("fleet transfer requires an authenticated uplift policy")
         row = policy["record"]
-        if (row.get("type") != "validated-uplift-policy-v1"
-                or fp.number(row["rate_lower"], -100, 100) <= 0
-                or row.get("environment") != environment
-                or row.get("classes", {}).get(context) != features):
+        if (
+            row.get("type") != "validated-uplift-policy-v1"
+            or fp.number(row["rate_lower"], -100, 100) <= 0
+            or row.get("environment") != environment
+            or row.get("classes", {}).get(context) != features
+        ):
             raise PermissionError("fleet class has no validated positive effect in this environment")
         if row.get("lesson") != record.id:
             raise PermissionError("targeting policy belongs to a different memory")
@@ -113,8 +116,11 @@ class PostgresJournal:
             fp.text(key, "feature", 64)
             fp.text(value, "class", 64)
             labels.append(key + ":" + value)
-        governed = replace(record, scope={**record.scope, "labels": sorted(set(labels))},
-            provenance={**record.provenance, "uplift_policy_digest": policy["digest"], "uplift_context": context})
+        governed = replace(
+            record,
+            scope={**record.scope, "labels": sorted(set(labels))},
+            provenance={**record.provenance, "uplift_policy_digest": policy["digest"], "uplift_context": context},
+        )
         return await self.put(governed)
 
     async def put(self, record: MemoryRecord) -> MemoryRecord:
@@ -205,24 +211,38 @@ class PostgresJournal:
         await session.execute(
             statement.on_conflict_do_update(
                 index_elements=["org_id", "id"],
-                set_={"version": record.version, "change_seq": change_seq,
-                      "record": record.to_dict(), "scope": record.scope},
+                set_={
+                    "version": record.version,
+                    "change_seq": change_seq,
+                    "record": record.to_dict(),
+                    "scope": record.scope,
+                },
             )
         )
         from hub import audit
         from unimem import frontier_protocol as fp
 
         if session.info.get("transparency_key"):
-            await audit.record(session, actor="memory-runtime", action="memory_record.put", org_id=self.org_id,
-                               target_type="memory_record", target_id=record.id,
-                               summary=f"version={record.version};digest={fp.digest(record.to_dict())}")
+            await audit.record(
+                session,
+                actor="memory-runtime",
+                action="memory_record.put",
+                org_id=self.org_id,
+                target_type="memory_record",
+                target_id=record.id,
+                summary=f"version={record.version};digest={fp.digest(record.to_dict())}",
+            )
 
     async def _refresh_facet(self, session, record):
         if capabilities.CURRENT.get() is not None:
             from unimem import capability_io
 
-            if not capability_io.permits(delegation.ROOT.get(), {"scopes": capability_io.scope_labels(record.scope),
-                                          "memory_type": "observation"}, namespace="records", operation="write"):
+            if not capability_io.permits(
+                delegation.ROOT.get(),
+                {"scopes": capability_io.scope_labels(record.scope), "memory_type": "observation"},
+                namespace="records",
+                operation="write",
+            ):
                 return
         entity, facet = record.payload.get("entity"), record.payload.get("facet")
         if not isinstance(entity, str) or not isinstance(facet, str) or not entity.strip() or not facet.strip():
@@ -294,18 +314,26 @@ class PostgresJournal:
             requested = requested[: MAX_CHECKS - len(seen)]
             seen.update(requested)
             for start in range(0, len(requested), _VECTOR_CANDIDATE_BATCH):
-                rows = (await session.execute(
-                    select(MemoryRecordProjection).where(
-                        MemoryRecordProjection.org_id == self.org_id,
-                        MemoryRecordProjection.id.in_(requested[start:start + _VECTOR_CANDIDATE_BATCH]),
-                        MemoryRecordProjection.scope.op("<@")(context),
-                        delegation.record_predicate(),
-                        MemoryRecordProjection.record.contains({
-                            "kind": "fact",
-                            "provenance": {"atomic_fact_format": _ATOMIC_FACT_FORMAT},
-                        }),
+                rows = (
+                    (
+                        await session.execute(
+                            select(MemoryRecordProjection).where(
+                                MemoryRecordProjection.org_id == self.org_id,
+                                MemoryRecordProjection.id.in_(requested[start : start + _VECTOR_CANDIDATE_BATCH]),
+                                MemoryRecordProjection.scope.op("<@")(context),
+                                delegation.record_predicate(),
+                                MemoryRecordProjection.record.contains(
+                                    {
+                                        "kind": "fact",
+                                        "provenance": {"atomic_fact_format": _ATOMIC_FACT_FORMAT},
+                                    }
+                                ),
+                            )
+                        )
                     )
-                )).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 for row in rows:
                     decode(MemoryRecord(**row.record))
         return _HostedEvidenceResolver("", facts), invalid
@@ -317,29 +345,53 @@ class PostgresJournal:
 
         policy = await policies.active(session, self.org_id)
 
-        rows = (await session.execute(select(MemoryRecordProjection).where(
-            MemoryRecordProjection.org_id == self.org_id, delegation.record_predicate(),
-            MemoryRecordProjection.scope.op("<@")(context),
-            MemoryRecordProjection.record.contains({"status": "active", "is_latest": True}),
-        ).order_by(MemoryRecordProjection.id).limit(2001))).scalars().all()
+        rows = (
+            (
+                await session.execute(
+                    select(MemoryRecordProjection)
+                    .where(
+                        MemoryRecordProjection.org_id == self.org_id,
+                        delegation.record_predicate(),
+                        MemoryRecordProjection.scope.op("<@")(context),
+                        MemoryRecordProjection.record.contains({"status": "active", "is_latest": True}),
+                    )
+                    .order_by(MemoryRecordProjection.id)
+                    .limit(2001)
+                )
+            )
+            .scalars()
+            .all()
+        )
         fp.count(len(rows), 0, 2000, "UniMem scoped Hub capability namespace")
         records = {row.id: MemoryRecord(**row.record) for row in rows}
         grounding = GroundingState()
+
         def admitted(identity, trail=frozenset()):
             cached = grounding.enter(identity, trail)
             if cached is not None:
                 return cached
             record = records.get(identity)
-            if (record is None or not visible(record, context, at=reference) or not delegation.readable_record(record)
-                    or not policies.permits(policy, runtime_descriptor(record))):
+            if (
+                record is None
+                or not visible(record, context, at=reference)
+                or not delegation.readable_record(record)
+                or not policies.permits(policy, runtime_descriptor(record))
+            ):
                 return grounding.remember(identity, trail, False)
             parents = sorted(set(record.relations.get("derives", [])) | set(record.relations.get("caused_by", [])))
             versions = record.provenance.get("source_versions", {})
-            okay = all(admitted(parent, trail | {identity}) and
-                       (parent not in versions or versions[parent] == records[parent].version) for parent in parents)
+            okay = all(
+                admitted(parent, trail | {identity})
+                and (parent not in versions or versions[parent] == records[parent].version)
+                for parent in parents
+            )
             return grounding.remember(identity, trail, okay)
-        return {identity for identity, record in records.items() if (not kinds or record.kind in kinds)
-                and admitted(identity)}
+
+        return {
+            identity
+            for identity, record in records.items()
+            if (not kinds or record.kind in kinds) and admitted(identity)
+        }
 
     async def search(self, query: str, *, scope: dict, limit=20, vector=None, kinds=()) -> list[MemoryRecord]:
         if not isinstance(limit, int) or isinstance(limit, bool) or not 0 <= limit <= 1000:
@@ -364,7 +416,8 @@ class PostgresJournal:
                     await projection.drain(limit=128)
                     if not cap_mode:
                         projection_cursor, projected_hits = await projection.candidates(
-                            query, top_k=max(100, limit * 5))
+                            query, top_k=max(100, limit * 5)
+                        )
             except Exception as exc:  # noqa: BLE001 - optional dense failure preserves lexical retrieval
                 logging.getLogger(__name__).debug("Hosted dense fallback: %s", type(exc).__name__)
         async with session_scope(self.factory, org_id=self.org_id) as session:
@@ -382,7 +435,8 @@ class PostgresJournal:
                     try:
                         async with self.projection_factory.acquire(self.org_id) as projection:
                             projection_cursor, projected_hits = await projection.candidates(
-                                query, top_k=max(100, limit * 5), allowed_ids=allowed_ids)
+                                query, top_k=max(100, limit * 5), allowed_ids=allowed_ids
+                            )
                     except Exception as exc:  # noqa: BLE001 - optional dense errors preserve admitted sparse reads
                         logging.getLogger(__name__).debug("Hosted scoped dense fallback: %s", type(exc).__name__)
             statement = select(MemoryRecordProjection).where(
@@ -416,7 +470,7 @@ class PostgresJournal:
                 hit_ids = list(dict.fromkeys(hit.key for hit in hits))
                 dense_records: dict[str, MemoryRecord] = {}
                 for start in range(0, len(hit_ids), _VECTOR_CANDIDATE_BATCH):
-                    group = hit_ids[start:start + _VECTOR_CANDIDATE_BATCH]
+                    group = hit_ids[start : start + _VECTOR_CANDIDATE_BATCH]
                     dense_statement = select(MemoryRecordProjection).where(
                         MemoryRecordProjection.org_id == self.org_id,
                         delegation.record_predicate(),
@@ -427,11 +481,11 @@ class PostgresJournal:
                     if allowed_ids is not None:
                         dense_statement = dense_statement.where(MemoryRecordProjection.id.in_(sorted(allowed_ids)))
                     if projection_cursor is not None:
-                        dense_statement = dense_statement.where(
-                            MemoryRecordProjection.change_seq <= projection_cursor)
+                        dense_statement = dense_statement.where(MemoryRecordProjection.change_seq <= projection_cursor)
                     if kinds:
                         dense_statement = dense_statement.where(
-                            MemoryRecordProjection.record["kind"].astext.in_(list(kinds)))
+                            MemoryRecordProjection.record["kind"].astext.in_(list(kinds))
+                        )
                     dense_rows = (await session.execute(dense_statement)).scalars().all()
                     dense_records.update((row.id, MemoryRecord(**row.record)) for row in dense_rows)
                 for hit in hits:
@@ -440,7 +494,8 @@ class PostgresJournal:
                         found[record.id] = record
                         dense_order.append(record.id)
             atomic_roots = [
-                record for record in found.values()
+                record
+                for record in found.values()
                 if record.provenance.get("atomic_fact_format") == _ATOMIC_FACT_FORMAT
             ]
             evidence_resolver, invalid_atomic = None, set()
@@ -612,9 +667,7 @@ class PostgresJournal:
         )
         profile = await self.runtime_profile(query, scope=scope, limit=10, include_preference_rankers=True)
         records = await self.search(query, scope=scope, limit=20)
-        ranked_records = rerank_profile_results(
-            [record.to_dict() for record in records], profile["preference_rankers"]
-        )
+        ranked_records = rerank_profile_results([record.to_dict() for record in records], profile["preference_rankers"])
         # Mandatory owner rules and explicit preferences do not require inferred relevance.
         # Sparse-only candidates remain visible in results, without guessed dense agreement or causal exposure.
         lines: list[str] = []
@@ -656,9 +709,18 @@ class PostgresJournal:
                 await self._lock_owner(session)
                 allowed_ids = await self._cap_allowed_ids(session, context, reference, ("episode",))
                 statement = statement.where(MemoryRecordProjection.id.in_(sorted(allowed_ids)))
-            rows = (await session.execute(statement.order_by(
-                MemoryRecordProjection.record["created_at"].astext.desc(), MemoryRecordProjection.id,
-            ).limit(16))).scalars().all()
+            rows = (
+                (
+                    await session.execute(
+                        statement.order_by(
+                            MemoryRecordProjection.record["created_at"].astext.desc(),
+                            MemoryRecordProjection.id,
+                        ).limit(16)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             buffer = [
                 {
                     "id": row.id,
@@ -719,8 +781,7 @@ class PostgresJournal:
                 raise ValueError("expiration requires a reason")
             try:
                 results.append(
-                    await self.forget(identity, reason=reason, expected_version=version,
-                                      _expected_digest=digest(body))
+                    await self.forget(identity, reason=reason, expected_version=version, _expected_digest=digest(body))
                 )
             except ValueError as exc:
                 if str(exc) != "expiration record version changed":
@@ -728,14 +789,17 @@ class PostgresJournal:
         return results
 
     async def forget(
-        self, identity: str, *, reason: str, expected_version: int | None = None, scope: dict | None = None,
+        self,
+        identity: str,
+        *,
+        reason: str,
+        expected_version: int | None = None,
+        scope: dict | None = None,
         _expected_digest: str | None = None,
     ) -> dict:
         if not isinstance(reason, str) or not reason.strip():
             raise ValueError("erasure requires a reason")
-        if expected_version is not None and (
-            type(expected_version) is not int or expected_version < 1
-        ):
+        if expected_version is not None and (type(expected_version) is not int or expected_version < 1):
             raise ValueError("expected version must be a positive integer")
         async with session_scope(self.factory, org_id=self.org_id) as session:
             await self._lock_owner(session)
@@ -753,8 +817,11 @@ class PostgresJournal:
                 current = await session.get(MemoryRecordProjection, (self.org_id, identity))
                 if current is None:
                     raise ValueError("record not found")
-                capability_io.assert_forget(delegation.ROOT.get(),
-                    capability_io.runtime_descriptor(MemoryRecord(**current.record)), namespace="records")
+                capability_io.assert_forget(
+                    delegation.ROOT.get(),
+                    capability_io.runtime_descriptor(MemoryRecord(**current.record)),
+                    namespace="records",
+                )
             if await retention.active_holds(session, self.org_id):
                 raise PermissionError("an active legal hold blocks record erasure; release it explicitly")
             if expected_version is not None or _expected_digest is not None:
@@ -765,8 +832,13 @@ class PostgresJournal:
                     (self.org_id, identity),
                     with_for_update=True,
                 )
-                if (current is None or expected_version is not None and current.version != expected_version
-                        or _expected_digest is not None and digest(current.record) != _expected_digest):
+                if (
+                    current is None
+                    or expected_version is not None
+                    and current.version != expected_version
+                    or _expected_digest is not None
+                    and digest(current.record) != _expected_digest
+                ):
                     raise ValueError("expiration record version changed")
             rows = (
                 (await session.execute(select(MemoryRecordEvent).where(MemoryRecordEvent.org_id == self.org_id)))
@@ -783,8 +855,11 @@ class PostgresJournal:
                 # part of the authorized privacy cascade.
                 for row in rows:
                     if row.id in source_episodes:
-                        capability_io.assert_forget(delegation.ROOT.get(),
-                            capability_io.runtime_descriptor(MemoryRecord(**row.record)), namespace="records")
+                        capability_io.assert_forget(
+                            delegation.ROOT.get(),
+                            capability_io.runtime_descriptor(MemoryRecord(**row.record)),
+                            namespace="records",
+                        )
             if self.vector_index is not None:
                 await session.execute(
                     insert(MemoryVectorErasure)
@@ -796,8 +871,7 @@ class PostgresJournal:
             for row in rows:
                 versions[row.id] = max(versions.get(row.id, 0), row.version)
             for removed in sorted(deleted):
-                await append_change(session, self.org_id, None, record_id=removed,
-                                    version=versions.get(removed, 1))
+                await append_change(session, self.org_id, None, record_id=removed, version=versions.get(removed, 1))
             for model in (MemoryRecordProjection, MemoryRecordEvent):
                 await session.execute(delete(model).where(model.org_id == self.org_id, model.id.in_(deleted)))
             safe_reason = memory_guard.sanitize_metadata({"reason": reason}, pii=True)[0]["reason"]
@@ -822,8 +896,7 @@ class PostgresJournal:
                         completed = await projection.erase_records(sorted(deleted))
                     result["vector_cleanup"] = {"completed": completed, "pending": False}
             except Exception:  # noqa: BLE001 - committed tombstones retain cleanup work for every projection
-                result["vector_cleanup"] = {"completed": 0, "pending": True,
-                                            "reason": "vector cleanup retry required"}
+                result["vector_cleanup"] = {"completed": 0, "pending": True, "reason": "vector cleanup retry required"}
         if capabilities.CURRENT.get() is not None:
             result["deleted"] = [identity] if identity in result["deleted"] else []
         return result
@@ -927,8 +1000,11 @@ def add_memory_routes(app, session_factory, *, authenticate, require_scope):
                 if labels:
                     scope["labels"] = sorted(labels)
                 payload["scope"] = scope
-            store = PostgresJournal(session_factory, authenticated.org_id,
-                projection_factory=getattr(app.state, "memory_projection_factory", None))
+            store = PostgresJournal(
+                session_factory,
+                authenticated.org_id,
+                projection_factory=getattr(app.state, "memory_projection_factory", None),
+            )
             if action == "turn":
                 return JSONResponse(
                     await store.runtime_turn(
@@ -972,8 +1048,9 @@ def add_memory_routes(app, session_factory, *, authenticate, require_scope):
                     }
                 )
             if action == "forget":
-                return JSONResponse(await store.forget(
-                    payload["id"], reason=payload["reason"], scope=payload.get("scope", {})))
+                return JSONResponse(
+                    await store.forget(payload["id"], reason=payload["reason"], scope=payload.get("scope", {}))
+                )
             if action == "reap-due":
                 return JSONResponse({"results": await store.reap_due(limit=payload.get("limit", 16))})
             return JSONResponse({"error": "unknown_operation"}, status_code=404)

@@ -6,6 +6,7 @@ Adapted from Graphiti & Zep Saga architectures (#5 M):
 - Maintains a watermarked running brief so agents can catch up on multi-day
   narratives without reprocessing thousands of raw turns.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,10 +89,7 @@ class Saga:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Saga:
         raw_events = data.get("events", [])
-        events = [
-            SagaEvent(**e) if isinstance(e, dict) else e
-            for e in raw_events
-        ]
+        events = [SagaEvent(**e) if isinstance(e, dict) else e for e in raw_events]
         return cls(
             id=data["id"],
             title=data.get("title", data["id"]),
@@ -330,13 +328,15 @@ def search_sagas(root: str, query: str, limit: int = 10) -> list[Saga]:
 def _update_index_locked(root: str, saga: Saga) -> None:
     idx_path = _sagas_index_file(root)
     rows = [r for r in _jsonl.read_rows(idx_path) if isinstance(r, dict) and r.get("id") != saga.id]
-    rows.append({
-        "id": saga.id,
-        "title": saga.title,
-        "status": saga.status,
-        "tags": saga.tags,
-        "event_count": len(saga.events),
-        "watermark": saga.watermark,
-        "updated_at": saga.updated_at,
-    })
+    rows.append(
+        {
+            "id": saga.id,
+            "title": saga.title,
+            "status": saga.status,
+            "tags": saga.tags,
+            "event_count": len(saga.events),
+            "watermark": saga.watermark,
+            "updated_at": saga.updated_at,
+        }
+    )
     _jsonl.write_rows(idx_path, rows)

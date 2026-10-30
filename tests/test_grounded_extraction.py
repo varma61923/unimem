@@ -11,11 +11,20 @@ from unimem.failure_signals import _trend
 
 
 def cluster(solutions: list[str], contexts: list[str] | None = None) -> distill.Cluster:
-    return distill.Cluster(traces=[distill.TraceCandidate(
-        id=f"trace-{i}", path="", title="Refund request returned a conflict",
-        context_text=contexts[i] if contexts else "Refund retry failed because an idempotency key was changed.",
-        solution_text=solution, tags=["refunds"], agent_type="support",
-    ) for i, solution in enumerate(solutions)])
+    return distill.Cluster(
+        traces=[
+            distill.TraceCandidate(
+                id=f"trace-{i}",
+                path="",
+                title="Refund request returned a conflict",
+                context_text=contexts[i] if contexts else "Refund retry failed because an idempotency key was changed.",
+                solution_text=solution,
+                tags=["refunds"],
+                agent_type="support",
+            )
+            for i, solution in enumerate(solutions)
+        ]
+    )
 
 
 def test_extraction_uses_only_corroborated_resolution_and_real_provenance():
@@ -56,10 +65,14 @@ def test_policy_rejects_unbounded_scores(score):
         distill.ExtractionPolicy(min_validation_score=score)
 
 
-@pytest.mark.parametrize("solutions,contexts", [
-    (["fix"] * 2, None), ([""] * 2, None),
-    (["Reuse original idempotency key."] * 2, ["", ""]),
-])
+@pytest.mark.parametrize(
+    "solutions,contexts",
+    [
+        (["fix"] * 2, None),
+        ([""] * 2, None),
+        (["Reuse original idempotency key."] * 2, ["", ""]),
+    ],
+)
 def test_missing_or_anecdotal_evidence_is_rejected(solutions, contexts):
     assert distill.extract_cluster(cluster(solutions, contexts)) is None
 
@@ -77,11 +90,25 @@ def test_scores_are_bounded_deterministic_and_threshold_is_configurable():
 
 
 def capture_failure(root: str, index: int, solution: str = "Reuse the original charge idempotency key.") -> None:
-    assert main([
-        "capture", "--title", f"Refund conflict {index}", "--context",
-        "Refund retry failed because an idempotency key was changed.", "--solution", solution,
-        "--agent-type", "support", "--not-resolved", "--dest", root,
-    ]) == 0
+    assert (
+        main(
+            [
+                "capture",
+                "--title",
+                f"Refund conflict {index}",
+                "--context",
+                "Refund retry failed because an idempotency key was changed.",
+                "--solution",
+                solution,
+                "--agent-type",
+                "support",
+                "--not-resolved",
+                "--dest",
+                root,
+            ]
+        )
+        == 0
+    )
 
 
 def test_failure_pipeline_produces_complete_review_candidate_and_survives_concurrency(tmp_path):
@@ -130,10 +157,14 @@ def test_new_equivalent_evidence_is_not_a_second_lesson_or_deleted(tmp_path, cap
 
 def test_duplicate_screening_ignores_shared_boilerplate():
     common = "\n\n## Counter-examples\nThe failure's preconditions differ from the cited evidence.\n" * 20
-    a = draft_quality.candidate_text({"description": "Refunds", "applies_when": "Payment retry returns 409"},
-                                     "## Rule\nReuse the original charge idempotency key." + common)
-    b = draft_quality.candidate_text({"description": "Deployment", "applies_when": "GPU kernel runs diverge"},
-                                     "## Rule\nPin the RNG seed and disable nondeterministic algorithms." + common)
+    a = draft_quality.candidate_text(
+        {"description": "Refunds", "applies_when": "Payment retry returns 409"},
+        "## Rule\nReuse the original charge idempotency key." + common,
+    )
+    b = draft_quality.candidate_text(
+        {"description": "Deployment", "applies_when": "GPU kernel runs diverge"},
+        "## Rule\nPin the RNG seed and disable nondeterministic algorithms." + common,
+    )
     assert draft_quality.find_candidate_duplicate(a, [("deployment", b)]) is None
     duplicate = draft_quality.find_candidate_duplicate(a, [("refunds", a)])
     assert duplicate is not None and duplicate.identity == "refunds" and duplicate.similarity == 1
@@ -166,8 +197,9 @@ def test_semantic_candidate_screen_keeps_labels_aligned_across_bounded_batches(m
         # Exercise actual normalization, NumPy cosine matching and cached encode
         # with an explicitly supplied local encoder; no model/network is needed.
         def encode(self, texts, *, normalize_embeddings):
-            vectors = np.asarray([[1.0, 0.0] if "payment" in text or "billing" in text
-                                   else [0.0, 1.0] for text in texts])
+            vectors = np.asarray(
+                [[1.0, 0.0] if "payment" in text or "billing" in text else [0.0, 1.0] for text in texts]
+            )
             return vectors
 
     monkeypatch.setattr(semantic, "_model", LocalEncoder())
@@ -175,7 +207,9 @@ def test_semantic_candidate_screen_keeps_labels_aligned_across_bounded_batches(m
     corpus = [(f"unrelated-{i}", f"shipping delivery address {i}") for i in range(128)]
     corpus.append(("payment-rule", "billing timeout recovery procedure"))
     duplicate = draft_quality.find_candidate_duplicate(
-        "payment retry safeguards", corpus, semantic_dedup=True,
+        "payment retry safeguards",
+        corpus,
+        semantic_dedup=True,
     )
     assert duplicate is not None and duplicate.identity == "payment-rule"
     assert duplicate.method == "semantic" and duplicate.similarity == pytest.approx(1)

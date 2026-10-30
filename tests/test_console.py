@@ -21,9 +21,17 @@ def gw(tmp_path):
     return gateway.Gateway(root, token="t" * 40)
 
 
-@pytest.mark.parametrize("path,ctype", [
-    ("/", "text/html"), ("/index.html", "text/html"), ("/ui/app.js", "text/javascript"),
-    ("/ui/app.css", "text/css"), ("/ui/tokens.css", "text/css"), ("/ui/favicon.svg", "image/svg+xml")])
+@pytest.mark.parametrize(
+    "path,ctype",
+    [
+        ("/", "text/html"),
+        ("/index.html", "text/html"),
+        ("/ui/app.js", "text/javascript"),
+        ("/ui/app.css", "text/css"),
+        ("/ui/tokens.css", "text/css"),
+        ("/ui/favicon.svg", "image/svg+xml"),
+    ],
+)
 def test_the_console_loads_without_a_token_and_carries_a_strict_csp(gw, path, ctype):
     r = gw.handle("GET", path, {"Host": "localhost:8787"})
     assert r.status == 200 and r.content_type.startswith(ctype)
@@ -49,7 +57,7 @@ def test_every_file_the_page_references_exists_and_is_same_origin():
     assert refs, "index.html references nothing"
     for ref in refs:
         assert ref.startswith("/ui/"), ref
-        assert os.path.isfile(os.path.join(UI_DIR, ref[len("/ui/"):])), ref
+        assert os.path.isfile(os.path.join(UI_DIR, ref[len("/ui/") :])), ref
 
 
 def test_the_page_has_no_inline_script_style_or_handlers():
@@ -61,8 +69,17 @@ def test_the_page_has_no_inline_script_style_or_handlers():
 
 def test_script_never_turns_strings_into_markup_or_code():
     js = re.sub(r"/\*.*?\*/|(?<![:\"'])//[^\n]*", "", _read("app.js"), flags=re.S)
-    for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function",
-                   "setAttribute(\"style\"", "setAttribute('style'", "srcdoc"):
+    for banned in (
+        "innerHTML",
+        "outerHTML",
+        "insertAdjacentHTML",
+        "document.write",
+        "eval(",
+        "new Function",
+        'setAttribute("style"',
+        "setAttribute('style'",
+        "srcdoc",
+    ):
         assert banned not in js, banned
     assert not re.search(r"""\bstyle\s*:\s*["']""", js), "an inline style string would be refused by the CSP"
 
@@ -71,7 +88,7 @@ def test_the_token_comes_from_the_fragment_and_is_scrubbed_from_the_address_bar(
     js = _read("app.js")
     assert "#token=" in js or "token=" in js
     assert "sessionStorage" in js and "replaceState" in js
-    assert "localStorage.setItem(\"token\"" not in js and "localStorage.setItem('token'" not in js
+    assert 'localStorage.setItem("token"' not in js and "localStorage.setItem('token'" not in js
     assert not re.search(r"""fetch\(\s*["']https?://""", js)
     assert "?token=" not in js
 
@@ -85,13 +102,15 @@ def test_the_console_ships_in_the_package():
 
 def test_the_colours_are_defined_for_light_dark_and_forced_colours():
     css = _read("tokens.css") + _read("app.css")
-    assert "prefers-color-scheme:dark" in css and "forced-colors" in css and 'data-theme=dark' in css
+    assert "prefers-color-scheme:dark" in css and "forced-colors" in css and "data-theme=dark" in css
     assert "min-height: 44px" in css
 
 
 def test_in_a_real_browser_hostile_ids_are_text_and_the_token_leaves_the_address_bar(tmp_path):
     sync_api = pytest.importorskip("playwright.sync_api")
-    exe = next((p for p in (os.environ.get("CHROMIUM_PATH"), "/opt/pw-browsers/chromium") if p and os.path.isfile(p)), None)
+    exe = next(
+        (p for p in (os.environ.get("CHROMIUM_PATH"), "/opt/pw-browsers/chromium") if p and os.path.isfile(p)), None
+    )
     if exe is None:
         pytest.skip("no Chromium available")
     import json
@@ -107,11 +126,19 @@ def test_in_a_real_browser_hostile_ids_are_text_and_the_token_leaves_the_address
     try:
         hostile = "<img src=x onerror=window.__pwned=1>"
         req = urllib.request.Request(
-            f"http://127.0.0.1:{port}/v1/recall", method="POST",
-            data=json.dumps({"occasion_id": hostile, "agent_id": "a-1", "items": [{"id": hostile, "text": "x"}]}).encode(),
-            headers={"Authorization": "Bearer " + "t" * 40, "Content-Type": "application/json",
-                     "Host": f"127.0.0.1:{port}"})
-        urllib.request.urlopen(req).read()
+            f"http://127.0.0.1:{port}/v1/recall",
+            method="POST",
+            data=json.dumps(
+                {"occasion_id": hostile, "agent_id": "a-1", "items": [{"id": hostile, "text": "x"}]}
+            ).encode(),
+            headers={
+                "Authorization": "Bearer " + "t" * 40,
+                "Content-Type": "application/json",
+                "Host": f"127.0.0.1:{port}",
+            },
+        )
+        with urllib.request.urlopen(req) as response:
+            response.read()
         with sync_api.sync_playwright() as p:
             browser = p.chromium.launch(executable_path=exe)
             page = browser.new_page()
@@ -135,24 +162,38 @@ def test_in_a_real_browser_hostile_ids_are_text_and_the_token_leaves_the_address
 def _workbench_store(tmp_path):
     from unimem import frontmatter, paths, templates
     from unimem.cli import main
+
     main(["init", "--agent-type", "support", "--dest", str(tmp_path)])
     holdout_io.configure(str(tmp_path), rate=0.5, salt="console-wb")
-    for slug, rule in (("lesson_ready", "Link the single refund policy page."),
-                       ("lesson_todo", "TODO: one actionable sentence")):
+    for slug, rule in (
+        ("lesson_ready", "Link the single refund policy page."),
+        ("lesson_todo", "TODO: one actionable sentence"),
+    ):
         fm = templates.lesson_frontmatter(
-            slug=slug, description=f"{slug} description", agent_type="support", domain="refunds", tags=[],
+            slug=slug,
+            description=f"{slug} description",
+            agent_type="support",
+            domain="refunds",
+            tags=[],
             applies_when="A customer asks about refunds." if slug == "lesson_ready" else "TODO: when",
-            do_not_apply_when="Already refunded." if slug == "lesson_ready" else "TODO: when not", importance=3,
-            importance_rationale="r", source_traces=["t1"], status="review")
-        body = (f"## Rule\n{rule}\n\n## Why\nw\n\n## How to apply\n{fm['applies_when']}\n\n"
-                f"## Counter-examples\n{fm['do_not_apply_when']}\n")
+            do_not_apply_when="Already refunded." if slug == "lesson_ready" else "TODO: when not",
+            importance=3,
+            importance_rationale="r",
+            source_traces=["t1"],
+            status="review",
+        )
+        body = (
+            f"## Rule\n{rule}\n\n## Why\nw\n\n## How to apply\n{fm['applies_when']}\n\n"
+            f"## Counter-examples\n{fm['do_not_apply_when']}\n"
+        )
         frontmatter.write(os.path.join(paths.lessons_dir(str(tmp_path)), f"{slug}.md"), fm, body)
 
 
 def test_in_a_real_browser_a_draft_is_edited_approved_and_a_failing_one_cannot_be_selected(tmp_path):
     sync_api = pytest.importorskip("playwright.sync_api")
-    exe = next((p for p in (os.environ.get("CHROMIUM_PATH"), "/opt/pw-browsers/chromium") if p and os.path.isfile(p)),
-               None)
+    exe = next(
+        (p for p in (os.environ.get("CHROMIUM_PATH"), "/opt/pw-browsers/chromium") if p and os.path.isfile(p)), None
+    )
     if exe is None:
         pytest.skip("no Chromium available")
     import threading

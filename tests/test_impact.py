@@ -147,9 +147,7 @@ def _write_trace_file(root, name, resolved, tokens_used, baseline, retrieved=Non
     ext_lines = ""
     if retrieved is not None:
         ext_lines = (
-            "extensions:\n"
-            f"  lessons_retrieved: [{', '.join(retrieved)}]\n"
-            f"  lessons_hit: [{', '.join(hit or [])}]\n"
+            f"extensions:\n  lessons_retrieved: [{', '.join(retrieved)}]\n  lessons_hit: [{', '.join(hit or [])}]\n"
         )
     (tdir / f"{name}.md").write_text(
         "---\n"
@@ -177,8 +175,9 @@ class TestImpactCLI:
 
     def test_reports_measured_counts_from_written_traces(self, store, capsys):
         _write_trace_file(store, "b1", resolved=False, tokens_used=500, baseline=True)
-        _write_trace_file(store, "c1", resolved=True, tokens_used=200, baseline=False,
-                           retrieved=["lesson_x"], hit=["lesson_x"])
+        _write_trace_file(
+            store, "c1", resolved=True, tokens_used=200, baseline=False, retrieved=["lesson_x"], hit=["lesson_x"]
+        )
         capsys.readouterr()
         assert main(["impact", "--dest", str(store)]) == 0
         out = capsys.readouterr().out
@@ -193,8 +192,9 @@ class TestImpactCLI:
         assert "mutually exclusive" in capsys.readouterr().err
 
     def test_html_writes_a_report_file(self, store, capsys):
-        _write_trace_file(store, "c1", resolved=True, tokens_used=200, baseline=False,
-                           retrieved=["lesson_x"], hit=["lesson_x"])
+        _write_trace_file(
+            store, "c1", resolved=True, tokens_used=200, baseline=False, retrieved=["lesson_x"], hit=["lesson_x"]
+        )
         capsys.readouterr()
         assert main(["impact", "--dest", str(store), "--html"]) == 0
         reports = list((store / "memory" / "benchmark_reports").glob("impact_*.html"))
@@ -202,12 +202,22 @@ class TestImpactCLI:
         assert reports[0].read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
 
     def test_cli_rate_flags_produce_a_dollar_total(self, store, capsys):
-        _write_trace_file(store, "c1", resolved=True, tokens_used=200, baseline=False,
-                           retrieved=["lesson_x"], hit=["lesson_x"])
+        _write_trace_file(
+            store, "c1", resolved=True, tokens_used=200, baseline=False, retrieved=["lesson_x"], hit=["lesson_x"]
+        )
         capsys.readouterr()
-        assert main([
-            "impact", "--dest", str(store), "--json",
-            "--value-per-error-avoided", "25",
-        ]) == 0
+        assert (
+            main(
+                [
+                    "impact",
+                    "--dest",
+                    str(store),
+                    "--json",
+                    "--value-per-error-avoided",
+                    "25",
+                ]
+            )
+            == 0
+        )
         data = json.loads(capsys.readouterr().out)
         assert data["dollar_value_errors"] == pytest.approx(25.0)

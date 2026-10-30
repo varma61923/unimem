@@ -1,4 +1,5 @@
 """Paired lexical-coverage oracle: exact semantic equality and workload latency."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,8 +12,11 @@ from unimem.conversation import coverage, profile
 
 def reference(question, evidence, *, labels=()):
     """Pre-optimization scan, independently retaining passage-level scoring."""
-    asked = {w for w in coverage._terms(question) if (len(w) > 2 or coverage.has_cjk(w))
-             and w not in profile.STOPWORDS and w not in coverage._QUESTIONS}
+    asked = {
+        w
+        for w in coverage._terms(question)
+        if (len(w) > 2 or coverage.has_cjk(w)) and w not in profile.STOPWORDS and w not in coverage._QUESTIONS
+    }
     entities = {w for name in profile.entities(question) for w in coverage._terms(name)}
     subjects = asked - coverage._ATTRIBUTES - entities
     if not subjects:
@@ -20,18 +24,37 @@ def reference(question, evidence, *, labels=()):
     words = set().union(*(coverage._terms(text) for text in evidence)) if evidence else set()
     missing = {w for w in subjects if not coverage._covered(w, words)}
     if not asked or not evidence:
-        return coverage.EvidenceCoverage(0.0, True, "no recalled evidence covers the question", 0, len(asked),
-                                         tuple(sorted(subjects)), tuple(sorted(missing)))
+        return coverage.EvidenceCoverage(
+            0.0,
+            True,
+            "no recalled evidence covers the question",
+            0,
+            len(asked),
+            tuple(sorted(subjects)),
+            tuple(sorted(missing)),
+        )
     if (subjects and missing == subjects) or any(w not in words for w in asked & coverage._IDENTIFIERS):
-        return coverage.EvidenceCoverage(0.0, True,
-            "recalled entities do not establish the requested subject or identifier", 0, len(asked),
-            tuple(sorted(subjects)), tuple(sorted(missing)))
+        return coverage.EvidenceCoverage(
+            0.0,
+            True,
+            "recalled entities do not establish the requested subject or identifier",
+            0,
+            len(asked),
+            tuple(sorted(subjects)),
+            tuple(sorted(missing)),
+        )
     label_words = {w for label in labels for w in coverage._terms(label)}
     matched = max(sum(coverage._covered(w, coverage._terms(text) | label_words) for w in asked) for text in evidence)
     value = round(matched / len(asked), 3)
-    return coverage.EvidenceCoverage(value, value == 0.0,
-        "lexical evidence covers part of the question; answer correctness is unverified", matched, len(asked),
-        tuple(sorted(subjects)), tuple(sorted(missing)))
+    return coverage.EvidenceCoverage(
+        value,
+        value == 0.0,
+        "lexical evidence covers part of the question; answer correctness is unverified",
+        matched,
+        len(asked),
+        tuple(sorted(subjects)),
+        tuple(sorted(missing)),
+    )
 
 
 def run(trials=5):
@@ -47,10 +70,16 @@ def run(trials=5):
             results[name] = (reference if name == "reference" else coverage.assess)(question, evidence)
             samples[name].append(1000 * (time.perf_counter() - start))
     old, new = (statistics.median(samples[name]) for name in ("reference", "optimized"))
-    return {"workload": "80-facet-16-passage-lexical-coverage", "trials": trials,
-            "equivalent": results["reference"] == results["optimized"],
-            "reference_median_ms": old, "optimized_median_ms": new, "speedup": old / max(new, 1e-9),
-            "samples_ms": samples, "scope": "coverage gate only; not end-to-end or competitor latency"}
+    return {
+        "workload": "80-facet-16-passage-lexical-coverage",
+        "trials": trials,
+        "equivalent": results["reference"] == results["optimized"],
+        "reference_median_ms": old,
+        "optimized_median_ms": new,
+        "speedup": old / max(new, 1e-9),
+        "samples_ms": samples,
+        "scope": "coverage gate only; not end-to-end or competitor latency",
+    }
 
 
 def main(argv=None):

@@ -1,4 +1,5 @@
 """Original bounded facet fixtures and exact-source, finite-budget contracts."""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -22,16 +23,19 @@ def candidate(identity: int, body: str, cost: int = 20) -> Candidate:
 
 
 def test_distinct_facets_outrank_redundant_high_ranked_hits_with_same_anchor():
-    rows = [candidate(1, "Zircon timeout is seven seconds", 50),
-            candidate(2, "Zircon timeout remains seven seconds", 40),
-            candidate(3, "Zircon timeout dashboard has seven seconds", 35),
-            candidate(4, "Zircon retention is thirty days", 20),
-            candidate(5, "Zircon recovery requires a verified snapshot", 25)]
+    rows = [
+        candidate(1, "Zircon timeout is seven seconds", 50),
+        candidate(2, "Zircon timeout remains seven seconds", 40),
+        candidate(3, "Zircon timeout dashboard has seven seconds", 35),
+        candidate(4, "Zircon retention is thirty days", 20),
+        candidate(5, "Zircon recovery requires a verified snapshot", 25),
+    ]
     plan = prioritize("What are Zircon timeout retention and recovery settings?", rows)
     assert plan.priority == (1, 4, 5)
     assert plan.order == (1, 4, 5, 2, 3)
     assert {"timeout", "retention", "recovery"} <= set(plan.covered_facets)
     assert "settings" in plan.missing_facets
+
     # Same token allowance: diversity includes three independently sourced
     # facets; default rank spends it on repeated evidence about one facet.
     def emitted(order):
@@ -41,28 +45,35 @@ def test_distinct_facets_outrank_redundant_high_ranked_hits_with_same_anchor():
             row = indexed[identity]
             if spent + row.token_cost <= 100:
                 spent += row.token_cost
-                facets.update(word for word in ("timeout", "retention", "recovery")
-                              if any(word in text for text in row.passages))
+                facets.update(
+                    word for word in ("timeout", "retention", "recovery") if any(word in text for text in row.passages)
+                )
         return spent, facets
+
     assert emitted(plan.order) == (95, {"timeout", "retention", "recovery"})
     assert emitted(tuple(row.turn for row in rows))[1] == {"timeout"}
 
 
 def test_recency_or_reranking_anchor_cannot_be_replaced_by_a_shorter_old_claim():
-    rows = [candidate(5, "The timeout is now twelve seconds instead of six", 40),
-            candidate(1, "The timeout used to be six seconds", 5),
-            candidate(3, "Retention lasts thirty days", 10)]
+    rows = [
+        candidate(5, "The timeout is now twelve seconds instead of six", 40),
+        candidate(1, "The timeout used to be six seconds", 5),
+        candidate(3, "Retention lasts thirty days", 10),
+    ]
     plan = prioritize("What are the timeout and retention now?", rows)
     assert plan.order[0] == plan.priority[0] == 5
     assert set(plan.order) == {1, 3, 5}
 
 
 def test_existing_top_hit_quota_survives_before_any_facet_diversification():
-    rows = [candidate(11, "timeout is now twelve seconds", 100),
-            candidate(7, "timeout is NOT six seconds anymore", 100),
-            candidate(3, "timeout correction was confirmed after the deployment", 100),
-            candidate(6, "timeout older dashboard", 20),
-            candidate(5, "retention thirty days", 10), candidate(9, "recovery snapshot", 20)]
+    rows = [
+        candidate(11, "timeout is now twelve seconds", 100),
+        candidate(7, "timeout is NOT six seconds anymore", 100),
+        candidate(3, "timeout correction was confirmed after the deployment", 100),
+        candidate(6, "timeout older dashboard", 20),
+        candidate(5, "retention thirty days", 10),
+        candidate(9, "recovery snapshot", 20),
+    ]
     plan = prioritize("timeout retention recovery", rows, anchor_count=3)
     assert plan.order[:3] == plan.priority[:3] == (11, 7, 3)
     assert plan.order == (11, 7, 3, 5, 9, 6)
@@ -84,8 +95,7 @@ def test_all_bounded_candidates_can_be_protected_without_reordering_the_tail():
 
 
 def test_explicit_zero_anchor_quota_does_not_force_an_unrelated_first_candidate():
-    rows = [candidate(1, "unrelated gardening", 100), candidate(3, "retention", 10),
-            candidate(2, "timeout", 10)]
+    rows = [candidate(1, "unrelated gardening", 100), candidate(3, "retention", 10), candidate(2, "timeout", 10)]
     plan = prioritize("timeout retention", rows, anchor_count=0)
     assert plan.priority == (3, 2)
     assert plan.order == (3, 2, 1)
@@ -104,16 +114,22 @@ def test_anchor_quota_is_typed_and_bounded_even_for_empty_inputs(count):
 
 
 def test_equal_utility_preserves_original_rank_without_float_tie_noise():
-    plan = prioritize("timeout retention recovery", [candidate(8, "timeout", 10),
-                      candidate(2, "retention", 10), candidate(9, "recovery", 10)])
+    plan = prioritize(
+        "timeout retention recovery",
+        [candidate(8, "timeout", 10), candidate(2, "retention", 10), candidate(9, "recovery", 10)],
+    )
     assert plan.order == (8, 2, 9)
-    assert prioritize("timeout retention", [candidate(8, "timeout"), candidate(9, "retention"),
-                                            candidate(2, "retention")]).order == (8, 9, 2)
+    assert prioritize(
+        "timeout retention", [candidate(8, "timeout"), candidate(9, "retention"), candidate(2, "retention")]
+    ).order == (8, 9, 2)
 
 
 def test_utility_includes_all_required_graph_ancestor_costs():
-    costly = Candidate(2, ("Retention is thirty days", "This is the parent connecting passage",
-                           "This is another required ancestor"), 100)
+    costly = Candidate(
+        2,
+        ("Retention is thirty days", "This is the parent connecting passage", "This is another required ancestor"),
+        100,
+    )
     cheap = candidate(3, "Recovery requires a verified snapshot", 20)
     plan = prioritize("timeout retention recovery", [candidate(1, "timeout"), costly, cheap])
     assert plan.priority == (1, 3, 2)
@@ -149,8 +165,7 @@ def test_missing_attribute_is_reported_without_inventing_source_text():
 def test_actual_excerpt_cannot_credit_hidden_full_turn_identifier(tmp_path):
     with Store(str(tmp_path), "excerpt-selection") as store:
         text = "Nia bought a bicycle in Porto. " * 30 + "The bicycle serial identifier is CT-492."
-        store.add("purchase", [{"speaker": "Nia", "text": text}], session_at="2025-01-01",
-                  extract_profile=False)
+        store.add("purchase", [{"speaker": "Nia", "text": text}], session_at="2025-01-01", extract_profile=False)
         turn = next(iter(store.turns([1]).values()))
         quote = _excerpt(turn, "bicycle", 20).removeprefix(turn.speaker + ": ")
         assert "serial" not in quote and "CT-492" not in quote
@@ -160,9 +175,11 @@ def test_actual_excerpt_cannot_credit_hidden_full_turn_identifier(tmp_path):
 
 
 def test_negation_correction_and_history_quotes_are_preserved_verbatim():
-    rows = [candidate(7, "Retention is NOT thirty days now; it is seven days."),
-            candidate(2, "Retention used to be thirty days."),
-            candidate(8, "Recovery must NOT use the previous snapshot.")]
+    rows = [
+        candidate(7, "Retention is NOT thirty days now; it is seven days."),
+        candidate(2, "Retention used to be thirty days."),
+        candidate(8, "Recovery must NOT use the previous snapshot."),
+    ]
     original = tuple(row.passages for row in rows)
     plan = prioritize("What are retention and recovery now?", rows)
     assert plan.order == (7, 8, 2)
@@ -170,8 +187,7 @@ def test_negation_correction_and_history_quotes_are_preserved_verbatim():
 
 
 def test_unicode_and_short_scalar_facets_survive_lexical_selection():
-    rows = [candidate(1, "超时保护 port x"), candidate(2, "重试策略 rack 7"),
-            candidate(3, "règle du café")]
+    rows = [candidate(1, "超时保护 port x"), candidate(2, "重试策略 rack 7"), candidate(3, "règle du café")]
     plan = prioritize("超时 重试 port x rack 7 café règle", rows)
     assert {"x", "7", "café", "règle"} <= set(plan.covered_facets)
     assert not plan.missing_facets
@@ -211,8 +227,7 @@ def test_cost_is_bounded_typed_and_finite(cost):
         candidate(1, "timeout", cost)
 
 
-@pytest.mark.parametrize("passages", [(), ("one", "two", "three", "four"), ["one"],
-                                       (None,), ("one", 2)])
+@pytest.mark.parametrize("passages", [(), ("one", "two", "three", "four"), ["one"], (None,), ("one", 2)])
 def test_passages_bound_atomic_support_and_reject_nontext(passages):
     with pytest.raises(ValueError, match="passages"):
         Candidate(1, passages, 20)
@@ -248,14 +263,31 @@ def test_public_diagnostics_do_not_contain_unquoted_source_bodies():
 
 def _persist_facets(root):
     with Store(root, "facet-quality") as store:
-        store.add("timeouts", [{"speaker": "Nia", "text":
-                   f"Zircon timeout is seven seconds in region {i}. "
-                   + "The connector is checked by operators and monitored during deployments. " * 2}
-                   for i in range(3)], session_at="2025-01-05", extract_profile=False)
-        store.add("retention", [{"speaker": "Nia", "text": "Zircon retention lasts thirty days."}],
-                  session_at="2025-01-02", extract_profile=False)
-        store.add("recovery", [{"speaker": "Nia", "text": "Zircon recovery requires a verified snapshot."}],
-                  session_at="2025-01-01", extract_profile=False)
+        store.add(
+            "timeouts",
+            [
+                {
+                    "speaker": "Nia",
+                    "text": f"Zircon timeout is seven seconds in region {i}. "
+                    + "The connector is checked by operators and monitored during deployments. " * 2,
+                }
+                for i in range(3)
+            ],
+            session_at="2025-01-05",
+            extract_profile=False,
+        )
+        store.add(
+            "retention",
+            [{"speaker": "Nia", "text": "Zircon retention lasts thirty days."}],
+            session_at="2025-01-02",
+            extract_profile=False,
+        )
+        store.add(
+            "recovery",
+            [{"speaker": "Nia", "text": "Zircon recovery requires a verified snapshot."}],
+            session_at="2025-01-01",
+            extract_profile=False,
+        )
 
 
 @pytest.mark.parametrize("budget", [120, 150])
@@ -263,8 +295,16 @@ def test_reopened_real_recall_preserves_more_facets_at_the_same_smaller_budget(t
     root = str(tmp_path)
     _persist_facets(root)
     question = "What are Zircon timeout retention and recovery now?"
-    options = Options(budget=budget, primary_hits=1, embedder=None, rerank=None, graph_hops=0,
-                      instructions=0, profile_facts=0, summaries=False)
+    options = Options(
+        budget=budget,
+        primary_hits=1,
+        embedder=None,
+        rerank=None,
+        graph_hops=0,
+        instructions=0,
+        profile_facts=0,
+        summaries=False,
+    )
     with Store(root, "facet-quality", create=False, read_only=True) as store:
         legacy = recall(store, question, options=options)
         selected = recall(store, question, options=replace(options, context_strategy="coverage-v1"))
@@ -290,9 +330,21 @@ def test_unaffordable_candidate_coverage_cannot_be_claimed_as_emitted_evidence(t
     root = str(tmp_path)
     _persist_facets(root)
     with Store(root, "facet-quality", create=False) as store:
-        result = recall(store, "What are Zircon timeout retention and recovery now?", options=Options(
-            budget=100, primary_hits=1, embedder=None, rerank=None, graph_hops=0,
-            instructions=0, profile_facts=0, summaries=False, context_strategy="coverage-v1"))
+        result = recall(
+            store,
+            "What are Zircon timeout retention and recovery now?",
+            options=Options(
+                budget=100,
+                primary_hits=1,
+                embedder=None,
+                rerank=None,
+                graph_hops=0,
+                instructions=0,
+                profile_facts=0,
+                summaries=False,
+                context_strategy="coverage-v1",
+            ),
+        )
         assert result.tokens <= 100
         assert "recovery" not in result.context
         assert "recovery" in result.explain["context_selection"]["covered_facets"]
@@ -303,12 +355,28 @@ def test_scoped_real_selection_cannot_admit_filtered_or_future_facet_sources(tmp
     root = str(tmp_path)
     _persist_facets(root)
     with Store(root, "facet-quality", create=False) as store:
-        store.add("future", [{"speaker": "Nia", "text": "Zircon future recovery uses an unrelated archive."}],
-                  session_at="2026-01-01", extract_profile=False)
-        result = recall(store, "What are Zircon timeout retention and recovery now?", now="2025-01-05",
-                        options=Options(budget=180, embedder=None, rerank=None, graph_hops=0,
-                                        instructions=0, profile_facts=0, summaries=False,
-                                        sessions=("timeouts", "retention"), context_strategy="coverage-v1"))
+        store.add(
+            "future",
+            [{"speaker": "Nia", "text": "Zircon future recovery uses an unrelated archive."}],
+            session_at="2026-01-01",
+            extract_profile=False,
+        )
+        result = recall(
+            store,
+            "What are Zircon timeout retention and recovery now?",
+            now="2025-01-05",
+            options=Options(
+                budget=180,
+                embedder=None,
+                rerank=None,
+                graph_hops=0,
+                instructions=0,
+                profile_facts=0,
+                summaries=False,
+                sessions=("timeouts", "retention"),
+                context_strategy="coverage-v1",
+            ),
+        )
         assert "recovery" not in result.context
         assert "recovery" in result.explain["coverage"]["missing_subject_terms"]
         assert all(turn.session in {"timeouts", "retention"} for turn in store.turns(result.turns).values())

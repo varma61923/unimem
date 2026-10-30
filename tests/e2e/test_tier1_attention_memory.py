@@ -27,7 +27,9 @@ def test_compute_semantic_duplicates_chunked_interface() -> None:
     count, pairs = compute_semantic_duplicates(embs, slugs, threshold=0.85, chunk_size=5)
 
     assert count >= 1 or len(pairs) >= 1
-    assert any((p[0] == "lesson_00" and p[1] == "lesson_01") or (p[0] == "lesson_01" and p[1] == "lesson_00") for p in pairs)
+    assert any(
+        (p[0] == "lesson_00" and p[1] == "lesson_01") or (p[0] == "lesson_01" and p[1] == "lesson_00") for p in pairs
+    )
 
 
 def test_empty_embeddings_graceful() -> None:
@@ -52,11 +54,14 @@ def test_single_lesson_graceful() -> None:
 def test_detects_identical_and_rejects_orthogonal_pairs() -> None:
     from unimem.reference.measure_performance import compute_semantic_duplicates
 
-    embs = np.array([
-        [1.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-    ], dtype=np.float32)
+    embs = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
     slugs = ["lesson_a", "lesson_b", "lesson_c"]
 
     count, pairs = compute_semantic_duplicates(embs, slugs, threshold=0.85, chunk_size=2)
@@ -69,12 +74,15 @@ def test_detects_identical_and_rejects_orthogonal_pairs() -> None:
 def test_pairs_sorted_descending_by_score() -> None:
     from unimem.reference.measure_performance import compute_semantic_duplicates
 
-    embs = np.array([
-        [1.0, 0.0],
-        [1.0, 0.0],
-        [0.9, 0.43588989],
-        [0.86, 0.5102939],
-    ], dtype=np.float32)
+    embs = np.array(
+        [
+            [1.0, 0.0],
+            [1.0, 0.0],
+            [0.9, 0.43588989],
+            [0.86, 0.5102939],
+        ],
+        dtype=np.float32,
+    )
     slugs = ["l0", "l1", "l2", "l3"]
 
     count, pairs = compute_semantic_duplicates(embs, slugs, threshold=0.80, chunk_size=2)

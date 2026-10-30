@@ -92,7 +92,7 @@ class WorkbenchError(Exception):
 
 def _lessons(root: str, *, isolated: bool = True) -> list[tuple[str, dict, str]]:
     ldir = paths.lessons_dir(root)
-    out = []
+    out: list[tuple[str, dict, str]] = []
     try:
         with os.scandir(ldir) as entries:
             files = []
@@ -136,14 +136,18 @@ def _scope_allowed(fm: dict, scope: str) -> bool:
 
 
 def _active_texts(rows, exclude: str) -> list[tuple[str, str]]:
-    return _ActiveTexts((slug, redundancy.comparable_text(fm, body)) for slug, fm, body in rows
-                        if str(fm.get("status")) == "active" and slug != exclude)
+    return _ActiveTexts(
+        (slug, redundancy.comparable_text(fm, body))
+        for slug, fm, body in rows
+        if str(fm.get("status")) == "active" and slug != exclude
+    )
 
 
 def _active_texts_once(rows) -> list[tuple[str, str]]:
     """Active texts, computed once per call (file reads happen once in `_lessons`)."""
-    return _ActiveTexts((slug, redundancy.comparable_text(fm, body)) for slug, fm, body in rows
-                        if str(fm.get("status")) == "active")
+    return _ActiveTexts(
+        (slug, redundancy.comparable_text(fm, body)) for slug, fm, body in rows if str(fm.get("status")) == "active"
+    )
 
 
 def _checks(slug: str, fm: dict, body: str, active: list[tuple[str, str]]) -> dict:
@@ -151,8 +155,12 @@ def _checks(slug: str, fm: dict, body: str, active: list[tuple[str, str]]) -> di
     # approval decision. CLI approval still runs every production gate itself.
     key = None
     if isinstance(active, _ActiveTexts):
-        key = (slug, hashlib.sha256(repr(fm).encode("utf-8")).digest(),
-               hashlib.sha256(body.encode("utf-8")).digest(), active.fingerprint)
+        key = (
+            slug,
+            hashlib.sha256(repr(fm).encode("utf-8")).digest(),
+            hashlib.sha256(body.encode("utf-8")).digest(),
+            active.fingerprint,
+        )
         with _REVIEW_CACHE_LOCK:
             cached = _REVIEW_CACHE.get(key)
             if cached is not None:
@@ -160,8 +168,11 @@ def _checks(slug: str, fm: dict, body: str, active: list[tuple[str, str]]) -> di
                 return copy.deepcopy(cached)
     failed = draft_quality.gate_failures(fm, body, active)
     near = redundancy.closest(redundancy.comparable_text(fm, body), active, threshold=0.3)
-    result = {"failed": failed, "passes": not failed,
-              "nearest_active": {"slug": near.a, "similarity": round(near.similarity, 3)} if near else None}
+    result = {
+        "failed": failed,
+        "passes": not failed,
+        "nearest_active": {"slug": near.a, "similarity": round(near.similarity, 3)} if near else None,
+    }
     if key is not None:
         with _REVIEW_CACHE_LOCK:
             _REVIEW_CACHE[key] = copy.deepcopy(result)
@@ -172,11 +183,17 @@ def _checks(slug: str, fm: dict, body: str, active: list[tuple[str, str]]) -> di
 
 
 def _summary(slug: str, fm: dict, body: str, active) -> dict:
-    row = {"slug": slug, "status": str(fm.get("status", "")), "description": str(fm.get("description", ""))[:300],
-           "domain": str(fm.get("domain", "")), "importance": copy.deepcopy(fm.get("importance")),
-           "drafted_by_model": isinstance(fm.get("llm_draft"), dict),
-           "source_traces": len(fm.get("source_traces") or []), "revises": copy.deepcopy(fm.get("revises")) or None,
-           "revision": lesson_admission.digest_of(fm, body)}
+    row = {
+        "slug": slug,
+        "status": str(fm.get("status", "")),
+        "description": str(fm.get("description", ""))[:300],
+        "domain": str(fm.get("domain", "")),
+        "importance": copy.deepcopy(fm.get("importance")),
+        "drafted_by_model": isinstance(fm.get("llm_draft"), dict),
+        "source_traces": len(fm.get("source_traces") or []),
+        "revises": copy.deepcopy(fm.get("revises")) or None,
+        "revision": lesson_admission.digest_of(fm, body),
+    }
     if row["status"] == "review":
         row["checks"] = _checks(slug, fm, body, active)
     return row
@@ -203,18 +220,21 @@ def count_lessons(root: str, status: str | None = None, scope: str = "") -> int:
     if status is not None and status not in STATUSES:
         raise WorkbenchError(400, "bad_request", f"status must be one of {', '.join(STATUSES)}")
     return sum(
-        1 for _slug, fm, _body in _lessons(root, isolated=False)
+        1
+        for _slug, fm, _body in _lessons(root, isolated=False)
         if (not status or str(fm.get("status")) == status) and _scope_allowed(fm, scope)
     )
 
 
-def list_lessons(root: str, status: str | None = None, limit: int | None = None,
-                 offset: int = 0, scope: str = "") -> list[dict]:
+def list_lessons(
+    root: str, status: str | None = None, limit: int | None = None, offset: int = 0, scope: str = ""
+) -> list[dict]:
     return lesson_page(root, status, limit, offset, scope)[0]
 
 
-def lesson_page(root: str, status: str | None = None, limit: int | None = None,
-                offset: int = 0, scope: str = "") -> tuple[list[dict], int]:
+def lesson_page(
+    root: str, status: str | None = None, limit: int | None = None, offset: int = 0, scope: str = ""
+) -> tuple[list[dict], int]:
     """Return a page and its count from the same scoped source listing."""
     if status is not None and status not in STATUSES:
         raise WorkbenchError(400, "bad_request", f"status must be one of {', '.join(STATUSES)}")
@@ -223,10 +243,12 @@ def lesson_page(root: str, status: str | None = None, limit: int | None = None,
     # mutable value it returns. Detail and edit use isolated metadata instead.
     rows = _lessons(root, isolated=False)
     scoped_rows = [row for row in rows if _scope_allowed(row[1], scope)]
-    filtered = [(slug, fm, body) for slug, fm, body in scoped_rows
-                if not status or str(fm.get("status")) == status]
-    page = filtered if parsed_limit is None and not parsed_offset else filtered[
-        parsed_offset:None if parsed_limit is None else parsed_offset + parsed_limit]
+    filtered = [(slug, fm, body) for slug, fm, body in scoped_rows if not status or str(fm.get("status")) == status]
+    page = (
+        filtered
+        if parsed_limit is None and not parsed_offset
+        else filtered[parsed_offset : None if parsed_limit is None else parsed_offset + parsed_limit]
+    )
     active_all = _active_texts_once(scoped_rows) if any(fm.get("status") == "review" for _, fm, _ in page) else []
     out = []
     for slug, fm, body in page:
@@ -257,17 +279,30 @@ def detail(root: str, slug: str, scope: str = "") -> dict:
     (name, fm, body), rows = _find(root, slug, scope)
     scoped_rows = [row for row in rows if _scope_allowed(row[1], scope)]
     out = _summary(name, fm, body, _active_texts(scoped_rows, name) if fm.get("status") == "review" else [])
-    out.update({
-        "applies_when": str(fm.get("applies_when", "")), "do_not_apply_when": str(fm.get("do_not_apply_when", "")),
-        "rule": _section(body, "Rule")[:MAX_FIELD_CHARS], "body": body[:MAX_BODY_CHARS],
-        "body_truncated": len(body) > MAX_BODY_CHARS,
-        "provenance": fm.get("llm_draft") if isinstance(fm.get("llm_draft"), dict) else None,
-        "history": [{"at": r.get("at"), "from": r.get("from"), "to": r.get("to"), "actor": r.get("actor"),
-                     "reason": r.get("reason")} for r in lesson_io.history(root, name)][-50:],
-    })
+    out.update(
+        {
+            "applies_when": str(fm.get("applies_when", "")),
+            "do_not_apply_when": str(fm.get("do_not_apply_when", "")),
+            "rule": _section(body, "Rule")[:MAX_FIELD_CHARS],
+            "body": body[:MAX_BODY_CHARS],
+            "body_truncated": len(body) > MAX_BODY_CHARS,
+            "provenance": fm.get("llm_draft") if isinstance(fm.get("llm_draft"), dict) else None,
+            "history": [
+                {
+                    "at": r.get("at"),
+                    "from": r.get("from"),
+                    "to": r.get("to"),
+                    "actor": r.get("actor"),
+                    "reason": r.get("reason"),
+                }
+                for r in lesson_io.history(root, name)
+            ][-50:],
+        }
+    )
     try:
-        approval.check(approval.load_policy(root), slug=name, approver="console",
-                       authors=approval.authors_of(root, name))
+        approval.check(
+            approval.load_policy(root), slug=name, approver="console", authors=approval.authors_of(root, name)
+        )
         out["separation_of_duties"] = None
     except (approval.ApprovalDenied, approval.PolicyError) as exc:
         out["separation_of_duties"] = str(exc)
@@ -297,8 +332,9 @@ def _review_path(root: str, path: str) -> None:
         raise WorkbenchError(404, "not_found", "lesson is unavailable") from None
 
 
-def _review_precondition(root: str, slug: str, scope: str, expected_revision: str | None,
-                         path: str, fm: dict, body: str) -> None:
+def _review_precondition(
+    root: str, slug: str, scope: str, expected_revision: str | None, path: str, fm: dict, body: str
+) -> None:
     """Check authoritative bytes while holding their write lock, before gates/signing."""
     _review_path(root, path)
     name = str(fm.get("name") or os.path.basename(path).removesuffix(".md"))
@@ -310,8 +346,7 @@ def _review_precondition(root: str, slug: str, scope: str, expected_revision: st
         raise WorkbenchError(409, "not_in_review", "only a lesson in review can be changed here")
 
 
-def edit(root: str, slug: str, fields: dict, actor: str, scope: str = "",
-         expected_revision: str | None = None) -> dict:
+def edit(root: str, slug: str, fields: dict, actor: str, scope: str = "", expected_revision: str | None = None) -> dict:
     expected_revision = _expected_revision(expected_revision)
     (name, _fm, _body), _rows = _find(root, slug, scope)
     allowed = {"rule", "applies_when", "do_not_apply_when", "description"}
@@ -329,8 +364,11 @@ def edit(root: str, slug: str, fields: dict, actor: str, scope: str = "",
         for field in ("description", "applies_when", "do_not_apply_when"):
             if field in clean:
                 fm[field] = clean[field]
-        for field, section in (("rule", "Rule"), ("applies_when", "How to apply"),
-                               ("do_not_apply_when", "Counter-examples")):
+        for field, section in (
+            ("rule", "Rule"),
+            ("applies_when", "How to apply"),
+            ("do_not_apply_when", "Counter-examples"),
+        ):
             if field in clean:
                 body = _replace_section(body, section, clean[field])
         lesson_io.write_lesson(path, fm, body, root=root, actor=actor, reason="edited in the console")
@@ -355,21 +393,30 @@ def _run(fn, ns: argparse.Namespace) -> tuple[int, str]:
     return code, err.getvalue().strip()
 
 
-def approve(root: str, slug: str, rationale: str | None, actor: str, scope: str = "",
-            expected_revision: str | None = None) -> dict:
+def approve(
+    root: str, slug: str, rationale: str | None, actor: str, scope: str = "", expected_revision: str | None = None
+) -> dict:
     expected_revision = _expected_revision(expected_revision)
     if rationale is not None and not isinstance(rationale, str):
         raise WorkbenchError(400, "bad_request", "rationale must be a string")
     (name, _fm, _body), _rows = _find(root, slug, scope)
+
     def precondition(path: str, current: dict, body: str) -> None:
         _review_precondition(root, name, scope, expected_revision, path, current, body)
         if len(body) > MAX_BODY_CHARS:
-            raise WorkbenchError(409, "review_truncated",
-                                 "lesson exceeds the console review limit; review it in the terminal")
+            raise WorkbenchError(
+                409, "review_truncated", "lesson exceeds the console review limit; review it in the terminal"
+            )
 
-    ns = argparse.Namespace(slug=name, dest=root, force=False, rationale=(rationale or "").strip() or None,
-                            approver=actor, scope=scope,
-                            review_precondition=precondition)
+    ns = argparse.Namespace(
+        slug=name,
+        dest=root,
+        force=False,
+        rationale=(rationale or "").strip() or None,
+        approver=actor,
+        scope=scope,
+        review_precondition=precondition,
+    )
     code, message = _run(lesson_cmd.run_approve, ns)
     if code != 0:
         raise WorkbenchError(409, "refused", message or "the approval gates refused this lesson")
@@ -379,9 +426,14 @@ def approve(root: str, slug: str, rationale: str | None, actor: str, scope: str 
 def reject(root: str, slug: str, reason: str, scope: str = "", expected_revision: str | None = None) -> dict:
     expected_revision = _expected_revision(expected_revision)
     (name, _fm, _body), _rows = _find(root, slug, scope)
-    ns = argparse.Namespace(slug=name, dest=root, reason=_clean(reason, "reason"),
-                            review_precondition=lambda path, current, body: _review_precondition(
-                                root, name, scope, expected_revision, path, current, body))
+    ns = argparse.Namespace(
+        slug=name,
+        dest=root,
+        reason=_clean(reason, "reason"),
+        review_precondition=lambda path, current, body: _review_precondition(
+            root, name, scope, expected_revision, path, current, body
+        ),
+    )
     code, message = _run(lesson_cmd.run_reject, ns)
     if code != 0:
         raise WorkbenchError(409, "refused", message or "could not reject")
@@ -404,14 +456,17 @@ _HISTORY_METRICS = {
 def _history_files(root: str, directory: str, suffix: str) -> tuple[list[str], bool]:
     from unimem.ingest import _open_directory
 
-    names = []
+    names: list[str] = []
     try:
         with _open_directory(os.path.join(root, "memory", directory)) as fd, os.scandir(fd) as entries:
             for index, entry in enumerate(entries):
                 if index >= HISTORY_SCAN_LIMIT:
                     return sorted(names, reverse=True), True
-                if (entry.name.endswith(suffix) and _HISTORY_NAME.fullmatch(entry.name)
-                        and entry.is_file(follow_symlinks=False)):
+                if (
+                    entry.name.endswith(suffix)
+                    and _HISTORY_NAME.fullmatch(entry.name)
+                    and entry.is_file(follow_symlinks=False)
+                ):
                     names.append(entry.name)
     except FileNotFoundError:
         return [], False
@@ -438,8 +493,9 @@ def trace_page(root: str, *, limit: int = 50, offset: int = 0) -> dict:
     from unimem import memory_guard
 
     names, truncated = _history_files(root, "traces", ".md")
-    rows, skipped = [], 0
-    for name in names[offset:offset + limit]:
+    rows: list[dict] = []
+    skipped = 0
+    for name in names[offset : offset + limit]:
         try:
             fm, _ = frontmatter.parse_content(_history_read(root, "traces", name, ".md"))
             metadata = {key: str(fm.get(key, ""))[:2000] for key in ("id", "title", "date", "agent_type")}
@@ -447,8 +503,14 @@ def trace_page(root: str, *, limit: int = 50, offset: int = 0) -> dict:
             rows.append({"file": name, **metadata})
         except (WorkbenchError, ValueError):
             skipped += 1
-    return {"traces": rows, "total": len(names), "limit": limit, "offset": offset,
-            "skipped": skipped, "scan_truncated": truncated}
+    return {
+        "traces": rows,
+        "total": len(names),
+        "limit": limit,
+        "offset": offset,
+        "skipped": skipped,
+        "scan_truncated": truncated,
+    }
 
 
 def trace_detail(root: str, name: str) -> dict:
@@ -457,9 +519,12 @@ def trace_detail(root: str, name: str) -> dict:
     fm, body = frontmatter.parse_content(_history_read(root, "traces", name, ".md"))
     # Historical imports predate write-time redaction. Do not return credentials
     # or unbounded arbitrary frontmatter to a browser even on an operator route.
-    value = {"file": name, **{key: str(fm.get(key, ""))[:2000]
-                             for key in ("id", "title", "date", "agent_type")},
-             "body": body[:MAX_BODY_CHARS], "body_truncated": len(body) > MAX_BODY_CHARS}
+    value = {
+        "file": name,
+        **{key: str(fm.get(key, ""))[:2000] for key in ("id", "title", "date", "agent_type")},
+        "body": body[:MAX_BODY_CHARS],
+        "body_truncated": len(body) > MAX_BODY_CHARS,
+    }
     return memory_guard.sanitize_metadata(value, pii=memory_guard.privacy_redaction_enabled())[0]
 
 
@@ -468,7 +533,8 @@ def benchmark_history(root: str, *, limit: int = 100) -> dict:
     import math
 
     names, truncated = _history_files(root, "benchmark_reports", ".json")
-    rows, skipped = [], 0
+    rows: list[dict] = []
+    skipped = 0
     for name in reversed(names[:limit]):
         try:
             report = json.loads(_history_read(root, "benchmark_reports", name, ".json"))
@@ -478,16 +544,23 @@ def benchmark_history(root: str, *, limit: int = 100) -> dict:
             for key, (section, field) in _HISTORY_METRICS.items():
                 group = report.get(section)
                 value = group.get(field) if isinstance(group, dict) else None
-                metrics[key] = (float(value) if isinstance(value, (int, float)) and not isinstance(value, bool)
-                                and -1 <= value <= 1 and math.isfinite(value) else None)
-                if key != "transfer_gap" and metrics[key] is not None and metrics[key] < 0:
+                metrics[key] = (
+                    float(value)
+                    if isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and -1 <= value <= 1
+                    and math.isfinite(value)
+                    else None
+                )
+                metric_value = metrics[key]
+                if key != "transfer_gap" and metric_value is not None and metric_value < 0:
                     metrics[key] = None
             previous = rows[-1]["metrics"] if rows else {}
-            delta = {key: (value - previous[key] if value is not None and previous.get(key) is not None else None)
-                     for key, value in metrics.items()}
-            rows.append({"file": name, "timestamp": name.removesuffix(".json"),
-                         "metrics": metrics, "delta": delta})
+            delta = {
+                key: (value - previous[key] if value is not None and previous.get(key) is not None else None)
+                for key, value in metrics.items()
+            }
+            rows.append({"file": name, "timestamp": name.removesuffix(".json"), "metrics": metrics, "delta": delta})
         except (WorkbenchError, ValueError):
             skipped += 1
-    return {"reports": rows, "total": len(names), "limit": limit,
-            "skipped": skipped, "scan_truncated": truncated}
+    return {"reports": rows, "total": len(names), "limit": limit, "skipped": skipped, "scan_truncated": truncated}

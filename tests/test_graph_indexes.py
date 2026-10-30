@@ -1,4 +1,5 @@
 """Index-backed graph reads: equivalence, scaling, and invalidation."""
+
 from __future__ import annotations
 
 import time
@@ -59,12 +60,19 @@ def _old_timeline(root, entity):
         if ent not in (edge.source, edge.target):
             continue
         base = {"source": edge.source, "relation": edge.relation, "target": edge.target}
-        events.append({**base, "at": edge.valid_at or edge.created_at, "event": "began",
-                       "recorded_at": edge.created_at})
+        events.append(
+            {**base, "at": edge.valid_at or edge.created_at, "event": "began", "recorded_at": edge.created_at}
+        )
         if edge.invalid_at:
-            events.append({**base, "at": edge.invalid_at, "event": "ended",
-                           "reason": (edge.properties or {}).get("closed_reason", ""),
-                           "recorded_at": (edge.properties or {}).get("closed_recorded_at", "")})
+            events.append(
+                {
+                    **base,
+                    "at": edge.invalid_at,
+                    "event": "ended",
+                    "reason": (edge.properties or {}).get("closed_reason", ""),
+                    "recorded_at": (edge.properties or {}).get("closed_recorded_at", ""),
+                }
+            )
     return sorted(events, key=lambda e: (lesson_cache.parse_moment(e["at"]), e["event"] == "began"))
 
 
@@ -135,10 +143,12 @@ def test_forget_node_uses_index(tmp_path):
     after = graph.load_edges(root)
     closed = [e for e in after if e.source == "svc:2" or e.target == "svc:2"]
     assert closed and all(e.invalid_at is not None for e in closed)
-    untouched_before = {(e.source, e.target, e.relation, e.valid_at) for e in before if "svc:2" not in (
-        e.source, e.target)}
-    untouched_after = {(e.source, e.target, e.relation, e.valid_at) for e in after if "svc:2" not in (
-        e.source, e.target)}
+    untouched_before = {
+        (e.source, e.target, e.relation, e.valid_at) for e in before if "svc:2" not in (e.source, e.target)
+    }
+    untouched_after = {
+        (e.source, e.target, e.relation, e.valid_at) for e in after if "svc:2" not in (e.source, e.target)
+    }
     assert untouched_before == untouched_after
     restored = graph.forget_node(root, "svc:2", undo=True)
     assert restored is not None and restored.is_forgotten is False
@@ -161,8 +171,7 @@ def test_scaling_timeline_neighbors_fast(tmp_path):
 
 def test_expired_edges_are_excluded_from_temporal_interval_reads(tmp_path):
     root = str(tmp_path / "g-expiry")
-    graph.add_edge(root, "svc:a", "tool:a", "uses", valid_at="2024-01-01",
-                   expired_at="2024-06-01")
+    graph.add_edge(root, "svc:a", "tool:a", "uses", valid_at="2024-01-01", expired_at="2024-06-01")
     assert graph.edges_between(root, "2024-02-01", "2024-05-01")
     assert graph.edges_between(root, "2024-07-01", None) == []
 
@@ -185,8 +194,13 @@ def test_invalidation_batch_commit(tmp_path):
     before = len(graph.edges_between(root, None, None, entity="svc:4"))
     with graph.batch(root):
         for i in range(20):
-            graph.add_edge(root, "svc:4", f"tool:batch{i % 5}", "relates_to",
-                           valid_at=(BASE + timedelta(days=500, hours=i)).isoformat())
+            graph.add_edge(
+                root,
+                "svc:4",
+                f"tool:batch{i % 5}",
+                "relates_to",
+                valid_at=(BASE + timedelta(days=500, hours=i)).isoformat(),
+            )
     after = len(graph.edges_between(root, None, None, entity="svc:4"))
     assert after > before
     chain_before = len(graph.get_version_chain(root, "memory:chain"))

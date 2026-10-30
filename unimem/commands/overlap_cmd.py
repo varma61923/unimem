@@ -13,8 +13,7 @@ from unimem.commands._format import read_or_warn
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "overlap",
-        help="Measure how much another fleet's lessons would help yours, "
-        "exchanging signatures instead of content.",
+        help="Measure how much another fleet's lessons would help yours, exchanging signatures instead of content.",
     )
     sub = p.add_subparsers(dest="overlap_cmd", required=True)
 
@@ -27,14 +26,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     sign.add_argument("--out", required=True, help="Where to write the signature JSON.")
     sign.add_argument("--num-perm", type=int, default=overlap.DEFAULT_NUM_PERM)
     sign.add_argument(
-        "--redact-labels", action="store_true",
+        "--redact-labels",
+        action="store_true",
         help="Replace lesson slugs / trace ids with salted hashes. Use when the other "
         "fleet should not learn what your lessons are *about* -- a slug like "
         "'lesson_stripe_idempotency' describes itself. You can map the hashes back "
         "locally; the report stays usable, just less readable.",
     )
     sign.add_argument(
-        "--redact-tags", action="store_true",
+        "--redact-tags",
+        action="store_true",
         help="Also drop tags and domains. Makes the report's per-domain breakdown "
         "empty, but reveals nothing about which technologies your fleet uses.",
     )
@@ -93,14 +94,18 @@ def run_sign(args: argparse.Namespace) -> int:
 
     for fm in _iter_lessons(root):
         text = " ".join(
-            str(x) for x in (
-                fm.get("applies_when", ""), fm.get("description", ""),
-                fm.get("domain", ""), " ".join(_safe_tags(fm.get("tags"))),
+            str(x)
+            for x in (
+                fm.get("applies_when", ""),
+                fm.get("description", ""),
+                fm.get("domain", ""),
+                " ".join(_safe_tags(fm.get("tags"))),
             )
         )
         sig.items.append(
             overlap.SignedItem(
-                label=_label(str(fm.get("name", "")), args), kind="lesson",
+                label=_label(str(fm.get("name", "")), args),
+                kind="lesson",
                 domain="" if args.redact_tags else str(fm.get("domain", "")),
                 tags=[] if args.redact_tags else _safe_tags(fm.get("tags")),
                 signature=overlap.minhash(text, args.num_perm),
@@ -109,15 +114,19 @@ def run_sign(args: argparse.Namespace) -> int:
 
     for tr in _iter_recurring_failures(root):
         text = " ".join(
-            str(x) for x in (
-                tr.get("title", ""), tr.get("context_text", ""),
+            str(x)
+            for x in (
+                tr.get("title", ""),
+                tr.get("context_text", ""),
                 " ".join(_safe_tags(tr.get("tags"))),
             )
         )
         sig.items.append(
             overlap.SignedItem(
-                label=_label(str(tr.get("id", ""))[:12], args), kind="failure",
-                domain="", tags=[] if args.redact_tags else _safe_tags(tr.get("tags")),
+                label=_label(str(tr.get("id", ""))[:12], args),
+                kind="failure",
+                domain="",
+                tags=[] if args.redact_tags else _safe_tags(tr.get("tags")),
                 signature=overlap.minhash(text, args.num_perm),
             )
         )
@@ -143,9 +152,7 @@ def run_sign(args: argparse.Namespace) -> int:
         )
     print("\n  What this file contains:")
     print("    - MinHash signatures (lesson/trace TEXT is not recoverable from these)")
-    label_note = "redacted hashes" if args.redact_labels else (
-        "REAL slugs/ids (e.g. lesson_stripe_idempotency)"
-    )
+    label_note = "redacted hashes" if args.redact_labels else ("REAL slugs/ids (e.g. lesson_stripe_idempotency)")
     print(f"    - labels: {label_note}")
     print(f"    - tags/domains: {'omitted' if args.redact_tags else 'INCLUDED (reveals which technologies you use)'}")
     if not (args.redact_labels and args.redact_tags):

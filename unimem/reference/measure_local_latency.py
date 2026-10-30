@@ -22,6 +22,7 @@ Reproduce with `python -m unimem.reference.measure_local_latency`.
 The absolute milliseconds are this machine's and transfer to nothing. Only the
 exponents, and the ratio between stages, transfer.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -46,13 +47,51 @@ DEFAULT_SIZES = (100, 400, 1600, 6400)
 RUNS_PER_POINT = 5
 
 _VOCAB = [
-    "pagination", "cursor", "offset", "retry", "backoff", "timeout", "idempotent",
-    "migration", "rollback", "schema", "index", "lock", "deadlock", "transaction",
-    "onboarding", "payroll", "grievance", "attrition", "escalation", "policy",
-    "pipeline", "renewal", "churn", "discount", "quota", "forecast", "objection",
-    "campaign", "segment", "attribution", "creative", "landing", "funnel",
-    "trajectory", "kinematics", "calibration", "actuator", "waypoint", "collision",
-    "indemnity", "liability", "warranty", "jurisdiction", "arbitration", "clause",
+    "pagination",
+    "cursor",
+    "offset",
+    "retry",
+    "backoff",
+    "timeout",
+    "idempotent",
+    "migration",
+    "rollback",
+    "schema",
+    "index",
+    "lock",
+    "deadlock",
+    "transaction",
+    "onboarding",
+    "payroll",
+    "grievance",
+    "attrition",
+    "escalation",
+    "policy",
+    "pipeline",
+    "renewal",
+    "churn",
+    "discount",
+    "quota",
+    "forecast",
+    "objection",
+    "campaign",
+    "segment",
+    "attribution",
+    "creative",
+    "landing",
+    "funnel",
+    "trajectory",
+    "kinematics",
+    "calibration",
+    "actuator",
+    "waypoint",
+    "collision",
+    "indemnity",
+    "liability",
+    "warranty",
+    "jurisdiction",
+    "arbitration",
+    "clause",
 ]
 _DOMAINS = ["coding", "hr", "sales", "marketing", "robotics", "legal"]
 
@@ -62,15 +101,15 @@ def _lesson_markdown(i: int, rng: random.Random) -> str:
     domain = rng.choice(_DOMAINS)
     return f"""---
 name: lesson_bench_{i:06d}
-description: {' '.join(terms[:6])}
-tags: [{', '.join(terms[:4])}]
+description: {" ".join(terms[:6])}
+tags: [{", ".join(terms[:4])}]
 agent_type: {domain}
 domain: {domain}
 importance: {rng.randint(1, 5)}
 importance_rationale: "Recurring pattern with a clear fix and a measurable outcome."
 importance_history: []
-applies_when: {' '.join(terms[3:9])}
-do_not_apply_when: {' '.join(rng.sample(_VOCAB, 5))}
+applies_when: {" ".join(terms[3:9])}
+do_not_apply_when: {" ".join(rng.sample(_VOCAB, 5))}
 uses: {rng.randint(0, 40)}
 last_hit: 2026-07-01
 source_traces: [2026-07-01_bench-{i:06d}]
@@ -80,16 +119,16 @@ status: active
 ---
 
 ## Rule
-{' '.join(terms)}.
+{" ".join(terms)}.
 
 ## Why
 Observed repeatedly across {rng.randint(3, 30)} occasions in the {domain} fleet.
 
 ## How to apply
-{' '.join(rng.sample(_VOCAB, 12))}.
+{" ".join(rng.sample(_VOCAB, 12))}.
 
 ## Counter-examples
-{' '.join(rng.sample(_VOCAB, 8))}.
+{" ".join(rng.sample(_VOCAB, 8))}.
 """
 
 
@@ -109,8 +148,7 @@ def _queries(rng: random.Random, k: int = 12) -> list[str]:
     return [" ".join(rng.sample(_VOCAB, 6)) for _ in range(k)]
 
 
-def measure_point(n: int, runs: int = RUNS_PER_POINT, top_k: int = 3,
-                  use_cache: bool = True) -> dict:
+def measure_point(n: int, runs: int = RUNS_PER_POINT, top_k: int = 3, use_cache: bool = True) -> dict:
     """Time the real client retrieval path at corpus size `n`."""
     from unimem import lesson_cache
     from unimem.commands.query_cmd import _iter_active_lessons
@@ -147,8 +185,9 @@ def measure_point(n: int, runs: int = RUNS_PER_POINT, top_k: int = 3,
             "load_ms": statistics.median(load_ms),
             "rank_ms": statistics.median(rank_ms),
             "total_ms": statistics.median(total_ms),
-            "load_share": (statistics.median(load_ms) / statistics.median(total_ms)
-                           if statistics.median(total_ms) else 0.0),
+            "load_share": (
+                statistics.median(load_ms) / statistics.median(total_ms) if statistics.median(total_ms) else 0.0
+            ),
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -188,8 +227,7 @@ def fit_alpha(points: list[dict], key: str) -> float | None:
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
 
 
-def compute(sizes=DEFAULT_SIZES, runs: int = RUNS_PER_POINT, top_k: int = 3,
-           use_cache: bool = True) -> dict:
+def compute(sizes=DEFAULT_SIZES, runs: int = RUNS_PER_POINT, top_k: int = 3, use_cache: bool = True) -> dict:
     points = [measure_point(n, runs=runs, top_k=top_k, use_cache=use_cache) for n in sizes]
     return {
         "schema_version": SCHEMA_VERSION,
@@ -227,7 +265,7 @@ def render_markdown(report: dict) -> str:
     for p in report["points"]:
         out.append(
             f"| {p['n_lessons']:,} | {p['load_ms']:.1f} ms | {p['rank_ms']:.1f} ms | "
-            f"{p['total_ms']:.1f} ms | {p['load_share']*100:.1f}% |"
+            f"{p['total_ms']:.1f} ms | {p['load_share'] * 100:.1f}% |"
         )
     out += ["", "| stage | fitted alpha | |", "|---|---:|---|"]
     for label, key in (("load", "alpha_load"), ("rank", "alpha_rank"), ("total", "alpha_total")):
@@ -246,34 +284,57 @@ def main() -> int:
     ap.add_argument("--sizes", default=",".join(str(s) for s in DEFAULT_SIZES))
     ap.add_argument("--runs", type=int, default=RUNS_PER_POINT)
     ap.add_argument("--top-k", type=int, default=3)
-    ap.add_argument("--no-cache", action="store_true",
-                    help="Measure the pre-lesson_cache behaviour (fresh glob + "
-                         "YAML parse + tokenize every call) instead of the real "
-                         "code path, for comparison.")
+    ap.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Measure the pre-lesson_cache behaviour (fresh glob + "
+        "YAML parse + tokenize every call) instead of the real "
+        "code path, for comparison.",
+    )
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--max-alpha", type=float, default=None,
-                    help="Exit 1 if the fitted total exponent exceeds this. "
-                         "This is the CI gate: it fails a change that makes "
-                         "retrieval scale worse, not merely slower.")
-    ap.add_argument("--max-total-ms", type=float, default=None,
-                    help="Exit 1 if the largest corpus's median total exceeds this.")
+    ap.add_argument(
+        "--max-alpha",
+        type=float,
+        default=None,
+        help="Exit 1 if the fitted total exponent exceeds this. "
+        "This is the CI gate: it fails a change that makes "
+        "retrieval scale worse, not merely slower.",
+    )
+    ap.add_argument(
+        "--max-total-ms", type=float, default=None, help="Exit 1 if the largest corpus's median total exceeds this."
+    )
     args = ap.parse_args()
 
-    sizes = tuple(int(s) for s in args.sizes.split(",") if s.strip())
-    report = compute(sizes=sizes, runs=args.runs, top_k=args.top_k,
-                     use_cache=not args.no_cache)
+    try:
+        sizes = tuple(int(s) for s in args.sizes.split(",") if s.strip())
+    except ValueError:
+        ap.error("sizes must be comma-separated positive integers")
+    if not sizes or any(size < 1 for size in sizes):
+        ap.error("sizes must contain positive corpus counts")
+    if args.runs < 1 or args.top_k < 1:
+        ap.error("runs and top-k must be positive")
+    for option in ("max_alpha", "max_total_ms"):
+        value = getattr(args, option)
+        if value is not None and not math.isfinite(value):
+            ap.error(f"{option.replace('_', '-')} must be finite")
+    if args.max_alpha is not None and len(set(sizes)) < 2:
+        ap.error("a scaling gate requires at least two distinct corpus sizes")
+    report = compute(sizes=sizes, runs=args.runs, top_k=args.top_k, use_cache=not args.no_cache)
     print(json.dumps(report, indent=2) if args.json else render_markdown(report))
 
     failed = False
-    if args.max_alpha is not None and (report["alpha_total"] or 0) > args.max_alpha:
-        print(f"FAIL: total alpha {report['alpha_total']:.2f} exceeds "
-              f"{args.max_alpha}", file=sys.stderr)
-        failed = True
+    if args.max_alpha is not None:
+        alpha = report["alpha_total"]
+        if alpha is None or not math.isfinite(alpha):
+            print("FAIL: total alpha could not be estimated from positive measurements", file=sys.stderr)
+            failed = True
+        elif alpha > args.max_alpha:
+            print(f"FAIL: total alpha {alpha:.2f} exceeds {args.max_alpha}", file=sys.stderr)
+            failed = True
     if args.max_total_ms is not None:
         worst = max(p["total_ms"] for p in report["points"])
         if worst > args.max_total_ms:
-            print(f"FAIL: worst median total {worst:.1f} ms exceeds "
-                  f"{args.max_total_ms} ms", file=sys.stderr)
+            print(f"FAIL: worst median total {worst:.1f} ms exceeds {args.max_total_ms} ms", file=sys.stderr)
             failed = True
     return 1 if failed else 0
 

@@ -29,10 +29,7 @@ def test_fresh_client_install_has_no_actionable_warnings_beyond_empty_store(fres
     for label in info_labels:
         assert any(label in line for line in info_lines), f"expected an [INFO] line for: {label}"
 
-    attention_lines = [
-        line for line in out.splitlines()
-        if "attention extra (numpy + sentence-transformers)" in line
-    ]
+    attention_lines = [line for line in out.splitlines() if "attention extra (numpy + sentence-transformers)" in line]
     assert len(attention_lines) == 1
     assert attention_lines[0].startswith(("[OK  ]", "[INFO]")), attention_lines[0]
 
@@ -49,9 +46,7 @@ def test_doctor_still_warns_on_genuine_problems(fresh_store, capsys):
     assert "[WARN] lessons in store - 0 found" in out
 
 
-def test_doctor_warns_when_pilot_metrics_is_missing_from_a_damaged_install(
-    fresh_store, capsys, monkeypatch
-):
+def test_doctor_warns_when_pilot_metrics_is_missing_from_a_damaged_install(fresh_store, capsys, monkeypatch):
     from unimem.commands import doctor_cmd
 
     real_find = doctor_cmd.find_reference_script
@@ -98,8 +93,7 @@ class TestDoctorReportsAgentNativeAccess:
         from unimem.commands import doctor_cmd
 
         real = doctor_cmd._installed
-        monkeypatch.setattr(doctor_cmd, "_installed",
-                            lambda name: False if name == "mcp" else real(name))
+        monkeypatch.setattr(doctor_cmd, "_installed", lambda name: False if name == "mcp" else real(name))
         out = self._run(tmp_path, capsys)
         assert "unimem[serve]" in out
         line = next(x for x in out.splitlines() if "unimem serve" in x)
@@ -127,8 +121,7 @@ class TestAProbeCannotTakeDownTheReport:
 
         from unimem.commands import doctor_cmd
 
-        monkeypatch.setattr(importlib.util, "find_spec",
-                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError("hook")))
+        monkeypatch.setattr(importlib.util, "find_spec", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("hook")))
         assert doctor_cmd._installed("definitely_not_imported_anywhere") is False
 
 
@@ -170,8 +163,12 @@ def _check_labels():
     tree = ast.parse(inspect.getsource(doctor_cmd))
     labels = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("_check", "_info") \
-                and node.args:
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in ("_check", "_info")
+            and node.args
+        ):
             arg = node.args[0]
             if isinstance(arg, ast.Constant):
                 labels.add(arg.value)
@@ -184,8 +181,9 @@ def test_every_check_has_a_why_and_a_fix_so_the_guide_cannot_go_stale():
     from unimem.commands import doctor_cmd
 
     labels = _check_labels()
-    assert labels and not (labels - set(doctor_cmd.TROUBLESHOOTING)), \
+    assert labels and not (labels - set(doctor_cmd.TROUBLESHOOTING)), (
         f"add a TROUBLESHOOTING entry for: {sorted(labels - set(doctor_cmd.TROUBLESHOOTING))}"
+    )
     unused = set(doctor_cmd.TROUBLESHOOTING) - labels
     assert not unused, f"TROUBLESHOOTING entries for checks that no longer exist: {sorted(unused)}"
     for label, (why, fix) in doctor_cmd.TROUBLESHOOTING.items():
@@ -235,8 +233,14 @@ def test_a_run_that_never_reports_outcomes_and_a_compromised_one_are_named(tmp_p
     main(["init", "--agent-type", "support", "--dest", str(tmp_path)])
     config = holdout_io.configure(str(tmp_path), rate=0.5, salt="doc")
     for i in range(40):
-        holdout_io.assign_and_log(str(tmp_path), ["m"], occasion_id=f"o{i}", rate=0.5 if i < 20 else 0.1,
-                                  salt=config.salt, revisions={"m": "r"})
+        holdout_io.assign_and_log(
+            str(tmp_path),
+            ["m"],
+            occasion_id=f"o{i}",
+            rate=0.5 if i < 20 else 0.1,
+            salt=config.salt,
+            revisions={"m": "r"},
+        )
     capsys.readouterr()
     main(["doctor", "--dest", str(tmp_path)])
     out = capsys.readouterr().out

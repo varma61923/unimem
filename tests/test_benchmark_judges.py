@@ -11,7 +11,10 @@ Verifies:
    pure-Python Kendall's tau-b correlation, event_ordering combined with F1,
    and per-ability scoring.
 """
+
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
@@ -132,20 +135,29 @@ class TestGenericJudge:
 
 class TestLongMemEvalJudge:
     def test_header_references(self):
-        assert "9e0b455f4ef0e2ab8f2e582289761153549043fc" in open(longmemeval_mod.__file__).read()
-        assert "evaluate_qa.py" in open(longmemeval_mod.__file__).read()
+        assert "9e0b455f4ef0e2ab8f2e582289761153549043fc" in Path(longmemeval_mod.__file__).read_text()
+        assert "evaluate_qa.py" in Path(longmemeval_mod.__file__).read_text()
 
     def test_prompt_templates_verbatim(self):
         # Verify single session template
-        assert "Question: {}\n\nCorrect Answer: {}\n\nModel Response: {}\n\nIs the model response correct? Answer yes or no only." in longmemeval_mod.SINGLE_SESSION_PROMPT
+        assert (
+            "Question: {}\n\nCorrect Answer: {}\n\nModel Response: {}\n\nIs the model response correct? Answer yes or no only."
+            in longmemeval_mod.SINGLE_SESSION_PROMPT
+        )
         # Verify temporal reasoning off-by-one leniency
         assert "do not penalize off-by-one errors for the number of days." in longmemeval_mod.TEMPORAL_REASONING_PROMPT
         # Verify knowledge update updated answer rule
-        assert "If the response contains some previous information along with an updated answer" in longmemeval_mod.KNOWLEDGE_UPDATE_PROMPT
+        assert (
+            "If the response contains some previous information along with an updated answer"
+            in longmemeval_mod.KNOWLEDGE_UPDATE_PROMPT
+        )
         # Verify single-session-preference rubric template
         assert "Rubric: {}\n\nModel Response: {}" in longmemeval_mod.SINGLE_SESSION_PREFERENCE_PROMPT
         # Verify abstention template
-        assert "I will give you an unanswerable question, an explanation, and a response from a model." in longmemeval_mod.ABSTENTION_PROMPT
+        assert (
+            "I will give you an unanswerable question, an explanation, and a response from a model."
+            in longmemeval_mod.ABSTENTION_PROMPT
+        )
 
     def test_get_anscheck_prompt_dispatch(self):
         q = "How many days was Bob in Rome?"
@@ -215,15 +227,24 @@ class TestLoCoMoJudge:
         assert locomo_mod.PRIMARY_SCORING_URL.endswith("task_eval/evaluation.py")
 
     def test_header_references(self):
-        content = open(locomo_mod.__file__).read()
+        content = Path(locomo_mod.__file__).read_text()
         assert "2402.17753" in content
         assert "fc49c88243ccccc6950495edfc5cd30af4b72107" in content
 
     def test_system_and_user_prompts_verbatim(self):
-        assert locomo_mod.JUDGE_SYSTEM_PROMPT == "You are an expert grader that determines if answers to questions match a gold standard answer"
+        assert (
+            locomo_mod.JUDGE_SYSTEM_PROMPT
+            == "You are an expert grader that determines if answers to questions match a gold standard answer"
+        )
         assert "Your task is to label an answer to a question as 'CORRECT' or 'WRONG'." in locomo_mod.JUDGE_USER_PROMPT
-        assert 'Just return the label CORRECT or WRONG in a json format with the key as "label".' in locomo_mod.JUDGE_USER_PROMPT
-        assert "For time related questions, the gold answer will be a specific date, month, year, etc." in locomo_mod.JUDGE_USER_PROMPT
+        assert (
+            'Just return the label CORRECT or WRONG in a json format with the key as "label".'
+            in locomo_mod.JUDGE_USER_PROMPT
+        )
+        assert (
+            "For time related questions, the gold answer will be a specific date, month, year, etc."
+            in locomo_mod.JUDGE_USER_PROMPT
+        )
 
     def test_categories_and_exclusion(self):
         # LoCoMo categories 1-4 scorable, category 5 excluded
@@ -259,7 +280,9 @@ class TestLoCoMoJudge:
         assert res2["label"] == "WRONG"
 
         # Code block fence with reasoning
-        res3 = locomo_mod.parse_response('```json\n{"label": "CORRECT", "explanation": "The answer mentions knitting."}\n```')
+        res3 = locomo_mod.parse_response(
+            '```json\n{"label": "CORRECT", "explanation": "The answer mentions knitting."}\n```'
+        )
         assert res3["correct"] is True
         assert res3["explanation"] == "The answer mentions knitting."
 
@@ -268,7 +291,7 @@ class TestLoCoMoJudge:
         assert res4["correct"] is True
 
         # Empty or invalid
-        res5 = locomo_mod.parse_response('')
+        res5 = locomo_mod.parse_response("")
         assert res5["correct"] is False
         assert res5["label"] == "WRONG"
 
@@ -285,14 +308,17 @@ class TestLoCoMoJudge:
 
 class TestBEAMJudge:
     def test_header_references(self):
-        content = open(beam_mod.__file__).read()
+        content = Path(beam_mod.__file__).read_text()
         assert "b2da22eac88bb0874c64665f13457eb99835774a" in content
         assert "compute_metrics.py" in content
         assert "prompts.py" in content
 
     def test_prompt_verbatim(self):
         prompt = beam_mod.UNIFIED_LLM_JUDGE_BASE_PROMPT
-        assert "You are an expert evaluator tasked with judging whether the LLM's response demonstrates compliance with the specified RUBRIC CRITERION." in prompt
+        assert (
+            "You are an expert evaluator tasked with judging whether the LLM's response demonstrates compliance with the specified RUBRIC CRITERION."
+            in prompt
+        )
         assert "RUBRIC CRITERION (what to check): <rubric_item>" in prompt
         assert "RESPONSE TO EVALUATE: <llm_response>" in prompt
         assert "- **1.0 (Complete Compliance)**" in prompt
@@ -319,7 +345,7 @@ class TestBEAMJudge:
         assert beam_mod.score('```json\n{"score": 1.0, "reason": "good"}\n```') == 1.0
 
         # Empty
-        assert beam_mod.score('') == 0.0
+        assert beam_mod.score("") == 0.0
 
     def test_kendall_tau_b_pure_python(self):
         # Perfect concordance
@@ -445,9 +471,11 @@ class TestBEAMJudge:
             "rubric": ["Set up the database schema", "Added user login", "Deployed to production"],
             "question": "In what order did I work on these?",
         }
-        same = {("Set up the database schema", "Designed the tables"),
-                ("Added user login", "Built authentication"),
-                ("Deployed to production", "Shipped it live")}
+        same = {
+            ("Set up the database schema", "Designed the tables"),
+            ("Added user login", "Built authentication"),
+            ("Deployed to production", "Shipped it live"),
+        }
         prompts = []
 
         def complete(prompt):
@@ -456,8 +484,9 @@ class TestBEAMJudge:
             second = prompt.split("Second snippet: ")[1].strip()
             return ("YES" if (first, second) in same else "NO", {})
 
-        res = judge.grade(q_order, "1. Built authentication\n2. Designed the tables\n3. Shipped it live",
-                          complete_fn=complete)
+        res = judge.grade(
+            q_order, "1. Built authentication\n2. Designed the tables\n3. Shipped it live", complete_fn=complete
+        )
         assert "You are a binary classifier." in prompts[0]
         assert res["details"]["alignment"] == "llm"
         assert res["details"]["f1"] == 1.0

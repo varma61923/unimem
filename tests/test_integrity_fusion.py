@@ -5,8 +5,13 @@ from unimem import integrity, retrieval
 
 def _row(i, lesson, relevance, scorer, floor=0.04):
     return integrity.Assignment(
-        lesson=lesson, occasion_id=f"o{i}", injected=bool(i % 2), salt="s",
-        relevance=relevance, scorer=scorer, floor=floor,
+        lesson=lesson,
+        occasion_id=f"o{i}",
+        injected=bool(i % 2),
+        salt="s",
+        relevance=relevance,
+        scorer=scorer,
+        floor=floor,
     )
 
 

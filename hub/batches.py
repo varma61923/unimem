@@ -1,4 +1,5 @@
 """Bounded sequential RPC batches preserve single-item authorization policies."""
+
 from __future__ import annotations
 
 import inspect

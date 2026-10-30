@@ -12,18 +12,24 @@ import hashlib
 import json
 import math
 import re
+from typing import TYPE_CHECKING
 
 from unimem.configuration import getenv as _configuration_getenv
 from unimem.runtime_cache import RuntimeCache
 
-_QUERY_VECTORS = RuntimeCache(
+if TYPE_CHECKING:
+    from unimem.embeddings import Provider
+
+_QUERY_VECTORS: RuntimeCache[tuple[tuple[float, ...], ...]] = RuntimeCache(
     max_entries=512,
     max_bytes=8 * 1024 * 1024,
     ttl=300,
     weigh=lambda _key, value: sum(len(vector) * 32 for vector in value),
 )
 
-_LOCAL_PROVIDERS = RuntimeCache(max_entries=4, max_bytes=4, ttl=3600, weigh=lambda _key, _value: 1)
+_LOCAL_PROVIDERS: RuntimeCache[Provider] = RuntimeCache(
+    max_entries=4, max_bytes=4, ttl=3600, weigh=lambda _key, _value: 1
+)
 
 ENV = "UNIMEM_GRAPH_EMBEDDER"
 _WORD = re.compile(r"[a-z0-9]+")

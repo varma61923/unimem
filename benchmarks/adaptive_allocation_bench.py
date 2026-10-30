@@ -20,6 +20,7 @@ under no effect, and how often a helpful memory was withheld.
 
     python -m benchmarks.adaptive_allocation_bench --reps 400 --out adaptive.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -81,8 +82,13 @@ def _simulate(design: str, bases: tuple[float, ...], tau: float, rng: random.Ran
     for t in range(1, HORIZON + 1):
         if adaptive and t > 1 and (t - 1) % policy.era_occasions == 0:
             est = allocation.estimate(observations, alpha=ALPHA, horizon=HORIZON)
-            verdict = (experiment.VERDICT_HELPS if est.ci_low > 0 else experiment.VERDICT_HURTS
-                       if est.ci_high < 0 else experiment.VERDICT_UNDERPOWERED)
+            verdict = (
+                experiment.VERDICT_HELPS
+                if est.ci_low > 0
+                else experiment.VERDICT_HURTS
+                if est.ci_high < 0
+                else experiment.VERDICT_UNDERPOWERED
+            )
             rate = allocation.next_rate(verdict, policy)
         p = rng.choice(bases)
         stratum = str(bases.index(p)) if stratified else ""
@@ -93,9 +99,9 @@ def _simulate(design: str, bases: tuple[float, ...], tau: float, rng: random.Ran
         n[injected] += 1
         withheld_helpful += (not injected) and tau > 0
         if t in checkpoints and design.endswith("mixture") and n[True] and n[False]:
-            intervals[t] = experiment.anytime_confidence_interval(s[True], n[True], s[False], n[False],
-                                                                  alpha=ALPHA,
-                                                                  target_n_per_arm=MIXTURE_TARGET_N_PER_ARM)
+            intervals[t] = experiment.anytime_confidence_interval(
+                s[True], n[True], s[False], n[False], alpha=ALPHA, target_n_per_arm=MIXTURE_TARGET_N_PER_ARM
+            )
     if not design.endswith("mixture"):
         scores = allocation.aipw_scores(observations)
         # The running intersection, as allocation.estimate reports it (from 50 scores on).
@@ -108,10 +114,13 @@ def _simulate(design: str, bases: tuple[float, ...], tau: float, rng: random.Ran
     truth = _true_effect(bases, tau)
     first = next((k for k in checkpoints if k in intervals and intervals[k][0] > 0), None)
     # Anytime-valid: a design may stop and declare at its first crossing.
-    return {"helps_final": first is not None, "first_helps": first,
-            "covered": all(lo <= truth <= hi for lo, hi in intervals.values()),
-            "excluded_zero_ever": any(lo > 0 or hi < 0 for lo, hi in intervals.values()),
-            "withheld_share": withheld_helpful / HORIZON}
+    return {
+        "helps_final": first is not None,
+        "first_helps": first,
+        "covered": all(lo <= truth <= hi for lo, hi in intervals.values()),
+        "excluded_zero_ever": any(lo > 0 or hi < 0 for lo, hi in intervals.values()),
+        "withheld_share": withheld_helpful / HORIZON,
+    }
 
 
 def _wilson(k: int, n: int) -> list[float]:
@@ -135,29 +144,49 @@ def run(*, reps: int = 400, seed: int = 0, designs=DESIGNS, strata=tuple(STRATA)
                 covered = sum(r["covered"] for r in runs)
                 ever = sum(r["excluded_zero_ever"] for r in runs)
                 firsts = [r["first_helps"] for r in runs if r["first_helps"] is not None]
-                cells.append({
-                    "strata": name, "bases": bases, "effect": tau, "design": design, "reps": reps,
-                    "power_at_2000": round(helps / reps, 4), "power_ci95": _wilson(helps, reps),
-                    "median_occasions_to_helps": statistics.median(firsts) if firsts else None,
-                    "time_uniform_coverage": round(covered / reps, 4), "coverage_ci95": _wilson(covered, reps),
-                    "false_positive_any_time": round(ever / reps, 4) if tau == 0 else None,
-                    "withheld_share_of_helpful": round(statistics.fmean(r["withheld_share"] for r in runs), 4)
-                    if tau > 0 else None,
-                })
+                cells.append(
+                    {
+                        "strata": name,
+                        "bases": bases,
+                        "effect": tau,
+                        "design": design,
+                        "reps": reps,
+                        "power_at_2000": round(helps / reps, 4),
+                        "power_ci95": _wilson(helps, reps),
+                        "median_occasions_to_helps": statistics.median(firsts) if firsts else None,
+                        "time_uniform_coverage": round(covered / reps, 4),
+                        "coverage_ci95": _wilson(covered, reps),
+                        "false_positive_any_time": round(ever / reps, 4) if tau == 0 else None,
+                        "withheld_share_of_helpful": round(statistics.fmean(r["withheld_share"] for r in runs), 4)
+                        if tau > 0
+                        else None,
+                    }
+                )
     with open(__file__, "rb") as fh:
         source = hashlib.sha256(fh.read()).hexdigest()
-    return {"benchmark": "adaptive-allocation", "version": 1, "seed": seed, "reps": reps, "horizon": HORIZON,
-            "alpha": ALPHA, "checkpoints": f"every {CHECK_EVERY} from {FIRST_CHECK}",
-            "mixture_target_n_per_arm": MIXTURE_TARGET_N_PER_ARM, "source_sha256": source,
-            "cells": cells,
-            "note": "Seeded simulation of the estimators and allocation policy; not a measurement of any deployment."}
+    return {
+        "benchmark": "adaptive-allocation",
+        "version": 1,
+        "seed": seed,
+        "reps": reps,
+        "horizon": HORIZON,
+        "alpha": ALPHA,
+        "checkpoints": f"every {CHECK_EVERY} from {FIRST_CHECK}",
+        "mixture_target_n_per_arm": MIXTURE_TARGET_N_PER_ARM,
+        "source_sha256": source,
+        "cells": cells,
+        "note": "Seeded simulation of the estimators and allocation policy; not a measurement of any deployment.",
+    }
 
 
 def render(report: dict) -> str:
-    lines = [f"Adaptive allocation, {report['reps']} runs per cell, {report['horizon']} occasions, "
-             f"alpha {report['alpha']}", "",
-             f"{'strata':<9}{'effect':>7}  {'design':<22}{'power':>7}{'median to HELPS':>17}"
-             f"{'coverage':>10}{'FP any-time':>12}{'withheld':>10}"]
+    lines = [
+        f"Adaptive allocation, {report['reps']} runs per cell, {report['horizon']} occasions, alpha {report['alpha']}",
+        "",
+        f"{'strata':<9}{'effect':>7}  {'design':<22}{'power':>7}{'median to HELPS':>17}"
+        f"{'coverage':>10}{'FP any-time':>12}{'withheld':>10}",
+    ]
+
     def cell(value, spec):
         return "-" if value is None else format(value, spec)
 
@@ -165,7 +194,8 @@ def render(report: dict) -> str:
         lines.append(
             f"{c['strata']:<9}{c['effect']:>+7.2f}  {c['design']:<22}{c['power_at_2000']:>7.2f}"
             f"{cell(c['median_occasions_to_helps'], 'g'):>17}{c['time_uniform_coverage']:>10.3f}"
-            f"{cell(c['false_positive_any_time'], '.3f'):>12}{cell(c['withheld_share_of_helpful'], '.2f'):>10}")
+            f"{cell(c['false_positive_any_time'], '.3f'):>12}{cell(c['withheld_share_of_helpful'], '.2f'):>10}"
+        )
     return "\n".join(lines)
 
 
@@ -177,8 +207,9 @@ def main(argv=None) -> int:
     p.add_argument("--strata", default=",".join(STRATA))
     p.add_argument("--out", default=None)
     args = p.parse_args(argv)
-    report = run(reps=args.reps, seed=args.seed, designs=tuple(args.designs.split(",")),
-                 strata=tuple(args.strata.split(",")))
+    report = run(
+        reps=args.reps, seed=args.seed, designs=tuple(args.designs.split(",")), strata=tuple(args.strata.split(","))
+    )
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2)

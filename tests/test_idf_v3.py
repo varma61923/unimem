@@ -10,9 +10,7 @@ from unimem.cli import main
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FIXTURES = os.path.join(REPO, "unimem", "fixtures", "fields")
 
-LESSON = ("p", {"name": "retry-uploads",
-                "description": "retry the failed upload with backoff",
-                "status": "active"})
+LESSON = ("p", {"name": "retry-uploads", "description": "retry the failed upload with backoff", "status": "active"})
 
 
 def _slugs(task, scorer):
@@ -69,6 +67,7 @@ def test_the_holdout_log_records_v3_when_the_store_uses_it(tmp_path):
     root = str(tmp_path)
     assert main(["init", "--dest", root]) == 0
     from unimem import lesson_io, paths
+
     lesson_path = os.path.join(paths.lessons_dir(root), "lesson_retry-uploads.md")
     os.makedirs(os.path.dirname(lesson_path), exist_ok=True)
     fm = {
@@ -81,8 +80,21 @@ def test_the_holdout_log_records_v3_when_the_store_uses_it(tmp_path):
     lesson_io.write_lesson(lesson_path, fm, "Retry with backoff.", root=root, actor="test", reason="fixture")
     assert main(["retrieval", "--scorer", "idf-v3", "--dest", root]) == 0
     holdout_io.configure(root, rate=0.5)
-    assert main(["query", "--lexical", "--experiment", "--occasion-id", "o-1",
-                 "--dest", root, "uploads keep failing, retrying"]) == 0
+    assert (
+        main(
+            [
+                "query",
+                "--lexical",
+                "--experiment",
+                "--occasion-id",
+                "o-1",
+                "--dest",
+                root,
+                "uploads keep failing, retrying",
+            ]
+        )
+        == 0
+    )
     with open(holdout_io.holdout_log_path(root), encoding="utf-8") as fh:
         rows = [json.loads(line) for line in fh if line.strip()]
     assert rows and {row["scorer"] for row in rows} == {"idf-v3"}
@@ -90,7 +102,8 @@ def test_the_holdout_log_records_v3_when_the_store_uses_it(tmp_path):
 
 def _field_report(scorer):
     spec = importlib.util.spec_from_file_location(
-        "measure_retrieval", os.path.join(REPO, "unimem", "reference", "measure_retrieval.py"))
+        "measure_retrieval", os.path.join(REPO, "unimem", "reference", "measure_retrieval.py")
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.compute(FIXTURES, scorer=scorer)

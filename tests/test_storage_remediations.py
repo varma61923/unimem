@@ -11,6 +11,7 @@ import pytest
 
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -80,9 +81,7 @@ class TestAtomicFileWrites:
 
 
 class TestValidationLoopResilience:
-    def test_lesson_validate_processes_all_files_across_corrupted_frontmatter(
-        self, tmp_path, capsys
-    ):
+    def test_lesson_validate_processes_all_files_across_corrupted_frontmatter(self, tmp_path, capsys):
         ldir = paths.lessons_dir(str(tmp_path))
         os.makedirs(ldir, exist_ok=True)
 
@@ -107,15 +106,11 @@ class TestValidationLoopResilience:
         frontmatter.write(os.path.join(ldir, "lesson_01.md"), valid_fm, "## Rule\nValid\n")
         with open(os.path.join(ldir, "lesson_02.md"), "w", encoding="utf-8") as f:
             f.write("---\n[unclosed list yaml\n---\nbody\n")
-        frontmatter.write(
-            os.path.join(ldir, "lesson_03.md"), dict(valid_fm, name="lesson_3"), "## Rule\nValid 3\n"
-        )
+        frontmatter.write(os.path.join(ldir, "lesson_03.md"), dict(valid_fm, name="lesson_3"), "## Rule\nValid 3\n")
         frontmatter.write(
             os.path.join(ldir, "lesson_04.md"), dict(valid_fm, name="lesson_4", importance=999), "## Rule\nInvalid\n"
         )
-        frontmatter.write(
-            os.path.join(ldir, "lesson_05.md"), dict(valid_fm, name="lesson_5"), "## Rule\nValid 5\n"
-        )
+        frontmatter.write(os.path.join(ldir, "lesson_05.md"), dict(valid_fm, name="lesson_5"), "## Rule\nValid 5\n")
 
         args = argparse.Namespace(path=None, dest=str(tmp_path))
         rc = lesson_cmd.run_validate(args)
@@ -132,9 +127,7 @@ class TestValidationLoopResilience:
         assert "OK   " in output and "lesson_05.md" in output
         assert "3/5 lessons valid" in output
 
-    def test_trace_validate_processes_all_files_across_corrupted_traces(
-        self, tmp_path, capsys
-    ):
+    def test_trace_validate_processes_all_files_across_corrupted_traces(self, tmp_path, capsys):
         tdir = paths.traces_dir(str(tmp_path))
         os.makedirs(tdir, exist_ok=True)
 
@@ -166,9 +159,7 @@ class TestValidationLoopResilience:
         assert "OK   " in output and "trace_03.md" in output
         assert "2/3 traces valid" in output
 
-    def test_lesson_validate_processes_all_files_across_binary_invalid_utf8(
-        self, tmp_path, capsys
-    ):
+    def test_lesson_validate_processes_all_files_across_binary_invalid_utf8(self, tmp_path, capsys):
         ldir = paths.lessons_dir(str(tmp_path))
         os.makedirs(ldir, exist_ok=True)
 
@@ -193,9 +184,7 @@ class TestValidationLoopResilience:
         frontmatter.write(os.path.join(ldir, "lesson_01.md"), valid_fm, "## Rule\nValid 1\n")
         with open(os.path.join(ldir, "lesson_02_bad.md"), "wb") as f:
             f.write(b"\xff\xfe\x80\x81\xfe\xff")
-        frontmatter.write(
-            os.path.join(ldir, "lesson_03.md"), dict(valid_fm, name="lesson_3"), "## Rule\nValid 3\n"
-        )
+        frontmatter.write(os.path.join(ldir, "lesson_03.md"), dict(valid_fm, name="lesson_3"), "## Rule\nValid 3\n")
 
         args = argparse.Namespace(path=None, dest=str(tmp_path))
         rc = lesson_cmd.run_validate(args)
@@ -211,9 +200,7 @@ class TestValidationLoopResilience:
         assert "OK   " in output and "lesson_03.md" in output
         assert "2/3 lessons valid" in output
 
-    def test_trace_validate_processes_all_files_across_binary_invalid_utf8(
-        self, tmp_path, capsys
-    ):
+    def test_trace_validate_processes_all_files_across_binary_invalid_utf8(self, tmp_path, capsys):
         tdir = paths.traces_dir(str(tmp_path))
         os.makedirs(tdir, exist_ok=True)
 
@@ -304,14 +291,7 @@ class TestUtf8BomHandling:
         lessons_dir.mkdir(parents=True, exist_ok=True)
         bom_file = lessons_dir / "lesson_imp_bom.md"
 
-        content = (
-            "---\n"
-            "name: lesson_imp_bom\n"
-            "importance: 5\n"
-            "status: active\n"
-            "---\n"
-            "body\n"
-        )
+        content = "---\nname: lesson_imp_bom\nimportance: 5\nstatus: active\n---\nbody\n"
         bom_file.write_text(content, encoding="utf-8-sig")
 
         monkeypatch.setattr(query, "LESSONS_DIR", str(lessons_dir))
@@ -323,14 +303,13 @@ class TestUtf8BomHandling:
 
 class TestAtomicIndexGeneration:
     @pytest.mark.skipif(not HAS_NUMPY, reason="numpy not installed")
-    def test_build_index_preserves_existing_index_and_cleans_tmp_on_error(
-        self, tmp_path, monkeypatch
-    ):
+    def test_build_index_preserves_existing_index_and_cleans_tmp_on_error(self, tmp_path, monkeypatch):
         _ensure_mock_st(monkeypatch)
         sys.path.insert(
             0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference")
         )
         import build_index
+
         monkeypatch.setattr(build_index, "SentenceTransformer", _FakeEncoder)
 
         lessons_dir = tmp_path / "memory" / "lessons"
@@ -479,10 +458,7 @@ class TestSlugDelimiterInjectionIsRejected:
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir(parents=True, exist_ok=True)
         (lessons_dir / "lesson_injected.md").write_text(
-            "---\n"
-            "name: 'lesson_ok | injected'\n"
-            "description: d\ndomain: t\nstatus: active\n"
-            "---\n## Rule\nr\n",
+            "---\nname: 'lesson_ok | injected'\ndescription: d\ndomain: t\nstatus: active\n---\n## Rule\nr\n",
             encoding="utf-8",
         )
         lessons = list(build_index.iter_active_lessons(str(lessons_dir)))
@@ -619,9 +595,7 @@ class TestCorruptedIndexHandling:
         ],
     )
     @pytest.mark.skipif(not HAS_NUMPY, reason="numpy not installed")
-    def test_query_main_exits_cleanly_on_corrupted_index(
-        self, tmp_path, monkeypatch, capfd, corrupted_content
-    ):
+    def test_query_main_exits_cleanly_on_corrupted_index(self, tmp_path, monkeypatch, capfd, corrupted_content):
         _ensure_mock_st(monkeypatch)
         sys.path.insert(
             0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference")
@@ -645,9 +619,7 @@ class TestCorruptedIndexHandling:
         assert "build_index.py --force" in captured.err
 
     @pytest.mark.skipif(not HAS_NUMPY, reason="numpy not installed")
-    def test_query_main_handles_missing_keys_in_npz_archive(
-        self, tmp_path, monkeypatch, capfd
-    ):
+    def test_query_main_handles_missing_keys_in_npz_archive(self, tmp_path, monkeypatch, capfd):
         _ensure_mock_st(monkeypatch)
         sys.path.insert(
             0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference")
@@ -678,13 +650,20 @@ class TestLessonSlugPrefixNormalization:
         subparsers = parser.add_subparsers(dest="cmd")
         lesson_cmd.add_parser(subparsers)
 
-        args = parser.parse_args([
-            "lesson", "new",
-            "--slug", "my_custom_rule",
-            "--description", "desc",
-            "--domain", "refactor",
-            "--dest", str(tmp_path),
-        ])
+        args = parser.parse_args(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "my_custom_rule",
+                "--description",
+                "desc",
+                "--domain",
+                "refactor",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
         rc = lesson_cmd.run_new(args)
         assert rc == 0
 
@@ -697,13 +676,20 @@ class TestLessonSlugPrefixNormalization:
         subparsers = parser.add_subparsers(dest="cmd")
         lesson_cmd.add_parser(subparsers)
 
-        args = parser.parse_args([
-            "lesson", "new",
-            "--slug", "lesson_already_prefixed",
-            "--description", "desc",
-            "--domain", "refactor",
-            "--dest", str(tmp_path),
-        ])
+        args = parser.parse_args(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_already_prefixed",
+                "--description",
+                "desc",
+                "--domain",
+                "refactor",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
         rc = lesson_cmd.run_new(args)
         assert rc == 0
 

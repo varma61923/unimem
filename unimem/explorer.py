@@ -3,6 +3,7 @@
 Exploration never records an occasion, changes an experiment, or calls a model.
 The gateway supplies the caller's scope and already-namespaced conversation space.
 """
+
 from __future__ import annotations
 
 import time
@@ -28,9 +29,13 @@ def inspect(root: str, data: dict[str, Any], *, scope: str = "", space: str | No
     if not isinstance(question, str) or not question.strip() or len(question) > 2000:
         raise ExplorerError("question must be a non-empty string of at most 2000 characters")
     channels = data.get("channels", ["lessons", "facts"])
-    if (not isinstance(channels, list) or not channels or len(channels) > 3
-            or any(not isinstance(c, str) or c not in ("lessons", "facts", "conversations") for c in channels)
-            or len(set(channels)) != len(channels)):
+    if (
+        not isinstance(channels, list)
+        or not channels
+        or len(channels) > 3
+        or any(not isinstance(c, str) or c not in ("lessons", "facts", "conversations") for c in channels)
+        or len(set(channels)) != len(channels)
+    ):
         raise ExplorerError("channels must be distinct lessons, facts or conversations")
     if "conversations" in channels and not space:
         raise ExplorerError("a conversation space is required for conversation exploration")
@@ -48,8 +53,23 @@ def inspect(root: str, data: dict[str, Any], *, scope: str = "", space: str | No
         except (TypeError, ValueError) as exc:
             raise ExplorerError("as_of must be an ISO date or timestamp") from exc
     started = time.perf_counter()
-    result = recall.recall(root, question.strip(), budget=budget, channels=tuple(channels),
-                           as_of=as_of, spaces=[space] if space else None, embedder="none",
-                           per_channel=12, evidence_budget=evidence_budget, scope=scope, fact_scorer=fact_scorer)
-    return {**result.to_dict(), "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
-            "read_only": True, "scope": scope, "answer_accuracy_measured": False}
+    result = recall.recall(
+        root,
+        question.strip(),
+        budget=budget,
+        channels=tuple(channels),
+        as_of=as_of,
+        spaces=[space] if space else None,
+        embedder="none",
+        per_channel=12,
+        evidence_budget=evidence_budget,
+        scope=scope,
+        fact_scorer=fact_scorer,
+    )
+    return {
+        **result.to_dict(),
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+        "read_only": True,
+        "scope": scope,
+        "answer_accuracy_measured": False,
+    }

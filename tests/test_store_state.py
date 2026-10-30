@@ -16,7 +16,7 @@ def _store(tmp_path, *, traces=(), lessons=()):
     with open(os.path.join(root, "memory", "lessons", "lesson_template.md"), "w") as fh:
         fh.write("---\nname: lesson-slug\nstatus: review\n---\n# template\n")
     for i, title in enumerate(traces):
-        with open(os.path.join(root, "memory", "traces", f"2026-01-0{i+1}_t{i}.md"), "w") as fh:
+        with open(os.path.join(root, "memory", "traces", f"2026-01-0{i + 1}_t{i}.md"), "w") as fh:
             fh.write(f"---\ntitle: {title}\n---\nbody\n")
     for slug, status in lessons:
         with open(os.path.join(root, "memory", "lessons", f"{slug}.md"), "w") as fh:
@@ -109,8 +109,7 @@ class TestTheMcpRetrieveToolMakesTheSameDistinction:
         assert "status=review" in note
         assert "lesson approve" in note
         assert "propose_lessons" not in note, (
-            "telling an operator who already has a proposed lesson to propose again "
-            "is the loop this exists to break"
+            "telling an operator who already has a proposed lesson to propose again is the loop this exists to break"
         )
 
     def test_traces_without_lessons_points_at_proposing(self, tmp_path):
@@ -127,9 +126,7 @@ class TestTheMcpRetrieveToolMakesTheSameDistinction:
         assert "empty" in note
 
     def test_the_note_is_plain_prose_for_a_json_field(self, tmp_path):
-        note = __import__(
-            "unimem.mcp_server", fromlist=["x"]
-        )._no_active_lessons_note(_store(tmp_path, traces=["a"]))
+        note = __import__("unimem.mcp_server", fromlist=["x"])._no_active_lessons_note(_store(tmp_path, traces=["a"]))
         assert not note.startswith("[unimem]")
         assert "\n" not in note
 
@@ -167,13 +164,9 @@ class TestDoctorAnswersWhyRetrievalIsEmpty:
     def test_a_brand_new_store_is_not_warned_at_twice(self, tmp_path, capsys):
         out = self._doctor(_store(tmp_path), capsys)
         warns = [ln for ln in out.splitlines() if ln.startswith("[WARN]")]
-        assert not any("retrieval ready" in ln for ln in warns), (
-            f"a fresh store was warned at for being fresh: {warns}"
-        )
+        assert not any("retrieval ready" in ln for ln in warns), f"a fresh store was warned at for being fresh: {warns}"
 
     def test_a_store_with_traces_but_nothing_active_IS_warned(self, tmp_path, capsys):
         out = self._doctor(_store(tmp_path, traces=["a", "b"]), capsys)
         warns = [ln for ln in out.splitlines() if ln.startswith("[WARN]")]
-        assert any("retrieval ready" in ln for ln in warns), (
-            f"a stuck store was not flagged: {warns}"
-        )
+        assert any("retrieval ready" in ln for ln in warns), f"a stuck store was not flagged: {warns}"

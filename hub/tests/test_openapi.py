@@ -3,6 +3,7 @@
 No database: the Hub is built with every optional surface on and never
 started (no lifespan), which registers every route without connecting.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,10 +31,19 @@ METHODS = ("get", "put", "post", "delete", "patch", "head", "options", "trace")
 # Routes that are deliberately reachable without credentials. Everything else
 # must name at least one security scheme.
 PUBLIC = {
-    ("GET", "/healthz"), ("GET", "/readyz"), ("GET", "/disclosure"), ("GET", DOCUMENT_PATH),
-    ("GET", "/scim/v2/ServiceProviderConfig"), ("GET", "/scim/v2/ResourceTypes"), ("GET", "/scim/v2/Schemas"),
-    ("GET", "/signup"), ("POST", "/signup"), ("POST", "/api/v1/keys"),
-    ("GET", "/app/signin"), ("POST", "/app/signin"), ("POST", "/app/signout"),
+    ("GET", "/healthz"),
+    ("GET", "/readyz"),
+    ("GET", "/disclosure"),
+    ("GET", DOCUMENT_PATH),
+    ("GET", "/scim/v2/ServiceProviderConfig"),
+    ("GET", "/scim/v2/ResourceTypes"),
+    ("GET", "/scim/v2/Schemas"),
+    ("GET", "/signup"),
+    ("POST", "/signup"),
+    ("POST", "/api/v1/keys"),
+    ("GET", "/app/signin"),
+    ("POST", "/app/signin"),
+    ("POST", "/app/signout"),
     ("GET", "/app/proof/shared/{token}"),
 }
 

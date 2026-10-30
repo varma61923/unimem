@@ -56,7 +56,7 @@ def _client_imports_in(path: pathlib.Path) -> set[str]:
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
-                base = ".".join((*package[:len(package) - node.level + 1], *base.split("."))).rstrip(".")
+                base = ".".join((*package[: len(package) - node.level + 1], *base.split("."))).rstrip(".")
             add(base)
             for alias in node.names:
                 add(base + "." + alias.name)
@@ -84,12 +84,12 @@ def _imported_modules() -> dict[str, str]:
 
     while frontier:
         module = frontier.pop()
-        path = _module_path(module)
-        if path is None:
+        module_path = _module_path(module)
+        if module_path is None:
             continue
-        for dep in sorted(_client_imports_in(path)):
+        for dep in sorted(_client_imports_in(module_path)):
             if dep not in found and _is_submodule(dep):
-                found[dep] = f"needed by {path.relative_to(REPO_ROOT)}"
+                found[dep] = f"needed by {module_path.relative_to(REPO_ROOT)}"
                 frontier.append(dep)
     return found
 
@@ -97,11 +97,7 @@ def _imported_modules() -> dict[str, str]:
 class TestImageCarriesEveryImportedClientModule:
     def test_every_imported_unimem_module_ships_in_the_image(self):
         allowed = _allowlisted_modules()
-        missing = {
-            module: source
-            for module, source in _imported_modules().items()
-            if module not in allowed
-        }
+        missing = {module: source for module, source in _imported_modules().items() if module not in allowed}
         assert not missing, (
             "hub/ imports unimem modules that .dockerignore keeps out of the "
             "server image, so the container will start and immediately die with an "
@@ -130,8 +126,9 @@ class TestImageCarriesEveryImportedClientModule:
 def _required_import_nodes(tree, *, eager_only=False):
     optional = set()
     for block in ast.walk(tree):
-        if isinstance(block, ast.Try) and any(isinstance(h.type, ast.Name) and h.type.id == "ImportError"
-                                             for h in block.handlers):
+        if isinstance(block, ast.Try) and any(
+            isinstance(h.type, ast.Name) and h.type.id == "ImportError" for h in block.handlers
+        ):
             for statement in block.body:
                 optional.update(ast.walk(statement))
         if eager_only and isinstance(block, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -151,8 +148,9 @@ class TestImportedModulesAreStdlibOnly:
         # Distribution names need not match their import names. These wheels
         # are explicitly pinned by the server, rather than optional exemptions.
         distribution_imports = {"pyyaml": "yaml", "pyjwt": "jwt", "argon2_cffi": "argon2"}
-        hub_requirements |= {name for distribution, name in distribution_imports.items()
-                             if distribution in hub_requirements}
+        hub_requirements |= {
+            name for distribution, name in distribution_imports.items() if distribution in hub_requirements
+        }
         available = set(sys.stdlib_module_names) | hub_requirements | {"unimem"}
 
         for module in sorted(_allowlisted_modules()):
@@ -173,17 +171,22 @@ class TestImportedModulesAreStdlibOnly:
 
 
 def test_only_explicit_optional_import_guards_exempt_dependencies():
-    tree = ast.parse("import required\ntry:\n import optional\nexcept ImportError:\n import fallback\n"
-                     "try:\n import still_required\nexcept ValueError:\n pass\n")
-    assert {node.names[0].name for node in _required_import_nodes(tree)} == {
-        "required", "fallback", "still_required"}
+    tree = ast.parse(
+        "import required\ntry:\n import optional\nexcept ImportError:\n import fallback\n"
+        "try:\n import still_required\nexcept ValueError:\n pass\n"
+    )
+    assert {node.names[0].name for node in _required_import_nodes(tree)} == {"required", "fallback", "still_required"}
 
 
 def test_dependency_check_distinguishes_import_time_from_lazy_feature_dependencies():
-    tree = ast.parse("import required\ndef optional_feature():\n import optional_provider\n"
-                     "class Eager:\n import class_dependency\n def method(self):\n  import lazy_method\n")
+    tree = ast.parse(
+        "import required\ndef optional_feature():\n import optional_provider\n"
+        "class Eager:\n import class_dependency\n def method(self):\n  import lazy_method\n"
+    )
     assert {node.names[0].name for node in _required_import_nodes(tree, eager_only=True)} == {
-        "required", "class_dependency"}
+        "required",
+        "class_dependency",
+    }
 
 
 def test_import_closure_includes_package_initializers_children_and_relative_imports(tmp_path, monkeypatch):
@@ -254,8 +257,12 @@ for name, module in list(sys.modules.items()):
 print('isolated imports and canonical fact round-trip passed')
 """
     result = subprocess.run(
-        [sys.executable, "-S", "-c", code, json.dumps(sites), json.dumps(modules)], cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)}, capture_output=True, text=True, check=False,
+        [sys.executable, "-S", "-c", code, json.dumps(sites), json.dumps(modules)],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
 
@@ -269,16 +276,31 @@ def test_image_telemetry_runs_with_no_optional_packages(tmp_path):
 
     package = tmp_path / "unimem"
     package.mkdir()
-    for name in ("__init__.py", "telemetry.py", "memory_guard.py", "paths.py",
-                 "configuration.py", "configuration.schema.json", "offline.py", "exceptions.py"):
+    for name in (
+        "__init__.py",
+        "telemetry.py",
+        "memory_guard.py",
+        "paths.py",
+        "configuration.py",
+        "configuration.schema.json",
+        "offline.py",
+        "exceptions.py",
+    ):
         shutil.copyfile(REPO_ROOT / "unimem" / name, package / name)
-    code = ("from unimem import telemetry; import logging; "
-            "telemetry.configure_logging('json', 'INFO', log_file='private.jsonl'); "
-            "logging.getLogger('unimem').info('Bearer fake-credential'); "
-            "assert not telemetry.status()['otel_installed']")
-    result = subprocess.run([sys.executable, "-S", "-c", code], cwd=tmp_path,
-                            env={**os.environ, "PYTHONPATH": str(tmp_path), "UNIMEM_OTEL": "1"},
-                            capture_output=True, text=True, check=False)
+    code = (
+        "from unimem import telemetry; import logging; "
+        "telemetry.configure_logging('json', 'INFO', log_file='private.jsonl'); "
+        "logging.getLogger('unimem').info('Bearer fake-credential'); "
+        "assert not telemetry.status()['otel_installed']"
+    )
+    result = subprocess.run(
+        [sys.executable, "-S", "-c", code],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tmp_path), "UNIMEM_OTEL": "1"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stderr
     row = json.loads((tmp_path / "private.jsonl").read_text())
     assert "fake-credential" not in json.dumps(row)
@@ -300,7 +322,10 @@ def test_packaged_theme_loads_without_installed_client_or_dependencies(tmp_path)
     shutil.copyfile(REPO_ROOT / "unimem" / "ui" / "tokens.css", package / "ui" / "tokens.css")
     result = subprocess.run(
         [sys.executable, "-S", "-c", "from unimem.ui_style import THEME_CSS; assert '--accent:' in THEME_CSS"],
-        cwd=tmp_path, env={**os.environ, "PYTHONPATH": str(tmp_path)}, capture_output=True, text=True,
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
         check=False,
     )
     assert result.returncode == 0, result.stderr

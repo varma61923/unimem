@@ -24,6 +24,7 @@ async def org(session_factory):
 async def _set_opt_in(session_factory, org_id, value: bool) -> None:
     async with session_scope(session_factory) as session:
         organization = await session.get(Organization, org_id)
+        assert organization is not None
         organization.commons_auto_contribute = value
 
 
@@ -37,18 +38,16 @@ async def _contribute(session_factory, config, org_id, **kw):
     )
     defaults.update(kw)
     async with session_scope(session_factory) as session:
-        return await crud.contribute_trace(
-            session, org_id, config, make_rate_limiter(config), **defaults
-        )
+        return await crud.contribute_trace(session, org_id, config, make_rate_limiter(config), **defaults)
 
 
 async def _submissions(session_factory, org_id):
     async with session_scope(session_factory) as session:
         return (
-            await session.execute(
-                select(KnowledgeBaseSubmission).where(KnowledgeBaseSubmission.org_id == org_id)
-            )
-        ).scalars().all()
+            (await session.execute(select(KnowledgeBaseSubmission).where(KnowledgeBaseSubmission.org_id == org_id)))
+            .scalars()
+            .all()
+        )
 
 
 class TestOffByDefault:
@@ -57,9 +56,7 @@ class TestOffByDefault:
             organization = await session.get(Organization, org)
         assert organization.commons_auto_contribute is False
 
-    async def test_contributing_proposes_nothing_by_default(
-        self, session_factory, config, org
-    ):
+    async def test_contributing_proposes_nothing_by_default(self, session_factory, config, org):
         result = await _contribute(session_factory, config, org)
         assert result["auto_proposed_to_commons"] is False
         assert await _submissions(session_factory, org) == []
@@ -75,9 +72,7 @@ class TestOptedIn:
         assert len(submissions) == 1
         assert submissions[0].title == "Connection pool exhausted"
 
-    async def test_the_proposal_is_pending_not_published(
-        self, session_factory, config, org
-    ):
+    async def test_the_proposal_is_pending_not_published(self, session_factory, config, org):
         await _set_opt_in(session_factory, org, True)
         await _contribute(session_factory, config, org)
         submissions = await _submissions(session_factory, org)
@@ -85,12 +80,11 @@ class TestOptedIn:
 
     async def test_no_commons_visible_trace_is_created(self, session_factory, config, org):
         from hub.models import Trace
+
         await _set_opt_in(session_factory, org, True)
         await _contribute(session_factory, config, org)
         async with session_scope(session_factory) as session:
-            visible = (
-                await session.execute(select(Trace).where(*crud.commons_visible()))
-            ).scalars().all()
+            visible = (await session.execute(select(Trace).where(*crud.commons_visible()))).scalars().all()
         assert visible == []
 
     async def test_turning_it_back_off_stops_proposing(self, session_factory, config, org):
@@ -104,24 +98,17 @@ class TestOptedIn:
 
 
 class TestWhatItRefusesToForward:
-    async def test_a_quarantined_trace_is_never_proposed(
-        self, session_factory, config, org
-    ):
+    async def test_a_quarantined_trace_is_never_proposed(self, session_factory, config, org):
         await _set_opt_in(session_factory, org, True)
-        spam = " ".join(
-            f"http://spam{i}.example.com" for i in range(config.suspect_url_threshold + 1)
-        )
-        result = await _contribute(
-            session_factory, config, org, title="spammy", context_text=spam)
+        spam = " ".join(f"http://spam{i}.example.com" for i in range(config.suspect_url_threshold + 1))
+        result = await _contribute(session_factory, config, org, title="spammy", context_text=spam)
         assert result["quarantined"] is True
         assert result["auto_proposed_to_commons"] is False
         assert await _submissions(session_factory, org) == []
 
 
 class TestItNeverFailsTheCapture:
-    async def test_a_failing_proposal_still_stores_the_trace(
-        self, session_factory, config, org, monkeypatch
-    ):
+    async def test_a_failing_proposal_still_stores_the_trace(self, session_factory, config, org, monkeypatch):
         async def exploding_submit(*a, **kw):
             raise RuntimeError("the review queue is on fire")
 
@@ -133,15 +120,14 @@ class TestItNeverFailsTheCapture:
         assert result["auto_proposed_to_commons"] is False
 
         from hub.models import Trace
+
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, result["id"])
         assert trace is not None
 
 
 class TestIdempotency:
-    async def test_a_retried_contribution_does_not_propose_twice(
-        self, session_factory, config, org
-    ):
+    async def test_a_retried_contribution_does_not_propose_twice(self, session_factory, config, org):
         await _set_opt_in(session_factory, org, True)
         first = await _contribute(session_factory, config, org, idempotency_key="abc-123")
         second = await _contribute(session_factory, config, org, idempotency_key="abc-123")

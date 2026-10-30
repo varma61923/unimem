@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -11,6 +12,7 @@ def store(tmp_path):
     store = tmp_path / "store"
     store.mkdir()
     from unimem import paths
+
     os.makedirs(paths.lessons_dir(str(store)), exist_ok=True)
     os.makedirs(paths.traces_dir(str(store)), exist_ok=True)
     return str(store)
@@ -44,9 +46,10 @@ class TestCodeIngestion:
 
         result = ingest_code_repository(store, str(src))
         from unimem import paths
+
         for fname in os.listdir(paths.lessons_dir(store)):
             if fname.endswith(".md"):
-                content = open(os.path.join(paths.lessons_dir(store), fname)).read()
+                content = Path(os.path.join(paths.lessons_dir(store), fname)).read_text()
                 assert "sk-ant-api03-" not in content, f"Secret found in {fname}"
 
     def test_ingest_invalid_python_does_not_crash(self, store, tmp_path):
@@ -77,8 +80,9 @@ class TestMarkdownIngestion:
         assert result.source_type == "markdown"
 
         facts = hierarchical.list_facts(store)
-        assert any("Constraint" in f.statement for f in facts), \
+        assert any("Constraint" in f.statement for f in facts), (
             f"Expected constraint fact, got: {[f.statement for f in facts]}"
+        )
 
 
 class TestJsonLogIngestion:
@@ -88,9 +92,12 @@ class TestJsonLogIngestion:
 
         log_file = tmp_path / "service.jsonl"
         log_file.write_text(
-            json.dumps({"level": "ERROR", "message": "Connection timeout to payments service", "ts": 1}) + "\n" +
-            json.dumps({"level": "ERROR", "message": "Connection timeout to payments service", "ts": 2}) + "\n" +
-            json.dumps({"level": "INFO", "message": "Request completed", "ts": 3}) + "\n",
+            json.dumps({"level": "ERROR", "message": "Connection timeout to payments service", "ts": 1})
+            + "\n"
+            + json.dumps({"level": "ERROR", "message": "Connection timeout to payments service", "ts": 2})
+            + "\n"
+            + json.dumps({"level": "INFO", "message": "Request completed", "ts": 3})
+            + "\n",
             encoding="utf-8",
         )
 
@@ -108,8 +115,12 @@ class TestTranscriptIngestion:
 
         transcript = tmp_path / "run.jsonl"
         transcript.write_text(
-            json.dumps({"step_index": 1, "status": "ERROR", "content": "Tool execution failed: database is unreachable"}) + "\n" +
-            json.dumps({"step_index": 2, "status": "DONE", "content": "Task complete"}) + "\n",
+            json.dumps(
+                {"step_index": 1, "status": "ERROR", "content": "Tool execution failed: database is unreachable"}
+            )
+            + "\n"
+            + json.dumps({"step_index": 2, "status": "DONE", "content": "Task complete"})
+            + "\n",
             encoding="utf-8",
         )
 
@@ -130,6 +141,7 @@ class TestTranscriptIngestion:
 class TestIngestionPipeline:
     def test_pipeline_unknown_type_returns_error(self, store):
         from unimem.ingest import IngestionPipeline
+
         pipeline = IngestionPipeline()
         result = pipeline.ingest_source("/nonexistent", "unknown_type", store)
         assert len(result.errors) > 0
@@ -137,6 +149,7 @@ class TestIngestionPipeline:
 
     def test_pipeline_dispatches_markdown(self, store, tmp_path):
         from unimem.ingest import IngestionPipeline
+
         docs = tmp_path / "docs"
         docs.mkdir()
         (docs / "guide.md").write_text("# Architecture\n\nPrefer async IO for all service calls.\n", encoding="utf-8")

@@ -53,7 +53,7 @@ def test_setup_kimi_updates_the_active_config_and_preserves_host_settings(tmp_pa
     assert second["agents"][0]["activation"] == "kimi"
     text = config_path.read_text(encoding="utf-8")
     assert text.count("# BEGIN UNIMEM HOOKS") == 1
-    assert text.count("command = \"user-hook\"") == 1
+    assert text.count('command = "user-hook"') == 1
     assert not (root / "distribution" / "kimi" / "config.toml").exists()
     if tomllib is not None:
         parsed = tomllib.loads(text)
@@ -109,9 +109,10 @@ def test_up_first_reviewed_lesson_reaches_first_prompt_hook(tmp_path, capsys):
     )
 
     started = time.monotonic()
-    assert run_up(
-        SimpleNamespace(dest=root, host=None, profile="local", setup_only=True, agent=["claude"], port=None)
-    ) == 0
+    assert (
+        run_up(SimpleNamespace(dest=root, host=None, profile="local", setup_only=True, agent=["claude"], port=None))
+        == 0
+    )
     output = capsys.readouterr().out
     json_start = output.rfind('{\n  "first_lesson"')
     assert json_start >= 0
@@ -121,12 +122,15 @@ def test_up_first_reviewed_lesson_reaches_first_prompt_hook(tmp_path, capsys):
 
     class FixtureEmbedder:
         def embed(self, texts, *, query=False):
-            return [[1.0, 0.0] if any(term in text.lower() for term in ("pytest", "parser", "boundary"))
-                    else [0.0, 1.0] for text in texts]
+            return [
+                [1.0, 0.0] if any(term in text.lower() for term in ("pytest", "parser", "boundary")) else [0.0, 1.0]
+                for text in texts
+            ]
 
     holdout_io.configure(root, rate=0)
     injected = HookKit(root, agent_id, scope={"repo": repo}, embedder=FixtureEmbedder()).handle(
-        "UserPromptSubmit", {"session_id": "first-prompt", "prompt": "What should I check before changing parser boundaries?"}
+        "UserPromptSubmit",
+        {"session_id": "first-prompt", "prompt": "What should I check before changing parser boundaries?"},
     )
     assert injected["injected"] == ["reviewed-parser-rule"]
     assert "Run pytest before editing parser boundaries." in injected["context"]
@@ -138,9 +142,14 @@ def test_up_empty_store_does_not_claim_or_fabricate_a_first_lesson(tmp_path, cap
 
     from unimem.commands.up_cmd import run as run_up
 
-    assert run_up(
-        SimpleNamespace(dest=str(tmp_path), host=None, profile="local", setup_only=True, agent=["claude"], port=None)
-    ) == 0
+    assert (
+        run_up(
+            SimpleNamespace(
+                dest=str(tmp_path), host=None, profile="local", setup_only=True, agent=["claude"], port=None
+            )
+        )
+        == 0
+    )
     output = capsys.readouterr().out
     json_start = output.rfind('{\n  "first_lesson"')
     assert json_start >= 0
@@ -156,7 +165,8 @@ def test_reinstall_replaces_previous_transport_and_preserves_other_hooks(tmp_pat
     path.write_text(json.dumps({"hooks": {"SessionStart": [{"command": previous}, {"command": "other-tool"}]}}))
     merge_hooks(str(path), {"hooks": {"SessionStart": [{"command": "python hook_bridge.py --event SessionStart"}]}})
     assert json.loads(path.read_text())["hooks"]["SessionStart"] == [
-        {"command": "other-tool"}, {"command": "python hook_bridge.py --event SessionStart"},
+        {"command": "other-tool"},
+        {"command": "python hook_bridge.py --event SessionStart"},
     ]
 
 
@@ -231,25 +241,51 @@ def test_a_lesson_approved_after_onboarding_reaches_the_injector_and_revocation_
 
     class Embedder:
         def embed(self, texts, *, query=False):
-            return [[1.0, 0.0] if any(term in text.lower() for term in ("oom", "worker", "memory"))
-                    else [0.0, 1.0] for text in texts]
+            return [
+                [1.0, 0.0] if any(term in text.lower() for term in ("oom", "worker", "memory")) else [0.0, 1.0]
+                for text in texts
+            ]
 
     def prompt(session):
         kit = HookKit(root, agent_id, scope={"repo": repo}, embedder=Embedder())
-        return kit.handle("UserPromptSubmit", {
-            "session_id": session, "prompt": "the ingest worker was killed by the OOM killer, how do I recover it?"})
+        return kit.handle(
+            "UserPromptSubmit",
+            {"session_id": session, "prompt": "the ingest worker was killed by the OOM killer, how do I recover it?"},
+        )
 
     before = lessons_signature(root)
     # The real lifecycle: create a review-status lesson, fill in its rule, approve it.
-    assert main(["lesson", "new", "--slug", "restart-worker-on-oom", "--domain", "ops", "--importance", "4",
-                 "--description", "Restart the ingest worker after an OOM kill",
-                 "--importance-rationale", "avoids silent data loss",
-                 "--applies-when", "the ingest worker exits because of an out-of-memory kill",
-                 "--dest", root]) == 0
+    assert (
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "restart-worker-on-oom",
+                "--domain",
+                "ops",
+                "--importance",
+                "4",
+                "--description",
+                "Restart the ingest worker after an OOM kill",
+                "--importance-rationale",
+                "avoids silent data loss",
+                "--applies-when",
+                "the ingest worker exits because of an out-of-memory kill",
+                "--dest",
+                root,
+            ]
+        )
+        == 0
+    )
     path = os.path.join(root, "memory", "lessons", "lesson_restart-worker-on-oom.md")
     fm, _ = frontmatter.read(path)
-    frontmatter.write(path, fm, "## Rule\nRestart the ingest worker and halve its batch size before replaying the queue.\n\n"
-                      "## Why\nSilent OOM kills dropped queued items.\n\n## How to apply\nRestart, halve BATCH_SIZE, replay.\n")
+    frontmatter.write(
+        path,
+        fm,
+        "## Rule\nRestart the ingest worker and halve its batch size before replaying the queue.\n\n"
+        "## Why\nSilent OOM kills dropped queued items.\n\n## How to apply\nRestart, halve BATCH_SIZE, replay.\n",
+    )
     assert main(["lesson", "approve", "restart-worker-on-oom", "--force", "--dest", root]) == 0
     assert lessons_signature(root) != before  # the broker notices the change
     assert prompt("s-before")["injected"] == []  # not bridged yet: this is the gap the loop closes
@@ -281,9 +317,17 @@ def test_the_dense_relevance_gate_defaults_to_the_calibrated_value_and_can_be_ov
 
     root = str(tmp_path)
     scope = {"agent": "agent-x", "repo": "r"}
-    Journal(root).put(MemoryRecord(
-        "parser-rule", "lesson", 1, {"text": "Run pytest before editing parser boundaries.", "lesson_kind": "procedure",
-                                     "trigger": {}}, status="active", scope=scope, created_at="2026-10-12T00:00:00Z"))
+    Journal(root).put(
+        MemoryRecord(
+            "parser-rule",
+            "lesson",
+            1,
+            {"text": "Run pytest before editing parser boundaries.", "lesson_kind": "procedure", "trigger": {}},
+            status="active",
+            scope=scope,
+            created_at="2026-10-12T00:00:00Z",
+        )
+    )
     holdout_io.configure(root, rate=0)
 
     class HalfRelevant:  # every related text is exactly 0.5 cosine from the query
@@ -292,7 +336,9 @@ def test_the_dense_relevance_gate_defaults_to_the_calibrated_value_and_can_be_ov
 
     def inject(session):
         kit = HookKit(root, "agent-x", scope={"repo": "r"}, embedder=HalfRelevant())
-        return kit.handle("UserPromptSubmit", {"session_id": session, "prompt": "check pytest before changing parser boundaries"})
+        return kit.handle(
+            "UserPromptSubmit", {"session_id": session, "prompt": "check pytest before changing parser boundaries"}
+        )
 
     monkeypatch.delenv("UNIMEM_HOOK_MIN_COSINE", raising=False)
     assert inject("default-gate")["injected"] == []

@@ -7,6 +7,7 @@ Provides:
 - compare_runs: compares two conversation_bench JSON output runs across all common metrics.
 - bootstrap_rows: adds empirical 95% CIs to a list of benchmark rows.
 """
+
 from __future__ import annotations
 
 import math
@@ -97,11 +98,7 @@ def paired_bootstrap_test(
         raise ValueError(f"Lengths must match for paired bootstrap: {len(treatment)} vs {len(baseline)}")
 
     # Extract paired valid cases
-    pairs = [
-        (float(t), float(b))
-        for t, b in zip(treatment, baseline)
-        if t is not None and b is not None
-    ]
+    pairs = [(float(t), float(b)) for t, b in zip(treatment, baseline) if t is not None and b is not None]
     if not pairs:
         return {
             "n": 0,
@@ -258,13 +255,15 @@ def format_comparison_markdown(comparison: dict[str, Any]) -> str:
 
     by_type = comparison.get("by_type", {})
     if by_type:
-        lines.extend([
-            "",
-            "#### Breakdown by Question Type",
-            "",
-            "| Category | Metric | Baseline | Treatment | Delta (Δ) | 95% CI | Sig? |",
-            "| :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
-        ])
+        lines.extend(
+            [
+                "",
+                "#### Breakdown by Question Type",
+                "",
+                "| Category | Metric | Baseline | Treatment | Delta (Δ) | 95% CI | Sig? |",
+                "| :--- | :--- | :---: | :---: | :---: | :---: | :---: |",
+            ]
+        )
         for cat, cat_metrics in by_type.items():
             for metric, res in cat_metrics.items():
                 sig_str = "✅" if res["significant"] else "—"

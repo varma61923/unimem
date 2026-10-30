@@ -72,7 +72,10 @@ def destination_label(url: str) -> str:
 
 
 async def _reject_private_target(
-    url: str, *, resolve=None, allowlist: Allowlist | None = None,
+    url: str,
+    *,
+    resolve=None,
+    allowlist: Allowlist | None = None,
 ) -> list[str]:
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https"):
@@ -100,8 +103,12 @@ async def _reject_private_target(
             continue
         if not allowlisted_host and (
             any(ip in net for net in _EXTRA_BLOCKED_NETWORKS)
-            or ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+            or ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
             or not ip.is_global
         ):
             raise EventError(
@@ -122,9 +129,11 @@ class EventType:
 
 
 EVENT_TYPES: dict[str, EventType] = {
-    e.name: e for e in (
+    e.name: e
+    for e in (
         EventType(
-            "trace.created", "A new trace was contributed",
+            "trace.created",
+            "A new trace was contributed",
             ("trace_id", "agent_type", "agent_id", "n_tags"),
         ),
         EventType(
@@ -133,7 +142,8 @@ EVENT_TYPES: dict[str, EventType] = {
             ("trace_id", "reason"),
         ),
         EventType(
-            "trace.deleted", "A trace was deleted",
+            "trace.deleted",
+            "A trace was deleted",
             ("trace_id",),
         ),
         EventType(
@@ -142,26 +152,28 @@ EVENT_TYPES: dict[str, EventType] = {
             ("rate", "salt", "outcome"),
         ),
         EventType(
-            "experiment.stopped", "A randomized holdout stopped",
+            "experiment.stopped",
+            "A randomized holdout stopped",
             ("salt",),
         ),
         EventType(
             "experiment.verdict",
-            "The holdout reached a verdict for one memory -- the event a "
-            "deploy gate actually wants",
-            ("trace_id", "verdict", "effect", "p_value", "n_treated",
-             "n_control", "underpowered"),
+            "The holdout reached a verdict for one memory -- the event a deploy gate actually wants",
+            ("trace_id", "verdict", "effect", "p_value", "n_treated", "n_control", "underpowered"),
         ),
         EventType(
-            "retention.purged", "A retention plan was applied",
+            "retention.purged",
+            "A retention plan was applied",
             ("plan", "n_deleted", "n_held"),
         ),
         EventType(
-            "legal_hold.placed", "Data was frozen against retention",
+            "legal_hold.placed",
+            "Data was frozen against retention",
             ("hold_id", "object_type", "target_id"),
         ),
         EventType(
-            "legal_hold.released", "A freeze was lifted",
+            "legal_hold.released",
+            "A freeze was lifted",
             ("hold_id",),
         ),
         EventType(
@@ -177,8 +189,7 @@ EVENT_TYPES: dict[str, EventType] = {
         EventType(
             "report.generated",
             "A periodic usage summary was generated (hub/alerts.py)",
-            ("period", "plan", "traces_total", "commons_queries_used",
-             "commons_queries_allowance"),
+            ("period", "plan", "traces_total", "commons_queries_used", "commons_queries_allowance"),
         ),
         EventType(
             "user.privileged_role_granted",
@@ -204,10 +215,7 @@ def check_payload(event_type: str, payload: dict) -> dict:
     try:
         spec = EVENT_TYPES[event_type]
     except KeyError:
-        raise EventError(
-            f"unknown event type {event_type!r}; known types: "
-            + ", ".join(EVENT_NAMES)
-        ) from None
+        raise EventError(f"unknown event type {event_type!r}; known types: " + ", ".join(EVENT_NAMES)) from None
 
     unknown = sorted(set(payload) - set(spec.fields))
     if unknown:
@@ -261,13 +269,15 @@ def signature_header(secret: str, timestamp: int, body: str) -> str:
 
 
 def verify_signature(
-    secret: str, header: str, body: str, *,
-    now: int | None = None, tolerance: int = REPLAY_TOLERANCE_SECONDS,
+    secret: str,
+    header: str,
+    body: str,
+    *,
+    now: int | None = None,
+    tolerance: int = REPLAY_TOLERANCE_SECONDS,
 ) -> bool:
     """Whether a delivery is genuine and recent."""
-    parts = dict(
-        piece.split("=", 1) for piece in header.split(",") if "=" in piece
-    )
+    parts = dict(piece.split("=", 1) for piece in header.split(",") if "=" in piece)
     sent = parts.get(_SIGNATURE_VERSION, "")
     try:
         timestamp = int(parts.get("t", ""))
@@ -281,8 +291,13 @@ def verify_signature(
 
 
 async def add_endpoint(
-    session, org_id: str, url: str, *, events: list[str] | None = None,
-    signing_key: str = "", cipher: EnvelopeCipher = NULL_CIPHER,
+    session,
+    org_id: str,
+    url: str,
+    *,
+    events: list[str] | None = None,
+    signing_key: str = "",
+    cipher: EnvelopeCipher = NULL_CIPHER,
 ) -> tuple[WebhookEndpoint, str]:
     """Register a URL. Returns the endpoint and its secret, shown once."""
     if not url.startswith("https://"):
@@ -297,12 +312,11 @@ async def add_endpoint(
     await _reject_private_target(url)
     for name in events or []:
         if name not in EVENT_TYPES:
-            raise EventError(
-                f"unknown event type {name!r}; known types: "
-                + ", ".join(EVENT_NAMES)
-            )
+            raise EventError(f"unknown event type {name!r}; known types: " + ", ".join(EVENT_NAMES))
     endpoint = WebhookEndpoint(
-        org_id=org_id, url=cipher.encrypt(url), events=sorted(set(events or EVENT_NAMES)),
+        org_id=org_id,
+        url=cipher.encrypt(url),
+        events=sorted(set(events or EVENT_NAMES)),
     )
     session.add(endpoint)
     await session.flush()
@@ -321,16 +335,18 @@ async def rotate_secret(session, endpoint_id: str, *, signing_key: str = "") -> 
 
 async def endpoints_for(session, org_id: str) -> list[WebhookEndpoint]:
     rows = await session.execute(
-        select(WebhookEndpoint)
-        .where(WebhookEndpoint.org_id == org_id)
-        .order_by(WebhookEndpoint.created_at)
+        select(WebhookEndpoint).where(WebhookEndpoint.org_id == org_id).order_by(WebhookEndpoint.created_at)
     )
     return list(rows.scalars())
 
 
 async def emit(
-    session, org_id: str, event_type: str, payload: dict | None = None,
-    *, now: datetime.datetime | None = None,
+    session,
+    org_id: str,
+    event_type: str,
+    payload: dict | None = None,
+    *,
+    now: datetime.datetime | None = None,
 ) -> list[WebhookDelivery]:
     """Queue one delivery per subscribed, enabled endpoint."""
     body = check_payload(event_type, payload or {})
@@ -346,8 +362,12 @@ async def emit(
         if event_type not in (endpoint.events or ()):
             continue
         delivery = WebhookDelivery(
-            org_id=org_id, endpoint_id=endpoint.id, event_type=event_type,
-            payload=body, created_at=moment, next_attempt_at=moment,
+            org_id=org_id,
+            endpoint_id=endpoint.id,
+            event_type=event_type,
+            payload=body,
+            created_at=moment,
+            next_attempt_at=moment,
         )
         session.add(delivery)
         queued.append(delivery)
@@ -386,8 +406,12 @@ DELIVERY_CONCURRENCY = 16
 
 
 async def deliver_pending(
-    session, transport, *, signing_key: str = "",
-    now: datetime.datetime | None = None, limit: int = 100,
+    session,
+    transport,
+    *,
+    signing_key: str = "",
+    now: datetime.datetime | None = None,
+    limit: int = 100,
     cipher: EnvelopeCipher = NULL_CIPHER,
 ) -> DeliveryResult:
     """Attempt the deliveries that are due."""
@@ -408,11 +432,16 @@ async def deliver_pending(
     )
     deliveries = list(rows.scalars())
     endpoint_ids = {delivery.endpoint_id for delivery in deliveries}
-    endpoints = {
-        endpoint.id: endpoint for endpoint in (await session.execute(
-            select(WebhookEndpoint).where(WebhookEndpoint.id.in_(endpoint_ids))
-        )).scalars()
-    } if endpoint_ids else {}
+    endpoints = (
+        {
+            endpoint.id: endpoint
+            for endpoint in (
+                await session.execute(select(WebhookEndpoint).where(WebhookEndpoint.id.in_(endpoint_ids)))
+            ).scalars()
+        }
+        if endpoint_ids
+        else {}
+    )
 
     counts = {"attempted": 0, "delivered": 0, "retrying": 0, "gave_up": 0, "deferred": 0}
     queues: dict[str, list[WebhookDelivery]] = {}
@@ -437,7 +466,8 @@ async def deliver_pending(
             "X-UniMem-Event-Id": delivery.id,
             "X-UniMem-Signature": signature_header(
                 derive_secret(signing_key, endpoint.id, endpoint.key_version),
-                timestamp, body,
+                timestamp,
+                body,
             ),
         }
         try:
@@ -449,9 +479,7 @@ async def deliver_pending(
                 delivery.status = STATUS_FAILED
                 counts["gave_up"] += 1
             else:
-                delivery.next_attempt_at = moment + datetime.timedelta(
-                    seconds=_backoff(delivery.attempts)
-                )
+                delivery.next_attempt_at = moment + datetime.timedelta(seconds=_backoff(delivery.attempts))
                 counts["retrying"] += 1
             return False
         delivery.status = STATUS_DELIVERED
@@ -473,9 +501,12 @@ async def deliver_pending(
             for index, delivery in enumerate(queue):
                 if await attempt(endpoints[endpoint_id], delivery):
                     continue
-                retry_at = (delivery.next_attempt_at if delivery.status == STATUS_PENDING
-                            else moment + datetime.timedelta(seconds=_backoff(0)))
-                for later in queue[index + 1:]:
+                retry_at = (
+                    delivery.next_attempt_at
+                    if delivery.status == STATUS_PENDING
+                    else moment + datetime.timedelta(seconds=_backoff(0))
+                )
+                for later in queue[index + 1 :]:
                     later.next_attempt_at = max(later.next_attempt_at, retry_at)
                     counts["deferred"] += 1
                 return
@@ -487,23 +518,17 @@ async def deliver_pending(
 async def pending_count(session, org_id: str | None = None) -> int:
     from sqlalchemy import func
 
-    query = select(func.count()).select_from(WebhookDelivery).where(
-        WebhookDelivery.status == STATUS_PENDING
-    )
+    query = select(func.count()).select_from(WebhookDelivery).where(WebhookDelivery.status == STATUS_PENDING)
     if org_id:
         query = query.where(WebhookDelivery.org_id == org_id)
     return int(await session.scalar(query) or 0)
 
 
-async def failed_deliveries(
-    session, org_id: str | None = None, limit: int = 50
-) -> list[WebhookDelivery]:
+async def failed_deliveries(session, org_id: str | None = None, limit: int = 50) -> list[WebhookDelivery]:
     query = select(WebhookDelivery).where(WebhookDelivery.status == STATUS_FAILED)
     if org_id:
         query = query.where(WebhookDelivery.org_id == org_id)
-    rows = await session.execute(
-        query.order_by(WebhookDelivery.created_at.desc()).limit(limit)
-    )
+    rows = await session.execute(query.order_by(WebhookDelivery.created_at.desc()).limit(limit))
     return list(rows.scalars())
 
 
@@ -529,8 +554,11 @@ def http_transport(timeout: float = 10.0, allowlist: Allowlist | None = None):
             for address in self._addresses:
                 try:
                     return await self._backend.connect_tcp(
-                        address, port, timeout=timeout,
-                        local_address=local_address, socket_options=socket_options,
+                        address,
+                        port,
+                        timeout=timeout,
+                        local_address=local_address,
+                        socket_options=socket_options,
                     )
                 except Exception as exc:  # noqa: BLE001 - try the next validated address
                     last_error = exc
@@ -546,7 +574,9 @@ def http_transport(timeout: float = 10.0, allowlist: Allowlist | None = None):
         # already-validated address rather than resolving it again.
         transport._pool._network_backend = _PinnedBackend(addresses)  # type: ignore[attr-defined]
         async with httpx.AsyncClient(
-            timeout=timeout, follow_redirects=False, transport=transport,
+            timeout=timeout,
+            follow_redirects=False,
+            transport=transport,
         ) as client:
             # Only the status is used. Buffering an endpoint-controlled body
             # lets a recipient consume arbitrary memory (including via gzip).

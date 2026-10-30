@@ -8,6 +8,7 @@ from threading import Event
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem import frontmatter
 
 
@@ -116,7 +117,7 @@ def test_fork_child_resets_inherited_held_lock_and_accounting(isolated_memo):
     child = context.Process(target=_parse_after_fork, args=(result,))
     try:
         with frontmatter._PARSED_LOCK:
-            child.start()
+            intentional_fork(child.start)
             child.join(5)
         assert not child.is_alive(), "child inherited a permanently held parent lock"
         assert child.exitcode == 0

@@ -2,9 +2,28 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from typing import Protocol
 
 from unimem import overlap
+
+
+class Signature(Protocol):
+    """An iterable signature accepted from Python or NumPy callers."""
+
+    def __len__(self) -> int: ...
+
+    def __iter__(self) -> Iterator[object]: ...
+
+
+class SignatureRows(Protocol):
+    """A sized iterable matrix of signatures."""
+
+    def __len__(self) -> int: ...
+
+    def __iter__(self) -> Iterator[Signature]: ...
+
 
 COMMONS_NUM_PERM = overlap.DEFAULT_NUM_PERM
 
@@ -21,9 +40,11 @@ MAX_HITS_PER_TRACE_PER_QUERY = 20
 MAX_COMMONS_CORPUS = 20_000
 
 try:  # pragma: no cover - exercised by whichever path the environment has
-    import numpy as _np
+    import numpy as _np_import
 except ImportError:
     _np = None
+else:
+    _np = _np_import
 
 MAX_COMMONS_CORPUS_NO_NUMPY = 2_000
 
@@ -73,9 +94,7 @@ def vote_counts_toward_standing(
     org_created_at: datetime | None,
     now: datetime | None = None,
 ) -> bool:
-    return org_is_established(
-        trace_count=trace_count, org_created_at=org_created_at, now=now
-    )
+    return org_is_established(trace_count=trace_count, org_created_at=org_created_at, now=now)
 
 
 def hit_counts_toward_quality_signal(
@@ -84,9 +103,8 @@ def hit_counts_toward_quality_signal(
     org_created_at: datetime | None,
     now: datetime | None = None,
 ) -> bool:
-    return org_is_established(
-        trace_count=trace_count, org_created_at=org_created_at, now=now
-    )
+    return org_is_established(trace_count=trace_count, org_created_at=org_created_at, now=now)
+
 
 DISPUTED_TRUST_CEILING = 0.5
 
@@ -118,8 +136,7 @@ def counts_as_coverage(standing: str) -> bool:
     return standing != STANDING_DISPUTED
 
 
-class CommonsInputError(ValueError):
-    ...
+class CommonsInputError(ValueError): ...
 
 
 def matchable_text(title: str, context_text: str, tags: list[str] | None) -> str:
@@ -138,8 +155,7 @@ def validate_submitted_failures(failures: object) -> list[tuple[str, list[int]]]
         raise CommonsInputError("failures must be a list")
     if len(failures) > MAX_SUBMITTED_FAILURES:
         raise CommonsInputError(
-            f"too many failures submitted ({len(failures)}); "
-            f"the maximum is {MAX_SUBMITTED_FAILURES} per request"
+            f"too many failures submitted ({len(failures)}); the maximum is {MAX_SUBMITTED_FAILURES} per request"
         )
 
     out: list[tuple[str, list[int]]] = []
@@ -181,14 +197,14 @@ def validate_query_signature(signature: object) -> list[int]:
     return _coerce_signature(signature, "query_signature")
 
 
-def estimate(sig_a: list[int], sig_b: list[int]) -> float:
+def estimate(sig_a: Signature, sig_b: Signature) -> float:
     """Estimated Jaccard similarity between two signatures of equal width."""
     return overlap.estimate_jaccard(sig_a, sig_b)
 
 
 def best_matches(
     submitted: list[tuple[str, list[int]]],
-    corpus_signatures: list[list[int]],
+    corpus_signatures: SignatureRows,
 ) -> list[tuple[int, float]]:
     if len(corpus_signatures) == 0:
         return [(-1, 0.0) for _ in submitted]
@@ -216,7 +232,7 @@ def best_matches(
 
 def rank_candidates(
     query_signature: list[int],
-    corpus_signatures: list[list[int]],
+    corpus_signatures: SignatureRows,
     top_k: int,
 ) -> list[tuple[int, float]]:
     if len(corpus_signatures) == 0 or top_k <= 0:
@@ -228,7 +244,7 @@ def rank_candidates(
         order = _np.argsort(-sims, kind="stable")[:top_k]
         return [(int(i), float(sims[i])) for i in order if float(sims[i]) > 0.0]
 
-    scored = [(i, estimate(query_signature, c)) for i, c in enumerate(corpus_signatures)]
+    scored = [(i, estimate(query_signature, candidate)) for i, candidate in enumerate(corpus_signatures)]
     scored = [(i, s) for i, s in scored if s > 0.0]
     scored.sort(key=lambda x: -x[1])
     return scored[:top_k]

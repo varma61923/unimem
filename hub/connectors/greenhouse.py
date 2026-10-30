@@ -1,4 +1,5 @@
 """Greenhouse: recruiting events -> signals, for HR and recruiting agents."""
+
 from __future__ import annotations
 
 import hashlib
@@ -15,8 +16,7 @@ name = "greenhouse"
 def validate_config(config: object) -> dict:
     out = base.common_config(config, allowed={"success_stages"})
     stages = out.get("success_stages", [])
-    if not isinstance(stages, list) or not all(isinstance(s, str) and s.strip() for s in stages) \
-            or len(stages) > 50:
+    if not isinstance(stages, list) or not all(isinstance(s, str) and s.strip() for s in stages) or len(stages) > 50:
         raise base.ConfigError("success_stages must be a list of up to 50 stage names")
     out["success_stages"] = [s.strip() for s in stages]
     return out

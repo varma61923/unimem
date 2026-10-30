@@ -1,4 +1,5 @@
 """UniMem model coverage, unbiased scores, private releases and trusted pooling."""
+
 from __future__ import annotations
 
 import copy
@@ -14,21 +15,39 @@ UNIT = fp.digest("public skill body")
 
 
 def aggregate(tenant, mean, n=200, release="r1"):
-    return {"type": pool.DOMAIN, "version": 1, "tenant": tenant, "unit_hash": UNIT,
-        "release_id": release, "score_bound": 20.0, "noise_variance": 0.0, "nuisance": [.5, .5],
-        "classification": "estimate", "privacy": None, "e_value": 1.0,
-        "arms": {arm: {"count": n//2, "score_sum": mean*n/2, "square_sum": (1+mean*mean)*n/2}
-                 for arm in pool.ARMS}}
+    return {
+        "type": pool.DOMAIN,
+        "version": 1,
+        "tenant": tenant,
+        "unit_hash": UNIT,
+        "release_id": release,
+        "score_bound": 20.0,
+        "noise_variance": 0.0,
+        "nuisance": [0.5, 0.5],
+        "classification": "estimate",
+        "privacy": None,
+        "e_value": 1.0,
+        "arms": {
+            arm: {"count": n // 2, "score_sum": mean * n / 2, "square_sum": (1 + mean * mean) * n / 2}
+            for arm in pool.ARMS
+        },
+    }
 
 
-def traffic(rng, n, effect=.2):
+def traffic(rng, n, effect=0.2):
     rows = []
     for i in range(n):
-        rate = .15 if i < n//2 else .85
+        rate = 0.15 if i < n // 2 else 0.85
         injected = rng.random() >= rate
-        base = .25 if i < n//2 else .65
-        rows.append({"occasion_id": str(i), "rate": rate, "injected": injected,
-                     "outcome": rng.random() < base + effect*injected})
+        base = 0.25 if i < n // 2 else 0.65
+        rows.append(
+            {
+                "occasion_id": str(i),
+                "rate": rate,
+                "injected": injected,
+                "outcome": rng.random() < base + effect * injected,
+            }
+        )
     return rows
 
 
@@ -49,11 +68,12 @@ def test_seeded_heterogeneity_coverage_with_unbalanced_study_precisions():
     # Eight-owner DL/HK intervals can under-cover with this imbalance; see docs.
     counts = [100000, 50000, 2000, 400, 100, 40, 20, 20] * 3
     for _ in range(120):
-        contributions = [aggregate(str(i), rng.gauss(.1, .25) + rng.gauss(0, 1/math.sqrt(n)), n)
-                         for i, n in enumerate(counts)]
+        contributions = [
+            aggregate(str(i), rng.gauss(0.1, 0.25) + rng.gauss(0, 1 / math.sqrt(n)), n) for i, n in enumerate(counts)
+        ]
         result = pool.pool(contributions, groups={str(i): str(i) for i in range(len(counts))})
-        covered += result["interval"][0] <= .1 <= result["interval"][1]
-        positive_variance += result["tau_squared"] > .01
+        covered += result["interval"][0] <= 0.1 <= result["interval"][1]
+        positive_variance += result["tau_squared"] > 0.01
     assert covered >= 108  # 95% target, 5-point finite Monte Carlo tolerance.
     assert positive_variance >= 108
 
@@ -64,14 +84,14 @@ def test_frozen_nuisance_aipw_is_unbiased_with_unequal_propensities_and_time_tre
     for _ in range(100):
         body = pool.summarize("tenant", UNIT, traffic(rng, 400), release_id="r")
         estimates.append(sum(a["score_sum"] for a in body["arms"].values()) / 400)
-    assert sum(estimates)/len(estimates) == pytest.approx(.2, abs=.025)
+    assert sum(estimates) / len(estimates) == pytest.approx(0.2, abs=0.025)
 
 
 def test_sybil_shards_do_not_create_studies_or_change_the_effect():
-    original = aggregate("one", .3, 400)
-    second = aggregate("two", -.1, 200)
+    original = aggregate("one", 0.3, 400)
+    second = aggregate("two", -0.1, 200)
     before = pool.pool([original, second], groups={"one": "owner", "two": "other"})
-    split = [aggregate("alias-a", .3, 200), aggregate("alias-b", .3, 200), second]
+    split = [aggregate("alias-a", 0.3, 200), aggregate("alias-b", 0.3, 200), second]
     after = pool.pool(split, groups={"alias-a": "owner", "alias-b": "owner", "two": "other"})
     assert after["effect"] == pytest.approx(before["effect"])
     assert after["interval"] == pytest.approx(before["interval"])
@@ -83,7 +103,7 @@ def test_sybil_shards_do_not_create_studies_or_change_the_effect():
 
 
 def test_e_value_combination_states_its_null_and_power_limits():
-    a, b = aggregate("a", .1), aggregate("b", .2)
+    a, b = aggregate("a", 0.1), aggregate("b", 0.2)
     a["e_value"], b["e_value"] = 2, 4
     mean = pool.pool([a, b], groups={"a": "a", "b": "b"})
     product = pool.pool([a, b], groups={"a": "a", "b": "b"}, independent=True)
@@ -95,7 +115,7 @@ def test_e_value_combination_states_its_null_and_power_limits():
     assert "conditional directional" in mean["e_value_null"]
     with pytest.raises(ValueError, match="replayed"):
         pool.pool([a, a], groups={"a": "a"})
-    altered = {**b, "unit_hash": "0"*64}
+    altered = {**b, "unit_hash": "0" * 64}
     with pytest.raises(ValueError, match="fingerprint"):
         pool.pool([a, altered], groups={"a": "a", "b": "b"})
 
@@ -103,12 +123,11 @@ def test_e_value_combination_states_its_null_and_power_limits():
 def test_gaussian_calibration_and_private_release_do_not_leak_exact_evidence(monkeypatch):
     scales = []
     monkeypatch.setattr(random.SystemRandom, "gauss", lambda self, mean, sigma: scales.append(sigma) or 0.0)
-    body = pool.summarize("a", UNIT, traffic(random.Random(4), 40), release_id="private",
-                          epsilon=.5, delta=1e-6)
+    body = pool.summarize("a", UNIT, traffic(random.Random(4), 40), release_id="private", epsilon=0.5, delta=1e-6)
     bound = body["score_bound"]
-    sigma = math.hypot(2*bound, bound**2) * math.sqrt(2*math.log(1.25/1e-6)) / .5
-    assert scales == pytest.approx([sigma]*4)
-    assert body["noise_variance"] == pytest.approx(sigma*sigma)
+    sigma = math.hypot(2 * bound, bound**2) * math.sqrt(2 * math.log(1.25 / 1e-6)) / 0.5
+    assert scales == pytest.approx([sigma] * 4)
+    assert body["noise_variance"] == pytest.approx(sigma * sigma)
     assert body["e_value"] == 1
     pool.validate(body)
     body["e_value"] = 2
@@ -118,7 +137,7 @@ def test_gaussian_calibration_and_private_release_do_not_leak_exact_evidence(mon
 
 @pytest.mark.parametrize("field,value", [("score_sum", float("nan")), ("square_sum", -1), ("count", True)])
 def test_invalid_stats_rejected(field, value):
-    body = aggregate("a", .2)
+    body = aggregate("a", 0.2)
     body["arms"]["treated"][field] = value
     with pytest.raises(ValueError):
         pool.validate(body)
@@ -131,12 +150,19 @@ def test_signed_contributions_privacy_budget_and_scope(tmp_path):
 
     receiver = str(tmp_path / "receiver")
     bundles = []
-    for tenant, mean in (("a", .3), ("b", .2)):
+    for tenant, mean in (("a", 0.3), ("b", 0.2)):
         root = str(tmp_path / tenant)
         with memory_authority.writer(tenant, "operator"):
             card = pooled_io.issue_identity(root, tenant)
-            pooled_io.register(receiver, tenant, principal=tenant, public_key=card["public_key"],
-                group=tenant, stake_cents=100, expires_at="2099-01-01T00:00:00+00:00")
+            pooled_io.register(
+                receiver,
+                tenant,
+                principal=tenant,
+                public_key=card["public_key"],
+                group=tenant,
+                stake_cents=100,
+                expires_at="2099-01-01T00:00:00+00:00",
+            )
             bundle = pooled_io.contribute(root, tenant, UNIT, traffic(random.Random(1), 80, mean), release_id="r")
         pooled_io.accept(receiver, bundle)
         bundles.append(bundle)
@@ -150,12 +176,12 @@ def test_signed_contributions_privacy_budget_and_scope(tmp_path):
     with pytest.raises(PermissionError):
         pooled_io.accept(receiver, expired)
     root = str(tmp_path / "private")
-    pooled_io.configure_privacy(root, "a", epsilon=.5, delta=1e-5)
+    pooled_io.configure_privacy(root, "a", epsilon=0.5, delta=1e-5)
     rows = traffic(random.Random(2), 100)
-    private = pooled_io.contribute(root, "a", UNIT, rows, release_id="p", epsilon=.5, delta=1e-6)
-    assert pooled_io.contribute(root, "a", UNIT, rows, release_id="p", epsilon=.5, delta=1e-6) == private
+    private = pooled_io.contribute(root, "a", UNIT, rows, release_id="p", epsilon=0.5, delta=1e-6)
+    assert pooled_io.contribute(root, "a", UNIT, rows, release_id="p", epsilon=0.5, delta=1e-6) == private
     with pytest.raises(PermissionError, match="budget"):
-        pooled_io.contribute(root, "a", UNIT, rows, release_id="p2", epsilon=.5, delta=1e-6)
+        pooled_io.contribute(root, "a", UNIT, rows, release_id="p2", epsilon=0.5, delta=1e-6)
     with pytest.raises(ValueError):
         pooled_io.configure_privacy(root, "a", epsilon=1, delta=1e-5)
     store.put(root, "test", "private", {"text": "scoped"}, scopes=["tenant:a"])

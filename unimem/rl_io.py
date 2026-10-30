@@ -5,6 +5,7 @@ manifest journals. Every export re-admits its complete cohort before producing
 bytes. Deletion invalidates the manifest and removes managed JSONL content;
 previously downloaded data needs downstream erasure acknowledgement (G20).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,8 +46,15 @@ def _canonical(root: str, units: Sequence[str]) -> dict[tuple[str, str], dict[st
         identity = row.lesson, row.occasion_id
         if identity in result:
             raise ValueError("UniMem RL export refuses duplicate canonical assignment rows")
-        result[identity] = {"unit": row.lesson, "occasion_id": row.occasion_id, "injected": row.injected,
-            "rate": row.rate, "salt": row.salt, "outcome": row.succeeded, "context": row.context or "default"}
+        result[identity] = {
+            "unit": row.lesson,
+            "occasion_id": row.occasion_id,
+            "injected": row.injected,
+            "rate": row.rate,
+            "salt": row.salt,
+            "outcome": row.succeeded,
+            "context": row.context or "default",
+        }
     report = integrity.audit(selected, schedules=allocation.history(root))
     if selected and not report.readable:
         raise PermissionError("UniMem RL export requires a readable canonical integrity audit")
@@ -57,6 +65,7 @@ def _authorize_unit(root: str, unit: str, context: Sequence[str]) -> str:
     fp.text(unit)
     if unit.startswith("skill:"):
         from unimem import skill_io
+
         skill_io._load(root, unit, context)
         return store.reference(skill_io.KIND, unit)
     elif unit.startswith("writer:"):
@@ -68,9 +77,18 @@ def _authorize_unit(root: str, unit: str, context: Sequence[str]) -> str:
     return unit
 
 
-def capture(root: str, occasion_id: str, unit: str, cluster: str, prompt: str, response: str, *,
-            context: Sequence[str] = (), policy_logprobs: Sequence[float] | None = None,
-            base_logprobs: Sequence[float] | None = None) -> dict[str, Any]:
+def capture(
+    root: str,
+    occasion_id: str,
+    unit: str,
+    cluster: str,
+    prompt: str,
+    response: str,
+    *,
+    context: Sequence[str] = (),
+    policy_logprobs: Sequence[float] | None = None,
+    base_logprobs: Sequence[float] | None = None,
+) -> dict[str, Any]:
     """Bind a response's actual occasion to its authenticated trace receipt.
 
     Call after reporting the canonical binary outcome. This is instrumentation,
@@ -85,32 +103,64 @@ def capture(root: str, occasion_id: str, unit: str, cluster: str, prompt: str, r
     if canonical is None or type(canonical["outcome"]) is not bool:
         raise ValueError("UniMem training capture requires a resolved canonical trial occasion")
     rl_export.token_kl(policy_logprobs, base_logprobs, 100)
-    trial = {"type": TYPE, "version": VERSION, "occasion_id": occasion_id, "unit": unit, "cluster": cluster,
-             "canonical_hash": fp.digest(canonical),
-             "policy_logprobs": list(policy_logprobs) if policy_logprobs is not None else None,
-             "base_logprobs": list(base_logprobs) if base_logprobs is not None else None}
+    trial = {
+        "type": TYPE,
+        "version": VERSION,
+        "occasion_id": occasion_id,
+        "unit": unit,
+        "cluster": cluster,
+        "canonical_hash": fp.digest(canonical),
+        "policy_logprobs": list(policy_logprobs) if policy_logprobs is not None else None,
+        "base_logprobs": list(base_logprobs) if base_logprobs is not None else None,
+    }
     from unimem import lineage
 
     labels = lineage.labels(root, unit)
     trial["unit_integrity"] = labels["integrity"]
     trial["unit_confidentiality"] = lineage.record(root, unit).get("confidentiality", "unspecified")
     identity = "rl-" + fp.digest([unit, occasion_id])[:32]
-    if (memory_authority.lineage_blocked(root, identity)
-            or store.latest(root, "rl-captures").get(identity, {}).get("status") == "erased"):
+    if (
+        memory_authority.lineage_blocked(root, identity)
+        or store.latest(root, "rl-captures").get(identity, {}).get("status") == "erased"
+    ):
         raise PermissionError("UniMem erased training response identities cannot be reused")
-    path = trace_io.write_new(root, title="UniMem randomized response", context=prompt, solution=response,
-        trace_id=identity, outcome={"resolved": canonical["outcome"]}, tags=["unimem-rl"],
-        extra={"scopes": list(context), "source_traces": [unit],
-               "extensions": {"profile": {"procedure": {"rl": trial}}}})
+    path = trace_io.write_new(
+        root,
+        title="UniMem randomized response",
+        context=prompt,
+        solution=response,
+        trace_id=identity,
+        outcome={"resolved": canonical["outcome"]},
+        tags=["unimem-rl"],
+        extra={
+            "scopes": list(context),
+            "source_traces": [unit],
+            "extensions": {"profile": {"procedure": {"rl": trial}}},
+        },
+    )
     if path is None:
         existing = store.traces(root).get(identity)
-        if (existing is None or existing.get("context_text") != prompt or existing.get("solution_text") != response
-                or existing.get("extensions", {}).get("profile", {}).get("procedure", {}).get("rl") != trial
-                or existing.get("scopes", []) != list(context)):
+        if (
+            existing is None
+            or existing.get("context_text") != prompt
+            or existing.get("solution_text") != response
+            or existing.get("extensions", {}).get("profile", {}).get("procedure", {}).get("rl") != trial
+            or existing.get("scopes", []) != list(context)
+        ):
             raise ValueError("UniMem response occasion is already bound to different content")
     else:
-        store.event(root, "rl-captures", identity, {"filename": os.path.relpath(path, root), "unit": unit,
-                    "sources": [source_unit], "scopes": list(context), "status": "active"})
+        store.event(
+            root,
+            "rl-captures",
+            identity,
+            {
+                "filename": os.path.relpath(path, root),
+                "unit": unit,
+                "sources": [source_unit],
+                "scopes": list(context),
+                "status": "active",
+            },
+        )
     return {"trace_id": identity, "unit": unit, "occasion_id": occasion_id}
 
 
@@ -127,7 +177,7 @@ def cohort(root: str, units: Sequence[str], *, context: Sequence[str] = ()) -> l
     visible_ids = [i for i, t in traces.items() if memory_control.matches(t.get("scopes", []), list(context))]
     admitted_ids: set[str] = set()
     for start in range(0, len(visible_ids), 512):
-        admitted_ids.update(store.admit(root, visible_ids[start:start+512], context=context))
+        admitted_ids.update(store.admit(root, visible_ids[start : start + 512], context=context))
     from unimem import lineage
 
     labels = {unit: lineage.labels(root, unit) for unit in units}
@@ -153,14 +203,24 @@ def cohort(root: str, units: Sequence[str], *, context: Sequence[str] = ()) -> l
             raise ValueError("UniMem response binding differs from its canonical trial")
         if key in seen or trace.get("outcome", {}).get("resolved") is not row["outcome"]:
             raise ValueError("UniMem response cohort has duplicate or contradictory outcomes")
-        if (trial["unit_integrity"] != labels[unit]["integrity"]
-                or trial["unit_confidentiality"] != confidentiality[unit]):
+        if (
+            trial["unit_integrity"] != labels[unit]["integrity"]
+            or trial["unit_confidentiality"] != confidentiality[unit]
+        ):
             raise PermissionError("UniMem RL source labels changed after response capture")
         seen.add(key)
-        episode = {**row, "trace_id": identity, "cluster": trial["cluster"], "prompt": trace["context_text"],
-            "response": trace["solution_text"], "scopes": trace.get("scopes", []),
-            "integrity": labels[unit]["integrity"], "confidentiality": confidentiality[unit],
-            "policy_logprobs": trial.get("policy_logprobs"), "base_logprobs": trial.get("base_logprobs")}
+        episode = {
+            **row,
+            "trace_id": identity,
+            "cluster": trial["cluster"],
+            "prompt": trace["context_text"],
+            "response": trace["solution_text"],
+            "scopes": trace.get("scopes", []),
+            "integrity": labels[unit]["integrity"],
+            "confidentiality": confidentiality[unit],
+            "policy_logprobs": trial.get("policy_logprobs"),
+            "base_logprobs": trial.get("base_logprobs"),
+        }
         rl_export.validate(episode)
         result.append(episode)
     if seen != set(canonical):
@@ -178,7 +238,6 @@ def _training_quality(root: str, episodes: Sequence[dict[str, Any]]) -> None:
         human_help.assert_training(root, sorted(set(identities)), context=scopes)
 
 
-
 def _egress(root: str, episodes: Sequence[dict[str, Any]]) -> None:
     from unimem import memory_ifc, policy_io
 
@@ -194,23 +253,36 @@ def _egress(root: str, episodes: Sequence[dict[str, Any]]) -> None:
                 raise PermissionError("UniMem training content failed the information-flow egress check")
 
 
-def effects(episodes: Sequence[dict[str, Any]], *, alpha: float = .05) -> dict[str, dict[str, Any]]:
-    fp.number(alpha, 1e-6, .5)
+def effects(episodes: Sequence[dict[str, Any]], *, alpha: float = 0.05) -> dict[str, dict[str, Any]]:
+    fp.number(alpha, 1e-6, 0.5)
     units = sorted({e["unit"] for e in episodes})
     result = {}
     for unit in units:
         rows = [e for e in episodes if e["unit"] == unit]
         observations = [aipw.Observation(e["injected"], e["outcome"], e["rate"], e["context"]) for e in rows]
-        bound = 1/min(min(e["rate"], 1-e["rate"]) for e in rows)
-        effect, low, high = eprocess.interval(aipw.aipw_scores(observations), bound=bound, alpha=alpha/len(units))
-        result[unit] = {"effect": effect, "interval": [low, high], "classification": "estimate",
-                        "assumptions": "complete randomized cohort; stationary effects; exact propensities"}
+        bound = 1 / min(min(e["rate"], 1 - e["rate"]) for e in rows)
+        effect, low, high = eprocess.interval(aipw.aipw_scores(observations), bound=bound, alpha=alpha / len(units))
+        result[unit] = {
+            "effect": effect,
+            "interval": [low, high],
+            "classification": "estimate",
+            "assumptions": "complete randomized cohort; stationary effects; exact propensities",
+        }
     return result
 
 
-def prepare(root: str, units: Sequence[str], *, format: str = "dpo", context: Sequence[str] = (),
-            kl_budget: float = .1, alpha: float = .05, exploitation: float = .8,
-            exploration: float = .2, connector: str = "generic") -> dict[str, Any]:
+def prepare(
+    root: str,
+    units: Sequence[str],
+    *,
+    format: str = "dpo",
+    context: Sequence[str] = (),
+    kl_budget: float = 0.1,
+    alpha: float = 0.05,
+    exploitation: float = 0.8,
+    exploration: float = 0.2,
+    connector: str = "generic",
+) -> dict[str, Any]:
     if format not in rl_export.FORMATS:
         raise ValueError("UniMem RL format must be dpo, advantage or replay")
     if connector not in rl_export.CONNECTORS:
@@ -218,16 +290,22 @@ def prepare(root: str, units: Sequence[str], *, format: str = "dpo", context: Se
     episodes = cohort(root, units, context=context)
     _egress(root, episodes)
     measured = effects(episodes, alpha=alpha)
-    kl = {(e["unit"], e["occasion_id"]): rl_export.token_kl(e["policy_logprobs"], e["base_logprobs"], kl_budget)
-          for e in episodes}
+    kl = {
+        (e["unit"], e["occasion_id"]): rl_export.token_kl(e["policy_logprobs"], e["base_logprobs"], kl_budget)
+        for e in episodes
+    }
     if any(k["status"] == "over sampled budget" for k in kl.values()):
         raise PermissionError("UniMem RL export exceeds its sampled token KL budget")
     if format == "dpo":
         rows = rl_export.preferences(episodes, measured, kl_budget=kl_budget)
     else:
         rows = [rl_export.advantage(e) for e in episodes]
-        weights = rl_export.priorities(episodes, {u: m["interval"] for u, m in measured.items()},
-                                      exploitation=exploitation, exploration=exploration)
+        weights = rl_export.priorities(
+            episodes,
+            {u: m["interval"] for u, m in measured.items()},
+            exploitation=exploitation,
+            exploration=exploration,
+        )
         for row, weight, episode in zip(rows, weights, episodes):
             row["meta"]["kl_to_base"] = kl[episode["unit"], row["occasion_id"]]
             row["meta"]["population_effect"] = measured[episode["unit"]]
@@ -262,8 +340,15 @@ def prepare(root: str, units: Sequence[str], *, format: str = "dpo", context: Se
         mapped = [rl_export.connect(r, connector) for r in chunk]
         # Bind connector output in the part ID as well as its signed content.
         part = "rl-part-" + fp.digest({"rows": mapped, "connector": connector})[:32]
-        store.put(root, "rl-parts", part, {"rows": mapped}, scopes=inherited_scopes,
-                  sources=sorted(source_ids), immutable=True)
+        store.put(
+            root,
+            "rl-parts",
+            part,
+            {"rows": mapped},
+            scopes=inherited_scopes,
+            sources=sorted(source_ids),
+            immutable=True,
+        )
         parts.append(part)
     fp.count(len(parts), 0, 256)
     # The wire digest covers the actual connector bytes, rather than the
@@ -271,25 +356,44 @@ def prepare(root: str, units: Sequence[str], *, format: str = "dpo", context: Se
     digest = hashlib.sha256()
     for row in rows:
         digest.update(_line(rl_export.connect(row, connector)))
-    identity = "rl-export-" + fp.digest({"format": format, "content": digest.hexdigest(),
-                                        "kl_budget": kl_budget, "connector": connector})[:32]
-    value = {"id": identity, "format": format, "parts": parts, "row_count": len(rows), "effects": measured,
-             "source_units": sorted(set(units)), "manifest_digest": digest.hexdigest(), "kl_budget": kl_budget,
-             "classification": "estimate", "vendor_schema": rl_export.VENDOR_SCHEMA_STATUS,
-             "connector": connector,
-             "encoding": "SHA256 of canonical UTF-8 JSONL with a newline after each record"}
+    identity = (
+        "rl-export-"
+        + fp.digest({"format": format, "content": digest.hexdigest(), "kl_budget": kl_budget, "connector": connector})[
+            :32
+        ]
+    )
+    value = {
+        "id": identity,
+        "format": format,
+        "parts": parts,
+        "row_count": len(rows),
+        "effects": measured,
+        "source_units": sorted(set(units)),
+        "manifest_digest": digest.hexdigest(),
+        "kl_budget": kl_budget,
+        "classification": "estimate",
+        "vendor_schema": rl_export.VENDOR_SCHEMA_STATUS,
+        "connector": connector,
+        "encoding": "SHA256 of canonical UTF-8 JSONL with a newline after each record",
+    }
     indexes = []
     for start in range(0, len(parts), 128):
-        references = [store.reference("rl-parts", p) for p in parts[start:start+128]]
+        references = [store.reference("rl-parts", p) for p in parts[start : start + 128]]
         index = "rl-index-" + fp.digest(references)[:32]
-        store.put(root, "rl-indexes", index, {"parts": parts[start:start+128]}, scopes=inherited_scopes,
-                  sources=references, immutable=True)
+        store.put(
+            root,
+            "rl-indexes",
+            index,
+            {"parts": parts[start : start + 128]},
+            scopes=inherited_scopes,
+            sources=references,
+            immutable=True,
+        )
         indexes.append(store.reference("rl-indexes", index))
     # Even an empty preference dataset carries governed effect metadata and
     # must be invalidated when its unit is erased.
     indexes.extend(_authorize_unit(root, unit, context) for unit in sorted(set(units)))
-    store.put(root, "rl-exports", identity, value, scopes=inherited_scopes,
-              sources=indexes, immutable=True)
+    store.put(root, "rl-exports", identity, value, scopes=inherited_scopes, sources=indexes, immutable=True)
     return value
 
 
@@ -320,5 +424,9 @@ def status(root: str, identity: str, *, context: Sequence[str] = ()) -> dict[str
         cohort(root, value["source_units"], context=context)
     except (ValueError, PermissionError):
         return {"id": identity, "status": "invalidated", "retraining_required": True, "classification": "heuristic"}
-    return {"id": identity, "status": "active", "manifest_digest": value["manifest_digest"],
-            "classification": "estimate"}
+    return {
+        "id": identity,
+        "status": "active",
+        "manifest_digest": value["manifest_digest"],
+        "classification": "estimate",
+    }

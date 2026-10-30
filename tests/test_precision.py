@@ -7,14 +7,23 @@ from unimem.cli import main
 
 
 def _row(oid, truth, returncode):
-    return {"occasion_id": oid, "truth": truth,
-            "signals": [{"detector": "from_test_exit_code", "args": {"returncode": returncode}}]}
+    return {
+        "occasion_id": oid,
+        "truth": truth,
+        "signals": [{"detector": "from_test_exit_code", "args": {"returncode": returncode}}],
+    }
 
 
 def test_the_metrics_are_what_their_names_say():
-    rows = [_row("tp1", True, 0), _row("tp2", True, 0), _row("fp", False, 0),
-            _row("tn", False, 1), _row("fn", True, 1),
-            _row("undecided-success", True, 5), _row("undecided-failure", False, 5)]
+    rows = [
+        _row("tp1", True, 0),
+        _row("tp2", True, 0),
+        _row("fp", False, 0),
+        _row("tn", False, 1),
+        _row("fn", True, 1),
+        _row("undecided-success", True, 5),
+        _row("undecided-failure", False, 5),
+    ]
     r = precision.evaluate(rows)
     assert (r.n, r.decided) == (7, 5)
     assert r.precision == pytest.approx(2 / 3) and r.failure_precision == pytest.approx(1 / 2)
@@ -36,9 +45,16 @@ def test_no_success_calls_means_no_precision_not_a_perfect_one(tmp_path, capsys)
     assert "n/a" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("text,message", [
-    ("", "empty"), ("not json", "not JSON"), ('{"signals": [{}]}', "boolean"),
-    ('{"truth": true}', "non-empty"), ('{"truth": true, "signals": []}', "non-empty")])
+@pytest.mark.parametrize(
+    "text,message",
+    [
+        ("", "empty"),
+        ("not json", "not JSON"),
+        ('{"signals": [{}]}', "boolean"),
+        ('{"truth": true}', "non-empty"),
+        ('{"truth": true, "signals": []}', "non-empty"),
+    ],
+)
 def test_a_bad_sample_is_refused_with_the_line(text, message):
     with pytest.raises(precision.SampleError, match=message):
         precision.read_sample(text)

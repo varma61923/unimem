@@ -13,6 +13,7 @@ import time
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from typing import SupportsIndex, SupportsInt
 
 from sqlalchemy import (
     Boolean,
@@ -38,7 +39,7 @@ from hub import audit, commons, commons_cache, delegation, outcomes, plans
 from hub import search as hub_search
 from hub.abuse import (
     RateLimited,
-    RateLimiter,
+    RateLimiterBackend,
     TraceRejected,
     reject_unstorable_text,
     suspicion_reason,
@@ -79,8 +80,7 @@ AUDIT_ACTOR_UNKNOWN = "unknown"
 logger = logging.getLogger("unimem.hub.crud")
 
 
-class IdempotencyKeyConflict(ValueError):
-    ...
+class IdempotencyKeyConflict(ValueError): ...
 
 
 def _iso(dt: datetime) -> str:
@@ -88,6 +88,8 @@ def _iso(dt: datetime) -> str:
 
 
 def _clamp_int(value: object, lo: int, hi: int, default: int) -> int:
+    if not isinstance(value, (str, bytes, bytearray, SupportsInt, SupportsIndex)):
+        return default
     try:
         return max(lo, min(int(value), hi))
     except (TypeError, ValueError, OverflowError):
@@ -98,10 +100,13 @@ async def _votes_by_trace(session: AsyncSession, trace_ids: list[str]) -> dict[s
     if not trace_ids:
         return {}
     # Hydration needs only wire fields, not ORM entities or their audit metadata.
-    rows = (await session.execute(
-        select(Vote.trace_id, Vote.vote_type, Vote.feedback_tag, Vote.feedback_text)
-        .where(Vote.trace_id.in_(trace_ids))
-    )).all()
+    rows = (
+        await session.execute(
+            select(Vote.trace_id, Vote.vote_type, Vote.feedback_tag, Vote.feedback_text).where(
+                Vote.trace_id.in_(trace_ids)
+            )
+        )
+    ).all()
     out: dict[str, list[dict]] = {}
     for v in rows:
         out.setdefault(v.trace_id, []).append(
@@ -113,15 +118,17 @@ async def _votes_by_trace(session: AsyncSession, trace_ids: list[str]) -> dict[s
 async def _related_by_trace(session: AsyncSession, trace_ids: list[str]) -> dict[str, list[dict]]:
     if not trace_ids:
         return {}
-    stmt = select(TraceRelation.trace_id, TraceRelation.relationship_type,
-                  TraceRelation.related_trace_id).where(TraceRelation.trace_id.in_(trace_ids))
+    stmt = select(TraceRelation.trace_id, TraceRelation.relationship_type, TraceRelation.related_trace_id).where(
+        TraceRelation.trace_id.in_(trace_ids)
+    )
     if delegation.ROOT.get():
         stmt = stmt.join(Trace, Trace.id == TraceRelation.related_trace_id).where(delegation.trace_predicate())
     rows = (await session.execute(stmt)).all()
     out: dict[str, list[dict]] = {}
     for row in rows:
-        out.setdefault(row.trace_id, []).append({"relationship": row.relationship_type,
-                                                "trace_id": row.related_trace_id})
+        out.setdefault(row.trace_id, []).append(
+            {"relationship": row.relationship_type, "trace_id": row.related_trace_id}
+        )
     return out
 
 
@@ -193,7 +200,7 @@ def commons_visible() -> list:
 class _CommonsCorpus:
     total: int
     ids: list[str]
-    signatures: object
+    signatures: commons.SignatureRows
     rows: dict[str, Trace] | None
 
 
@@ -211,17 +218,16 @@ async def _commons_corpus(session: AsyncSession, org_id: str, agent_type: str) -
     ]
     if agent_type:
         where.append(Trace.agent_type == agent_type)
-    total = (
-        await session.execute(select(func.count()).select_from(Trace).where(*where))
-    ).scalar_one()
+    total = (await session.execute(select(func.count()).select_from(Trace).where(*where))).scalar_one()
     rows = (
-        await session.execute(
-            select(Trace)
-            .where(*where)
-            .order_by(Trace.created_at.desc(), Trace.id.desc())
-            .limit(cap)
+        (
+            await session.execute(
+                select(Trace).where(*where).order_by(Trace.created_at.desc(), Trace.id.desc()).limit(cap)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return _CommonsCorpus(
         total=total,
         ids=[r.id for r in rows],
@@ -230,16 +236,12 @@ async def _commons_corpus(session: AsyncSession, org_id: str, agent_type: str) -
     )
 
 
-async def _commons_rows(
-    session: AsyncSession, corpus: _CommonsCorpus, ids: list[str]
-) -> dict[str, Trace]:
+async def _commons_rows(session: AsyncSession, corpus: _CommonsCorpus, ids: list[str]) -> dict[str, Trace]:
     if corpus.rows is not None:
         return {i: corpus.rows[i] for i in ids if i in corpus.rows}
     if not ids:
         return {}
-    got = (
-        await session.execute(select(Trace).where(Trace.id.in_(set(ids)), *commons_visible()))
-    ).scalars().all()
+    got = (await session.execute(select(Trace).where(Trace.id.in_(set(ids)), *commons_visible()))).scalars().all()
     return {r.id: r for r in got}
 
 
@@ -331,12 +333,15 @@ async def _meter(session: AsyncSession, org_id: str, metric: str) -> int:
 async def _reserve_trace_slot(session: AsyncSession, org_id: str, plan: plans.Plan) -> None:
     if plan.max_traces == plans.UNLIMITED:
         return
-    stored = int(await session.scalar(
-        select(Organization.trace_count).where(Organization.id == org_id).with_for_update()
-    ) or 0)
+    stored = int(
+        await session.scalar(select(Organization.trace_count).where(Organization.id == org_id).with_for_update()) or 0
+    )
     if not plans.within(plan.max_traces, stored):
         raise plans.EntitlementExceeded(
-            metric="traces", limit=plan.max_traces, used=stored, plan=plan.name,
+            metric="traces",
+            limit=plan.max_traces,
+            used=stored,
+            plan=plan.name,
             remedy="Purge traces you no longer need, or move to a plan with more storage.",
         )
 
@@ -357,20 +362,28 @@ def _active_agent_cutoff(now: datetime | None = None) -> datetime:
 
 async def agents_under_management(session: AsyncSession, org_id: str) -> dict:
     cutoff = _active_agent_cutoff()
-    named = int(await session.scalar(
-        select(func.count(distinct(Trace.agent_id))).where(
-            Trace.org_id == org_id,
-            Trace.created_at >= cutoff,
-            Trace.agent_id != "",
+    named = int(
+        await session.scalar(
+            select(func.count(distinct(Trace.agent_id))).where(
+                Trace.org_id == org_id,
+                Trace.created_at >= cutoff,
+                Trace.agent_id != "",
+            )
         )
-    ) or 0)
-    unattributed_traces = int(await session.scalar(
-        select(func.count()).select_from(Trace).where(
-            Trace.org_id == org_id,
-            Trace.created_at >= cutoff,
-            Trace.agent_id == "",
+        or 0
+    )
+    unattributed_traces = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Trace)
+            .where(
+                Trace.org_id == org_id,
+                Trace.created_at >= cutoff,
+                Trace.agent_id == "",
+            )
         )
-    ) or 0)
+        or 0
+    )
     return {
         "active": named + (1 if unattributed_traces else 0),
         "named": named,
@@ -381,36 +394,40 @@ async def agents_under_management(session: AsyncSession, org_id: str) -> dict:
     }
 
 
-async def _reserve_agent_slot(
-    session: AsyncSession, org_id: str, plan: plans.Plan, agent_id: str
-) -> None:
+async def _reserve_agent_slot(session: AsyncSession, org_id: str, plan: plans.Plan, agent_id: str) -> None:
     if plan.max_agents == plans.UNLIMITED or not agent_id:
         return
 
     cutoff = _active_agent_cutoff()
 
     async def _already_active() -> bool:
-        return await session.scalar(
-            select(Trace.id).where(
-                Trace.org_id == org_id,
-                Trace.created_at >= cutoff,
-                Trace.agent_id == agent_id,
-            ).limit(1)
-        ) is not None
+        return (
+            await session.scalar(
+                select(Trace.id)
+                .where(
+                    Trace.org_id == org_id,
+                    Trace.created_at >= cutoff,
+                    Trace.agent_id == agent_id,
+                )
+                .limit(1)
+            )
+            is not None
+        )
 
     if await _already_active():
         return
 
-    await session.execute(
-        select(Organization.id).where(Organization.id == org_id).with_for_update()
-    )
+    await session.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
     if await _already_active():
         return
 
     active = (await agents_under_management(session, org_id))["active"]
     if not plans.within(plan.max_agents, active):
         raise plans.EntitlementExceeded(
-            metric="agents", limit=plan.max_agents, used=active, plan=plan.name,
+            metric="agents",
+            limit=plan.max_agents,
+            used=active,
+            plan=plan.name,
             remedy=(
                 f"'{agent_id}' would be a new agent. Agents already active in the last "
                 f"{plans.ACTIVE_AGENT_WINDOW_DAYS} days keep working; retire one, or move "
@@ -424,17 +441,14 @@ async def entitlements(session: AsyncSession, org_id: str) -> dict:
     plan, bonus = await _plan_and_bonus_for(session, org_id)
     allowance = plans.query_allowance(plan, bonus)
     used = await _usage(session, org_id, METRIC_COMMONS_QUERIES)
-    traces = int(await session.scalar(
-        select(func.count()).select_from(Trace).where(Trace.org_id == org_id)
-    ) or 0)
+    traces = int(await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org_id)) or 0)
     return {
         "plan": plan.name,
         "period": billing_period(),
         "commons_queries": {
             "used": used,
             "allowance": allowance,
-            "remaining": plans.UNLIMITED if allowance == plans.UNLIMITED
-                         else max(0, allowance - used),
+            "remaining": plans.UNLIMITED if allowance == plans.UNLIMITED else max(0, allowance - used),
             "bonus_from_accepted_submissions": bonus,
         },
         "traces": {"used": traces, "limit": plan.max_traces},
@@ -511,8 +525,11 @@ async def search_traces(
     finite_policy = await policies.active(session, org_id)
     finite_predicate = policies.trace_predicate(finite_policy)
     stmt = select(Trace).where(
-        Trace.org_id == org_id, Trace.quarantined.is_(False), Trace.superseded_at.is_(None),
-        delegation.trace_predicate(), finite_predicate,
+        Trace.org_id == org_id,
+        Trace.quarantined.is_(False),
+        Trace.superseded_at.is_(None),
+        delegation.trace_predicate(),
+        finite_predicate,
     )
     scope = _clean_scope(scope) if scope else ""
     if scope:
@@ -525,8 +542,11 @@ async def search_traces(
     failed_outcome = case((Trace.outcome["resolved"].astext == "false", 1), else_=0)
     if query:
         frequencies = (
-            await session.execute(hub_search.term_frequency_stmt(
-                org_id, query, predicate=and_(delegation.trace_predicate(), finite_predicate)))
+            await session.execute(
+                hub_search.term_frequency_stmt(
+                    org_id, query, predicate=and_(delegation.trace_predicate(), finite_predicate)
+                )
+            )
         ).all()
         chosen = hub_search.choose_terms([(row.lexeme, row.df) for row in frequencies])
         if chosen.used:
@@ -534,7 +554,7 @@ async def search_traces(
             stmt = stmt.where(Trace.search_vector.op("@@")(tsquery))
             stmt = stmt.order_by(
                 failed_outcome.asc(),
-                hub_search.relevance(Trace.search_vector, tsquery).desc(),
+                hub_search.relevance(Trace.search_vector.expression, tsquery).desc(),
                 Trace.created_at.asc(),
                 Trace.id.desc(),
             )
@@ -556,7 +576,13 @@ async def search_traces(
     withdrawn: list[dict] = []
     if harmful:
         traces, withdrawn = await _withdraw_from_page(
-            session, org_id, stmt, traces, harmful, offset=offset, limit=limit,
+            session,
+            org_id,
+            stmt,
+            traces,
+            harmful,
+            offset=offset,
+            limit=limit,
         )
 
     if query:
@@ -605,22 +631,30 @@ async def _withdraw_from_page(
     limit: int,
 ) -> tuple[list[Trace], list[dict]]:
     would_have_shown = (
-        await session.execute(
-            unfiltered.with_only_columns(Trace.id).offset(offset).limit(limit)
-        )
-    ).scalars().all()
+        (await session.execute(unfiltered.with_only_columns(Trace.id).offset(offset).limit(limit))).scalars().all()
+    )
     withdrawn = [
         {"id": trace_id, "reason": harm.REASON, "evidence": harmful[trace_id]}
-        for trace_id in would_have_shown if trace_id in harmful
+        for trace_id in would_have_shown
+        if trace_id in harmful
     ]
 
     if traces:
-        originals = list((await session.execute(
-            select(Trace).where(
-                Trace.org_id == org_id, Trace.id.in_(list(harmful)),
-                Trace.quarantined.is_(False), Trace.superseded_at.is_(None), delegation.trace_predicate(),
+        originals = list(
+            (
+                await session.execute(
+                    select(Trace).where(
+                        Trace.org_id == org_id,
+                        Trace.id.in_(list(harmful)),
+                        Trace.quarantined.is_(False),
+                        Trace.superseded_at.is_(None),
+                        delegation.trace_predicate(),
+                    )
+                )
             )
-        )).scalars().all())
+            .scalars()
+            .all()
+        )
         page = await _hydrate(session, traces)
         representative_of = _cluster_representatives(page + await _hydrate(session, originals))
         harmful_units = {representative_of.get(t.id, t.id): t.id for t in originals}
@@ -628,20 +662,32 @@ async def _withdraw_from_page(
         for trace in traces:
             unit = representative_of.get(trace.id, trace.id)
             if unit in harmful_units:
-                withdrawn.append({
-                    "id": trace.id,
-                    "reason": "near_duplicate_of_withdrawn",
-                    "duplicate_of": harmful_units[unit],
-                    "evidence": harmful[harmful_units[unit]],
-                })
+                withdrawn.append(
+                    {
+                        "id": trace.id,
+                        "reason": "near_duplicate_of_withdrawn",
+                        "duplicate_of": harmful_units[unit],
+                        "evidence": harmful[harmful_units[unit]],
+                    }
+                )
             else:
                 kept.append(trace)
         traces = kept
 
-    titles = dict((await session.execute(
-        select(Trace.id, Trace.title).where(
-            Trace.org_id == org_id, Trace.id.in_([w["id"] for w in withdrawn]))
-    )).all()) if withdrawn else {}
+    titles = (
+        {
+            row_key: row_value
+            for row_key, row_value in (
+                await session.execute(
+                    select(Trace.id, Trace.title).where(
+                        Trace.org_id == org_id, Trace.id.in_([w["id"] for w in withdrawn])
+                    )
+                )
+            ).all()
+        }
+        if withdrawn
+        else {}
+    )
     for entry in withdrawn:
         entry["title"] = titles.get(entry["id"], "")
     return traces, withdrawn
@@ -658,7 +704,11 @@ ACTIVITY_WEEKS = 12
 
 
 async def console_activity(
-    session: AsyncSession, org_id: str, *, weeks: int = ACTIVITY_WEEKS, now: datetime | None = None,
+    session: AsyncSession,
+    org_id: str,
+    *,
+    weeks: int = ACTIVITY_WEEKS,
+    now: datetime | None = None,
 ) -> dict:
     """Weekly series for the console's Overview charts, counts only."""
     now = now or datetime.now(timezone.utc)
@@ -671,11 +721,14 @@ async def console_activity(
 
     week = func.date_trunc("week", Trace.created_at)
     trace_counts = {
-        _key(w): int(n) for w, n in (await session.execute(
-            select(week, func.count(Trace.id))
-            .where(Trace.org_id == org_id, Trace.quarantined.is_(False), Trace.created_at >= since)
-            .group_by(week)
-        )).all()
+        _key(w): int(n)
+        for w, n in (
+            await session.execute(
+                select(week, func.count(Trace.id))
+                .where(Trace.org_id == org_id, Trace.quarantined.is_(False), Trace.created_at >= since)
+                .group_by(week)
+            )
+        ).all()
     }
 
     org = await session.get(Organization, org_id)
@@ -697,11 +750,16 @@ async def console_activity(
     )
     occasion_week = func.date_trunc("week", per_occasion.c.at)
     arms: dict[tuple[str, bool], tuple[int, int]] = {}
-    for w, treated, n, ok in (await session.execute(
-        select(occasion_week, per_occasion.c.treated, func.count(),
-               func.sum(case((per_occasion.c.ok.is_(True), 1), else_=0)))
-        .group_by(occasion_week, per_occasion.c.treated)
-    )).all():
+    for w, treated, n, ok in (
+        await session.execute(
+            select(
+                occasion_week,
+                per_occasion.c.treated,
+                func.count(),
+                func.sum(case((per_occasion.c.ok.is_(True), 1), else_=0)),
+            ).group_by(occasion_week, per_occasion.c.treated)
+        )
+    ).all():
         arms[(_key(w), bool(treated))] = (int(n), int(ok or 0))
 
     keys = [s.date().isoformat() for s in starts]
@@ -714,9 +772,7 @@ async def console_activity(
     }
 
 
-async def search_health(
-    session: AsyncSession, org_id: str, period: str | None = None
-) -> dict:
+async def search_health(session: AsyncSession, org_id: str, period: str | None = None) -> dict:
     """How often this org's searches come back with nothing, this month."""
     period = period or billing_period()
     searches = await _usage(session, org_id, METRIC_SEARCHES, period)
@@ -768,13 +824,23 @@ async def _possible_duplicates(
         return []
     candidates = [
         distill.TraceCandidate(
-            id=trace_id, path="", title=title, context_text=context_text,
-            solution_text=solution_text, tags=tags, agent_type=agent_type,
+            id=trace_id,
+            path="",
+            title=title,
+            context_text=context_text,
+            solution_text=solution_text,
+            tags=tags,
+            agent_type=agent_type,
         )
     ] + [
         distill.TraceCandidate(
-            id=row.id, path="", title=row.title, context_text=row.context_text,
-            solution_text=row.solution_text, tags=list(row.tags), agent_type=row.agent_type,
+            id=row.id,
+            path="",
+            title=row.title,
+            context_text=row.context_text,
+            solution_text=row.solution_text,
+            tags=list(row.tags),
+            agent_type=row.agent_type,
         )
         for row in rows
     ]
@@ -789,7 +855,7 @@ async def contribute_trace(
     session: AsyncSession,
     org_id: str,
     config: HubConfig,
-    rate_limiter: RateLimiter,
+    rate_limiter: RateLimiterBackend,
     *,
     title: str,
     context_text: str,
@@ -812,8 +878,9 @@ async def contribute_trace(
         from unimem import capability_io
 
         scopes = capability_io.inherit_labels(delegation.ROOT.get(), scopes or [])
-        capability_io.before_write(delegation.ROOT.get(), {"scopes": scopes, "memory_type": "general"},
-                                   namespace="traces")
+        capability_io.before_write(
+            delegation.ROOT.get(), {"scopes": scopes, "memory_type": "general"}, namespace="traces"
+        )
     tags = tags or []
     try:
         scopes = _clean_scopes(scopes)
@@ -825,8 +892,9 @@ async def contribute_trace(
         raise TraceRejected("valid_until must be after valid_from")
     from hub import policies
 
-    if not policies.permits(await policies.active(session, org_id),
-                            {"memory_type": "trace", "scopes": scopes}, action="write"):
+    if not policies.permits(
+        await policies.active(session, org_id), {"memory_type": "trace", "scopes": scopes}, action="write"
+    ):
         raise PermissionError("UniMem active finite policy denies this trace write")
 
     if idempotency_key is not None:
@@ -842,21 +910,24 @@ async def contribute_trace(
 
     if idempotency_key is not None:
         existing = (
-            await session.execute(
-                select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key)
-            )
+            await session.execute(select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key))
         ).scalar_one_or_none()
         if existing is not None:
             return _idempotent_replay_or_conflict(
-                existing, idempotency_key, title, context_text, solution_text, tags, agent_type, outcome,
+                existing,
+                idempotency_key,
+                title,
+                context_text,
+                solution_text,
+                tags,
+                agent_type,
+                outcome,
                 profile,
             )
 
     allowed, retry_after = await rate_limiter.check(org_id)
     if not allowed:
-        raise RateLimited(
-            f"org {org_id} exceeded contribute_trace rate limit", retry_after=retry_after
-        )
+        raise RateLimited(f"org {org_id} exceeded contribute_trace rate limit", retry_after=retry_after)
 
     plan = await _plan_for(session, org_id)
     await _reserve_trace_slot(session, org_id, plan)
@@ -909,14 +980,19 @@ async def contribute_trace(
             await session.flush()
     except IntegrityError:
         existing = (
-            await session.execute(
-                select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key)
-            )
+            await session.execute(select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key))
         ).scalar_one_or_none()
         if existing is None:
             raise
         return _idempotent_replay_or_conflict(
-            existing, idempotency_key, title, context_text, solution_text, tags, agent_type, outcome,
+            existing,
+            idempotency_key,
+            title,
+            context_text,
+            solution_text,
+            tags,
+            agent_type,
+            outcome,
             profile,
         )
 
@@ -930,17 +1006,31 @@ async def contribute_trace(
         target_type="trace",
         target_id=trace.id,
         summary=(
-            f"agent_type={agent_type or '?'} title_len={len(title)} "
-            f"n_tags={len(tags)} quarantined={trace.quarantined}"
+            f"agent_type={agent_type or '?'} title_len={len(title)} n_tags={len(tags)} quarantined={trace.quarantined}"
         ),
     )
     possible_duplicates = await _possible_duplicates(
-        session, org_id, trace.id, title, context_text, solution_text, tags, agent_type,
+        session,
+        org_id,
+        trace.id,
+        title,
+        context_text,
+        solution_text,
+        tags,
+        agent_type,
     )
     auto_proposed = await _maybe_auto_contribute(
-        session, org_id, trace, config, rate_limiter,
-        title=title, context_text=context_text, solution_text=solution_text,
-        tags=tags, agent_type=agent_type, actor=actor,
+        session,
+        org_id,
+        trace,
+        config,
+        rate_limiter,
+        title=title,
+        context_text=context_text,
+        solution_text=solution_text,
+        tags=tags,
+        agent_type=agent_type,
+        actor=actor,
     )
     return {
         "id": trace.id,
@@ -956,7 +1046,7 @@ async def _maybe_auto_contribute(
     org_id: str,
     trace: Trace,
     config: HubConfig,
-    rate_limiter: RateLimiter,
+    rate_limiter: RateLimiterBackend,
     *,
     title: str,
     context_text: str,
@@ -967,14 +1057,15 @@ async def _maybe_auto_contribute(
 ) -> bool:
     if trace.quarantined:
         return False
-    opted_in = await session.scalar(
-        select(Organization.commons_auto_contribute).where(Organization.id == org_id)
-    )
+    opted_in = await session.scalar(select(Organization.commons_auto_contribute).where(Organization.id == org_id))
     if not opted_in:
         return False
     try:
         await submit_kb_entry(
-            session, org_id, config, rate_limiter,
+            session,
+            org_id,
+            config,
+            rate_limiter,
             title=title,
             context_text=context_text,
             solution_text=solution_text,
@@ -986,7 +1077,9 @@ async def _maybe_auto_contribute(
         )
     except Exception:  # noqa: BLE001 - see point 2 above; never fail the capture
         logger.warning(
-            "auto-contribute proposal failed for org=%s trace=%s", org_id, trace.id,
+            "auto-contribute proposal failed for org=%s trace=%s",
+            org_id,
+            trace.id,
             exc_info=True,
         )
         return False
@@ -1004,9 +1097,7 @@ def _idempotent_replay_or_conflict(
     outcome: dict | None = None,
     profile: str = "",
 ) -> dict:
-    incoming_hash = _contribute_request_hash(
-        title, context_text, solution_text, tags, agent_type, outcome, profile
-    )
+    incoming_hash = _contribute_request_hash(title, context_text, solution_text, tags, agent_type, outcome, profile)
     if existing.request_hash != incoming_hash:
         raise IdempotencyKeyConflict(
             f"idempotency_key {idempotency_key!r} was already used for a different contribute_trace "
@@ -1054,7 +1145,11 @@ def _snippet_at(text: str, start: int, end: int) -> str:
 
 
 async def search_trace_content(
-    session: AsyncSession, org_id: str, pattern: str, *, regex: bool = False,
+    session: AsyncSession,
+    org_id: str,
+    pattern: str,
+    *,
+    regex: bool = False,
     limit: int = MAX_CONTENT_SEARCH_LIMIT,
 ) -> list[dict]:
     limit = _clamp_int(limit, 1, MAX_CONTENT_SEARCH_LIMIT, MAX_CONTENT_SEARCH_LIMIT)
@@ -1073,9 +1168,14 @@ async def search_trace_content(
         solution_hit = Trace.solution_text.ilike(like, escape="\\")
     stmt = (
         select(
-            Trace.id, Trace.title, Trace.context_text, Trace.solution_text,
-            Trace.created_at, Trace.quarantined,
-            title_hit.label("title_hit"), context_hit.label("context_hit"),
+            Trace.id,
+            Trace.title,
+            Trace.context_text,
+            Trace.solution_text,
+            Trace.created_at,
+            Trace.quarantined,
+            title_hit.label("title_hit"),
+            context_hit.label("context_hit"),
             solution_hit.label("solution_hit"),
         )
         .where(Trace.org_id == org_id, or_(title_hit, context_hit, solution_hit))
@@ -1103,14 +1203,16 @@ async def search_trace_content(
             idx = text.lower().find(pattern.lower())
             start = idx if idx >= 0 else 0
             snippet = _snippet_at(text, start, start + len(pattern))
-        results.append({
-            "id": row.id,
-            "title": row.title,
-            "created_at": row.created_at.isoformat(),
-            "quarantined": row.quarantined,
-            "matched_field": field,
-            "snippet": snippet,
-        })
+        results.append(
+            {
+                "id": row.id,
+                "title": row.title,
+                "created_at": row.created_at.isoformat(),
+                "quarantined": row.quarantined,
+                "matched_field": field,
+                "snippet": snippet,
+            }
+        )
     return results
 
 
@@ -1122,9 +1224,7 @@ def _clean_subject_ids(subject_ids: list) -> list[str]:
     if not isinstance(subject_ids, (list, tuple)):
         raise ValueError("subject_ids must be a list")
     if len(subject_ids) > MAX_SUBJECT_IDS_PER_TRACE:
-        raise ValueError(
-            f"too many subject_ids ({len(subject_ids)}); the maximum is {MAX_SUBJECT_IDS_PER_TRACE}"
-        )
+        raise ValueError(f"too many subject_ids ({len(subject_ids)}); the maximum is {MAX_SUBJECT_IDS_PER_TRACE}")
     cleaned: list[str] = []
     seen: set[str] = set()
     for raw in subject_ids:
@@ -1141,7 +1241,10 @@ def _clean_subject_ids(subject_ids: list) -> list[str]:
 
 
 async def tag_trace_subjects(
-    session: AsyncSession, org_id: str, trace_id: str, subject_ids: list,
+    session: AsyncSession,
+    org_id: str,
+    trace_id: str,
+    subject_ids: list,
     actor: str = AUDIT_ACTOR_UNKNOWN,
 ) -> dict | None:
     if not _is_uuid(trace_id):
@@ -1152,8 +1255,12 @@ async def tag_trace_subjects(
     cleaned = _clean_subject_ids(subject_ids)
     trace.subject_ids = cleaned
     await audit.record(
-        session, actor=actor, action="tag_trace_subjects", org_id=org_id,
-        target_type="trace", target_id=trace_id,
+        session,
+        actor=actor,
+        action="tag_trace_subjects",
+        org_id=org_id,
+        target_type="trace",
+        target_id=trace_id,
         summary=f"{len(cleaned)} subject id(s)",
     )
     return {"id": trace.id, "subject_ids": cleaned}
@@ -1166,50 +1273,56 @@ async def find_traces_by_subject(session: AsyncSession, org_id: str, subject_id:
     reject_unstorable_text(subject_id, "subject_id")
     stmt = (
         select(Trace.id, Trace.title, Trace.created_at, Trace.quarantined, Trace.subject_ids)
-        .where(Trace.org_id == org_id, Trace.subject_ids.any(subject_id))
+        .where(Trace.org_id == org_id, Trace.subject_ids.any_() == subject_id)
         .order_by(Trace.created_at)
     )
     rows = (await session.execute(stmt)).all()
     return [
         {
-            "id": row.id, "title": row.title, "created_at": row.created_at.isoformat(),
-            "quarantined": row.quarantined, "subject_ids": list(row.subject_ids),
+            "id": row.id,
+            "title": row.title,
+            "created_at": row.created_at.isoformat(),
+            "quarantined": row.quarantined,
+            "subject_ids": list(row.subject_ids),
         }
         for row in rows
     ]
 
 
 async def purge_traces_by_subject(
-    session: AsyncSession, org_id: str, subject_id: str, actor: str = AUDIT_ACTOR_UNKNOWN,
+    session: AsyncSession,
+    org_id: str,
+    subject_id: str,
+    actor: str = AUDIT_ACTOR_UNKNOWN,
 ) -> dict:
     subject_id = str(subject_id or "").strip()
     if not subject_id:
         return {"purged": 0, "ids": []}
     matched = (
-        await session.execute(
-            select(Trace.id).where(Trace.org_id == org_id, Trace.subject_ids.any(subject_id))
-        )
-    ).scalars().all()
+        (await session.execute(select(Trace.id).where(Trace.org_id == org_id, Trace.subject_ids.any_() == subject_id)))
+        .scalars()
+        .all()
+    )
     if not matched:
         return {"purged": 0, "ids": []}
     expanded: set[str] = set()
     for trace_id in matched:
         expanded |= await amendment_chain(session, trace_id)
     own_ids = (
-        await session.execute(
-            select(Trace.id).where(Trace.id.in_(expanded), Trace.org_id == org_id)
-        )
-    ).scalars().all()
+        (await session.execute(select(Trace.id).where(Trace.id.in_(expanded), Trace.org_id == org_id))).scalars().all()
+    )
     for trace_id in matched:
         await delete_trace(session, org_id, trace_id, actor=actor)
-    remaining = set(
-        (await session.execute(select(Trace.id).where(Trace.id.in_(own_ids)))).scalars().all()
-    )
+    remaining = set((await session.execute(select(Trace.id).where(Trace.id.in_(own_ids)))).scalars().all())
     deleted_ids = [trace_id for trace_id in own_ids if trace_id not in remaining]
     if deleted_ids:
         await audit.record(
-            session, actor=actor, action="purge_traces_by_subject", org_id=org_id,
-            target_type="trace", target_id=deleted_ids[0],
+            session,
+            actor=actor,
+            action="purge_traces_by_subject",
+            org_id=org_id,
+            target_type="trace",
+            target_id=deleted_ids[0],
             summary=f"purged {len(deleted_ids)} trace(s) for one subject id",
         )
     return {"purged": len(deleted_ids), "ids": deleted_ids}
@@ -1229,32 +1342,27 @@ async def get_trace(session: AsyncSession, org_id: str, trace_id: str) -> dict |
     from hub import policies
 
     policy = await policies.active(session, org_id)
-    stmt = select(Trace).where(Trace.id == trace_id, Trace.org_id == org_id, delegation.trace_predicate(),
-                               policies.trace_predicate(policy))
+    stmt = select(Trace).where(
+        Trace.id == trace_id, Trace.org_id == org_id, delegation.trace_predicate(), policies.trace_predicate(policy)
+    )
     trace = (await session.execute(stmt)).scalar_one_or_none()
     if trace is None:
         return None
     await session.execute(
-        update(Trace)
-        .where(Trace.id == trace_id, Trace.org_id == org_id)
-        .values(retrievals=Trace.retrievals + 1)
+        update(Trace).where(Trace.id == trace_id, Trace.org_id == org_id).values(retrievals=Trace.retrievals + 1)
     )
     return await _hydrate_one(session, trace)
 
 
 def _established_voters_only(stmt):
-    cutoff = datetime.now(timezone.utc) - timedelta(
-        hours=commons.COMMONS_VOTER_MIN_AGE_HOURS
-    )
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=commons.COMMONS_VOTER_MIN_AGE_HOURS)
     return stmt.join(Organization, Organization.id == Vote.org_id).where(
         Organization.trace_count >= commons.COMMONS_VOTER_MIN_TRACES,
         Organization.created_at <= cutoff,
     )
 
 
-async def _concerns_for(
-    session: AsyncSession, trace_ids: list[str]
-) -> dict[str, dict[str, int]]:
+async def _concerns_for(session: AsyncSession, trace_ids: list[str]) -> dict[str, dict[str, int]]:
     if not trace_ids:
         return {}
     stmt = _established_voters_only(
@@ -1263,9 +1371,7 @@ async def _concerns_for(
             Vote.feedback_tag != "",
         )
     )
-    rows = (
-        await session.execute(stmt.group_by(Vote.trace_id, Vote.feedback_tag))
-    ).all()
+    rows = (await session.execute(stmt.group_by(Vote.trace_id, Vote.feedback_tag))).all()
     concerns: dict[str, dict[str, int]] = {}
     for trace_id, tag, count in rows:
         concerns.setdefault(trace_id, {})[tag] = int(count)
@@ -1287,16 +1393,18 @@ async def vote_trace(
         raise ValueError(f"feedback_tag must be one of {VALID_FEEDBACK_TAGS!r}, got {feedback_tag!r}")
     reject_unstorable_text(feedback_text, "feedback_text")
     if len(feedback_text) > MAX_FEEDBACK_TEXT_CHARS:
-        raise ValueError(
-            f"feedback_text exceeds {MAX_FEEDBACK_TEXT_CHARS} chars ({len(feedback_text)})"
-        )
+        raise ValueError(f"feedback_text exceeds {MAX_FEEDBACK_TEXT_CHARS} chars ({len(feedback_text)})")
     if not _is_uuid(trace_id):
         return None
 
-    stmt = select(Trace).where(
-        Trace.id == trace_id,
-        or_(Trace.org_id == org_id, and_(*commons_visible())),
-    ).with_for_update()
+    stmt = (
+        select(Trace)
+        .where(
+            Trace.id == trace_id,
+            or_(Trace.org_id == org_id, and_(*commons_visible())),
+        )
+        .with_for_update()
+    )
     trace = (await session.execute(stmt)).scalar_one_or_none()
     if trace is None:
         return None
@@ -1327,14 +1435,12 @@ async def vote_trace(
     if tally_is_public:
         counted = _established_voters_only(counted)
     counts = (await session.execute(counted.group_by(Vote.vote_type))).all()
-    tally = dict(counts)
+    tally = {vote_type: count for vote_type, count in counts}
     up_count, down_count = tally.get("up", 0), tally.get("down", 0)
     total = up_count + down_count
     new_trust = (up_count / total) if total else 0.5
 
-    await session.execute(
-        update(Trace).where(Trace.id == trace_id).values(trust=new_trust, commons_votes=total)
-    )
+    await session.execute(update(Trace).where(Trace.id == trace_id).values(trust=new_trust, commons_votes=total))
     set_committed_value(trace, "trust", new_trust)
     set_committed_value(trace, "commons_votes", total)
 
@@ -1377,17 +1483,18 @@ async def amendment_chain(session: AsyncSession, trace_id: str) -> set[str]:
     descendants = descendants.union(
         select(Trace.id.label("id")).join(descendants, Trace.supersedes_trace_id == descendants.c.id)
     )
-    rows = (
-        await session.execute(union(select(ancestors.c.id), select(descendants.c.id)))
-    ).scalars().all()
+    rows = (await session.execute(union(select(ancestors.c.id), select(descendants.c.id)))).scalars().all()
     return set(rows)
 
 
 async def delete_trace(session: AsyncSession, org_id: str, trace_id: str, actor: str = AUDIT_ACTOR_UNKNOWN) -> bool:
     if not _is_uuid(trace_id):
         return False
-    trace = await session.scalar(select(Trace).where(Trace.id == trace_id, Trace.org_id == org_id,
-                                                      delegation.trace_predicate(operation="forget")))
+    trace = await session.scalar(
+        select(Trace).where(
+            Trace.id == trace_id, Trace.org_id == org_id, delegation.trace_predicate(operation="forget")
+        )
+    )
     if trace is None or trace.org_id != org_id:
         return False
 
@@ -1411,8 +1518,12 @@ async def delete_trace(session: AsyncSession, org_id: str, trace_id: str, actor:
     await session.execute(delete(Trace).where(Trace.id.in_(own_chain_ids)))
     await _adjust_trace_count(session, org_id, -len(own_chain_ids))
     await audit.record(
-        session, actor=actor, action="delete_trace", org_id=org_id,
-        target_type="trace", target_id=trace_id,
+        session,
+        actor=actor,
+        action="delete_trace",
+        org_id=org_id,
+        target_type="trace",
+        target_id=trace_id,
         summary=f"irreversible n_amendment_chain={len(chain_ids)}",
     )
     return True
@@ -1422,12 +1533,10 @@ DELETION_GRACE_SECONDS = 300
 DELETION_TOKEN_TTL_HOURS = 24
 
 
-class DeletionNotReady(ValueError):
-    ...
+class DeletionNotReady(ValueError): ...
 
 
-class SubscriptionCancellationFailed(RuntimeError):
-    ...
+class SubscriptionCancellationFailed(RuntimeError): ...
 
 
 def _hash_deletion_token(raw_token: str) -> str:
@@ -1447,8 +1556,12 @@ async def request_org_deletion(session: AsyncSession, org_id: str, actor: str = 
     org.deletion_expires_at = now + timedelta(hours=DELETION_TOKEN_TTL_HOURS)
 
     await audit.record(
-        session, actor=actor, action="request_org_deletion", org_id=org_id,
-        target_type="org", target_id=org_id,
+        session,
+        actor=actor,
+        action="request_org_deletion",
+        org_id=org_id,
+        target_type="org",
+        target_id=org_id,
         summary=f"confirm_not_before={(now + timedelta(seconds=DELETION_GRACE_SECONDS)).isoformat()}",
     )
     return {
@@ -1466,14 +1579,22 @@ async def cancel_org_deletion(session: AsyncSession, org_id: str, actor: str = A
     org.deletion_requested_at = None
     org.deletion_expires_at = None
     await audit.record(
-        session, actor=actor, action="cancel_org_deletion", org_id=org_id,
-        target_type="org", target_id=org_id, summary="pending deletion request cancelled",
+        session,
+        actor=actor,
+        action="cancel_org_deletion",
+        org_id=org_id,
+        target_type="org",
+        target_id=org_id,
+        summary="pending deletion request cancelled",
     )
     return True
 
 
 async def confirm_org_deletion(
-    session: AsyncSession, org_id: str, token: str, actor: str = AUDIT_ACTOR_UNKNOWN,
+    session: AsyncSession,
+    org_id: str,
+    token: str,
+    actor: str = AUDIT_ACTOR_UNKNOWN,
     stripe: StripeSettings = StripeSettings(),
 ) -> bool:
     org = await session.get(Organization, org_id)
@@ -1510,17 +1631,19 @@ async def confirm_org_deletion(
 
     await auth.announce_auth_change(session)
     await audit.record(
-        session, actor=actor, action="confirm_org_deletion", org_id=org_id,
-        target_type="org", target_id=org_id,
+        session,
+        actor=actor,
+        action="confirm_org_deletion",
+        org_id=org_id,
+        target_type="org",
+        target_id=org_id,
         summary=f"name={org_name!r} n_traces={len(trace_ids)} "
-                f"stripe_subscription_cancelled={had_subscription} irreversible",
+        f"stripe_subscription_cancelled={had_subscription} irreversible",
     )
     return True
 
 
-def _carry_commons_forward(
-    original: Trace, title: str, context_text: str, tags: list[str]
-) -> dict:
+def _carry_commons_forward(original: Trace, title: str, context_text: str, tags: list[str]) -> dict:
     if original.commons_source != "seed":
         return {}
     return {
@@ -1540,7 +1663,7 @@ async def amend_trace(
     org_id: str,
     trace_id: str,
     config: HubConfig,
-    rate_limiter: RateLimiter,
+    rate_limiter: RateLimiterBackend,
     *,
     title: str | None = None,
     context_text: str | None = None,
@@ -1560,22 +1683,24 @@ async def amend_trace(
         raise TraceRejected(f"idempotency_key exceeds 128 chars ({len(idempotency_key)})")
     outcome = outcomes.validate_outcome(outcome)
 
-    stmt = select(Trace).where(Trace.id == trace_id, Trace.org_id == org_id,
-                               delegation.trace_predicate(operation="write"))
+    stmt = select(Trace).where(
+        Trace.id == trace_id, Trace.org_id == org_id, delegation.trace_predicate(operation="write")
+    )
     original = (await session.execute(stmt)).scalar_one_or_none()
     if original is None:
         return None
     from hub import policies
 
-    if not policies.permits(await policies.active(session, org_id),
-                            {"memory_type": "trace", "scopes": list(original.scopes or [])}, action="write"):
+    if not policies.permits(
+        await policies.active(session, org_id),
+        {"memory_type": "trace", "scopes": list(original.scopes or [])},
+        action="write",
+    ):
         raise PermissionError("UniMem active finite policy denies this trace amendment")
 
     if idempotency_key is not None:
         existing = (
-            await session.execute(
-                select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key)
-            )
+            await session.execute(select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key))
         ).scalar_one_or_none()
         if existing is not None:
             return await _amend_idempotent_replay_or_conflict(
@@ -1611,8 +1736,7 @@ async def amend_trace(
     reason = suspicion_reason(wire, config)
     quarantined = original.quarantined or reason is not None
     quarantine_reason = (
-        original.quarantine_reason if original.quarantined and original.quarantine_reason
-        else (reason or "")
+        original.quarantine_reason if original.quarantined and original.quarantine_reason else (reason or "")
     )
 
     amended = Trace(
@@ -1655,9 +1779,7 @@ async def amend_trace(
     except IntegrityError:
         await session.rollback()
         existing = (
-            await session.execute(
-                select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key)
-            )
+            await session.execute(select(Trace).where(Trace.org_id == org_id, Trace.idempotency_key == idempotency_key))
         ).scalar_one_or_none()
         if existing is None:
             raise
@@ -1668,15 +1790,15 @@ async def amend_trace(
     await _adjust_trace_count(session, org_id, +1)
 
     session.add(TraceRelation(trace_id=amended.id, related_trace_id=original.id, relationship_type="AMENDS"))
-    session.add(
-        TraceRelation(trace_id=original.id, related_trace_id=amended.id, relationship_type="SUPERSEDED_BY")
-    )
+    session.add(TraceRelation(trace_id=original.id, related_trace_id=amended.id, relationship_type="SUPERSEDED_BY"))
     await session.flush()
     changed = [
         name
         for name, value in (
-            ("title", title), ("context_text", context_text),
-            ("solution_text", solution_text), ("tags", tags),
+            ("title", title),
+            ("context_text", context_text),
+            ("solution_text", solution_text),
+            ("tags", tags),
         )
         if value is not None
     ]
@@ -1687,18 +1809,16 @@ async def amend_trace(
         org_id=org_id,
         target_type="trace",
         target_id=amended.id,
-        summary=(f"supersedes={original.id} depth={amended.depth} "
-                 f"changed={','.join(changed) or 'nothing'} quarantined={quarantined}"),
+        summary=(
+            f"supersedes={original.id} depth={amended.depth} "
+            f"changed={','.join(changed) or 'nothing'} quarantined={quarantined}"
+        ),
     )
     return await _hydrate_one(session, amended)
 
 
 async def list_tags(session: AsyncSession, org_id: str) -> list[str]:
-    stmt = (
-        select(func.unnest(Trace.tags))
-        .distinct()
-        .where(Trace.org_id == org_id, Trace.quarantined.is_(False))
-    )
+    stmt = select(func.unnest(Trace.tags)).distinct().where(Trace.org_id == org_id, Trace.quarantined.is_(False))
     tags = (await session.execute(stmt)).scalars().all()
     return sorted(tags)
 
@@ -1723,8 +1843,7 @@ async def holdout_assign(
         raise ValueError("trace_ids must be a list")
     if len(trace_ids) > MAX_TRACES_PER_ASSIGN:
         raise ValueError(
-            f"too many traces in one assignment ({len(trace_ids)}); "
-            f"the maximum is {MAX_TRACES_PER_ASSIGN}"
+            f"too many traces in one assignment ({len(trace_ids)}); the maximum is {MAX_TRACES_PER_ASSIGN}"
         )
     occasion_id = str(occasion_id or "").strip()
     if not occasion_id:
@@ -1743,9 +1862,7 @@ async def holdout_assign(
     valid = list(
         (
             await session.execute(
-                select(
-                    Trace.id, Trace.title, Trace.context_text, Trace.solution_text, Trace.tags
-                ).where(
+                select(Trace.id, Trace.title, Trace.context_text, Trace.solution_text, Trace.tags).where(
                     Trace.org_id == org_id,
                     Trace.id.in_([t for t in trace_ids if _is_uuid(str(t))]),
                 )
@@ -1760,17 +1877,19 @@ async def holdout_assign(
         if row.id in pinned_ids:
             already_pinned.append(row.id)
             continue
-        withheld = experiment.is_held_out(
-            row.id, occasion_id, rate=org.holdout_rate, salt=org.holdout_salt
+        withheld = experiment.is_held_out(row.id, occasion_id, rate=org.holdout_rate, salt=org.holdout_salt)
+        decisions.append(
+            {
+                "trace_id": row.id,
+                "injected": not withheld,
+                "trace_revision": revision.revision_of_trace(
+                    row.title or "",
+                    row.context_text or "",
+                    row.solution_text or "",
+                    list(row.tags or []),
+                ),
+            }
         )
-        decisions.append({
-            "trace_id": row.id,
-            "injected": not withheld,
-            "trace_revision": revision.revision_of_trace(
-                row.title or "", row.context_text or "", row.solution_text or "",
-                list(row.tags or []),
-            ),
-        })
 
     if decisions:
         await session.execute(
@@ -1808,7 +1927,8 @@ async def holdout_assign(
                 f" {len(already_pinned)} trace(s) you reported as already pinned were "
                 "left out of the randomization entirely: a trace in the system prompt "
                 "cannot serve as its own control."
-                if already_pinned else ""
+                if already_pinned
+                else ""
             )
         ),
     }
@@ -1817,17 +1937,20 @@ async def holdout_assign(
 def _cluster_representatives(traces: list[dict]) -> dict[str, str]:
     candidates = [
         distill.TraceCandidate(
-            id=t["id"], path="", title=t.get("title", ""),
-            context_text=t.get("context_text", ""), solution_text=t.get("solution_text", ""),
-            tags=list(t.get("tags") or []), agent_type=t.get("agent_type", ""),
+            id=t["id"],
+            path="",
+            title=t.get("title", ""),
+            context_text=t.get("context_text", ""),
+            solution_text=t.get("solution_text", ""),
+            tags=list(t.get("tags") or []),
+            agent_type=t.get("agent_type", ""),
         )
-        for t in traces if isinstance(t, dict) and t.get("id")
+        for t in traces
+        if isinstance(t, dict) and t.get("id")
     ]
     if len(candidates) < 2:
         return {c.id: c.id for c in candidates}
-    by_id = {
-        t["id"]: t for t in traces if isinstance(t, dict) and t.get("id")
-    }
+    by_id = {t["id"]: t for t in traces if isinstance(t, dict) and t.get("id")}
 
     def _age_key(trace_id: str) -> tuple[str, str]:
         return (str(by_id.get(trace_id, {}).get("created_at") or ""), trace_id)
@@ -1836,8 +1959,7 @@ def _cluster_representatives(traces: list[dict]) -> dict[str, str]:
     representative_of: dict[str, str] = {c.id: c.id for c in candidates}
     for cluster in clusters:
         preferred = [
-            c for c in cluster.traces
-            if (by_id.get(c.id, {}).get("outcome") or {}).get("resolved") is not False
+            c for c in cluster.traces if (by_id.get(c.id, {}).get("outcome") or {}).get("resolved") is not False
         ]
         pool = preferred or cluster.traces
         rep_id = min((c.id for c in pool), key=_age_key)
@@ -1859,10 +1981,7 @@ async def holdout_for_results(
     if org is None or org.holdout_rate <= 0 or not org.holdout_salt:
         return {}
     pinned_ids = {str(p) for p in (pinned or [])}
-    measurable = [
-        t for t in traces
-        if isinstance(t, dict) and t.get("id") and t["id"] not in pinned_ids
-    ]
+    measurable = [t for t in traces if isinstance(t, dict) and t.get("id") and t["id"] not in pinned_ids]
     ids = [t["id"] for t in measurable]
     if not ids:
         return {}
@@ -1902,6 +2021,10 @@ async def record_occasion_outcome(
         .values(succeeded=succeeded, resolved_at=datetime.now(timezone.utc))
     )
     await session.flush()
+    from sqlalchemy.engine import CursorResult
+
+    if not isinstance(result, CursorResult):
+        raise RuntimeError("outcome update did not return a cursor result")
     return {"occasion_id": occasion_id, "observations_resolved": result.rowcount or 0}
 
 
@@ -1913,16 +2036,22 @@ def _integrity_wire(report: integrity.IntegrityReport) -> dict:
         "n_assignments": report.n_assignments,
         "n_resolved": report.n_resolved,
         "findings": [
-            {"check": f.check, "severity": f.severity, "headline": f.headline,
-             "detail": f.detail, "numbers": f.numbers}
+            {"check": f.check, "severity": f.severity, "headline": f.headline, "detail": f.detail, "numbers": f.numbers}
             for f in report.findings
         ],
         "projections": [
-            {"trace_id": p.lesson, "n_injected": p.n_injected, "n_withheld": p.n_withheld,
-             "needed_per_arm": p.needed_per_arm, "binding_arm": p.binding_arm,
-             "still_needed": p.still_needed, "per_day": p.per_day,
-             "days_remaining": p.days_remaining,
-             "eta": p.eta.isoformat() if p.eta else None, "advice": p.advice}
+            {
+                "trace_id": p.lesson,
+                "n_injected": p.n_injected,
+                "n_withheld": p.n_withheld,
+                "needed_per_arm": p.needed_per_arm,
+                "binding_arm": p.binding_arm,
+                "still_needed": p.still_needed,
+                "per_day": p.per_day,
+                "days_remaining": p.days_remaining,
+                "eta": p.eta.isoformat() if p.eta else None,
+                "advice": p.advice,
+            }
             for p in report.projections
         ],
         "not_checkable": (
@@ -2037,10 +2166,12 @@ async def holdout_assignments(session: AsyncSession, org_id: str) -> list:
                 HoldoutObservation.created_at,
                 HoldoutObservation.resolved_at,
                 HoldoutObservation.trace_revision,
-            ).where(
+            )
+            .where(
                 HoldoutObservation.org_id == org_id,
                 HoldoutObservation.salt == (org.holdout_salt if org else ""),
-            ).order_by(HoldoutObservation.created_at, HoldoutObservation.id)
+            )
+            .order_by(HoldoutObservation.created_at, HoldoutObservation.id)
         )
     ).all()
 
@@ -2075,9 +2206,7 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
             _registered = prereg.Preregistration.from_dict(org.holdout_prereg)
         except prereg.PreregError:
             _registered = None
-    _first_observation = min(
-        (a.at for a in assignments if a.at is not None), default=None
-    )
+    _first_observation = min((a.at for a in assignments if a.at is not None), default=None)
     _prereg_check = prereg.check(
         _registered,
         actual_salt=(org.holdout_salt if org else ""),
@@ -2090,10 +2219,14 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
     unique, _ = integrity.normalize(assignments)
     observations = [
         experiment.HoldoutObservation(
-            lesson_slug=r.lesson, occasion_id=r.occasion_id, injected=r.injected,
-            succeeded=bool(r.succeeded), rate=r.rate,
+            lesson_slug=r.lesson,
+            occasion_id=r.occasion_id,
+            injected=r.injected,
+            succeeded=bool(r.succeeded),
+            rate=r.rate,
         )
-        for r in unique if r.succeeded is not None
+        for r in unique
+        if r.succeeded is not None
     ]
     effects = experiment.analyze(observations, alpha=alpha, sequential=True)
 
@@ -2104,15 +2237,16 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
         if r.lesson not in last_measured or r.at > last_measured[r.lesson]:
             last_measured[r.lesson] = r.at
 
-    titles = dict(
-        (
+    titles = {
+        row_key: row_value
+        for row_key, row_value in (
             await session.execute(
                 select(Trace.id, Trace.title).where(
                     Trace.org_id == org_id, Trace.id.in_([e.lesson_slug for e in effects])
                 )
             )
         ).all()
-    )
+    }
     return {
         "experiment_running": bool(org and org.holdout_rate > 0 and org.holdout_salt),
         "holdout_rate": org.holdout_rate if org else 0.0,
@@ -2125,17 +2259,14 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
             "fingerprint": _prereg_check.fingerprint,
             "note": _prereg_check.note,
             "deviations": [
-                {"field": d.field, "promised": d.promised, "actual": d.actual,
-                 "detail": d.detail}
+                {"field": d.field, "promised": d.promised, "actual": d.actual, "detail": d.detail}
                 for d in _prereg_check.deviations
             ],
             "registered_design": (org.holdout_prereg or None) if org else None,
         },
         "evidence_digest": _evidence_digest,
         "co_injection": {
-            "pairs": [sorted(pair) for pair in sorted(
-                _overlap.shared_pairs, key=lambda p: sorted(p)
-            )],
+            "pairs": [sorted(pair) for pair in sorted(_overlap.shared_pairs, key=lambda p: sorted(p))],
             "unique_injected_occasions": _overlap.unique_injected_occasions,
         },
         "policy_effect": {
@@ -2173,8 +2304,7 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
                 "verdict": e.verdict,
                 "note": e.note,
                 "last_measured_at": (
-                    last_measured[e.lesson_slug].isoformat()
-                    if e.lesson_slug in last_measured else ""
+                    last_measured[e.lesson_slug].isoformat() if e.lesson_slug in last_measured else ""
                 ),
             }
             for e in effects
@@ -2183,9 +2313,12 @@ async def causal_effects(session: AsyncSession, org_id: str, alpha: float = 0.05
             "CAUSAL, unlike the before/after comparison alongside it: the two arms "
             "are the same fleet in the same window, differing only by whether the "
             "memory was injected. That is what makes this survive 'what else changed?'."
-            + ("" if report.readable else
-               " READ `integrity` FIRST: the sample these effects were computed on is "
-               "compromised, so they are not estimates of the causal effect.")
+            + (
+                ""
+                if report.readable
+                else " READ `integrity` FIRST: the sample these effects were computed on is "
+                "compromised, so they are not estimates of the causal effect."
+            )
         ),
     }
 
@@ -2202,32 +2335,38 @@ async def value_delivered(
     causal = await causal_effects(session, org_id)
     effects = [
         experiment.CausalEffect(
-            lesson_slug=e["trace_id"], n_injected=e["n_injected"],
-            n_withheld=e["n_withheld"], rate_injected=e["rate_injected"],
-            rate_withheld=e["rate_withheld"], effect=e["effect"],
-            ci_low=e["ci_95"][0], ci_high=e["ci_95"][1], p_value=e["p_value"],
+            lesson_slug=e["trace_id"],
+            n_injected=e["n_injected"],
+            n_withheld=e["n_withheld"],
+            rate_injected=e["rate_injected"],
+            rate_withheld=e["rate_withheld"],
+            effect=e["effect"],
+            ci_low=e["ci_95"][0],
+            ci_high=e["ci_95"][1],
+            p_value=e["p_value"],
             significant=e["significant"],
             min_detectable_effect=e["min_detectable_effect"],
-            verdict=e["verdict"], note=e["note"],
+            verdict=e["verdict"],
+            note=e["note"],
         )
         for e in causal.get("effects", [])
     ]
     audit = _integrity_from_wire(causal.get("integrity") or {})
     card = None
     if rate_tiers:
-        card = value.RateCard(tiers=tuple(
-            value.Tier(
-                name=str(t.get("name") or ""),
-                share=float(t.get("share", 0.0)),
-                cost_per_occasion=float(t.get("cost_per_occasion", 0.0)),
+        card = value.RateCard(
+            tiers=tuple(
+                value.Tier(
+                    name=str(t.get("name") or ""),
+                    share=float(t.get("share", 0.0)),
+                    cost_per_occasion=float(t.get("cost_per_occasion", 0.0)),
+                )
+                for t in rate_tiers
             )
-            for t in rate_tiers
-        ))
+        )
     wire_overlap = causal.get("co_injection") or {}
     overlap = value.OccasionOverlap(
-        shared_pairs=frozenset(
-            frozenset(pair) for pair in wire_overlap.get("pairs", []) if len(pair) == 2
-        ),
+        shared_pairs=frozenset(frozenset(pair) for pair in wire_overlap.get("pairs", []) if len(pair) == 2),
         unique_injected_occasions=int(wire_overlap.get("unique_injected_occasions", 0)),
     )
     wire_policy = causal.get("policy_effect") or {}
@@ -2244,12 +2383,12 @@ async def value_delivered(
         readable=bool(wire_policy.get("readable", False)),
         reason=str(wire_policy.get("reason", "")),
     )
-    last_measured = {
-        e["trace_id"]: e.get("last_measured_at") or ""
-        for e in causal.get("effects", [])
-    }
+    last_measured = {e["trace_id"]: e.get("last_measured_at") or "" for e in causal.get("effects", [])}
     report = value.compute(
-        effects, audit, value_per_occasion=value_per_occasion, rate_card=card,
+        effects,
+        audit,
+        value_per_occasion=value_per_occasion,
+        rate_card=card,
         overlap=overlap,
         last_measured=last_measured,
         evidence_horizon_days=evidence_horizon_days,
@@ -2260,13 +2399,15 @@ async def value_delivered(
 
     issued_at = datetime.now(timezone.utc).isoformat()
     evidence_digest = str(causal.get("evidence_digest") or "")
-    prereg_fingerprint = str(
-        ((causal.get("preregistration") or {}).get("fingerprint")) or ""
-    )
+    prereg_fingerprint = str(((causal.get("preregistration") or {}).get("fingerprint")) or "")
     if signing_key:
         signature = value.sign_ledger(
-            ledger, signing_key.encode("utf-8"), org_id=org_id, issued_at=issued_at,
-            evidence_digest=evidence_digest, prereg_fingerprint=prereg_fingerprint,
+            ledger,
+            signing_key.encode("utf-8"),
+            org_id=org_id,
+            issued_at=issued_at,
+            evidence_digest=evidence_digest,
+            prereg_fingerprint=prereg_fingerprint,
         )
         signature_reason = ""
     else:
@@ -2296,7 +2437,8 @@ async def value_delivered(
                 "n_withheld": len(report.decay.withheld),
                 "due_for_remeasurement": list(report.decay.due_for_remeasurement),
             }
-            if report.decay is not None else None
+            if report.decay is not None
+            else None
         ),
         "unique_occasions": report.unique_occasions,
         "occasions_improved_unselected": report.occasions_improved_unselected,
@@ -2313,10 +2455,16 @@ async def value_delivered(
         "money": report.money,
         "money_range": list(report.money_range) if report.money_range else None,
         "ledger": [
-            {"index": e.index, "trace_id": e.slug, "verdict": e.verdict,
-             "occasions_improved": e.occasions_improved, "rate": e.rate,
-             "money": e.money, "previous_hash": e.previous_hash,
-             "entry_hash": e.entry_hash}
+            {
+                "index": e.index,
+                "trace_id": e.slug,
+                "verdict": e.verdict,
+                "occasions_improved": e.occasions_improved,
+                "rate": e.rate,
+                "money": e.money,
+                "previous_hash": e.previous_hash,
+                "entry_hash": e.entry_hash,
+            }
             for e in ledger
         ],
         "issued_at": issued_at,
@@ -2324,11 +2472,17 @@ async def value_delivered(
         "signature_algorithm": "HMAC-SHA256" if signature else None,
         "signature_reason": signature_reason,
         "memories": [
-            {"trace_id": m.slug, "title": titles.get(m.slug, "(deleted trace)"),
-             "verdict": m.verdict, "n_injected": m.n_injected, "effect": m.effect,
-             "occasions_improved": m.occasions_improved,
-             "ci_95": [m.ci_low, m.ci_high], "counted": m.counted,
-             "why_not": m.why_not}
+            {
+                "trace_id": m.slug,
+                "title": titles.get(m.slug, "(deleted trace)"),
+                "verdict": m.verdict,
+                "n_injected": m.n_injected,
+                "effect": m.effect,
+                "occasions_improved": m.occasions_improved,
+                "ci_95": [m.ci_low, m.ci_high],
+                "counted": m.counted,
+                "why_not": m.why_not,
+            }
             for m in report.memories
         ],
         "integrity": causal.get("integrity"),
@@ -2372,9 +2526,7 @@ async def working_set(
     evidence_horizon_days: int = DEFAULT_EVIDENCE_HORIZON_DAYS,
 ) -> dict:
     """The fleet's proven memory, small enough to pin to a system prompt."""
-    budget_chars = _clamp_int(
-        budget_chars, 1, MAX_WORKING_SET_CHARS, DEFAULT_WORKING_SET_CHARS
-    )
+    budget_chars = _clamp_int(budget_chars, 1, MAX_WORKING_SET_CHARS, DEFAULT_WORKING_SET_CHARS)
     evidence_horizon_days = _clamp_int(
         evidence_horizon_days, 1, MAX_EVIDENCE_HORIZON_DAYS, DEFAULT_EVIDENCE_HORIZON_DAYS
     )
@@ -2383,8 +2535,12 @@ async def working_set(
 
     if not audit.get("effects_readable", True):
         return {
-            "block": "", "entries": [], "established": False,
-            "chars_used": 0, "budget_chars": budget_chars, "gauge": f"[0% — 0/{budget_chars} chars]",
+            "block": "",
+            "entries": [],
+            "established": False,
+            "chars_used": 0,
+            "budget_chars": budget_chars,
+            "gauge": f"[0% — 0/{budget_chars} chars]",
             "reason": (
                 "The experiment these effects came from is COMPROMISED, so nothing has been "
                 "promoted. Read `fleet_outcomes.causal.integrity` and fix what it names; a "
@@ -2394,16 +2550,17 @@ async def working_set(
             "note": "",
         }
 
-    helps = [
-        e for e in causal.get("effects", [])
-        if e.get("verdict") == experiment.VERDICT_HELPS
-    ]
+    helps = [e for e in causal.get("effects", []) if e.get("verdict") == experiment.VERDICT_HELPS]
     helps.sort(key=lambda e: (e.get("effect") or 0.0) * (e.get("n_injected") or 0), reverse=True)
 
     if not helps:
         return {
-            "block": "", "entries": [], "established": False,
-            "chars_used": 0, "budget_chars": budget_chars, "gauge": f"[0% — 0/{budget_chars} chars]",
+            "block": "",
+            "entries": [],
+            "established": False,
+            "chars_used": 0,
+            "budget_chars": budget_chars,
+            "gauge": f"[0% — 0/{budget_chars} chars]",
             "reason": (
                 "No trace has an established causal effect yet, so nothing has earned a place "
                 "in an always-on block. This is a statement about evidence, not about the "
@@ -2414,8 +2571,9 @@ async def working_set(
             "note": "",
         }
 
-    bodies = dict(
-        (
+    bodies = {
+        row_key: row_value
+        for row_key, row_value in (
             await session.execute(
                 select(Trace.id, Trace.solution_text).where(
                     Trace.org_id == org_id,
@@ -2424,12 +2582,16 @@ async def working_set(
                 )
             )
         ).all()
-    )
+    }
     helps = [e for e in helps if e["trace_id"] in bodies]
     if not helps:
         return {
-            "block": "", "entries": [], "established": False,
-            "chars_used": 0, "budget_chars": budget_chars, "gauge": f"[0% — 0/{budget_chars} chars]",
+            "block": "",
+            "entries": [],
+            "established": False,
+            "chars_used": 0,
+            "budget_chars": budget_chars,
+            "gauge": f"[0% — 0/{budget_chars} chars]",
             "reason": (
                 "Every trace with an established causal effect has since been amended or "
                 "removed, so none of them are this fleet's current answer any more -- each "
@@ -2441,24 +2603,22 @@ async def working_set(
         }
 
     now = datetime.now(timezone.utc)
-    ages = {
-        e["trace_id"]: _evidence_age_days(e.get("last_measured_at") or "", now)
-        for e in helps
-    }
-    expired = [
-        e for e in helps
-        if ages[e["trace_id"]] is None or ages[e["trace_id"]] > evidence_horizon_days
-    ]
+    ages = {e["trace_id"]: _evidence_age_days(e.get("last_measured_at") or "", now) for e in helps}
+    expired = [e for e in helps if (age := ages[e["trace_id"]]) is None or age > evidence_horizon_days]
     helps = [e for e in helps if e not in expired]
     if not helps:
         oldest = min(
-            (ages[e["trace_id"]] for e in expired if ages[e["trace_id"]] is not None),
+            (age for e in expired if (age := ages[e["trace_id"]]) is not None),
             default=None,
         )
         measured = f"{oldest:.0f} days ago" if oldest is not None else "at an unrecorded time"
         return {
-            "block": "", "entries": [], "established": False,
-            "chars_used": 0, "budget_chars": budget_chars, "gauge": f"[0% — 0/{budget_chars} chars]",
+            "block": "",
+            "entries": [],
+            "established": False,
+            "chars_used": 0,
+            "budget_chars": budget_chars,
+            "gauge": f"[0% — 0/{budget_chars} chars]",
             "reason": (
                 f"Every established effect for this fleet was last measured {measured}, past "
                 f"the {evidence_horizon_days}-day evidence horizon, so nothing is pinned. This "
@@ -2476,29 +2636,31 @@ async def working_set(
     used = 0
     for e in helps:
         line = _working_set_entry(
-            e.get("title") or "", bodies.get(e["trace_id"], ""), e["trace_id"],
-            e.get("effect") or 0.0, e.get("n_injected") or 0,
+            e.get("title") or "",
+            bodies.get(e["trace_id"], ""),
+            e["trace_id"],
+            e.get("effect") or 0.0,
+            e.get("n_injected") or 0,
         )
         if used + len(line) + 1 > budget_chars:
             break
         lines.append(line)
         used += len(line) + 1
-        entries.append({
-            "trace_id": e["trace_id"], "title": e.get("title"),
-            "effect": e.get("effect"), "n_injected": e.get("n_injected"),
-            "occasions_improved": round((e.get("effect") or 0.0) * (e.get("n_injected") or 0), 2),
-            "last_measured_at": e.get("last_measured_at") or "",
-            "evidence_age_days": (
-                round(ages[e["trace_id"]], 1) if ages[e["trace_id"]] is not None else None
-            ),
-        })
+        entries.append(
+            {
+                "trace_id": e["trace_id"],
+                "title": e.get("title"),
+                "effect": e.get("effect"),
+                "n_injected": e.get("n_injected"),
+                "occasions_improved": round((e.get("effect") or 0.0) * (e.get("n_injected") or 0), 2),
+                "last_measured_at": e.get("last_measured_at") or "",
+                "evidence_age_days": (round(age, 1) if (age := ages[e["trace_id"]]) is not None else None),
+            }
+        )
 
     pct = round(100 * used / budget_chars) if budget_chars else 0
     gauge = f"[{pct}% — {used:,}/{budget_chars:,} chars]"
-    header = (
-        f"## Fleet memory — {len(entries)} lesson(s) with a measured effect\n"
-        f"{gauge}\n"
-    )
+    header = f"## Fleet memory — {len(entries)} lesson(s) with a measured effect\n{gauge}\n"
     return {
         "block": header + "\n".join(lines),
         "entries": entries,
@@ -2526,14 +2688,17 @@ def _integrity_from_wire(wire: dict) -> integrity.IntegrityReport | None:
         return None
     findings = [
         integrity.Finding(
-            check=str(f.get("check", "")), severity=str(f.get("severity", "")),
-            headline=str(f.get("headline", "")), detail=str(f.get("detail", "")),
+            check=str(f.get("check", "")),
+            severity=str(f.get("severity", "")),
+            headline=str(f.get("headline", "")),
+            detail=str(f.get("detail", "")),
         )
         for f in wire.get("findings", [])
     ]
     return integrity.IntegrityReport(
         verdict=str(wire.get("verdict", integrity.VERDICT_SOUND)),
-        findings=findings, projections=[],
+        findings=findings,
+        projections=[],
         n_assignments=int(wire.get("n_assignments", 0)),
         n_resolved=int(wire.get("n_resolved", 0)),
         unit=str(wire.get("unit", integrity.UNIT_TRACE)),
@@ -2544,6 +2709,7 @@ async def fleet_outcomes(
     session: AsyncSession, org_id: str, agent_type: str = "", alpha: float = outcomes.DEFAULT_ALPHA
 ) -> dict:
     """Has this fleet's agent performance changed since its baseline window?"""
+
     def _bool_field(field: str):
         return and_(
             func.jsonb_typeof(Trace.outcome[field]) == "boolean",
@@ -2570,9 +2736,7 @@ async def fleet_outcomes(
         columns.append(func.count().filter(_bool_recorded(field)).label(f"{field}_n"))
     for _name, field in outcomes.MEAN_METRICS:
         numeric = func.jsonb_typeof(Trace.outcome[field]) == "number"
-        columns.append(
-            func.avg(Trace.outcome[field].astext.cast(Float)).filter(numeric).label(f"{field}_avg")
-        )
+        columns.append(func.avg(Trace.outcome[field].astext.cast(Float)).filter(numeric).label(f"{field}_avg"))
         columns.append(func.count().filter(numeric).label(f"{field}_n"))
 
     where = [Trace.org_id == org_id, Trace.quarantined.is_(False)]
@@ -2580,9 +2744,7 @@ async def fleet_outcomes(
         reject_unstorable_text(agent_type, "agent_type")
         where.append(Trace.agent_type == agent_type)
 
-    grouped = (
-        await session.execute(select(*columns).where(*where).group_by(is_baseline))
-    ).all()
+    grouped = (await session.execute(select(*columns).where(*where).group_by(is_baseline))).all()
 
     arms = {True: outcomes.Tally(), False: outcomes.Tally()}
     for row in grouped:
@@ -2594,9 +2756,7 @@ async def fleet_outcomes(
             },
             means={
                 field: (
-                    float(getattr(row, f"{field}_avg"))
-                    if getattr(row, f"{field}_avg") is not None
-                    else None,
+                    float(getattr(row, f"{field}_avg")) if getattr(row, f"{field}_avg") is not None else None,
                     getattr(row, f"{field}_n"),
                 )
                 for _n, field in outcomes.MEAN_METRICS
@@ -2615,19 +2775,21 @@ VALID_SUBMISSION_DECISIONS = ("approve", "reject")
 
 
 async def _reserve_kb_submission_slot(session: AsyncSession, org_id: str) -> None:
-    await session.execute(
-        select(Organization.id).where(Organization.id == org_id).with_for_update()
-    )
-    pending = int(await session.scalar(
-        select(func.count()).select_from(KnowledgeBaseSubmission).where(
-            KnowledgeBaseSubmission.org_id == org_id,
-            KnowledgeBaseSubmission.status == "pending",
+    await session.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
+    pending = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(KnowledgeBaseSubmission)
+            .where(
+                KnowledgeBaseSubmission.org_id == org_id,
+                KnowledgeBaseSubmission.status == "pending",
+            )
         )
-    ) or 0)
+        or 0
+    )
     if pending >= MAX_PENDING_SUBMISSIONS_PER_ORG:
         raise TraceRejected(
-            f"{pending} submission(s) already awaiting review; wait for those to be "
-            "reviewed before proposing more"
+            f"{pending} submission(s) already awaiting review; wait for those to be reviewed before proposing more"
         )
 
 
@@ -2672,7 +2834,7 @@ async def submit_kb_entry(
     session: AsyncSession,
     org_id: str,
     config: HubConfig,
-    rate_limiter: RateLimiter,
+    rate_limiter: RateLimiterBackend,
     *,
     title: str,
     context_text: str,
@@ -2709,9 +2871,7 @@ async def submit_kb_entry(
 
     allowed, retry_after = await rate_limiter.check(f"kb_submit:{org_id}")
     if not allowed:
-        raise RateLimited(
-            f"org {org_id} exceeded submit_kb_entry rate limit", retry_after=retry_after
-        )
+        raise RateLimited(f"org {org_id} exceeded submit_kb_entry rate limit", retry_after=retry_after)
 
     await _reserve_kb_submission_slot(session, org_id)
 
@@ -2737,7 +2897,8 @@ async def submit_kb_entry(
         idempotency_key=idempotency_key,
         request_hash=(
             _contribute_request_hash(title, context_text, solution_text, tags, agent_type)
-            if idempotency_key is not None else None
+            if idempotency_key is not None
+            else None
         ),
     )
     session.add(submission)
@@ -2753,33 +2914,41 @@ async def submit_kb_entry(
                 )
             )
         ).scalar_one_or_none()
-        if existing is None:
+        if existing is None or idempotency_key is None:
             raise
         return _submission_idempotent_replay_or_conflict(
             existing, idempotency_key, title, context_text, solution_text, tags, agent_type
         )
 
     await audit.record(
-        session, actor=actor, action="submit_kb_entry", org_id=org_id,
-        target_type="kb_submission", target_id=submission.id,
+        session,
+        actor=actor,
+        action="submit_kb_entry",
+        org_id=org_id,
+        target_type="kb_submission",
+        target_id=submission.id,
         summary=f"agent_type={agent_type or '?'} title_len={len(title)} n_tags={len(tags)}",
     )
     return _submission_to_wire(submission)
 
 
 async def list_my_kb_submissions(session: AsyncSession, org_id: str, limit: int = 50) -> list[dict]:
-    rows = (await session.execute(
-        select(KnowledgeBaseSubmission)
-        .where(KnowledgeBaseSubmission.org_id == org_id)
-        .order_by(KnowledgeBaseSubmission.created_at.desc())
-        .limit(_clamp_int(limit, 1, 200, 50))
-    )).scalars().all()
+    rows = (
+        (
+            await session.execute(
+                select(KnowledgeBaseSubmission)
+                .where(KnowledgeBaseSubmission.org_id == org_id)
+                .order_by(KnowledgeBaseSubmission.created_at.desc())
+                .limit(_clamp_int(limit, 1, 200, 50))
+            )
+        )
+        .scalars()
+        .all()
+    )
     return [_submission_to_wire(s) for s in rows]
 
 
-async def list_kb_submissions(
-    session: AsyncSession, status: str | None = None, limit: int = 100
-) -> list[dict]:
+async def list_kb_submissions(session: AsyncSession, status: str | None = None, limit: int = 100) -> list[dict]:
     stmt = select(KnowledgeBaseSubmission)
     if status is not None:
         stmt = stmt.where(KnowledgeBaseSubmission.status == status)
@@ -2824,14 +2993,19 @@ async def review_kb_submission(
         submission.reviewed_by = reviewer
         submission.rejection_reason = rejection_reason
         await audit.record(
-            session, actor=reviewer, action="review_kb_submission", org_id=submission.org_id,
-            target_type="kb_submission", target_id=submission.id,
+            session,
+            actor=reviewer,
+            action="review_kb_submission",
+            org_id=submission.org_id,
+            target_type="kb_submission",
+            target_id=submission.id,
             summary=f"rejected reason_len={len(rejection_reason)}",
         )
         return _submission_to_wire(submission)
 
     awarded = (
-        plans.SUBMISSION_ACCEPTANCE_CREDIT if credit is None
+        plans.SUBMISSION_ACCEPTANCE_CREDIT
+        if credit is None
         else _clamp_int(credit, 0, 2**63 - 1, plans.SUBMISSION_ACCEPTANCE_CREDIT)
     )
     trace = Trace(
@@ -2843,12 +3017,8 @@ async def review_kb_submission(
         agent_type=submission.agent_type,
         shared_with_commons=True,
         shared_at=now,
-        shared_rationale=(
-            submission.rationale or "community-contributed substrate knowledge, operator-reviewed"
-        )[:500],
-        commons_signature=commons.signature_for(
-            submission.title, submission.context_text, list(submission.tags or [])
-        ),
+        shared_rationale=(submission.rationale or "community-contributed substrate knowledge, operator-reviewed")[:500],
+        commons_signature=commons.signature_for(submission.title, submission.context_text, list(submission.tags or [])),
         commons_source="seed",
     )
     session.add(trace)
@@ -2868,8 +3038,12 @@ async def review_kb_submission(
     )
 
     await audit.record(
-        session, actor=reviewer, action="review_kb_submission", org_id=submission.org_id,
-        target_type="kb_submission", target_id=submission.id,
+        session,
+        actor=reviewer,
+        action="review_kb_submission",
+        org_id=submission.org_id,
+        target_type="kb_submission",
+        target_id=submission.id,
         summary=f"approved -> trace={trace.id} credit={awarded}",
     )
     return _submission_to_wire(submission)
@@ -2909,9 +3083,7 @@ async def retract_kb_entry(
     return wire
 
 
-async def restore_kb_entry(
-    session: AsyncSession, trace_id: str, actor: str = audit.ACTOR_OPERATOR_CLI
-) -> dict | None:
+async def restore_kb_entry(session: AsyncSession, trace_id: str, actor: str = audit.ACTOR_OPERATOR_CLI) -> dict | None:
     if not _is_uuid(trace_id):
         return None
     stmt = select(Trace).where(
@@ -2964,9 +3136,14 @@ def _kb_review_queue_statement(now: datetime) -> Select:
     priority = case((n_flags > 0, 0), (disputed, 1), (stale, 2), else_=3)
     return (
         select(
-            Trace.id, Trace.title, Trace.commons_hits, Trace.commons_votes,
-            Trace.trust, Trace.commons_review_after,
-            n_flags.label("security_flags"), priority.label("priority"),
+            Trace.id,
+            Trace.title,
+            Trace.commons_hits,
+            Trace.commons_votes,
+            Trace.trust,
+            Trace.commons_review_after,
+            n_flags.label("security_flags"),
+            priority.label("priority"),
         )
         .outerjoin(flagged, flagged.c.trace_id == Trace.id)
         .where(*commons_visible(), or_(n_flags > 0, disputed, stale, Trace.commons_hits == 0))
@@ -2987,9 +3164,15 @@ def _kb_review_queue_wire(row, now: datetime) -> dict:
     else:
         why = "has never matched a real failure"
     return {
-        "id": row.id, "title": row.title, "bucket": bucket, "why": why,
-        "standing": standing, "commons_hits": row.commons_hits,
-        "vote_count": row.commons_votes, "trust": row.trust, "security_flags": row.security_flags,
+        "id": row.id,
+        "title": row.title,
+        "bucket": bucket,
+        "why": why,
+        "standing": standing,
+        "commons_hits": row.commons_hits,
+        "vote_count": row.commons_votes,
+        "trust": row.trust,
+        "security_flags": row.security_flags,
     }
 
 
@@ -2997,11 +3180,13 @@ async def kb_review_queue(session: AsyncSession, limit: int = 50) -> list[dict]:
     """Which Knowledge Base entries need a human, worst first."""
     now = datetime.now(timezone.utc)
     candidates = _kb_review_queue_statement(now).subquery()
-    rows = (await session.execute(
-        select(candidates)
-        .order_by(candidates.c.priority, candidates.c.commons_hits.desc(), candidates.c.id)
-        .limit(_clamp_int(limit, 1, 500, 50))
-    )).all()
+    rows = (
+        await session.execute(
+            select(candidates)
+            .order_by(candidates.c.priority, candidates.c.commons_hits.desc(), candidates.c.id)
+            .limit(_clamp_int(limit, 1, 500, 50))
+        )
+    ).all()
     return [_kb_review_queue_wire(row, now) for row in rows]
 
 
@@ -3014,11 +3199,13 @@ async def kb_review_queue_and_total(session: AsyncSession, limit: int = 50) -> t
     """One statement snapshot supplies both the bounded page and the true total."""
     now = datetime.now(timezone.utc)
     candidates = _kb_review_queue_statement(now).subquery()
-    rows = (await session.execute(
-        select(candidates, func.count().over().label("total"))
-        .order_by(candidates.c.priority, candidates.c.commons_hits.desc(), candidates.c.id)
-        .limit(_clamp_int(limit, 1, 500, 50))
-    )).all()
+    rows = (
+        await session.execute(
+            select(candidates, func.count().over().label("total"))
+            .order_by(candidates.c.priority, candidates.c.commons_hits.desc(), candidates.c.id)
+            .limit(_clamp_int(limit, 1, 500, 50))
+        )
+    ).all()
     return [_kb_review_queue_wire(row, now) for row in rows], int(rows[0].total) if rows else 0
 
 
@@ -3044,18 +3231,22 @@ async def commons_overlap(
         plan, bonus = await _plan_and_bonus_for(session, org_id)
         if not plan.commons_access:
             raise plans.EntitlementExceeded(
-                metric="commons_access", limit=0, used=0, plan=plan.name,
+                metric="commons_access",
+                limit=0,
+                used=0,
+                plan=plan.name,
                 remedy="The Knowledge Base is not included in this plan.",
             )
         allowance = plans.query_allowance(plan, bonus)
         if allowance != plans.UNLIMITED:
-            await session.execute(
-                select(Organization.id).where(Organization.id == org_id).with_for_update()
-            )
+            await session.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
             used = await _usage(session, org_id, METRIC_COMMONS_QUERIES)
             if not plans.within(allowance, used):
                 raise plans.EntitlementExceeded(
-                    metric=METRIC_COMMONS_QUERIES, limit=allowance, used=used, plan=plan.name,
+                    metric=METRIC_COMMONS_QUERIES,
+                    limit=allowance,
+                    used=used,
+                    plan=plan.name,
                     remedy="Move to a plan with a larger Knowledge Base query allowance.",
                 )
         await _meter(session, org_id, METRIC_COMMONS_QUERIES)
@@ -3087,7 +3278,7 @@ async def commons_overlap(
         if hit is None:
             continue
         hit_ids.append(hit.id)
-        entry = {
+        entry: dict = {
             "failure_label": label,
             "similarity": round(sim, 4),
             "agent_type": hit.agent_type,
@@ -3111,10 +3302,8 @@ async def commons_overlap(
     )
 
     if hit_ids and hits_count:
-        hit_counts = Counter(hit_ids)
-        hit_counts = {
-            tid: min(cnt, commons.MAX_HITS_PER_TRACE_PER_QUERY) for tid, cnt in hit_counts.items()
-        }
+        raw_hit_counts = Counter(hit_ids)
+        hit_counts = {tid: min(cnt, commons.MAX_HITS_PER_TRACE_PER_QUERY) for tid, cnt in raw_hit_counts.items()}
         increment = case(*((Trace.id == tid, cnt) for tid, cnt in hit_counts.items()), else_=0)
         await session.execute(
             update(Trace).where(Trace.id.in_(hit_counts)).values(commons_hits=Trace.commons_hits + increment)
@@ -3170,18 +3359,22 @@ async def commons_search(
     plan, bonus = await _plan_and_bonus_for(session, org_id)
     if not plan.commons_access:
         raise plans.EntitlementExceeded(
-            metric="commons_access", limit=0, used=0, plan=plan.name,
+            metric="commons_access",
+            limit=0,
+            used=0,
+            plan=plan.name,
             remedy="The Knowledge Base is not included in this plan.",
         )
     allowance = plans.query_allowance(plan, bonus)
     if allowance != plans.UNLIMITED:
-        await session.execute(
-            select(Organization.id).where(Organization.id == org_id).with_for_update()
-        )
+        await session.execute(select(Organization.id).where(Organization.id == org_id).with_for_update())
         used = await _usage(session, org_id, METRIC_COMMONS_QUERIES)
         if not plans.within(allowance, used):
             raise plans.EntitlementExceeded(
-                metric=METRIC_COMMONS_QUERIES, limit=allowance, used=used, plan=plan.name,
+                metric=METRIC_COMMONS_QUERIES,
+                limit=allowance,
+                used=used,
+                plan=plan.name,
                 remedy="Move to a plan with a larger Knowledge Base query allowance.",
             )
     await _meter(session, org_id, METRIC_COMMONS_QUERIES)
@@ -3196,7 +3389,7 @@ async def commons_search(
     ranked_rows = await _commons_rows(session, corpus, [corpus.ids[idx] for idx, _sim in ranked])
 
     now = datetime.now(timezone.utc)
-    candidates = [
+    candidates: list[dict] = [
         {
             "rank": 0,
             "similarity": round(sim, 4),
@@ -3219,9 +3412,7 @@ async def commons_search(
 
     return {
         "n_candidates": len(candidates),
-        "n_disputed": sum(
-            1 for c in candidates if not commons.counts_as_coverage(c["trace"]["standing"])
-        ),
+        "n_disputed": sum(1 for c in candidates if not commons.counts_as_coverage(c["trace"]["standing"])),
         "n_commons_traces": len(corpus.ids),
         "n_commons_traces_total": total_corpus,
         "corpus_truncated": total_corpus > len(corpus.ids),
@@ -3247,31 +3438,34 @@ async def export_commons(
     """The whole curated Knowledge Base corpus, for matching on the client."""
     if not config.commons_export_enabled:
         raise plans.EntitlementExceeded(
-            metric="commons_export", limit=0, used=0, plan="",
+            metric="commons_export",
+            limit=0,
+            used=0,
+            plan="",
             remedy="This deployment does not publish its Knowledge Base corpus in "
-                   "bulk. Consult it per failure with commons_search, or ask the "
-                   "operator to set HUB_COMMONS_EXPORT_ENABLED=true.",
+            "bulk. Consult it per failure with commons_search, or ask the "
+            "operator to set HUB_COMMONS_EXPORT_ENABLED=true.",
         )
 
     plan, _bonus = await _plan_and_bonus_for(session, org_id)
     if not plan.commons_access:
         raise plans.EntitlementExceeded(
-            metric="commons_access", limit=0, used=0, plan=plan.name,
+            metric="commons_access",
+            limit=0,
+            used=0,
+            plan=plan.name,
             remedy="The Knowledge Base is not included in this plan.",
         )
 
     limit = _clamp_int(limit, 1, MAX_EXPORT_COMMONS, MAX_EXPORT_COMMONS)
     rows = (
-        await session.execute(
-            select(Trace)
-            .where(*commons_visible())
-            .order_by(Trace.created_at.asc())
-            .limit(limit)
-        )
-    ).scalars().all()
+        (await session.execute(select(Trace).where(*commons_visible()).order_by(Trace.created_at.asc()).limit(limit)))
+        .scalars()
+        .all()
+    )
 
     now = datetime.now(timezone.utc)
-    result = {
+    result: dict = {
         "entries": [
             {
                 "title": t.title,
@@ -3298,8 +3492,9 @@ async def export_commons(
         from unimem.commons_integrity import sign_record
 
         key = config.commons_signing_key.encode("utf-8")
-        result["entries"] = [sign_record(entry, key, key_id=config.commons_signing_key_id)
-                             for entry in result["entries"]]
+        result["entries"] = [
+            sign_record(entry, key, key_id=config.commons_signing_key_id) for entry in result["entries"]
+        ]
     return result
 
 
@@ -3317,18 +3512,19 @@ async def browse_commons(
     plan, _bonus = await _plan_and_bonus_for(session, org_id)
     if not plan.commons_access:
         raise plans.EntitlementExceeded(
-            metric="commons_access", limit=0, used=0, plan=plan.name,
+            metric="commons_access",
+            limit=0,
+            used=0,
+            plan=plan.name,
             remedy="The Knowledge Base is not included in this plan.",
         )
 
     conditions = list(commons_visible())
     tag = (tag or "").strip()
     if tag:
-        conditions.append(Trace.tags.any(tag))
+        conditions.append(Trace.tags.any_() == tag)
 
-    total = await session.scalar(
-        select(func.count()).select_from(Trace).where(*conditions)
-    )
+    total = await session.scalar(select(func.count()).select_from(Trace).where(*conditions))
     is_disputed = case(
         (
             and_(
@@ -3340,19 +3536,23 @@ async def browse_commons(
         else_=0,
     )
     rows = (
-        await session.execute(
-            select(Trace)
-            .where(*conditions)
-            .order_by(
-                is_disputed.asc(),
-                Trace.trust.desc(),
-                Trace.created_at.desc(),
-                Trace.id.desc(),
+        (
+            await session.execute(
+                select(Trace)
+                .where(*conditions)
+                .order_by(
+                    is_disputed.asc(),
+                    Trace.trust.desc(),
+                    Trace.created_at.desc(),
+                    Trace.id.desc(),
+                )
+                .limit(limit + 1)
+                .offset(offset)
             )
-            .limit(limit + 1)
-            .offset(offset)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     has_more = len(rows) > limit
     rows = rows[:limit]
 
@@ -3371,7 +3571,7 @@ async def browse_commons(
     concerns = await _concerns_for(session, [trace.id for trace in rows])
 
     now = datetime.now(timezone.utc)
-    entries = []
+    entries: list[dict] = []
     for trace in rows:
         standing = commons.entry_standing(
             trust=trace.trust or 0.0,
@@ -3379,25 +3579,25 @@ async def browse_commons(
             review_after=trace.commons_review_after,
             now=now,
         )
-        entries.append({
-            "id": trace.id,
-            "title": trace.title,
-            "context_preview": _preview(trace.context_text),
-            "solution_preview": _preview(trace.solution_text),
-            "tags": list(trace.tags or []),
-            "agent_type": trace.agent_type,
-            "standing": standing,
-            "trust": trace.trust or 0.0,
-            "votes": trace.commons_votes or 0,
-            "hits": trace.commons_hits or 0,
-            "my_vote": my_votes.get(trace.id, ""),
-            "concerns": concerns.get(trace.id, {}),
-            "revisions": trace.depth or 0,
-            "created_at": _iso(trace.created_at),
-        })
-    entries.sort(
-        key=lambda e: (not commons.counts_as_coverage(e["standing"]), -e["trust"])
-    )
+        entries.append(
+            {
+                "id": trace.id,
+                "title": trace.title,
+                "context_preview": _preview(trace.context_text),
+                "solution_preview": _preview(trace.solution_text),
+                "tags": list(trace.tags or []),
+                "agent_type": trace.agent_type,
+                "standing": standing,
+                "trust": trace.trust or 0.0,
+                "votes": trace.commons_votes or 0,
+                "hits": trace.commons_hits or 0,
+                "my_vote": my_votes.get(trace.id, ""),
+                "concerns": concerns.get(trace.id, {}),
+                "revisions": trace.depth or 0,
+                "created_at": _iso(trace.created_at),
+            }
+        )
+    entries.sort(key=lambda e: (not commons.counts_as_coverage(e["standing"]), -e["trust"]))
 
     return {
         "entries": entries,
@@ -3416,15 +3616,12 @@ _FLOOR_CAVEAT = (
 )
 
 
-def _commons_note(
-    n_failures: int, n_corpus: int, truncated: bool = False, total: int = 0
-) -> str:
+def _commons_note(n_failures: int, n_corpus: int, truncated: bool = False, total: int = 0) -> str:
     if truncated:
         return (
             f"Compared against the {n_corpus:,} most recent of {total:,} Knowledge Base "
             f"entries (per-query scan limit). Real coverage is AT LEAST this figure -- "
-            "treat it as a lower bound, and narrow with agent_type for a tighter answer. "
-            + _FLOOR_CAVEAT
+            "treat it as a lower bound, and narrow with agent_type for a tighter answer. " + _FLOOR_CAVEAT
         )
     if n_corpus == 0:
         return (
@@ -3439,9 +3636,8 @@ def _commons_note(
     if n_failures < 20:
         return (
             f"Only {n_failures} failures submitted -- treat this as directional. "
-            f"MinHash adds roughly {100 / (commons.COMMONS_NUM_PERM ** 0.5):.0f}% "
-            "standard error per comparison on top of small-sample noise. "
-            + _FLOOR_CAVEAT
+            f"MinHash adds roughly {100 / (commons.COMMONS_NUM_PERM**0.5):.0f}% "
+            "standard error per comparison on top of small-sample noise. " + _FLOOR_CAVEAT
         )
     if n_corpus < 50:
         return (

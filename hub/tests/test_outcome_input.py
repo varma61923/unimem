@@ -31,8 +31,12 @@ class TestValidateOutcomeItself:
 
     def test_a_full_valid_outcome_passes_through_unchanged(self):
         full = {
-            "resolved": True, "escalated": False, "repeated_error": False,
-            "frustration_signal": False, "tokens_used": 800, "llm_calls": 3,
+            "resolved": True,
+            "escalated": False,
+            "repeated_error": False,
+            "frustration_signal": False,
+            "tokens_used": 800,
+            "llm_calls": 3,
             "baseline": True,
         }
         assert outcomes.validate_outcome(full) == full
@@ -94,9 +98,16 @@ class TestContributeTraceOutcome:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
                 outcome={"resolved": True, "tokens_used": 500},
             )
         async with session_scope(session_factory) as session:
@@ -107,9 +118,16 @@ class TestContributeTraceOutcome:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             fetched = await crud.get_trace(session, org, result["id"])
@@ -120,45 +138,73 @@ class TestContributeTraceOutcome:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="resolved"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     outcome={"resolved": "yes"},
                 )
         async with session_scope(session_factory) as session:
             result = await crud.search_traces(session, org, query="t")
         assert result["traces"] == []
 
-    async def test_a_nan_token_count_is_rejected_rather_than_reaching_postgres(
-        self, session_factory, org, config
-    ):
+    async def test_a_nan_token_count_is_rejected_rather_than_reaching_postgres(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="tokens_used"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     outcome={"tokens_used": float("nan")},
                 )
 
-    async def test_idempotent_retry_with_the_same_outcome_returns_the_original(
-        self, session_factory, org, config
-    ):
+    async def test_idempotent_retry_with_the_same_outcome_returns_the_original(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         key = "retry-key-1"
         outcome = {"resolved": True}
         async with session_scope(session_factory) as session:
             first = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key, outcome=outcome,
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
+                outcome=outcome,
             )
         async with session_scope(session_factory) as session:
             retry = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key, outcome=outcome,
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
+                outcome=outcome,
             )
         assert retry["id"] == first["id"]
 
@@ -167,17 +213,33 @@ class TestContributeTraceOutcome:
         key = "retry-key-2"
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key,
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
                 outcome={"resolved": True},
             )
         async with session_scope(session_factory) as session:
             with pytest.raises(IdempotencyKeyConflict):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test", idempotency_key=key,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
+                    idempotency_key=key,
                     outcome={"resolved": False},
                 )
 
@@ -188,57 +250,88 @@ class TestAmendTraceOutcome:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             t = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="ok", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="ok",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         return t["id"]
 
-    async def test_amend_with_no_outcome_carries_the_original_forward(
-        self, session_factory, org, config, trace_id
-    ):
+    async def test_amend_with_no_outcome_carries_the_original_forward(self, session_factory, org, config, trace_id):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             first = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": True}, actor="test",
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             result = await crud.amend_trace(
-                session, org, first["id"], config, rate_limiter,
-                title="retitled", actor="test",
+                session,
+                org,
+                first["id"],
+                config,
+                rate_limiter,
+                title="retitled",
+                actor="test",
             )
         assert result["outcome"] == {"resolved": True}
 
-    async def test_amend_with_an_outcome_merges_rather_than_replaces(
-        self, session_factory, org, config, trace_id
-    ):
+    async def test_amend_with_an_outcome_merges_rather_than_replaces(self, session_factory, org, config, trace_id):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             first = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": True}, actor="test",
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             second = await crud.amend_trace(
-                session, org, first["id"], config, rate_limiter,
-                outcome={"tokens_used": 800}, actor="test",
+                session,
+                org,
+                first["id"],
+                config,
+                rate_limiter,
+                outcome={"tokens_used": 800},
+                actor="test",
             )
         assert second["outcome"] == {"resolved": True, "tokens_used": 800}
 
-    async def test_amend_outcome_can_override_an_existing_key(
-        self, session_factory, org, config, trace_id
-    ):
+    async def test_amend_outcome_can_override_an_existing_key(self, session_factory, org, config, trace_id):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             first = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": False}, actor="test",
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": False},
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             second = await crud.amend_trace(
-                session, org, first["id"], config, rate_limiter,
-                outcome={"resolved": True}, actor="test",
+                session,
+                org,
+                first["id"],
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
             )
         assert second["outcome"] == {"resolved": True}
 
@@ -247,8 +340,13 @@ class TestAmendTraceOutcome:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="tokens_used"):
                 await crud.amend_trace(
-                    session, org, trace_id, config, rate_limiter,
-                    outcome={"tokens_used": -5}, actor="test",
+                    session,
+                    org,
+                    trace_id,
+                    config,
+                    rate_limiter,
+                    outcome={"tokens_used": -5},
+                    actor="test",
                 )
 
     async def test_idempotent_retry_with_the_same_outcome_returns_the_original(
@@ -258,52 +356,86 @@ class TestAmendTraceOutcome:
         key = "amend-retry-key"
         async with session_scope(session_factory) as session:
             first = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": True}, actor="test", idempotency_key=key,
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
+                idempotency_key=key,
             )
         async with session_scope(session_factory) as session:
             retry = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": True}, actor="test", idempotency_key=key,
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
+                idempotency_key=key,
             )
         assert retry["id"] == first["id"]
 
-    async def test_reusing_a_key_with_a_different_outcome_conflicts(
-        self, session_factory, org, config, trace_id
-    ):
+    async def test_reusing_a_key_with_a_different_outcome_conflicts(self, session_factory, org, config, trace_id):
         rate_limiter = make_rate_limiter(config)
         key = "amend-retry-key-2"
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter,
-                outcome={"resolved": True}, actor="test", idempotency_key=key,
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                outcome={"resolved": True},
+                actor="test",
+                idempotency_key=key,
             )
         async with session_scope(session_factory) as session:
             with pytest.raises(IdempotencyKeyConflict):
                 await crud.amend_trace(
-                    session, org, trace_id, config, rate_limiter,
-                    outcome={"resolved": False}, actor="test", idempotency_key=key,
+                    session,
+                    org,
+                    trace_id,
+                    config,
+                    rate_limiter,
+                    outcome={"resolved": False},
+                    actor="test",
+                    idempotency_key=key,
                 )
 
 
 class TestFleetOutcomesEndToEnd:
-    async def test_fleet_outcomes_reports_real_data_from_contribute_trace_alone(
-        self, session_factory, org, config
-    ):
+    async def test_fleet_outcomes_reports_real_data_from_contribute_trace_alone(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             for i in range(10):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title=f"baseline {i}", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title=f"baseline {i}",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     outcome={"resolved": i < 5, "baseline": True},
                 )
             for i in range(10):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title=f"current {i}", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title=f"current {i}",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     outcome={"resolved": i < 9},
                 )
         async with session_scope(session_factory) as session:

@@ -3,6 +3,7 @@
 `sdk/openapi.json` is the memory SDK subset the generated clients are built
 from; `openapi/gateway.json` is every gateway route.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,8 +22,10 @@ from unimem.gateway import Gateway  # noqa: E402
 def full_document() -> dict:
     with tempfile.TemporaryDirectory() as root:
         result = Gateway(root)._openapi({}, {})
-    result["info"]["license"] = {"name": "GNU Affero General Public License v3.0 only",
-                                  "url": "https://www.gnu.org/licenses/agpl-3.0.html"}
+    result["info"]["license"] = {
+        "name": "GNU Affero General Public License v3.0 only",
+        "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+    }
     result["servers"] = [{"url": "http://127.0.0.1:8765", "description": "Local gateway; configure HTTPS for hosting"}]
     return result
 
@@ -56,21 +59,24 @@ def document() -> dict:
     result["info"]["description"] = (
         "Append-only memory, source-linked recall and observed outcomes. Bearer agent keys bind the owner scope; "
         "a request cannot replace its principal's context. Retrieved evidence never authorizes an action. "
-        "Use HTTPS for hosted gateways; localhost is intended for a trusted local operator.")
-    result["info"]["license"] = {"name": "GNU Affero General Public License v3.0 only",
-                                  "url": "https://www.gnu.org/licenses/agpl-3.0.html"}
+        "Use HTTPS for hosted gateways; localhost is intended for a trusted local operator."
+    )
+    result["info"]["license"] = {
+        "name": "GNU Affero General Public License v3.0 only",
+        "url": "https://www.gnu.org/licenses/agpl-3.0.html",
+    }
     result["servers"] = [{"url": "http://127.0.0.1:8765", "description": "Local gateway; configure HTTPS for hosting"}]
     return result
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", type=Path, default=ROOT/"sdk"/"openapi.json")
-    parser.add_argument("--full-out", type=Path, default=ROOT/"openapi"/"gateway.json")
+    parser.add_argument("--out", type=Path, default=ROOT / "sdk" / "openapi.json")
+    parser.add_argument("--full-out", type=Path, default=ROOT / "openapi" / "gateway.json")
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     for out, doc in ((args.out, document()), (args.full_out, full_document())):
-        content = json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True)+"\n"
+        content = json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
         if args.check:
             if not out.is_file() or out.read_text() != content:
                 parser.exit(1, f"OpenAPI contract {out.name} is stale; run python scripts/export_openapi.py\n")

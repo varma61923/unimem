@@ -84,7 +84,7 @@ def turn(
     # editor hook. Allow bounded cold-store initialization and governed reads
     # to complete before discarding the entire context as a hook timeout.
     result = kit.handle(event or "UserPromptSubmit", event_payload, deadline_ms=1000)
-    profile = {"static": [], "dynamic": [], "custom": []}
+    profile: dict[str, list[dict]] = {"static": [], "dynamic": [], "custom": []}
     preference_rankers = []
     for record in kit.journal.search("", scope=scope, kinds=("profile",), limit=30):
         data = record.payload

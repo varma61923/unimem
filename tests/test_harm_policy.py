@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -47,13 +48,17 @@ def _store(tmp_path, *, n, report):
     root = str(tmp_path / "fleet")
     assert cli("init", "--dest", root, "--agent-type", "support").returncode == 0
     _write_lesson(
-        root, BAD, importance=5,
+        root,
+        BAD,
+        importance=5,
         description="customer asks for a password reset email: paste the reset link into the chat",
         body="When a customer asks for a password reset email, paste the reset link "
-             "straight into the chat so they do not have to wait for the email.",
+        "straight into the chat so they do not have to wait for the email.",
     )
     _write_lesson(
-        root, GOOD, importance=2,
+        root,
+        GOOD,
+        importance=2,
         description="password reset email: verify the account owner first",
         body="Before sending a password reset email, verify the account owner.",
     )
@@ -159,7 +164,8 @@ def test_the_experiment_stays_readable_and_the_verdict_stands(harmed):
 
 def test_only_an_anytime_valid_verdict_is_acted_on(tmp_path):
     root, server = _store(
-        tmp_path, n=160,
+        tmp_path,
+        n=160,
         report=lambda i, injected: (i % 5) < (2 if BAD in injected else 3),
     )
     rows = evidence.analyse(root).rows
@@ -187,9 +193,16 @@ def test_a_new_randomization_gives_it_a_second_trial(harmed):
 def test_a_compromised_experiment_withdraws_nothing(harmed, monkeypatch):
     root, server = harmed
     _set_policy(root, harm.POLICY_WITHDRAW)
-    monkeypatch.setattr(evidence, "for_lessons", lambda _root: {
-        "available": False, "reason": "COMPROMISED", "measured_at": "", "by_lesson": {},
-    })
+    monkeypatch.setattr(
+        evidence,
+        "for_lessons",
+        lambda _root: {
+            "available": False,
+            "reason": "COMPROMISED",
+            "measured_at": "",
+            "by_lesson": {},
+        },
+    )
     assert evidence.withdrawn(root, harm.POLICY_WITHDRAW) == {}
     out = call(server, "retrieve", task=TASK)
     assert BAD in _by_slug(out, "lessons")
@@ -212,8 +225,7 @@ def test_query_withdraws_the_same_lesson_and_says_so(harmed):
 
     out = cli("query", "--lexical", "--dest", root, TASK)
     assert out.returncode == 0, out.stderr
-    listed = [line.split()[0] for line in out.stdout.splitlines()
-              if line and not line.startswith(("[", " ", "\n"))]
+    listed = [line.split()[0] for line in out.stdout.splitlines() if line and not line.startswith(("[", " ", "\n"))]
     assert BAD not in listed
     assert GOOD in listed
     assert "withdrawn -- measured to make outcomes worse" in out.stdout
@@ -223,12 +235,12 @@ def test_query_withdraws_the_same_lesson_and_says_so(harmed):
 def test_query_never_assigns_a_withdrawn_lesson_an_arm(harmed):
     root, _server = harmed
     assert cli("retrieval", "--on-harm", "withdraw", "--dest", root).returncode == 0
-    out = cli("query", "--lexical", "--experiment", "--occasion-id", "cli-occ",
-              "--dest", root, TASK)
+    out = cli("query", "--lexical", "--experiment", "--occasion-id", "cli-occ", "--dest", root, TASK)
     assert out.returncode == 0, out.stderr
     with open(holdout_io.holdout_log_path(root), encoding="utf-8") as fh:
-        logged = {json.loads(line)["lesson"] for line in fh
-                  if line.strip() and json.loads(line)["occasion_id"] == "cli-occ"}
+        logged = {
+            json.loads(line)["lesson"] for line in fh if line.strip() and json.loads(line)["occasion_id"] == "cli-occ"
+        }
     assert logged == {GOOD}
 
 
@@ -249,7 +261,7 @@ def test_an_unknown_setting_is_refused_on_write_and_ignored_on_read(tmp_path):
         retrieval_io.configure(root, harm_policy="delete")
     retrieval_io.configure(root, max_lessons=3)
     path = retrieval_io.config_path(root)
-    raw = json.loads(open(path, encoding="utf-8").read())
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
     raw["harm_policy"] = ["withdraw"]
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(raw, fh)

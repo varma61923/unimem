@@ -1,4 +1,5 @@
 """Exact-output and work-count checks for linear conversation preprocessing."""
+
 import datetime as dt
 import random
 import re
@@ -82,8 +83,12 @@ def test_repeated_weekdays_evaluate_each_clause_once(monkeypatch):
 def test_tense_boundaries_preserve_past_future_and_semicolon_semantics():
     text = "We will go on Tuesday. We went on Tuesday! We will go; we went on Tuesday? We will go on Tuesday"
     groundings = timeparse.ground(text, dt.date(2026, 10, 5))
-    assert [g.lo for g in groundings] == [dt.date(2026, 10, 6), dt.date(2026, 9, 29),
-                                        dt.date(2026, 9, 29), dt.date(2026, 10, 6)]
+    assert [g.lo for g in groundings] == [
+        dt.date(2026, 10, 6),
+        dt.date(2026, 9, 29),
+        dt.date(2026, 9, 29),
+        dt.date(2026, 10, 6),
+    ]
 
 
 def test_clause_index_matches_frozen_boundary_rules():

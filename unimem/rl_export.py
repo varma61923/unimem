@@ -9,6 +9,7 @@ under exact randomization, bounded outcomes and noninformative selection.
 Replay probabilities and sampled token KL are estimates/heuristics, not release
 certificates or a guarantee on a trained model's KL or performance.
 """
+
 from __future__ import annotations
 
 import math
@@ -31,7 +32,7 @@ def validate(episode: dict[str, Any]) -> None:
         fp.text(episode[field], field, 128)
     fp.text(episode["prompt"], "training prompt", 20000)
     fp.text(episode["response"], "observed response", 20000)
-    fp.number(episode["rate"], .001, .999)
+    fp.number(episode["rate"], 0.001, 0.999)
     if type(episode["injected"]) is not bool or type(episode["outcome"]) is not bool:
         raise ValueError("UniMem training records require binary canonical assignment and outcome")
     fp.count(len(episode["scopes"]), 0, 128)
@@ -59,33 +60,57 @@ def token_kl(policy: Sequence[float] | None, base: Sequence[float] | None, budge
     if policy is None or base is None or len(policy) != len(base):
         raise ValueError("UniMem KL checking requires matching policy and base token logprobs")
     fp.count(len(policy), 1, 8192)
-    differences = [fp.number(p, -1000, 0, "token logprob") - fp.number(b, -1000, 0, "base token logprob")
-                   for p, b in zip(policy, base)]
-    estimate = math.fsum(differences)/len(differences)
-    return {"status": "within sampled budget" if estimate <= budget else "over sampled budget",
-            "budget": budget, "estimate": estimate, "classification": "estimate",
-            "assumptions": ["tokens sampled from the declared policy", "authenticated aligned token logs"],
-            "method": "mean sampled token log(policy/base); not exact distributional KL"}
+    differences = [
+        fp.number(p, -1000, 0, "token logprob") - fp.number(b, -1000, 0, "base token logprob")
+        for p, b in zip(policy, base)
+    ]
+    estimate = math.fsum(differences) / len(differences)
+    return {
+        "status": "within sampled budget" if estimate <= budget else "over sampled budget",
+        "budget": budget,
+        "estimate": estimate,
+        "classification": "estimate",
+        "assumptions": ["tokens sampled from the declared policy", "authenticated aligned token logs"],
+        "method": "mean sampled token log(policy/base); not exact distributional KL",
+    }
 
 
-def advantage(episode: dict[str, Any], *, m0: float = .5, m1: float = .5) -> dict[str, Any]:
+def advantage(episode: dict[str, Any], *, m0: float = 0.5, m1: float = 0.5) -> dict[str, Any]:
     validate(episode)
     fp.number(m0, 0, 1, "frozen public control prediction")
     fp.number(m1, 0, 1, "frozen public treatment prediction")
-    y, z, p = int(episode["outcome"]), int(episode["injected"]), 1-episode["rate"]
-    baseline = m0 + (1-z)*(y-m0)/(1-p)
-    treatment = m1 + z*(y-m1)/p
-    return {"occasion_id": episode["occasion_id"], "prompt": episode["prompt"], "response": episode["response"],
-            "outcome": y, "baseline": baseline, "advantage": y-baseline,
-            "aipw_effect_score": treatment-baseline, "propensity": p,
-            "meta": {"unit": episode["unit"], "segment": episode["context"], "scopes": episode["scopes"],
-                     "integrity": episode["integrity"], "confidentiality": episode["confidentiality"],
-                     "interpretation": "logged-policy improvement over control; not an individual counterfactual",
-                     "nuisance": [m0, m1], "classification": "estimate"}}
+    y, z, p = int(episode["outcome"]), int(episode["injected"]), 1 - episode["rate"]
+    baseline = m0 + (1 - z) * (y - m0) / (1 - p)
+    treatment = m1 + z * (y - m1) / p
+    return {
+        "occasion_id": episode["occasion_id"],
+        "prompt": episode["prompt"],
+        "response": episode["response"],
+        "outcome": y,
+        "baseline": baseline,
+        "advantage": y - baseline,
+        "aipw_effect_score": treatment - baseline,
+        "propensity": p,
+        "meta": {
+            "unit": episode["unit"],
+            "segment": episode["context"],
+            "scopes": episode["scopes"],
+            "integrity": episode["integrity"],
+            "confidentiality": episode["confidentiality"],
+            "interpretation": "logged-policy improvement over control; not an individual counterfactual",
+            "nuisance": [m0, m1],
+            "classification": "estimate",
+        },
+    }
 
 
-def priorities(episodes: Sequence[dict[str, Any]], intervals: dict[str, Sequence[float]], *,
-               exploitation: float = .8, exploration: float = .2) -> list[dict[str, Any]]:
+def priorities(
+    episodes: Sequence[dict[str, Any]],
+    intervals: dict[str, Sequence[float]],
+    *,
+    exploitation: float = 0.8,
+    exploration: float = 0.2,
+) -> list[dict[str, Any]]:
     fp.count(len(episodes), 0, MAX_EPISODES)
     fp.number(exploitation, 0, 1)
     fp.number(exploration, 0, 1)
@@ -97,28 +122,43 @@ def priorities(episodes: Sequence[dict[str, Any]], intervals: dict[str, Sequence
         low, high = intervals[episode["unit"]]
         fp.number(low, -1, 1)
         fp.number(high, low, 1)
-        width = high-low
-        weights.append((exploitation*max(0.0, low) + exploration)*width)
+        width = high - low
+        weights.append((exploitation * max(0.0, low) + exploration) * width)
     total = math.fsum(weights)
-    return [{"occasion_id": e["occasion_id"], "weight": w,
-             "probability": w/total if total else 1/len(episodes),
-             "classification": "heuristic", "fallback": "uniform" if not total else None}
-            for e, w in zip(episodes, weights)]
+    return [
+        {
+            "occasion_id": e["occasion_id"],
+            "weight": w,
+            "probability": w / total if total else 1 / len(episodes),
+            "classification": "heuristic",
+            "fallback": "uniform" if not total else None,
+        }
+        for e, w in zip(episodes, weights)
+    ]
 
 
-def sample(episodes: Sequence[dict[str, Any]], intervals: dict[str, Sequence[float]], *,
-           count: int, seed: int, exploitation: float = .8, exploration: float = .2) -> list[str]:
+def sample(
+    episodes: Sequence[dict[str, Any]],
+    intervals: dict[str, Sequence[float]],
+    *,
+    count: int,
+    seed: int,
+    exploitation: float = 0.8,
+    exploration: float = 0.2,
+) -> list[str]:
     fp.count(count, 1, 4096)
-    fp.count(seed, 0, 2**63-1)
+    fp.count(seed, 0, 2**63 - 1)
     if not episodes:
         raise ValueError("UniMem replay cannot sample an empty cohort")
     weights = priorities(episodes, intervals, exploitation=exploitation, exploration=exploration)
-    return random.Random(seed).choices([r["occasion_id"] for r in weights],
-                                       weights=[r["probability"] for r in weights], k=count)
+    return random.Random(seed).choices(
+        [r["occasion_id"] for r in weights], weights=[r["probability"] for r in weights], k=count
+    )
 
 
-def preferences(episodes: Sequence[dict[str, Any]], effects: dict[str, dict[str, Any]], *,
-                kl_budget: float = .1) -> list[dict[str, Any]]:
+def preferences(
+    episodes: Sequence[dict[str, Any]], effects: dict[str, dict[str, Any]], *, kl_budget: float = 0.1
+) -> list[dict[str, Any]]:
     fp.count(len(episodes), 0, MAX_EPISODES)
     grouped: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     seen = set()
@@ -133,8 +173,9 @@ def preferences(episodes: Sequence[dict[str, Any]], effects: dict[str, dict[str,
         grouped[key].append(episode)
     result = []
     for _, group in sorted(grouped.items(), key=lambda item: str(item[0])):
-        arms = {z: sorted([e for e in group if e["injected"] is z], key=lambda e: e["occasion_id"])
-                for z in (False, True)}
+        arms = {
+            z: sorted([e for e in group if e["injected"] is z], key=lambda e: e["occasion_id"]) for z in (False, True)
+        }
         # Disjoint pairs prevent one convenient control response from being
         # duplicated into artificial independent training evidence.
         for treated, control in zip(arms[True], arms[False]):
@@ -145,17 +186,35 @@ def preferences(episodes: Sequence[dict[str, Any]], effects: dict[str, dict[str,
             if any(k["status"] == "over sampled budget" for k in kl):
                 raise PermissionError("UniMem preference pair exceeds its sampled token KL budget")
             effect = effects[chosen["unit"]]
-            result.append({"prompt": chosen["prompt"], "chosen": chosen["response"], "rejected": rejected["response"],
-                "meta": {"pairing": "different randomized occasions matched on observed task features",
-                    "same_instance_counterfactual": False, "population_effect": effect["effect"],
-                    "interval": effect["interval"], "segment": chosen["context"], "cluster": chosen["cluster"],
-                    "unit": chosen["unit"], "occasions": [chosen["occasion_id"], rejected["occasion_id"]],
-                    "propensities": [1-chosen["rate"], 1-rejected["rate"]], "kl_to_base": kl,
-                    "scopes": chosen["scopes"], "integrity": chosen["integrity"],
-                    "confidentiality": chosen["confidentiality"], "classification": "estimate",
-                    "assumptions": ["exact randomization; complete outcomes", "matching uses pre-treatment features",
-                                    "cohort selection is noninformative; no interference"],
-                    "vendor_schema": VENDOR_SCHEMA_STATUS}})
+            result.append(
+                {
+                    "prompt": chosen["prompt"],
+                    "chosen": chosen["response"],
+                    "rejected": rejected["response"],
+                    "meta": {
+                        "pairing": "different randomized occasions matched on observed task features",
+                        "same_instance_counterfactual": False,
+                        "population_effect": effect["effect"],
+                        "interval": effect["interval"],
+                        "segment": chosen["context"],
+                        "cluster": chosen["cluster"],
+                        "unit": chosen["unit"],
+                        "occasions": [chosen["occasion_id"], rejected["occasion_id"]],
+                        "propensities": [1 - chosen["rate"], 1 - rejected["rate"]],
+                        "kl_to_base": kl,
+                        "scopes": chosen["scopes"],
+                        "integrity": chosen["integrity"],
+                        "confidentiality": chosen["confidentiality"],
+                        "classification": "estimate",
+                        "assumptions": [
+                            "exact randomization; complete outcomes",
+                            "matching uses pre-treatment features",
+                            "cohort selection is noninformative; no interference",
+                        ],
+                        "vendor_schema": VENDOR_SCHEMA_STATUS,
+                    },
+                }
+            )
     return result
 
 
@@ -171,11 +230,22 @@ def connect(record: dict[str, Any], connector: str) -> dict[str, Any]:
     if connector == "generic":
         return record
     fp.wire(record)
-    metadata = {"unimem": record.get("meta", {}), "schema_status": VENDOR_SCHEMA_STATUS,
-                "adapter_version": 1, "classification": "estimate"}
+    metadata = {
+        "unimem": record.get("meta", {}),
+        "schema_status": VENDOR_SCHEMA_STATUS,
+        "adapter_version": 1,
+        "classification": "estimate",
+    }
     if connector == "agent-lightning":
-        return {"state": {"input": record["prompt"]},
-                "action": {"output": record.get("response", record.get("chosen"))},
-                "reward": record.get("outcome"), "training_record": record, "metadata": metadata}
-    return {"item": {"prompt": record["prompt"], "training_record": record},
-            "sample": {"output_text": record.get("response", record.get("chosen"))}, "metadata": metadata}
+        return {
+            "state": {"input": record["prompt"]},
+            "action": {"output": record.get("response", record.get("chosen"))},
+            "reward": record.get("outcome"),
+            "training_record": record,
+            "metadata": metadata,
+        }
+    return {
+        "item": {"prompt": record["prompt"], "training_record": record},
+        "sample": {"output_text": record.get("response", record.get("chosen"))},
+        "metadata": metadata,
+    }

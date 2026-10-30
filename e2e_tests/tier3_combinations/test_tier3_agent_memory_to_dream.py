@@ -32,10 +32,14 @@ def test_t3_agent_memory_to_dream_pipeline(isolated_store: str):
 
     res_cap = run_cli(
         "capture",
-        "--title", "Kubernetes pod eviction incident",
-        "--context", "Nodes exhausted ephemeral storage running unconstrained logs",
-        "--solution", "Enforce 10Gi storage limits and logrotate sidecar",
-        "--agent-type", "coding",
+        "--title",
+        "Kubernetes pod eviction incident",
+        "--context",
+        "Nodes exhausted ephemeral storage running unconstrained logs",
+        "--solution",
+        "Enforce 10Gi storage limits and logrotate sidecar",
+        "--agent-type",
+        "coding",
         dest=isolated_store,
     )
     res_cap.assert_success()

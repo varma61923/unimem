@@ -1,4 +1,5 @@
 """Admission budgets survive cancellation and preserve caller context."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from tests.fork_support import intentional_fork
 from unimem.async_workers import BoundedWorkers, WorkerCapacityError
 
 
@@ -93,7 +95,7 @@ def test_preloaded_worker_pool_recovers_after_fork() -> None:
         child.close()
 
     process = context.Process(target=run_child)
-    process.start()
+    intentional_fork(process.start)
     child.close()
     try:
         assert parent.poll(5), "child reused parent thread state and stalled"
@@ -144,11 +146,14 @@ def test_mcp_compare_and_set_rejects_one_of_two_stale_writers(tmp_path: Path) ->
     server = mcp_server.build_server(str(tmp_path))
 
     async def drive() -> None:
-        responses = await asyncio.gather(*[
-            server.call_tool("memory_block_update", {"name": "project", "content": value,
-                                                    "expected_revision": revision})
-            for value in ("changed project facts", "alternative project facts")
-        ])
+        responses = await asyncio.gather(
+            *[
+                server.call_tool(
+                    "memory_block_update", {"name": "project", "content": value, "expected_revision": revision}
+                )
+                for value in ("changed project facts", "alternative project facts")
+            ]
+        )
         decoded = [json.loads(response.content[0].text) for response in responses]
         assert sorted(result["ok"] for result in decoded) == [False, True]
         conflict = next(result for result in decoded if not result["ok"])

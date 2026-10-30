@@ -47,6 +47,7 @@ likelihood for a difference of proportions), so `p_helps` is a calibrated-enough
 allocation weight, not a proof. Billing and release decisions keep using
 `experiment.analyze` and `integrity.audit`, which this module never replaces.
 """
+
 from __future__ import annotations
 
 import math
@@ -55,16 +56,16 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-DEFAULT_TAU = 0.10          # prior sd of a memory's effect before any data (10 points of success rate)
-TAU_FLOOR = 0.03            # lessons are never pooled into one another completely
-CONTEXT_TAU_FLOOR = 0.02    # contexts deviate from their lesson only on real evidence
-DEFAULT_FLOOR = 0.05        # least withholding probability; also 1 - the greatest
-CONTEXT_RATE_DELTA = 0.01   # a context rate is published only when it differs this much
+DEFAULT_TAU = 0.10  # prior sd of a memory's effect before any data (10 points of success rate)
+TAU_FLOOR = 0.03  # lessons are never pooled into one another completely
+CONTEXT_TAU_FLOOR = 0.02  # contexts deviate from their lesson only on real evidence
+DEFAULT_FLOOR = 0.05  # least withholding probability; also 1 - the greatest
+CONTEXT_RATE_DELTA = 0.01  # a context rate is published only when it differs this much
 MAX_CONTEXTS_PER_LESSON = 64
 DRIFT_SPLITS = (0.25, 0.5, 0.75)
-RESET_ALPHA = 0.01          # evidence is only forgotten on stronger proof of drift than is reported
+RESET_ALPHA = 0.01  # evidence is only forgotten on stronger proof of drift than is reported
 MIN_OVERLAP_ESS = 30.0
-MAX_LOG_WEIGHT = 50.0       # importance weights beyond e**50 are treated as unbounded
+MAX_LOG_WEIGHT = 50.0  # importance weights beyond e**50 are treated as unbounded
 UNKNOWN_SOURCE = "local"
 
 
@@ -79,9 +80,9 @@ class Row:
     occasion_id: str
     injected: bool
     succeeded: bool
-    rate: float               # probability the lesson was withheld
+    rate: float  # probability the lesson was withheld
     context: str = ""
-    at: str = ""              # ISO time, for ordering
+    at: str = ""  # ISO time, for ordering
 
     @property
     def propensity(self) -> float:
@@ -98,10 +99,15 @@ def rows_from_assignments(assignments: Iterable[Any]) -> list[Row]:
         key = (a.lesson, a.occasion_id)
         if key in seen:
             continue
-        seen[key] = Row(lesson=a.lesson, occasion_id=a.occasion_id, injected=bool(a.injected),
-                        succeeded=bool(a.succeeded), rate=float(a.rate),
-                        context=getattr(a, "context", None) or "",
-                        at=a.at.isoformat() if getattr(a, "at", None) is not None else "")
+        seen[key] = Row(
+            lesson=a.lesson,
+            occasion_id=a.occasion_id,
+            injected=bool(a.injected),
+            succeeded=bool(a.succeeded),
+            rate=float(a.rate),
+            context=getattr(a, "context", None) or "",
+            at=a.at.isoformat() if getattr(a, "at", None) is not None else "",
+        )
     return sorted(seen.values(), key=lambda r: (r.at, r.occasion_id, r.lesson))
 
 
@@ -123,8 +129,11 @@ def lesson_source(frontmatter: Mapping[str, Any]) -> str:
         kind = provenance.get("source_kind")
         agent = provenance.get("source_agent")
         if isinstance(kind, str) and kind.strip():
-            return "kind:" + kind.strip()[:60] + (f"/{agent.strip()[:40]}" if isinstance(agent, str) and agent.strip()
-                                                    else "")
+            return (
+                "kind:"
+                + kind.strip()[:60]
+                + (f"/{agent.strip()[:40]}" if isinstance(agent, str) and agent.strip() else "")
+            )
     if frontmatter.get("source_traces"):
         return "distilled"
     return UNKNOWN_SOURCE
@@ -171,8 +180,8 @@ def _arm(rows: Sequence[Row]) -> tuple[float, float, int] | None:
     weights = [1.0 / r.propensity for r in rows]
     total = math.fsum(weights)
     mean = math.fsum(w * r.succeeded for w, r in zip(weights, rows)) / total
-    variance = math.fsum((w * (r.succeeded - mean)) ** 2 for w, r in zip(weights, rows)) / total ** 2
-    n_eff = total ** 2 / math.fsum(w * w for w in weights)
+    variance = math.fsum((w * (r.succeeded - mean)) ** 2 for w, r in zip(weights, rows)) / total**2
+    n_eff = total**2 / math.fsum(w * w for w in weights)
     smoothed = (mean * n_eff + 0.5) / (n_eff + 1.0)
     return mean, max(variance, smoothed * (1.0 - smoothed) / (n_eff + 1.0)), len(rows)
 
@@ -217,7 +226,7 @@ def _combine(prior_mean: float, prior_var: float, estimate: Contrast | None) -> 
 @dataclass(frozen=True)
 class Posterior:
     lesson: str
-    context: str              # "" for the lesson as a whole
+    context: str  # "" for the lesson as a whole
     source: str
     n_injected: int
     n_withheld: int
@@ -262,14 +271,22 @@ class Model:
         }
 
 
-def _posterior(lesson: str, context: str, source: str, estimate: Contrast | None, n: tuple[int, int],
-               mean: float, variance: float) -> Posterior:
+def _posterior(
+    lesson: str, context: str, source: str, estimate: Contrast | None, n: tuple[int, int], mean: float, variance: float
+) -> Posterior:
     sd = math.sqrt(variance)
     return Posterior(
-        lesson=lesson, context=context, source=source, n_injected=n[0], n_withheld=n[1],
+        lesson=lesson,
+        context=context,
+        source=source,
+        n_injected=n[0],
+        n_withheld=n[1],
         raw_effect=None if estimate is None else estimate.effect,
         raw_se=None if estimate is None else math.sqrt(estimate.variance),
-        mean=mean, sd=sd, p_helps=_norm_cdf(mean / sd) if sd > 0 else float(mean > 0))
+        mean=mean,
+        sd=sd,
+        p_helps=_norm_cdf(mean / sd) if sd > 0 else float(mean > 0),
+    )
 
 
 def _counts(rows: Sequence[Row]) -> tuple[int, int]:
@@ -288,7 +305,7 @@ def fit(rows: Sequence[Row], sources: Mapping[str, str] | None = None) -> Model:
     estimated = {lesson: c for lesson, c in raw.items() if c is not None}
 
     tau2 = _dersimonian_laird([[(c.effect, c.variance) for c in estimated.values()]])
-    tau2 = max(TAU_FLOOR ** 2, tau2) if tau2 is not None else DEFAULT_TAU ** 2
+    tau2 = max(TAU_FLOOR**2, tau2) if tau2 is not None else DEFAULT_TAU**2
 
     # Precision-weighted sums per source and overall, so each lesson's prior can leave it out.
     def weight(c: Contrast) -> float:
@@ -311,7 +328,7 @@ def fit(rows: Sequence[Row], sources: Mapping[str, str] | None = None) -> Model:
         we_own = w_own * own.effect if own is not None else 0.0
         rest_w, rest_we = total_w - w_own, total_we - we_own
         global_mean = rest_we / rest_w if rest_w > 1e-12 else 0.0
-        global_var = 1.0 / rest_w if rest_w > 1e-12 else DEFAULT_TAU ** 2
+        global_var = 1.0 / rest_w if rest_w > 1e-12 else DEFAULT_TAU**2
         s = source_of.get(lesson, UNKNOWN_SOURCE)
         s_w, s_we = source_w.get(s, 0.0) - w_own, source_we.get(s, 0.0) - we_own
         if s_w > 1e-12 and tau2_source > 0:
@@ -324,20 +341,25 @@ def fit(rows: Sequence[Row], sources: Mapping[str, str] | None = None) -> Model:
     model = Model(tau_lesson=math.sqrt(tau2), tau_source=math.sqrt(tau2_source), rows=len(rows))
     for lesson, lesson_rows in by_lesson.items():
         mean, variance = _combine(*prior(lesson), raw[lesson])
-        model.lessons[lesson] = _posterior(lesson, "", source_of[lesson], raw[lesson], _counts(lesson_rows),
-                                           mean, variance)
+        model.lessons[lesson] = _posterior(
+            lesson, "", source_of[lesson], raw[lesson], _counts(lesson_rows), mean, variance
+        )
 
     # Contexts: deviations from the lesson, with the lesson's evidence from *other* contexts as the prior.
     cells: dict[str, dict[str, list[Row]]] = defaultdict(lambda: defaultdict(list))
     for r in rows:
         if r.context:
             cells[r.lesson][r.context].append(r)
-    cell_raw = {(lesson, ctx): contrast(cell_rows)
-                for lesson, by_ctx in cells.items() for ctx, cell_rows in by_ctx.items()}
-    tau2_context = _dersimonian_laird([
-        [(c.effect, c.variance) for (lesson, _ctx), c in cell_raw.items() if lesson == name and c is not None]
-        for name in cells])
-    tau2_context = max(CONTEXT_TAU_FLOOR ** 2, tau2_context or 0.0)
+    cell_raw = {
+        (lesson, ctx): contrast(cell_rows) for lesson, by_ctx in cells.items() for ctx, cell_rows in by_ctx.items()
+    }
+    tau2_context = _dersimonian_laird(
+        [
+            [(c.effect, c.variance) for (lesson, _ctx), c in cell_raw.items() if lesson == name and c is not None]
+            for name in cells
+        ]
+    )
+    tau2_context = max(CONTEXT_TAU_FLOOR**2, tau2_context or 0.0)
     model.tau_context = math.sqrt(tau2_context)
     for lesson, by_ctx in cells.items():
         ranked = sorted(by_ctx.items(), key=lambda item: (-len(item[1]), item[0]))[:MAX_CONTEXTS_PER_LESSON]
@@ -345,8 +367,9 @@ def fit(rows: Sequence[Row], sources: Mapping[str, str] | None = None) -> Model:
             others = [r for r in by_lesson[lesson] if r.context != ctx]
             base_mean, base_var = _combine(*prior(lesson), contrast(others))
             mean, variance = _combine(base_mean, base_var + tau2_context, cell_raw[(lesson, ctx)])
-            model.contexts[(lesson, ctx)] = _posterior(lesson, ctx, source_of[lesson], cell_raw[(lesson, ctx)],
-                                                       _counts(cell_rows), mean, variance)
+            model.contexts[(lesson, ctx)] = _posterior(
+                lesson, ctx, source_of[lesson], cell_raw[(lesson, ctx)], _counts(cell_rows), mean, variance
+            )
 
     for s in sorted(set(source_of.values())):
         members = [lesson for lesson, src in source_of.items() if src == s]
@@ -354,7 +377,7 @@ def fit(rows: Sequence[Row], sources: Mapping[str, str] | None = None) -> Model:
         if w > 1e-12:
             mean, variance = we / w, 1.0 / w + tau2_source
         else:
-            mean, variance = (total_we / total_w, 1.0 / total_w) if total_w > 1e-12 else (0.0, DEFAULT_TAU ** 2)
+            mean, variance = (total_we / total_w, 1.0 / total_w) if total_w > 1e-12 else (0.0, DEFAULT_TAU**2)
         sd = math.sqrt(variance)
         model.sources[s] = SourceReputation(s, len(members), mean, sd, _norm_cdf(mean / sd) if sd > 0 else 0.5)
     return model
@@ -387,7 +410,7 @@ def rates(model: Model, floor: float = DEFAULT_FLOOR) -> tuple[dict[str, float],
 @dataclass(frozen=True)
 class Drift:
     lesson: str
-    verdict: str              # DRIFTED | STABLE | INSUFFICIENT
+    verdict: str  # DRIFTED | STABLE | INSUFFICIENT
     split_at: str = ""
     before: float | None = None
     after: float | None = None
@@ -411,8 +434,7 @@ def _benjamini_hochberg(p_values: Sequence[float]) -> list[float]:
     return q
 
 
-def drift(rows: Sequence[Row], *, alpha: float = 0.05, min_arm: int = 10,
-          practical: float = 0.10) -> list[Drift]:
+def drift(rows: Sequence[Row], *, alpha: float = 0.05, min_arm: int = 10, practical: float = 0.10) -> list[Drift]:
     """Has each lesson's effect changed between an earlier and a later window?"""
     by_lesson: dict[str, list[Row]] = defaultdict(list)
     for r in rows:
@@ -435,8 +457,18 @@ def drift(rows: Sequence[Row], *, alpha: float = 0.05, min_arm: int = 10,
             change = after.effect - before.effect
             z = change / math.sqrt(before.variance + after.variance)
             p = math.erfc(abs(z) / math.sqrt(2.0))
-            found = Drift(lesson, "STABLE", lesson_rows[k].at, before.effect, after.effect, change, p, None,
-                          len(before_rows), len(after_rows))
+            found = Drift(
+                lesson,
+                "STABLE",
+                lesson_rows[k].at,
+                before.effect,
+                after.effect,
+                change,
+                p,
+                None,
+                len(before_rows),
+                len(after_rows),
+            )
             if best is None or p < best[0]:
                 best = (p, found)
         if best is None:
@@ -447,13 +479,26 @@ def drift(rows: Sequence[Row], *, alpha: float = 0.05, min_arm: int = 10,
     q_values = _benjamini_hochberg([p for _d, p in tested])
     for (found, p), q in zip(tested, q_values):
         verdict = "DRIFTED" if q < alpha and abs(found.change or 0.0) >= practical else "STABLE"
-        out.append(Drift(found.lesson, verdict, found.split_at, found.before, found.after, found.change,
-                         p, q, found.n_before, found.n_after))
+        out.append(
+            Drift(
+                found.lesson,
+                verdict,
+                found.split_at,
+                found.before,
+                found.after,
+                found.change,
+                p,
+                q,
+                found.n_before,
+                found.n_after,
+            )
+        )
     return sorted(out, key=lambda d: d.lesson)
 
 
-def forget_before_drift(rows: Sequence[Row], findings: Iterable[Drift],
-                        alpha: float = RESET_ALPHA) -> tuple[list[Row], dict[str, str]]:
+def forget_before_drift(
+    rows: Sequence[Row], findings: Iterable[Drift], alpha: float = RESET_ALPHA
+) -> tuple[list[Row], dict[str, str]]:
     """Drop each drifted lesson's evidence from before its change point.
 
     A memory whose effect changed is judged on the world as it is now: the gate
@@ -462,8 +507,11 @@ def forget_before_drift(rows: Sequence[Row], findings: Iterable[Drift],
     that started helping is not held back by it). Drift is re-tested every era, so
     forgetting needs stronger evidence (`alpha`, default 1%) than reporting does.
     """
-    resets = {d.lesson: d.split_at for d in findings
-              if d.verdict == "DRIFTED" and d.split_at and d.q_value is not None and d.q_value < alpha}
+    resets = {
+        d.lesson: d.split_at
+        for d in findings
+        if d.verdict == "DRIFTED" and d.split_at and d.q_value is not None and d.q_value < alpha
+    }
     kept = [r for r in rows if r.lesson not in resets or r.at >= resets[r.lesson]]
     return kept, resets
 
@@ -473,7 +521,7 @@ def forget_before_drift(rows: Sequence[Row], findings: Iterable[Drift],
 
 @dataclass(frozen=True)
 class OffPolicy:
-    verdict: str              # IMPROVES | WORSENS | INCONCLUSIVE | INSUFFICIENT_OVERLAP | INSUFFICIENT_DATA
+    verdict: str  # IMPROVES | WORSENS | INCONCLUSIVE | INSUFFICIENT_OVERLAP | INSUFFICIENT_DATA
     fit_occasions: int
     eval_occasions: int
     logged_value: float | None = None
@@ -512,7 +560,7 @@ def policy_value(rows: Sequence[Row], rate_for: RateFor, *, z: float = 1.9599639
     logged = math.fsum(outcomes) / n
     if total <= 0:
         return OffPolicy("INSUFFICIENT_OVERLAP", 0, n, logged_value=logged, effective_sample_size=0.0)
-    ess = total ** 2 / math.fsum(w * w for w in weights)
+    ess = total**2 / math.fsum(w * w for w in weights)
     value = math.fsum(w * y for w, y in zip(weights, outcomes)) / total
     mean_w = total / n
     influence = [(w / mean_w) * (y - value) - (y - logged) for w, y in zip(weights, outcomes)]
@@ -530,8 +578,13 @@ def policy_value(rows: Sequence[Row], rate_for: RateFor, *, z: float = 1.9599639
     return OffPolicy(verdict, 0, n, logged, value, lift, low, high, ess)
 
 
-def evaluate(rows: Sequence[Row], sources: Mapping[str, str] | None = None, *,
-             floor: float = DEFAULT_FLOOR, default_rate: float = 0.5) -> OffPolicy:
+def evaluate(
+    rows: Sequence[Row],
+    sources: Mapping[str, str] | None = None,
+    *,
+    floor: float = DEFAULT_FLOOR,
+    default_rate: float = 0.5,
+) -> OffPolicy:
     """Fit the gate on the earlier half of the occasions; estimate its value on the later half."""
     order = list(dict.fromkeys(r.occasion_id for r in rows))
     if len(order) < 2:
@@ -547,8 +600,17 @@ def evaluate(rows: Sequence[Row], sources: Mapping[str, str] | None = None, *,
         return lesson_rates.get(lesson, default_rate)
 
     result = policy_value(eval_rows, rate_for)
-    return OffPolicy(result.verdict, len(cut), result.eval_occasions, result.logged_value, result.policy_value,
-                     result.lift, result.ci_low, result.ci_high, result.effective_sample_size)
+    return OffPolicy(
+        result.verdict,
+        len(cut),
+        result.eval_occasions,
+        result.logged_value,
+        result.policy_value,
+        result.lift,
+        result.ci_low,
+        result.ci_high,
+        result.effective_sample_size,
+    )
 
 
 # -- the store -----------------------------------------------------------------------------------
@@ -579,15 +641,19 @@ def plan_rates(root: str, floor: float) -> tuple[dict[str, float], dict[str, dic
         "mode": "thompson",
         "resolved": len(rows),
         "drift_resets": resets,
-        "tau": {"lesson": round(model.tau_lesson, 6), "source": round(model.tau_source, 6),
-                "context": round(model.tau_context, 6)},
+        "tau": {
+            "lesson": round(model.tau_lesson, 6),
+            "source": round(model.tau_source, 6),
+            "context": round(model.tau_context, 6),
+        },
         "p_helps": {lesson: round(p.p_helps, 4) for lesson, p in sorted(model.lessons.items())},
     }
     return lesson_rates, context_rates, basis
 
 
-def report(root: str, *, alpha: float = 0.05, min_arm: int = 10, practical: float = 0.10,
-           floor: float = DEFAULT_FLOOR) -> dict:
+def report(
+    root: str, *, alpha: float = 0.05, min_arm: int = 10, practical: float = 0.10, floor: float = DEFAULT_FLOOR
+) -> dict:
     """Everything the gate knows: posteriors, source reputations, proposed rates, drift and an off-policy check."""
     rows = current_rows(root)
     from unimem import eprocess
@@ -605,12 +671,13 @@ def report(root: str, *, alpha: float = 0.05, min_arm: int = 10, practical: floa
         "counterfactual_diagnostics": [attribution.gate_adjustment(root, identity) for identity in model.lessons],
         "e_value": e_values,
         "model": model.to_dict(),
-        "proposed_rates": {"lessons": lesson_rates, "contexts": context_rates, "floor": floor,
-                           "drift_resets": resets},
+        "proposed_rates": {"lessons": lesson_rates, "contexts": context_rates, "floor": floor, "drift_resets": resets},
         "drift": [asdict(d) for d in findings],
         "off_policy": asdict(evaluate(rows, sources, floor=floor)),
-        "note": ("Posteriors are empirical-Bayes allocation weights, not proofs; "
-                 "`unimem experiment` remains the evidence of record."),
+        "note": (
+            "Posteriors are empirical-Bayes allocation weights, not proofs; "
+            "`unimem experiment` remains the evidence of record."
+        ),
     }
 
 
@@ -621,39 +688,51 @@ def _pct(value: float | None) -> str:
 def render(out: Mapping[str, Any]) -> str:
     """The `report` as text."""
     model = out["model"]
-    lines = [f"[unimem] causal gate over {model['rows']} resolved assignments "
-             f"(between-lesson sd {model['tau']['lesson']:.1%}, between-context sd {model['tau']['context']:.1%})"]
+    lines = [
+        f"[unimem] causal gate over {model['rows']} resolved assignments "
+        f"(between-lesson sd {model['tau']['lesson']:.1%}, between-context sd {model['tau']['context']:.1%})"
+    ]
     if not model["lessons"]:
         lines.append("  no resolved assignments yet: run an experiment and record outcomes first")
         return "\n".join(lines)
     proposed = out["proposed_rates"]
     lines.append("  memories (posterior effect, P(helps), proposed withholding):")
     for p in model["lessons"]:
-        lines.append(f"    {p['lesson']}: {_pct(p['mean'])} +/- {p['sd']:.1%}, P(helps) {p['p_helps']:.0%}, "
-                     f"withhold {proposed['lessons'].get(p['lesson'], 0.5):.0%} "
-                     f"[{p['n_injected']} shown / {p['n_withheld']} withheld, source {p['source']}]")
+        lines.append(
+            f"    {p['lesson']}: {_pct(p['mean'])} +/- {p['sd']:.1%}, P(helps) {p['p_helps']:.0%}, "
+            f"withhold {proposed['lessons'].get(p['lesson'], 0.5):.0%} "
+            f"[{p['n_injected']} shown / {p['n_withheld']} withheld, source {p['source']}]"
+        )
         contexts = [c for c in model["contexts"] if c["lesson"] == p["lesson"]]
         for c in contexts if len(contexts) > 1 else []:
             rate = proposed["contexts"].get(p["lesson"], {}).get(c["context"])
             gate = f", withhold {rate:.0%}" if rate is not None else ""
-            lines.append(f"      in {c['context']!r}: {_pct(c['mean'])} +/- {c['sd']:.1%}, "
-                         f"P(helps) {c['p_helps']:.0%}{gate}")
+            lines.append(
+                f"      in {c['context']!r}: {_pct(c['mean'])} +/- {c['sd']:.1%}, P(helps) {c['p_helps']:.0%}{gate}"
+            )
     if len(model["sources"]) > 1:
         lines.append("  source reputation (pooled effect of a source's memories):")
-        lines += [f"    {s['source']}: {_pct(s['mean'])} +/- {s['sd']:.1%} over {s['lessons']} memories, "
-                  f"P(helps) {s['p_helps']:.0%}" for s in model["sources"]]
+        lines += [
+            f"    {s['source']}: {_pct(s['mean'])} +/- {s['sd']:.1%} over {s['lessons']} memories, "
+            f"P(helps) {s['p_helps']:.0%}"
+            for s in model["sources"]
+        ]
     drifted = [d for d in out["drift"] if d["verdict"] == "DRIFTED"]
     lines.append(f"  drift: {len(drifted)} of {len(out['drift'])} memories changed effect")
-    lines += [f"    {d['lesson']}: {_pct(d['before'])} -> {_pct(d['after'])} "
-              f"from {d['split_at']} (q={d['q_value']:.3g})" for d in drifted]
+    lines += [
+        f"    {d['lesson']}: {_pct(d['before'])} -> {_pct(d['after'])} from {d['split_at']} (q={d['q_value']:.3g})"
+        for d in drifted
+    ]
     ope = out["off_policy"]
     if ope["lift"] is None:
         lines.append(f"  off-policy check: {ope['verdict'].lower().replace('_', ' ')}")
     else:
-        lines.append(f"  off-policy check (fit on {ope['fit_occasions']} occasions, scored on "
-                     f"{ope['eval_occasions']} later ones): gate {ope['policy_value']:.1%} vs delivered "
-                     f"{ope['logged_value']:.1%}, lift {_pct(ope['lift'])} "
-                     f"[{_pct(ope['ci_low'])}, {_pct(ope['ci_high'])}], ESS {ope['effective_sample_size']:.0f}: "
-                     f"{ope['verdict']}")
+        lines.append(
+            f"  off-policy check (fit on {ope['fit_occasions']} occasions, scored on "
+            f"{ope['eval_occasions']} later ones): gate {ope['policy_value']:.1%} vs delivered "
+            f"{ope['logged_value']:.1%}, lift {_pct(ope['lift'])} "
+            f"[{_pct(ope['ci_low'])}, {_pct(ope['ci_high'])}], ESS {ope['effective_sample_size']:.0f}: "
+            f"{ope['verdict']}"
+        )
     lines.append("  " + out["note"])
     return "\n".join(lines)

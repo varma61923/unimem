@@ -1,4 +1,5 @@
 """Ingestion: code, docs, logs, transcripts, triples and documents into governed memory."""
+
 from __future__ import annotations
 
 import ast
@@ -108,6 +109,7 @@ def _fingerprint(text: str) -> str:
 @dataclass
 class Chunk:
     """A bounded text chunk with origin and modality metadata."""
+
     content: str
     source_path: str
     chunk_id: str
@@ -121,6 +123,7 @@ class Chunk:
 @dataclass
 class IngestionResult:
     """Counts and errors from one ingestion run."""
+
     source_path: str
     source_type: str
     chunks_extracted: int = 0
@@ -159,29 +162,55 @@ class IngestionResult:
 _MAX_CODE_CHUNK = 2500
 _MAX_MD_CHUNK = 2000
 MAX_TEXT_FILE_BYTES = 4 * 1024 * 1024
-_SKIP_DIRS = frozenset({
-    ".git", ".hg", ".svn", "node_modules", "__pycache__", ".venv", "venv", "env", ".tox",
-    ".nox", ".mypy_cache", ".pytest_cache", ".ruff_cache", "dist", "build", "site-packages",
-    ".idea", ".vscode", ".cache", ".eggs",
-})
+_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "env",
+        ".tox",
+        ".nox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "site-packages",
+        ".idea",
+        ".vscode",
+        ".cache",
+        ".eggs",
+    }
+)
 
 
-def _walk_files(source: str, extensions: tuple[str, ...] | None, max_files: int | None,
-                *, stats: dict[str, int] | None = None, strict: bool = False) -> Iterator[str]:
+def _walk_files(
+    source: str,
+    extensions: tuple[str, ...] | None,
+    max_files: int | None,
+    *,
+    stats: dict[str, int] | None = None,
+    strict: bool = False,
+) -> Iterator[str]:
     if os.path.isfile(source):
         if extensions is None or source.lower().endswith(extensions):
             yield source
         return
     count = 0
+
     def scan_error(error: OSError) -> None:
         if strict:
             raise error
 
     for dirpath, dirnames, filenames in os.walk(source, onerror=scan_error):
         dirnames[:] = sorted(
-            d for d in dirnames
-            if d not in _SKIP_DIRS and not d.endswith(".egg-info")
-            and not os.path.islink(os.path.join(dirpath, d))
+            d
+            for d in dirnames
+            if d not in _SKIP_DIRS and not d.endswith(".egg-info") and not os.path.islink(os.path.join(dirpath, d))
         )
         for fname in sorted(filenames):
             if extensions is not None and not fname.lower().endswith(extensions):
@@ -224,8 +253,11 @@ def _open_regular(path: str, max_bytes: int):
     """
     absolute = os.path.abspath(path)
     with _open_directory(os.path.dirname(absolute)) as parent_fd:
-        fd = os.open(os.path.basename(absolute), os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-                     | getattr(os, "O_NONBLOCK", 0), dir_fd=parent_fd)
+        fd = os.open(
+            os.path.basename(absolute),
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0),
+            dir_fd=parent_fd,
+        )
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
@@ -268,8 +300,13 @@ def _write_facts(root: str, items: list[dict[str, Any]], result: IngestionResult
     good: list[dict[str, Any]] = []
     for item in items:
         try:
-            hierarchical.prepare_fact(item.get("statement", ""), item.get("category", "general"),
-                                      item.get("valid_from"), item.get("valid_until"), item.get("expires_at"))
+            hierarchical.prepare_fact(
+                item.get("statement", ""),
+                item.get("category", "general"),
+                item.get("valid_from"),
+                item.get("valid_until"),
+                item.get("expires_at"),
+            )
         except ValueError as exc:
             result.errors.append(f"fact skipped ({str(item.get('statement', ''))[:60]!r}): {exc}")
             continue
@@ -291,8 +328,7 @@ def _ledger_for(root: str, force: bool):
     return Ledger(root)
 
 
-def _skip_if_unchanged(ledger, fpath: str, result: IngestionResult,
-                       *, max_bytes: int = MAX_TEXT_FILE_BYTES) -> bool:
+def _skip_if_unchanged(ledger, fpath: str, result: IngestionResult, *, max_bytes: int = MAX_TEXT_FILE_BYTES) -> bool:
     """True when the ledger shows *fpath* was already ingested unchanged."""
     if ledger is None:
         return False
@@ -334,17 +370,19 @@ def _symbol_chunks(path: str, source: str, tree: ast.Module) -> list[Chunk]:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 qualname = f"{prefix}{child.name}"
                 start = min([d.lineno for d in child.decorator_list] + [child.lineno]) - 1
-                body = "".join(lines[start:getattr(child, "end_lineno", child.lineno)])
+                body = "".join(lines[start : getattr(child, "end_lineno", child.lineno)])
                 kind = "class" if isinstance(child, ast.ClassDef) else "def"
                 doc = ast.get_docstring(child) or ""
                 header = f"{kind} {qualname}:\n" + (f'    """{doc[:500]}"""\n' if doc else "")
-                chunks.append(Chunk(
-                    content=_redact_secrets((header + body)[:_MAX_CODE_CHUNK]),
-                    source_path=path,
-                    chunk_id=f"{_fingerprint(path)}_{qualname}",
-                    breadcrumb=f"{base}::{qualname}",
-                    chunk_type="code_symbol",
-                ))
+                chunks.append(
+                    Chunk(
+                        content=_redact_secrets((header + body)[:_MAX_CODE_CHUNK]),
+                        source_path=path,
+                        chunk_id=f"{_fingerprint(path)}_{qualname}",
+                        breadcrumb=f"{base}::{qualname}",
+                        chunk_type="code_symbol",
+                    )
+                )
                 visit(child, qualname + ".")
 
     visit(tree, "")
@@ -361,7 +399,7 @@ def _chunk_code_file(path: str) -> list[Chunk]:
     except (SyntaxError, ValueError):
         return [
             Chunk(
-                content=_redact_secrets(source[i:i + _MAX_CODE_CHUNK]),
+                content=_redact_secrets(source[i : i + _MAX_CODE_CHUNK]),
                 source_path=path,
                 chunk_id=f"{_fingerprint(path)}_raw_{n}",
                 breadcrumb=os.path.basename(path),
@@ -372,13 +410,15 @@ def _chunk_code_file(path: str) -> list[Chunk]:
     chunks: list[Chunk] = []
     module_doc = ast.get_docstring(tree) or ""
     if module_doc:
-        chunks.append(Chunk(
-            content=_redact_secrets(module_doc[:_MAX_CODE_CHUNK]),
-            source_path=path,
-            chunk_id=f"{_fingerprint(path)}_module_doc",
-            breadcrumb=os.path.basename(path),
-            chunk_type="module_docstring",
-        ))
+        chunks.append(
+            Chunk(
+                content=_redact_secrets(module_doc[:_MAX_CODE_CHUNK]),
+                source_path=path,
+                chunk_id=f"{_fingerprint(path)}_module_doc",
+                breadcrumb=os.path.basename(path),
+                chunk_type="module_docstring",
+            )
+        )
     chunks.extend(_symbol_chunks(path, source, tree))
     return chunks
 
@@ -418,8 +458,14 @@ def ingest_code_repository(
                 if chunk.chunk_type == "module_docstring":
                     statement = _screened_statement(f"{rel}: {chunk.content[:300]}", result)
                     if statement:
-                        facts.append({"statement": statement, "category": "architecture",
-                                      "scopes": [scope] if scope else [], "confidence": 0.7})
+                        facts.append(
+                            {
+                                "statement": statement,
+                                "category": "architecture",
+                                "scopes": [scope] if scope else [],
+                                "confidence": 0.7,
+                            }
+                        )
                 elif chunk.chunk_type == "code_symbol":
                     sym_id = f"symbol:{_fingerprint(chunk.chunk_id)}"
                     graph_mod.add_node(root, sym_id, "symbol", name=chunk.breadcrumb, properties={"source": rel})
@@ -446,13 +492,15 @@ def _chunk_markdown_text(text: str, source_path: str, default_heading: str) -> l
         if len(b) < 50:
             return
         for i, start in enumerate(range(0, len(b), _MAX_MD_CHUNK)):
-            chunks.append(Chunk(
-                content=_redact_secrets(b[start:start + _MAX_MD_CHUNK]),
-                source_path=source_path,
-                chunk_id=f"{_fingerprint(source_path + h)}_{i}",
-                breadcrumb=h.strip("# ").strip()[:200],
-                chunk_type="markdown_section",
-            ))
+            chunks.append(
+                Chunk(
+                    content=_redact_secrets(b[start : start + _MAX_MD_CHUNK]),
+                    source_path=source_path,
+                    chunk_id=f"{_fingerprint(source_path + h)}_{i}",
+                    breadcrumb=h.strip("# ").strip()[:200],
+                    chunk_type="markdown_section",
+                )
+            )
 
     for part in sections:
         if re.match(r"^#{1,3}\s", part):
@@ -509,8 +557,14 @@ def ingest_markdown_documentation(
         for chunk in chunks:
             statement = _screened_statement(f"{chunk.breadcrumb}: {chunk.content[:200]}", result)
             if statement:
-                facts.append({"statement": statement, "category": categorize_heading(chunk.breadcrumb),
-                              "scopes": [scope] if scope else [], "confidence": 0.7})
+                facts.append(
+                    {
+                        "statement": statement,
+                        "category": categorize_heading(chunk.breadcrumb),
+                        "scopes": [scope] if scope else [],
+                        "confidence": 0.7,
+                    }
+                )
         if ledger is not None:
             ledger.note(fpath, "ingested")
     _write_facts(root, facts, result)
@@ -581,8 +635,9 @@ def ingest_json_logs(
         for fp, bucket in buckets.items():
             msg = _redact_secrets(bucket["message"])
             error_id = f"error:{fp}"
-            graph_mod.add_node(root, error_id, "error", name=msg[:120],
-                               properties={"fingerprint": fp, "occurrences": bucket["count"]})
+            graph_mod.add_node(
+                root, error_id, "error", name=msg[:120], properties={"fingerprint": fp, "occurrences": bucket["count"]}
+            )
             graph_mod.add_edge(root, svc_id, error_id, "raises")
             result.graph_nodes_written += 1
             result.graph_edges_written += 1
@@ -625,7 +680,8 @@ def _failure_turns(transcript_path: str, result: IngestionResult) -> list[dict[s
             turns.append(turn)
     result.chunks_extracted = len(turns)
     return [
-        t for t in turns
+        t
+        for t in turns
         if str(t.get("status", "")).upper() in ("ERROR", "FAILED", "FAILURE")
         or re.search(r"\b(error|exception|traceback|failed)\b", str(t.get("content", ""))[:300], re.I)
     ]
@@ -707,19 +763,27 @@ def _load_triples(path_or_list: Any) -> list[dict[str, Any]]:
     triples: list[dict[str, Any]] = []
     for item in items:
         if isinstance(item, (list, tuple)) and len(item) >= 3:
-            triples.append({
-                "subject": str(item[0]), "predicate": str(item[1]), "object": str(item[2]),
-                "valid_at": str(item[3]) if len(item) > 3 and item[3] else "",
-            })
+            triples.append(
+                {
+                    "subject": str(item[0]),
+                    "predicate": str(item[1]),
+                    "object": str(item[2]),
+                    "valid_at": str(item[3]) if len(item) > 3 and item[3] else "",
+                }
+            )
         elif isinstance(item, dict):
             subj = item.get("subject", "")
             pred = item.get("predicate", item.get("relation", ""))
             obj = item.get("object", item.get("target", ""))
             if subj and pred and obj:
-                triples.append({
-                    "subject": str(subj), "predicate": str(pred), "object": str(obj),
-                    "valid_at": str(item.get("valid_at", item.get("valid_from", "")) or ""),
-                })
+                triples.append(
+                    {
+                        "subject": str(subj),
+                        "predicate": str(pred),
+                        "object": str(obj),
+                        "valid_at": str(item.get("valid_at", item.get("valid_from", "")) or ""),
+                    }
+                )
     return triples
 
 
@@ -777,8 +841,15 @@ def ingest_fact_triples(
             try:
                 graph_mod.add_node(root, subj, "concept", name=subj, provenance=prov)
                 graph_mod.add_node(root, obj, "concept", name=obj, provenance=prov)
-                graph_mod.add_edge(root, subj, obj, relation, valid_at=triple.get("valid_at") or None,
-                                   properties={"predicate": pred_raw}, provenance=prov)
+                graph_mod.add_edge(
+                    root,
+                    subj,
+                    obj,
+                    relation,
+                    valid_at=triple.get("valid_at") or None,
+                    properties={"predicate": pred_raw},
+                    provenance=prov,
+                )
             except ValueError as exc:
                 result.errors.append(f"triple error ({subj}/{pred_raw}/{obj}): {exc}")
                 continue
@@ -789,9 +860,15 @@ def ingest_fact_triples(
             if memory_guard.scan_injection(statement):
                 result.errors.append(f"skipped a fact that reads like a prompt injection: {statement[:80]!r}")
                 continue
-            facts.append({"statement": statement, "category": "general",
-                          "scopes": [scope] if scope else [], "confidence": 0.8,
-                          "valid_from": triple.get("valid_at") or None})
+            facts.append(
+                {
+                    "statement": statement,
+                    "category": "general",
+                    "scopes": [scope] if scope else [],
+                    "confidence": 0.8,
+                    "valid_from": triple.get("valid_at") or None,
+                }
+            )
     _write_facts(root, facts, result)
     if ledger is not None and isinstance(path_or_list, str):
         ledger.note(path_or_list, "ingested" if _facts_ok(result) and not result.errors else "error")
@@ -830,8 +907,9 @@ def ingest_text_relations(
     ledger = None if dry_run else _ledger_for(root, force)
     for label, text in targets:
         if text is None:
-            if _skip_if_unchanged(ledger, label, result) or \
-                    _skip_if_large(label, relation_extraction.MAX_TEXT, ledger, result):
+            if _skip_if_unchanged(ledger, label, result) or _skip_if_large(
+                label, relation_extraction.MAX_TEXT, ledger, result
+            ):
                 continue
             try:
                 text = _read_text(label)
@@ -839,8 +917,7 @@ def ingest_text_relations(
                 result.errors.append(f"read error ({label}): {exc}")
                 continue
         try:
-            report = relation_extraction.ingest_text(root, text, source=label, run_id=run_id, llm=llm,
-                                                     dry_run=dry_run)
+            report = relation_extraction.ingest_text(root, text, source=label, run_id=run_id, llm=llm, dry_run=dry_run)
         except ValueError as exc:
             result.errors.append(f"relation extraction error ({label}): {exc}")
             continue
@@ -916,8 +993,7 @@ def preview_ingest(
                     continue
                 chunks = _chunk_markdown(fpath)
                 result.chunks_extracted += len(chunks)
-                result.facts_written += sum(
-                    1 for c in chunks if len(f"{c.breadcrumb}: {c.content[:200]}".strip()) > 30)
+                result.facts_written += sum(1 for c in chunks if len(f"{c.breadcrumb}: {c.content[:200]}".strip()) > 30)
             result.truncated += walk_stats.get("truncated", 0)
         elif stype == "json_logs":
             buckets = _log_buckets(path, result)
@@ -941,8 +1017,10 @@ def preview_ingest(
                 result.chunks_extracted += parsed.chunks_extracted
                 result.errors.extend(parsed.errors)
                 result.facts_written += sum(
-                    1 for c in getattr(parsed, "chunks", []) or []
-                    if len(f"{c.breadcrumb}: {c.content[:200]}".strip()) > 30)
+                    1
+                    for c in getattr(parsed, "chunks", []) or []
+                    if len(f"{c.breadcrumb}: {c.content[:200]}".strip()) > 30
+                )
             result.truncated += walk_stats.get("truncated", 0)
             result.skipped_unsupported += len(_unsupported_source_files(path))
         elif stype in ("pipeline", "modular"):
@@ -995,19 +1073,27 @@ def ingest_multimodal_document(
         if os.path.splitext(fpath)[1].lower() in multimodal.IMAGE_EXTENSIONS and not parsed.errors:
             caption = vision.describe_image(fpath)
             if caption and vision.vision_enabled():
-                chunks.append(Chunk(
-                    content=caption,
-                    source_path=fpath,
-                    chunk_id=f"{_fingerprint(fpath)}_caption",
-                    breadcrumb=os.path.basename(fpath),
-                    chunk_type="image_caption",
-                ))
+                chunks.append(
+                    Chunk(
+                        content=caption,
+                        source_path=fpath,
+                        chunk_id=f"{_fingerprint(fpath)}_caption",
+                        breadcrumb=os.path.basename(fpath),
+                        chunk_type="image_caption",
+                    )
+                )
                 result.chunks_extracted += 1
         for chunk in chunks:
             statement = _screened_statement(f"{chunk.breadcrumb}: {chunk.content[:200]}", result)
             if statement:
-                facts.append({"statement": statement, "category": "reference",
-                              "scopes": [scope] if scope else [], "confidence": 0.6})
+                facts.append(
+                    {
+                        "statement": statement,
+                        "category": "reference",
+                        "scopes": [scope] if scope else [],
+                        "confidence": 0.6,
+                    }
+                )
         if ledger is not None:
             detail: dict[str, Any] | None = None
             if os.path.splitext(fpath)[1].lower() == ".pdf" and not parsed.errors:

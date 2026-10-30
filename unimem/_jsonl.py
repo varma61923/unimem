@@ -1,4 +1,5 @@
 """Locked, atomic JSON/JSONL files for the store's mutable side files."""
+
 from __future__ import annotations
 
 import contextlib
@@ -82,6 +83,7 @@ def _replace(path: str, write: Callable[[TextIO], None]) -> None:
 
 def write_rows(path: str, rows: Iterable[dict[str, Any]]) -> None:
     """Atomically replace *path* with one JSON object per line."""
+
     def _write(fh: TextIO) -> None:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -110,6 +112,7 @@ def write_serialized_rows(path: str, rows: tuple[str, ...]) -> str:
 
 def write_json(path: str, value: Any) -> None:
     """Atomically replace *path* with *value* as pretty JSON."""
+
     def _write(fh: TextIO) -> None:
         json.dump(value, fh, indent=2, sort_keys=True, ensure_ascii=False)
         fh.write("\n")

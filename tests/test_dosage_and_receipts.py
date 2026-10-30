@@ -81,9 +81,7 @@ class TestDosage:
         assert all(d.reason for d in dose.dropped)
 
     def test_the_gauge_reports_the_cost(self):
-        dose = dosage.select(
-            [_candidate("a", chars=200)], dosage.Budget(max_lessons=5, max_chars=1_000)
-        )
+        dose = dosage.select([_candidate("a", chars=200)], dosage.Budget(max_lessons=5, max_chars=1_000))
         gauge = dose.gauge()
         assert "200" in gauge and "1,000" in gauge and "20%" in gauge
 
@@ -174,17 +172,23 @@ class TestRedundancySuppression:
 
 class TestReciprocalRankFusion:
     def test_agreement_across_arms_beats_one_arms_confidence(self):
-        fused = retrieval.reciprocal_rank_fusion({
-            "lexical": ["agreed", "lexical_only"],
-            "semantic": ["agreed", "semantic_only"],
-        })
+        fused = retrieval.reciprocal_rank_fusion(
+            {
+                "lexical": ["agreed", "lexical_only"],
+                "semantic": ["agreed", "semantic_only"],
+            }
+        )
         assert fused[0][0] == "agreed"
 
     def test_an_arm_that_missed_a_document_does_not_vote_against_it(self):
-        fused = dict(retrieval.reciprocal_rank_fusion({
-            "lexical": ["a"],
-            "semantic": ["b"],
-        }))
+        fused = dict(
+            retrieval.reciprocal_rank_fusion(
+                {
+                    "lexical": ["a"],
+                    "semantic": ["b"],
+                }
+            )
+        )
         assert fused["a"] == fused["b"]
 
     def test_only_position_matters_not_the_incoming_scores(self):
@@ -193,14 +197,10 @@ class TestReciprocalRankFusion:
 
     def test_the_order_is_deterministic(self):
         arms = {"a": ["p", "q"], "b": ["q", "p"]}
-        assert retrieval.reciprocal_rank_fusion(arms) == (
-            retrieval.reciprocal_rank_fusion(arms)
-        )
+        assert retrieval.reciprocal_rank_fusion(arms) == (retrieval.reciprocal_rank_fusion(arms))
 
     def test_top_k_bounds_the_result(self):
-        fused = retrieval.reciprocal_rank_fusion(
-            {"a": ["1", "2", "3", "4"]}, top_k=2
-        )
+        fused = retrieval.reciprocal_rank_fusion({"a": ["1", "2", "3", "4"]}, top_k=2)
         assert len(fused) == 2
 
     def test_a_non_positive_k_is_refused(self):
@@ -213,33 +213,31 @@ class TestReciprocalRankFusion:
     def test_a_weight_shifts_which_arm_wins_a_disagreement(self):
         arms = {"lexical": ["x", "y"], "semantic": ["y", "x"]}
         assert retrieval.reciprocal_rank_fusion(arms)[0][0] == "x"
-        lexical_heavy = retrieval.reciprocal_rank_fusion(
-            arms, weights={"lexical": 3.0, "semantic": 1.0})
-        semantic_heavy = retrieval.reciprocal_rank_fusion(
-            arms, weights={"lexical": 1.0, "semantic": 3.0})
+        lexical_heavy = retrieval.reciprocal_rank_fusion(arms, weights={"lexical": 3.0, "semantic": 1.0})
+        semantic_heavy = retrieval.reciprocal_rank_fusion(arms, weights={"lexical": 1.0, "semantic": 3.0})
         assert lexical_heavy[0][0] == "x"
         assert semantic_heavy[0][0] == "y"
 
     def test_an_unnamed_arm_weighs_one(self):
         arms = {"a": ["x", "y"], "b": ["y", "x"]}
-        assert (
-            retrieval.reciprocal_rank_fusion(arms, weights={"a": 1.0})
-            == retrieval.reciprocal_rank_fusion(arms)
-        )
+        assert retrieval.reciprocal_rank_fusion(arms, weights={"a": 1.0}) == retrieval.reciprocal_rank_fusion(arms)
 
 
-def _receipt(occasion="occ-1", *, visible=(("a", "rev-a"), ("b", "rev-b")),
-             admitted=(("a", "rev-a", 1),), withheld=()) -> receipts.Receipt:
+def _receipt(
+    occasion="occ-1", *, visible=(("a", "rev-a"), ("b", "rev-b")), admitted=(("a", "rev-a", 1),), withheld=()
+) -> receipts.Receipt:
     return receipts.Receipt(
         occasion_id=occasion,
         at=datetime.datetime(2026, 5, 1, tzinfo=datetime.timezone.utc).isoformat(),
         visible=tuple(receipts.Visible(s, r) for s, r in visible),
-        admitted=tuple(
-            receipts.Admitted(slug=s, revision=r, rank=k) for s, r, k in admitted
-        ),
+        admitted=tuple(receipts.Admitted(slug=s, revision=r, rank=k) for s, r, k in admitted),
         withheld=tuple(withheld),
-        query="password reset", scorer="idf", floor=0.04,
-        chars_used=120, max_chars=8000, max_lessons=10,
+        query="password reset",
+        scorer="idf",
+        floor=0.04,
+        chars_used=120,
+        max_chars=8000,
+        max_lessons=10,
     )
 
 
@@ -265,10 +263,14 @@ class TestReceipts:
         assert "b" not in {v.slug for v in stored.visible}
 
     def test_crowded_out_is_not_the_same_as_nothing_matched(self, tmp_path):
-        receipts.record(str(tmp_path), _receipt(
-            visible=(("a", "r"), ("b", "r")), admitted=(),
-            withheld=(("a", dosage.REASON_CHARS), ("b", dosage.REASON_CHARS)),
-        ))
+        receipts.record(
+            str(tmp_path),
+            _receipt(
+                visible=(("a", "r"), ("b", "r")),
+                admitted=(),
+                withheld=(("a", dosage.REASON_CHARS), ("b", dosage.REASON_CHARS)),
+            ),
+        )
         found = receipts.coverage(str(tmp_path))
         assert found.n_crowded_out == 1
         assert found.n_with_any_admitted == 0

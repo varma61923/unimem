@@ -61,9 +61,7 @@ def test_cline_task_cancel_does_not_claim_success():
 
 
 def _kimi_manifest(events=EVENTS):
-    return {
-        "events": {event: f"/usr/bin/python /repo/hook_bridge.py --event {event}" for event in events}
-    }
+    return {"events": {event: f"/usr/bin/python /repo/hook_bridge.py --event {event}" for event in events}}
 
 
 def _parse_toml(text):

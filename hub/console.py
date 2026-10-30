@@ -59,9 +59,11 @@ def _plausible_email(email: str) -> bool:
 
 
 def _sign(secret: str, payload: bytes) -> str:
-    return base64.urlsafe_b64encode(
-        hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest()
-    ).decode("ascii").rstrip("=")
+    return (
+        base64.urlsafe_b64encode(hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).digest())
+        .decode("ascii")
+        .rstrip("=")
+    )
 
 
 def issue_session(secret: str, org_id: str, key_prefix: str = "", key_id: str = "") -> str:
@@ -106,12 +108,11 @@ def read_session(secret: str, token: str) -> dict | None:
 SHARE_TOKEN_TTL_SECONDS = 14 * 24 * 60 * 60
 
 
-def issue_share_token(
-    secret: str, org_id: str, ttl_seconds: int = SHARE_TOKEN_TTL_SECONDS, generation: int = 0
-) -> str:
+def issue_share_token(secret: str, org_id: str, ttl_seconds: int = SHARE_TOKEN_TTL_SECONDS, generation: int = 0) -> str:
     payload = json.dumps(
         {"kind": "share_proof", "org": org_id, "exp": int(time.time()) + ttl_seconds, "gen": int(generation)},
-        separators=(",", ":"), sort_keys=True,
+        separators=(",", ":"),
+        sort_keys=True,
     ).encode("utf-8")
     body = base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
     return f"{body}.{_sign(secret, payload)}"
@@ -150,20 +151,26 @@ _FAVICON_LINK = (
 _ACTIONS_TH = "<th><span class='sr-only'>Actions</span></th>"
 
 _NAV_GROUPS = (
-    ("Insights", (
-        ("", "Overview", "Your fleet", "overview", "g o"),
-        ("/proof", "Proof", "Proof", "proof", "g p"),
-        ("/memory", "Memory", "Memory", "memory", "g m"),
-        ("/kb", "Knowledge Base", "Knowledge Base", "kb", "g k"),
-    )),
-    ("Administration", (
-        ("/users", "Users", "Users & roles", "users", "g u"),
-        ("/keys", "API Keys", "API keys", "keys", "g a"),
-        ("/alerts", "Alerts", "Alerts", "alerts", "g l"),
-        ("/webhooks", "Webhooks", "Webhooks", "webhooks", "g w"),
-        ("/audit", "Audit log", "Audit log", "audit", "g t"),
-        ("/incidents", "Incidents", "Incidents", "audit", "g i"),
-    )),
+    (
+        "Insights",
+        (
+            ("", "Overview", "Your fleet", "overview", "g o"),
+            ("/proof", "Proof", "Proof", "proof", "g p"),
+            ("/memory", "Memory", "Memory", "memory", "g m"),
+            ("/kb", "Knowledge Base", "Knowledge Base", "kb", "g k"),
+        ),
+    ),
+    (
+        "Administration",
+        (
+            ("/users", "Users", "Users & roles", "users", "g u"),
+            ("/keys", "API Keys", "API keys", "keys", "g a"),
+            ("/alerts", "Alerts", "Alerts", "alerts", "g l"),
+            ("/webhooks", "Webhooks", "Webhooks", "webhooks", "g w"),
+            ("/audit", "Audit log", "Audit log", "audit", "g t"),
+            ("/incidents", "Incidents", "Incidents", "audit", "g i"),
+        ),
+    ),
 )
 _NAV = tuple((path, label, title) for _group, items in _NAV_GROUPS for path, label, title, *_rest in items)
 
@@ -186,21 +193,19 @@ def _sidebar(title: str) -> str:
     for group, items in _NAV_GROUPS:
         links = "".join(
             f'<a href="{CONSOLE_PATH}{path}" data-key="{key_hint}"'
-            f'{" aria-current=page" if title == page_title else ""}>'
-            f"{ui_kit.icon(icon_name)}<span>{label}</span><kbd aria-hidden=\"true\">{key_hint}</kbd></a>"
+            f"{' aria-current=page' if title == page_title else ''}>"
+            f'{ui_kit.icon(icon_name)}<span>{label}</span><kbd aria-hidden="true">{key_hint}</kbd></a>'
             for path, label, page_title, icon_name, key_hint in items
         )
         groups.append(f'<div class="grp" aria-hidden="true">{group}</div>{links}')
     plan = str(view.get("plan") or "")
-    plan_line = (
-        f'<div class="plan"><span>Plan</span><span class="badge">{h(plan)}</span></div>' if plan else ""
-    )
+    plan_line = f'<div class="plan"><span>Plan</span><span class="badge">{h(plan)}</span></div>' if plan else ""
     return (
         '<aside class="side">'
         f'<a class="brand" href="{CONSOLE_PATH}"><span class="mark">{ui_kit.icon("mark")}</span>UniMem</a>'
         f'<div class="orgcard"><span class="avatar" aria-hidden="true">{h(ui_kit.initials(org_name))}</span>'
         f'<div class="who"><b title="{h(org_name)}">{h(org_name)}</b>'
-        f'<span>{h(access)}{" · " + h(key) if key else ""}</span></div></div>'
+        f"<span>{h(access)}{' · ' + h(key) if key else ''}</span></div></div>"
         f'<nav aria-label="Console">{"".join(groups)}</nav>'
         f'<div class="side-foot">{plan_line}{_SIGN_OUT_FORM}</div>'
         "</aside>"
@@ -209,7 +214,7 @@ def _sidebar(title: str) -> str:
 
 def _topbar(title: str, badge: str) -> str:
     org_name = str(_VIEW.get().get("org_name") or "")
-    crumbs = (f'<span>{h(org_name)}</span><span class="sep" aria-hidden="true">/</span>' if org_name else "")
+    crumbs = f'<span>{h(org_name)}</span><span class="sep" aria-hidden="true">/</span>' if org_name else ""
     theme_icons = "".join(
         f'<span data-theme-icon="{mode}">{ui_kit.icon(name)}</span>'
         for mode, name in (("system", "system"), ("light", "sun"), ("dark", "moon"))
@@ -219,7 +224,7 @@ def _topbar(title: str, badge: str) -> str:
         f'<div class="crumbs">{crumbs}<b>{h(title)}</b></div>'
         f'<div class="top-actions">{badge}'
         '<button type="button" class="search-btn" data-palette data-js hidden aria-label="Open the command palette">'
-        f'{ui_kit.icon("search")}<span>Search or jump to…</span><kbd data-mod-key>Ctrl K</kbd></button>'
+        f"{ui_kit.icon('search')}<span>Search or jump to…</span><kbd data-mod-key>Ctrl K</kbd></button>"
         '<button type="button" class="icon-btn" data-theme-toggle data-js hidden aria-label="Change colour theme">'
         f"{theme_icons}</button>"
         "</div></header>"
@@ -227,7 +232,11 @@ def _topbar(title: str, badge: str) -> str:
 
 
 def _document(
-    title: str, body: str, *scripts: str, referrer: str = "same-origin", theme_script: bool = True,
+    title: str,
+    body: str,
+    *scripts: str,
+    referrer: str = "same-origin",
+    theme_script: bool = True,
 ) -> HTMLResponse:
     head_script = ui_kit.THEME_SCRIPT if theme_script else ""
     return HTMLResponse(
@@ -241,7 +250,11 @@ def _document(
 
 
 def _page(
-    title: str, body: str, *, signed_in: bool = True, auto_refresh_seconds: int = 0,
+    title: str,
+    body: str,
+    *,
+    signed_in: bool = True,
+    auto_refresh_seconds: int = 0,
 ) -> HTMLResponse:
     if not signed_in:
         return _document(title, f'<main id="main" class="auth">{body}</main>', _FORM_GUARD_SCRIPT)
@@ -267,8 +280,7 @@ def _shared_page(body: str, *, expires_at: int) -> HTMLResponse:
         f'<span class="brand"><span class="mark">{ui_kit.icon("mark")}</span>UniMem</span>'
         '<span class="badge">shared report</span></header>'
     )
-    return _document("Proof", f"{top}<main id=\"main\">{banner}{body}</main>", referrer="no-referrer",
-                     theme_script=False)
+    return _document("Proof", f'{top}<main id="main">{banner}{body}</main>', referrer="no-referrer", theme_script=False)
 
 
 def _tiles(items: list[tuple]) -> str:
@@ -291,15 +303,14 @@ def _validity_block(report: dict) -> str:
     tone = _VERDICT_TONE.get(verdict, "")
     headline = {
         "SOUND": "Nothing in the assignment record undermines the effects below.",
-        "WEAKENED": "Still an estimate — with less behind it than its confidence "
-                    "interval implies.",
+        "WEAKENED": "Still an estimate — with less behind it than its confidence interval implies.",
         "COMPROMISED": "Do not quote the effect sizes below. A specific mechanism is "
-                       "biasing them, and more data will not fix it.",
+        "biasing them, and more data will not fix it.",
     }.get(verdict, "Validity not assessed.")
 
     checks = "".join(
         f'<div class="check"><span class="pill {_TONE.get(str(f.get("severity")), "")}">'
-        f'{h(f.get("severity"))}</span><span>{h(f.get("headline"))}'
+        f"{h(f.get('severity'))}</span><span>{h(f.get('headline'))}"
         + (f'<br><span class="muted">{h(f.get("detail"))}</span>' if f.get("detail") else "")
         + "</span></div>"
         for f in report.get("findings", [])
@@ -308,7 +319,7 @@ def _validity_block(report: dict) -> str:
         f'<div class="verdict {tone}"><h2>Can this be trusted? — {h(verdict or "UNKNOWN")}</h2>'
         f"<p>{h(headline)}</p>"
         f'<p class="muted">{_num(report.get("n_resolved", 0))} of '
-        f'{_num(report.get("n_assignments", 0))} assignments have a recorded outcome. '
+        f"{_num(report.get('n_assignments', 0))} assignments have a recorded outcome. "
         "Only those enter the comparison.</p>"
         f"{checks}"
         f'<p class="muted"><em>Not checkable here: whether an agent used a memory it was '
@@ -324,16 +335,18 @@ def _projection_block(report: dict, titles: dict | None = None) -> str:
     titles = titles or {}
     rows = "".join(
         f"<tr><td>{h(titles.get(str(p.get('trace_id'))) or p.get('trace_id'))}</td>"
-        f"<td class=\"n\">{_num(p.get('n_injected'))} / {_num(p.get('n_withheld'))}</td>"
+        f'<td class="n">{_num(p.get("n_injected"))} / {_num(p.get("n_withheld"))}</td>'
         f"<td>{_num(p.get('still_needed'))} more in the {h(p.get('binding_arm'))} arm</td>"
         f"<td>{h(p.get('eta') or '—')}</td></tr>"
         for p in pending
     )
     advice = pending[0].get("advice") or ""
     return (
-        _section("When will this be answerable?",
-                 "Underpowered on the last day of a pilot is a spent pilot. "
-                 "The same fact now is a holdout rate you can still change.")
+        _section(
+            "When will this be answerable?",
+            "Underpowered on the last day of a pilot is a spent pilot. "
+            "The same fact now is a holdout rate you can still change.",
+        )
         + "<div class='scroll'><table><thead><tr><th>Memory</th><th>injected / withheld</th>"
         f"<th>Needs</th><th>At the current rate</th></tr></thead><tbody>{rows}</tbody></table></div>"
         + (f'<p class="muted">{h(advice)}</p>' if advice else "")
@@ -377,33 +390,52 @@ def _render_billing_block(billing: dict | None) -> str:
 
 
 def _render_overview(
-    data: dict, causal: dict, billing: dict | None = None,
-    activity: dict | None = None, setup: dict | None = None,
+    data: dict,
+    causal: dict,
+    billing: dict | None = None,
+    activity: dict | None = None,
+    setup: dict | None = None,
 ) -> str:
     ent = data["entitlements"]
     traces = ent.get("traces") or {}
     agents = ent.get("agents") or {}
     search = data["search"] or {}
 
-    body = [_head(
-        "Your fleet",
-        "Everything on this page is your organisation's own data. Nothing here is shared with, "
-        "or drawn from, another customer.",
-        actions=(f'<a class="btn secondary" href="{CONSOLE_PATH}/memory" data-command="Search your memory">'
-                 f'{ui_kit.icon("search")}Search memory</a>'
-                 f'<a class="btn" href="{CONSOLE_PATH}/proof">{ui_kit.icon("proof")}Proof report</a>'),
-    )]
-    body.append(_tiles([
-        ("Traces stored", f'{_num(traces.get("used", 0))} <span class="muted">of '
-                          f'{_limit(traces.get("limit"))}</span>',
-         ui_kit.meter(traces.get("used", 0), traces.get("limit"))),
-        ("Agents under management", f'{_num(agents.get("active", 0))} <span class="muted">of '
-                                    f'{_limit(agents.get("limit"))}</span>',
-         ui_kit.meter(agents.get("active", 0), agents.get("limit"))),
-        ("Searches this month", _num(search.get("searches", 0))),
-        ("Searches that found nothing", _miss(search)),
-        ("Plan", h(ent.get("plan", "—")), f'<div class="foot">Billing period {h(ent.get("period", "—"))}</div>'),
-    ]))
+    body = [
+        _head(
+            "Your fleet",
+            "Everything on this page is your organisation's own data. Nothing here is shared with, "
+            "or drawn from, another customer.",
+            actions=(
+                f'<a class="btn secondary" href="{CONSOLE_PATH}/memory" data-command="Search your memory">'
+                f"{ui_kit.icon('search')}Search memory</a>"
+                f'<a class="btn" href="{CONSOLE_PATH}/proof">{ui_kit.icon("proof")}Proof report</a>'
+            ),
+        )
+    ]
+    body.append(
+        _tiles(
+            [
+                (
+                    "Traces stored",
+                    f'{_num(traces.get("used", 0))} <span class="muted">of {_limit(traces.get("limit"))}</span>',
+                    ui_kit.meter(traces.get("used", 0), traces.get("limit")),
+                ),
+                (
+                    "Agents under management",
+                    f'{_num(agents.get("active", 0))} <span class="muted">of {_limit(agents.get("limit"))}</span>',
+                    ui_kit.meter(agents.get("active", 0), agents.get("limit")),
+                ),
+                ("Searches this month", _num(search.get("searches", 0))),
+                ("Searches that found nothing", _miss(search)),
+                (
+                    "Plan",
+                    h(ent.get("plan", "—")),
+                    f'<div class="foot">Billing period {h(ent.get("period", "—"))}</div>',
+                ),
+            ]
+        )
+    )
     body.append(_render_billing_block(billing))
     body.append(_setup_steps(data, causal, setup))
     body.append(_working_panel(causal, activity))
@@ -414,8 +446,13 @@ def _render_overview(
             '<h2 id="activity-h">Captured experience</h2>'
             f'<p class="muted">Traces your fleet captured each week, last {len(activity.get("weeks", []))} weeks.'
             "</p></div></div>"
-            + ui_kit.bar_chart("captured", activity.get("weeks", []), activity.get("traces", []),
-                               title="Traces captured per week", unit="traces")
+            + ui_kit.bar_chart(
+                "captured",
+                activity.get("weeks", []),
+                activity.get("traces", []),
+                title="Traces captured per week",
+                unit="traces",
+            )
             + "</section>"
         )
 
@@ -424,16 +461,17 @@ def _render_overview(
     if rows:
         cells = "".join(
             f"<tr><td>{h(t.get('title'))}</td><td>{h(t.get('agent_type'))}</td>"
-            f"<td class=\"n\">{_num(t.get('retrievals', 0))}</td>"
+            f'<td class="n">{_num(t.get("retrievals", 0))}</td>'
             f"<td>{ui_kit.time_html(t.get('created_at'))}</td></tr>"
             for t in rows
         )
-        body.append("<div class='scroll'><table><thead><tr><th>Trace</th><th>Agent type</th>"
-                    f"<th>Retrieved</th><th>Captured</th></tr></thead><tbody>{cells}</tbody>"
-                    "</table></div>")
+        body.append(
+            "<div class='scroll'><table><thead><tr><th>Trace</th><th>Agent type</th>"
+            f"<th>Retrieved</th><th>Captured</th></tr></thead><tbody>{cells}</tbody>"
+            "</table></div>"
+        )
     else:
-        body.append(_empty("inbox", "No traces yet",
-                           "Your agents capture them with <code>contribute_trace</code>."))
+        body.append(_empty("inbox", "No traces yet", "Your agents capture them with <code>contribute_trace</code>."))
     return "".join(body)
 
 
@@ -472,7 +510,7 @@ def _value_block(worth: dict) -> str:
         return (
             '<div class="verdict bad"><h2>What has this been worth?</h2>'
             "<p><b>Not stated.</b> " + h(worth.get("reason", "")) + "</p>"
-            "<p class=\"muted\">A value figure is the one artifact where a caveat "
+            '<p class="muted">A value figure is the one artifact where a caveat '
             "reliably gets separated from the number it qualifies, so there is no "
             "figure to separate.</p></div>"
         )
@@ -480,7 +518,9 @@ def _value_block(worth: dict) -> str:
     if not worth.get("aggregate_readable", True):
         return (
             '<div class="verdict"><h2>What has this been worth?</h2>'
-            "<p><b>No total is stated.</b> " + h(worth.get("aggregate_reason", "")) + "</p>"
+            "<p><b>No total is stated.</b> "
+            + h(worth.get("aggregate_reason", ""))
+            + "</p>"
             + _policy_block(worth.get("policy_effect") or {})
             + '<p class="muted">Each memory\'s own measured effect is unaffected and '
             "is shown below -- it is adding them together that would count the same "
@@ -495,7 +535,7 @@ def _value_block(worth: dict) -> str:
         f"<p><b>{improved:+,.0f} occasions</b> went differently because of this memory, "
         f"over the measured window (95% CI {ci[0]:+,.0f} to {ci[1]:+,.0f}).</p>",
         f'<p class="muted">From {_num(worth.get("n_counted", 0))} memory/memories whose '
-        f'causal effect is established; {_num(worth.get("n_excluded", 0))} contributed '
+        f"causal effect is established; {_num(worth.get('n_excluded', 0))} contributed "
         "nothing.</p>",
     ]
     if worth.get("money") is not None:
@@ -540,7 +580,9 @@ def _render_share_form(share_url: str | None, is_admin: bool = False) -> str:
     revoke = _render_share_revoke(is_admin)
     revoke_line = (
         f'<div class="form-actions"><span class="muted">Sent a link somewhere it should not have gone?</span>'
-        f"{revoke}</div>" if revoke else ""
+        f"{revoke}</div>"
+        if revoke
+        else ""
     )
     if share_url:
         return (
@@ -548,7 +590,7 @@ def _render_share_form(share_url: str | None, is_admin: bool = False) -> str:
             f'<b id="share-url-label">{ui_kit.icon("share")} Shareable link generated.</b>'
             f'<span class="muted">Valid {days} days, always shows LIVE data (not a frozen snapshot), visible to '
             "anyone who has the link -- treat it like the report data it is.</span>"
-            f'{secret_field(share_url, "share-url-label")}{revoke_line}</div>'
+            f"{secret_field(share_url, 'share-url-label')}{revoke_line}</div>"
         )
     return (
         '<div class="share-box" data-command="Share this report">'
@@ -605,18 +647,33 @@ def _render_experiment_controls(causal: dict, is_admin: bool, *, error: str = ""
 
 
 def _render_proof(
-    outcomes: dict, causal: dict, worth: dict | None = None,
-    *, is_admin: bool = False, experiment_error: str = "", controls: str = "", shared: bool = False,
+    outcomes: dict,
+    causal: dict,
+    worth: dict | None = None,
+    *,
+    is_admin: bool = False,
+    experiment_error: str = "",
+    controls: str = "",
+    shared: bool = False,
 ) -> str:
-    actions = "" if shared else (
-        f'<a class="btn secondary" href="{CONSOLE_PATH}/proof/assignments.csv" '
-        f'data-command="Download every arm decision as CSV">{ui_kit.icon("download")}Assignments CSV</a>'
-        f'<button type="button" class="secondary" data-print data-js hidden>{ui_kit.icon("print")}'
-        "Print or save as PDF</button>"
+    actions = (
+        ""
+        if shared
+        else (
+            f'<a class="btn secondary" href="{CONSOLE_PATH}/proof/assignments.csv" '
+            f'data-command="Download every arm decision as CSV">{ui_kit.icon("download")}Assignments CSV</a>'
+            f'<button type="button" class="secondary" data-print data-js hidden>{ui_kit.icon("print")}'
+            "Print or save as PDF</button>"
+        )
     )
-    body = [_head("Proof",
-                  "Two different questions, deliberately not merged: what changed since your baseline, "
-                  "and what this memory <em>caused</em>.", actions)]
+    body = [
+        _head(
+            "Proof",
+            "Two different questions, deliberately not merged: what changed since your baseline, "
+            "and what this memory <em>caused</em>.",
+            actions,
+        )
+    ]
     experiment_controls = "" if shared else _render_experiment_controls(causal, is_admin, error=experiment_error)
     if controls or experiment_controls:
         body.append(f'<div class="grid-2">{controls}{experiment_controls}</div>')
@@ -632,9 +689,11 @@ def _render_proof(
             "outcome.</p>"
         )
     if not causal.get("experiment_running"):
-        body.append('<p class="sub">No experiment is running, so nothing in this section '
-                    "is causal. The observed change below is real but confounded with "
-                    "everything else that moved in the same window.</p>")
+        body.append(
+            '<p class="sub">No experiment is running, so nothing in this section '
+            "is causal. The observed change below is real but confounded with "
+            "everything else that moved in the same window.</p>"
+        )
     else:
         body.append(_validity_block(integrity))
         effects = causal.get("effects") or []
@@ -645,7 +704,7 @@ def _render_proof(
                 f"<td><b>{h(e.get('verdict'))}</b></td>"
                 f"<td>{_pct(e.get('rate_injected'))} (n={_num(e.get('n_injected'))})</td>"
                 f"<td>{_pct(e.get('rate_withheld'))} (n={_num(e.get('n_withheld'))})</td>"
-                f"<td data-v=\"{e.get('effect') if isinstance(e.get('effect'), (int, float)) else ''}\">"
+                f'<td data-v="{e.get("effect") if isinstance(e.get("effect"), (int, float)) else ""}">'
                 f"{_signed(e.get('effect'))}</td>"
                 f"<td>{_ci(e.get('ci_95'))}</td>"
                 f"<td>{_significance(e)}</td></tr>"
@@ -669,43 +728,55 @@ def _render_proof(
                 body.append(
                     f'<details class="more"><summary>Why {len(notes)} of these cannot answer yet</summary><ul>'
                     + "".join(
-                        f"<li><b>{h(e.get('title') or e.get('trace_id'))}</b> — {h(e.get('note'))}</li>"
-                        for e in notes
-                    ) + "</ul></details>"
+                        f"<li><b>{h(e.get('title') or e.get('trace_id'))}</b> — {h(e.get('note'))}</li>" for e in notes
+                    )
+                    + "</ul></details>"
                 )
         elif effects:
-            body.append('<p class="sub">Effect sizes are withheld while the validity '
-                        "verdict above is COMPROMISED. They would not be estimates of the "
-                        "causal effect, and showing them with a caveat is how the caveat "
-                        "gets separated from the number.</p>")
+            body.append(
+                '<p class="sub">Effect sizes are withheld while the validity '
+                "verdict above is COMPROMISED. They would not be estimates of the "
+                "causal effect, and showing them with a caveat is how the caveat "
+                "gets separated from the number.</p>"
+            )
         else:
-            body.append(_empty("proof", "No memory has enough observations in both arms yet",
-                               "Every resolved occasion adds to one of the two arms; the estimate appears "
-                               "once both have enough."))
+            body.append(
+                _empty(
+                    "proof",
+                    "No memory has enough observations in both arms yet",
+                    "Every resolved occasion adds to one of the two arms; the estimate appears once both have enough.",
+                )
+            )
         titles = {str(e.get("trace_id")): e.get("title") for e in effects if e.get("title")}
         body.append(_projection_block(integrity, titles))
 
     body.append(_section("Observed change since your baseline window"))
-    body.append(f'<p>{h(outcomes.get("headline", ""))}</p>')
-    rows = outcomes.get("metrics") or []
-    if rows:
+    body.append(f"<p>{h(outcomes.get('headline', ''))}</p>")
+    metric_rows = outcomes.get("metrics") or []
+    if metric_rows:
         cells = "".join(
             f"<tr><td>{h(r.get('metric'))}</td>"
             f"<td>{_rate(r.get('baseline'))}</td><td>{_rate(r.get('current'))}</td>"
             f"<td>{_signed(r.get('delta'))}</td>"
             f"<td>{h(str(r.get('verdict', '')).replace('_', ' '))}</td></tr>"
-            for r in rows
+            for r in metric_rows
         )
-        body.append("<div class='scroll'><table><thead><tr><th>Metric</th><th>Baseline</th><th>Now</th>"
-                    f"<th>Change</th><th>Verdict</th></tr></thead><tbody>{cells}</tbody></table></div>")
-        notes = [r for r in rows if r.get("note")]
+        body.append(
+            "<div class='scroll'><table><thead><tr><th>Metric</th><th>Baseline</th><th>Now</th>"
+            f"<th>Change</th><th>Verdict</th></tr></thead><tbody>{cells}</tbody></table></div>"
+        )
+        notes = [r for r in metric_rows if r.get("note")]
         if notes:
-            body.append('<details class="more"><summary>What each verdict is based on</summary><ul>' + "".join(
-                f"<li><b>{h(r.get('metric'))}</b> — {h(r.get('note'))}</li>" for r in notes
-            ) + "</ul></details>")
-    body.append('<p class="muted"><em>This half is an OBSERVED change, not a causal '
-                "effect. `baseline` marks a time window, so a model upgrade or a shift in "
-                "your task mix sits inside it. That is why the holdout above exists.</em></p>")
+            body.append(
+                '<details class="more"><summary>What each verdict is based on</summary><ul>'
+                + "".join(f"<li><b>{h(r.get('metric'))}</b> — {h(r.get('note'))}</li>" for r in notes)
+                + "</ul></details>"
+            )
+    body.append(
+        '<p class="muted"><em>This half is an OBSERVED change, not a causal '
+        "effect. `baseline` marks a time window, so a model upgrade or a shift in "
+        "your task mix sits inside it. That is why the holdout above exists.</em></p>"
+    )
     return "".join(body)
 
 
@@ -726,7 +797,7 @@ def _significance(effect: dict) -> str:
     p = effect.get("p_value")
     if not isinstance(p, (int, float)):
         return "—"
-    return f'p={p:.3g}' + ("" if effect.get("significant") else ' <span class="muted">(n.s.)</span>')
+    return f"p={p:.3g}" + ("" if effect.get("significant") else ' <span class="muted">(n.s.)</span>')
 
 
 def _signed(value: object) -> str:
@@ -734,18 +805,20 @@ def _signed(value: object) -> str:
 
 
 def _ci(value: object) -> str:
-    if isinstance(value, (list, tuple)) and len(value) == 2 and all(
-        isinstance(v, (int, float)) for v in value
-    ):
+    if isinstance(value, (list, tuple)) and len(value) == 2 and all(isinstance(v, (int, float)) for v in value):
         return f"[{value[0]:+.1%}, {value[1]:+.1%}]"
     return "—"
 
 
 def _render_memory(result: dict, tags: list[str]) -> str:
     traces = result.get("traces") or []
-    body = [_head("Memory",
-                  "What your fleet has captured. Ranked by how recently it was written; "
-                  "searchable the same way your agents search it.")]
+    body = [
+        _head(
+            "Memory",
+            "What your fleet has captured. Ranked by how recently it was written; "
+            "searchable the same way your agents search it.",
+        )
+    ]
     body.append(
         f'<form method="get" action="{CONSOLE_PATH}/memory" class="act" role="search" '
         'data-command="Search your memory">'
@@ -758,37 +831,51 @@ def _render_memory(result: dict, tags: list[str]) -> str:
     terms = result.get("terms") or []
     ignored = result.get("terms_ignored") or []
     if result.get("query"):
-        body.append(f'<p class="muted">Matched on: {h(", ".join(terms)) or "nothing searchable"}'
-                    + (f' · too common to discriminate: {h(", ".join(ignored))}' if ignored else "")
-                    + "</p>")
+        body.append(
+            f'<p class="muted">Matched on: {h(", ".join(terms)) or "nothing searchable"}'
+            + (f" · too common to discriminate: {h(', '.join(ignored))}" if ignored else "")
+            + "</p>"
+        )
     if traces:
         rows = "".join(
             f"<tr><td><b>{h(t.get('title'))}</b>"
-            + ('<div class="concerns">' + "".join(
-                f'<span class="pill">{h(tag)}</span>' for tag in (t.get("tags") or [])[:6]
-            ) + "</div>" if t.get("tags") else "")
-            + f"</td><td>{h(t.get('agent_type'))}</td><td class=\"n\">{_num(t.get('retrievals', 0))}</td>"
+            + (
+                '<div class="concerns">'
+                + "".join(f'<span class="pill">{h(tag)}</span>' for tag in (t.get("tags") or [])[:6])
+                + "</div>"
+                if t.get("tags")
+                else ""
+            )
+            + f'</td><td>{h(t.get("agent_type"))}</td><td class="n">{_num(t.get("retrievals", 0))}</td>'
             f"<td>{ui_kit.time_html(t.get('created_at'))}</td></tr>"
             for t in traces
         )
-        body.append("<div class='scroll'><table><thead><tr><th>Trace</th><th>Agent type</th>"
-                    f"<th>Retrieved</th><th>Captured</th></tr></thead><tbody>{rows}</tbody></table></div>")
+        body.append(
+            "<div class='scroll'><table><thead><tr><th>Trace</th><th>Agent type</th>"
+            f"<th>Retrieved</th><th>Captured</th></tr></thead><tbody>{rows}</tbody></table></div>"
+        )
         limit = int(result.get("limit") or len(traces) or 1)
         offset = int(result.get("offset") or 0)
-        query_param = f'&q={_url_quote(result.get("query", ""))}' if result.get("query") else ""
+        query_param = f"&q={_url_quote(result.get('query', ''))}" if result.get("query") else ""
         body.append(_pager(f"{CONSOLE_PATH}/memory", offset, limit, bool(result.get("has_more")), query_param))
     elif result.get("query"):
-        body.append(_empty("search", "Nothing matched",
-                           "That is an answer about this corpus, not an error — and the terms above say "
-                           "whether the query reduced to anything searchable."))
+        body.append(
+            _empty(
+                "search",
+                "Nothing matched",
+                "That is an answer about this corpus, not an error — and the terms above say "
+                "whether the query reduced to anything searchable.",
+            )
+        )
     else:
-        body.append(_empty("inbox", "No traces yet",
-                           "Your agents capture them with <code>contribute_trace</code>."))
+        body.append(_empty("inbox", "No traces yet", "Your agents capture them with <code>contribute_trace</code>."))
     if tags:
         body.append(_section("Tags in use"))
-        body.append('<div class="concerns">' + "".join(
-            f'<a class="pill" href="{CONSOLE_PATH}/memory?q={_url_quote(t)}">{h(t)}</a>' for t in tags[:60]
-        ) + "</div>")
+        body.append(
+            '<div class="concerns">'
+            + "".join(f'<a class="pill" href="{CONSOLE_PATH}/memory?q={_url_quote(t)}">{h(t)}</a>' for t in tags[:60])
+            + "</div>"
+        )
     return "".join(body)
 
 
@@ -833,7 +920,7 @@ def _render_kb_concerns(entry: dict) -> str:
     pills = "".join(
         f'<span class="pill {_CONCERN_TONE.get(tag, "")}" '
         f'title="{_num(count)} organisation(s) reported this">'
-        f'{h(_CONCERN_LABEL.get(tag, tag))} &times;{_num(count)}</span> '
+        f"{h(_CONCERN_LABEL.get(tag, tag))} &times;{_num(count)}</span> "
         for tag, count in ordered
     )
     return f'<div class="concerns">{pills}</div>'
@@ -869,14 +956,13 @@ def _render_kb_entry(entry: dict, can_vote: bool = False) -> str:
     revisions = int(entry.get("revisions") or 0)
     revised = (
         f'<br><span class="pill mute" title="Corrected {_num(revisions)} time(s). '
-        'Votes reset on each correction, because they judged text that is no '
+        "Votes reset on each correction, because they judged text that is no "
         'longer there.">revised &times;'
-        f'{_num(revisions)}</span>'
-        if revisions else ""
+        f"{_num(revisions)}</span>"
+        if revisions
+        else ""
     )
-    tags = "".join(
-        f'<span class="pill">{h(t)}</span> ' for t in (entry.get("tags") or [])[:6]
-    )
+    tags = "".join(f'<span class="pill">{h(t)}</span> ' for t in (entry.get("tags") or [])[:6])
     return (
         f"<tr><td><b>{h(entry.get('title'))}</b><br>"
         f'<span class="muted">{h(entry.get("solution_preview"))}</span><br>{tags}</td>'
@@ -902,25 +988,40 @@ def _render_kb(
     error: str = "",
     flash: str = "",
 ) -> str:
-    actions = (f'<a class="btn" href="#propose" data-command="Propose a Knowledge Base entry">'
-               f'{ui_kit.icon("plus")}Propose an entry</a>' if can_submit else "")
-    body = [_head("Knowledge Base",
-                  "The one surface where anything crosses an organisation boundary — and it crosses it "
-                  "through a person. You consult the Knowledge Base by sending a <em>signature</em>, never "
-                  "your text; you propose an entry and an operator decides. No other customer sees your "
-                  "traces, ever.", actions)]
+    actions = (
+        f'<a class="btn" href="#propose" data-command="Propose a Knowledge Base entry">'
+        f"{ui_kit.icon('plus')}Propose an entry</a>"
+        if can_submit
+        else ""
+    )
+    body = [
+        _head(
+            "Knowledge Base",
+            "The one surface where anything crosses an organisation boundary — and it crosses it "
+            "through a person. You consult the Knowledge Base by sending a <em>signature</em>, never "
+            "your text; you propose an entry and an operator decides. No other customer sees your "
+            "traces, ever.",
+            actions,
+        )
+    ]
     if flash:
         body.append(f'<div class="flash" role="status">{h(flash)}</div>')
     if error:
         body.append(f'<p class="err" role="alert">{h(error)}</p>')
     queries = ent.get("commons_queries") or {}
-    body.append(_tiles([
-        ("Consultations used", f'{_num(queries.get("used", 0))} <span class="muted">of '
-                               f'{_num(queries.get("allowance", 0))}</span>'),
-        ("Remaining", _num(queries.get("remaining", 0))),
-        ("Earned by accepted proposals", _num(queries.get("bonus_from_accepted_submissions", 0))),
-        ("Proposals sent", str(len(submissions))),
-    ]))
+    body.append(
+        _tiles(
+            [
+                (
+                    "Consultations used",
+                    f'{_num(queries.get("used", 0))} <span class="muted">of {_num(queries.get("allowance", 0))}</span>',
+                ),
+                ("Remaining", _num(queries.get("remaining", 0))),
+                ("Earned by accepted proposals", _num(queries.get("bonus_from_accepted_submissions", 0))),
+                ("Proposals sent", str(len(submissions))),
+            ]
+        )
+    )
 
     if browse is not None:
         body.append(_section("Browse the open repository", anchor="browse", command="Browse the open repository"))
@@ -936,7 +1037,7 @@ def _render_kb(
             '<label class="sr-only" for="kb-tag">Filter by tag</label>'
             f'<input type="text" id="kb-tag" name="tag" value="{h(tag)}" '
             'placeholder="filter by tag (blank = everything)">'
-            "<button type=\"submit\">Filter</button></form>"
+            '<button type="submit">Filter</button></form>'
         )
         entries = browse.get("entries") or []
         if entries:
@@ -948,7 +1049,7 @@ def _render_kb(
             )
             body.append(
                 '<p class="sub">Your vote is what moves an entry between '
-                '<em>unproven</em>, <em>established</em> and <em>disputed</em> — the same '
+                "<em>unproven</em>, <em>established</em> and <em>disputed</em> — the same "
                 "signal the operator's review queue sorts on. Voting is per organisation, "
                 "and voting again changes your vote rather than adding one.</p>"
             )
@@ -968,17 +1069,14 @@ def _render_kb(
             nav = []
             if offset > 0:
                 previous = max(0, offset - browse.get("limit", 25))
-                nav.append(
-                    f'<a href="{CONSOLE_PATH}/kb?tag={h(tag)}&offset={previous}">&larr; Newer</a>'
-                )
+                nav.append(f'<a href="{CONSOLE_PATH}/kb?tag={h(tag)}&offset={previous}">&larr; Newer</a>')
             if browse.get("has_more"):
                 nxt = offset + browse.get("limit", 25)
-                nav.append(
-                    f'<a href="{CONSOLE_PATH}/kb?tag={h(tag)}&offset={nxt}">Older &rarr;</a>'
-                )
+                nav.append(f'<a href="{CONSOLE_PATH}/kb?tag={h(tag)}&offset={nxt}">Older &rarr;</a>')
             body.append(
                 f'<div class="pager"><span>Showing {_num(shown)} of {_num(total)} entries</span>'
-                + "".join(nav) + "</div>"
+                + "".join(nav)
+                + "</div>"
             )
         elif tag:
             body.append(_empty("kb", f"No entries tagged {h(tag)!r}", "Clear the filter to see everything."))
@@ -998,7 +1096,7 @@ def _render_kb(
             "Quarantined traces are never proposed.</p>"
             f'<form method="post" action="{CONSOLE_PATH}/kb/auto-contribute" class="act">'
             f'<input type="hidden" name="enabled" value="{"0" if auto_contribute else "1"}">'
-            f"<button type=\"submit\">Turn automatic contribution {turning}</button></form>"
+            f'<button type="submit">Turn automatic contribution {turning}</button></form>'
         )
     else:
         body.append(
@@ -1040,13 +1138,20 @@ def _render_kb(
             f"<td>{h(s.get('rejection_reason') or '—')}</td></tr>"
             for s in submissions
         )
-        body.append(_section("Your proposals") + "<div class='scroll'><table><thead><tr><th>Title</th><th>Status</th>"
-                    f"<th>Sent</th><th>Note</th></tr></thead><tbody>{rows}</tbody></table></div>")
+        body.append(
+            _section("Your proposals") + "<div class='scroll'><table><thead><tr><th>Title</th><th>Status</th>"
+            f"<th>Sent</th><th>Note</th></tr></thead><tbody>{rows}</tbody></table></div>"
+        )
     else:
-        body.append(_section("Your proposals") + _empty(
-            "inbox", "None yet",
-            "An accepted proposal is published under the operator's name, not yours, and earns you bonus "
-            "consultations."))
+        body.append(
+            _section("Your proposals")
+            + _empty(
+                "inbox",
+                "None yet",
+                "An accepted proposal is published under the operator's name, not yours, and earns you bonus "
+                "consultations.",
+            )
+        )
     return "".join(body)
 
 
@@ -1054,27 +1159,36 @@ _ROLE_TONE = {"admin": "info", "owner": "info"}
 
 
 def _render_users(users: list[User], is_admin: bool, error: str = "") -> str:
-    actions = (f'<a class="btn" href="#create-user" data-command="Create a user">{ui_kit.icon("plus")}'
-               "Create a user</a>" if is_admin else "")
-    body = [_head("Users &amp; roles",
-                  "A person, distinct from your org's shared API key — a named role checked as a second, "
-                  "additive gate on every tool call. No SSO is linked by creating a row here; that is always "
-                  "a separate, explicit step (<code>hub.manage link-sso</code>).", actions)]
+    actions = (
+        f'<a class="btn" href="#create-user" data-command="Create a user">{ui_kit.icon("plus")}Create a user</a>'
+        if is_admin
+        else ""
+    )
+    body = [
+        _head(
+            "Users &amp; roles",
+            "A person, distinct from your org's shared API key — a named role checked as a second, "
+            "additive gate on every tool call. No SSO is linked by creating a row here; that is always "
+            "a separate, explicit step (<code>hub.manage link-sso</code>).",
+            actions,
+        )
+    ]
     if error:
         body.append(f'<p class="err" role="alert">{h(error)}</p>')
     if users:
         rows = []
         for u in users:
             disabled = u.disabled_at is not None
-            state = ('<span class="pill warn">disabled</span>' if disabled
-                     else '<span class="pill ok">active</span>')
-            linked = ('<span class="pill info">linked</span>' if u.external_subject
-                      else '<span class="pill mute">no SSO linked</span>')
+            state = '<span class="pill warn">disabled</span>' if disabled else '<span class="pill ok">active</span>'
+            linked = (
+                '<span class="pill info">linked</span>'
+                if u.external_subject
+                else '<span class="pill mute">no SSO linked</span>'
+            )
             actions_html = ""
             if is_admin:
                 role_options = "".join(
-                    f'<option value="{h(r)}"{" selected" if r == u.role else ""}>{h(r)}</option>'
-                    for r in rbac.ROLES
+                    f'<option value="{h(r)}"{" selected" if r == u.role else ""}>{h(r)}</option>' for r in rbac.ROLES
                 )
                 actions_html = (
                     f'<form method="post" action="{CONSOLE_PATH}/users/{h(u.id)}/role">'
@@ -1105,8 +1219,9 @@ def _render_users(users: list[User], is_admin: bool, error: str = "") -> str:
             f"<th>SSO</th>{_ACTIONS_TH}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         )
     else:
-        body.append(_empty("users", "No users yet",
-                           "Add the people who should see this console under their own name and role."))
+        body.append(
+            _empty("users", "No users yet", "Add the people who should see this console under their own name and role.")
+        )
     if is_admin:
         role_options = "".join(f'<option value="{h(r)}">{h(r)}</option>' for r in rbac.ROLES)
         body.append(
@@ -1123,23 +1238,30 @@ def _render_users(users: list[User], is_admin: bool, error: str = "") -> str:
             '<div><button type="submit">Create</button></div></div></form></section>'
         )
     else:
-        body.append('<p class="muted">Sign in with an admin-scoped key to create or '
-                    "change a user's role.</p>")
+        body.append('<p class="muted">Sign in with an admin-scoped key to create or change a user\'s role.</p>')
     return "".join(body)
 
 
 def _render_keys(keys: list[ApiKey], is_admin: bool, fresh: dict | None = None, error: str = "") -> str:
-    actions = (f'<a class="btn" href="#issue-key" data-command="Issue a new API key">{ui_kit.icon("plus")}'
-               "Issue a key</a>" if is_admin else "")
-    body = [_head("API keys",
-                  "Scopes do not imply each other: <code>admin</code> alone cannot read a trace. A production "
-                  "agent wants <code>read,write</code>; a dashboard wants <code>read</code>.", actions)]
+    actions = (
+        f'<a class="btn" href="#issue-key" data-command="Issue a new API key">{ui_kit.icon("plus")}Issue a key</a>'
+        if is_admin
+        else ""
+    )
+    body = [
+        _head(
+            "API keys",
+            "Scopes do not imply each other: <code>admin</code> alone cannot read a trace. A production "
+            "agent wants <code>read,write</code>; a dashboard wants <code>read</code>.",
+            actions,
+        )
+    ]
     if error:
         body.append(f'<p class="err" role="alert">{h(error)}</p>')
     if fresh:
         body.append(
             '<div class="verdict warn"><h2 id="new-key-label">New key — shown once</h2>'
-            f'{secret_field(fresh["raw_key"], "new-key-label")}'
+            f"{secret_field(fresh['raw_key'], 'new-key-label')}"
             "<p>Store this now. It will not be shown again, and this Hub keeps only its "
             "hash.</p></div>"
         )
@@ -1147,12 +1269,14 @@ def _render_keys(keys: list[ApiKey], is_admin: bool, fresh: dict | None = None, 
         rows = []
         for k in keys:
             revoked = k.revoked_at is not None
-            state = ('<span class="pill mute">revoked</span>' if revoked
-                     else '<span class="pill ok">active</span>')
+            state = '<span class="pill mute">revoked</span>' if revoked else '<span class="pill ok">active</span>'
             scope_pills = (
-                "".join(f'<span class="pill {"info" if sc == scopes.SCOPE_ADMIN else ""}">{h(sc)}</span> '
-                        for sc in k.scopes)
-                if k.scopes is not None else '<span class="pill warn">(all — legacy key)</span>'
+                "".join(
+                    f'<span class="pill {"info" if sc == scopes.SCOPE_ADMIN else ""}">{h(sc)}</span> '
+                    for sc in k.scopes
+                )
+                if k.scopes is not None
+                else '<span class="pill warn">(all — legacy key)</span>'
             )
             expires = ui_kit.time_html(k.expires_at) if k.expires_at else '<span class="muted">never</span>'
             created = ui_kit.time_html(getattr(k, "created_at", None))
@@ -1169,7 +1293,7 @@ def _render_keys(keys: list[ApiKey], is_admin: bool, fresh: dict | None = None, 
                     '<button type="submit" class="danger">Revoke</button></form>'
                 )
             rows.append(
-                f'<tr><td><code>{h(k.key_prefix)}</code></td><td>{scope_pills}</td>'
+                f"<tr><td><code>{h(k.key_prefix)}</code></td><td>{scope_pills}</td>"
                 f"<td>{created}</td><td>{expires}</td><td>{state}</td><td>{actions_html}</td></tr>"
             )
         body.append(
@@ -1181,41 +1305,53 @@ def _render_keys(keys: list[ApiKey], is_admin: bool, fresh: dict | None = None, 
     if is_admin:
         scope_boxes = "".join(
             f'<label><input type="checkbox" name="scopes" value="{h(s)}"> {h(s)}</label> '
-            for s in scopes.ALL_SCOPES if s != scopes.SCOPE_SCIM
+            for s in scopes.ALL_SCOPES
+            if s != scopes.SCOPE_SCIM
         )
         body.append(
             '<section class="panel" id="issue-key" aria-labelledby="issue-key-h">'
             '<h2 id="issue-key-h">Issue a new key</h2>'
             f'<form method="post" action="{CONSOLE_PATH}/keys/issue" class="stack" style="max-width:none">'
-            f'<fieldset><legend>Scopes</legend>{scope_boxes}</fieldset>'
+            f"<fieldset><legend>Scopes</legend>{scope_boxes}</fieldset>"
             '<div class="form-grid"><div><label for="new-key-expires">Expires in N days</label>'
             '<input type="number" id="new-key-expires" name="expires_days" '
             f'placeholder="blank = never" min="1" max="{MAX_KEY_EXPIRY_DAYS}"></div>'
             '<div><button type="submit">Issue</button></div></div></form></section>'
         )
     else:
-        body.append('<p class="muted">Sign in with an admin-scoped key to issue, '
-                    "rotate, or revoke keys.</p>")
+        body.append('<p class="muted">Sign in with an admin-scoped key to issue, rotate, or revoke keys.</p>')
     return "".join(body)
 
 
 def _render_alerts(
-    rules: list[AlertRule], is_admin: bool, error: str = "", report: dict | None = None,
+    rules: list[AlertRule],
+    is_admin: bool,
+    error: str = "",
+    report: dict | None = None,
 ) -> str:
-    actions = (f'<a class="btn" href="#create-alert" data-command="Create an alert rule">{ui_kit.icon("plus")}'
-               "Create a rule</a>" if is_admin else "")
-    body = [_head("Alerts",
-                  "Fires <code>alert.triggered</code> through your existing webhook endpoint(s) when a metric "
-                  "crosses a threshold you set — no polling needed. A closed, named set of metrics, never a "
-                  "free-form query.", actions)]
+    actions = (
+        f'<a class="btn" href="#create-alert" data-command="Create an alert rule">{ui_kit.icon("plus")}'
+        "Create a rule</a>"
+        if is_admin
+        else ""
+    )
+    body = [
+        _head(
+            "Alerts",
+            "Fires <code>alert.triggered</code> through your existing webhook endpoint(s) when a metric "
+            "crosses a threshold you set — no polling needed. A closed, named set of metrics, never a "
+            "free-form query.",
+            actions,
+        )
+    ]
     if error:
         body.append(f'<p class="err" role="alert">{h(error)}</p>')
     if report:
         body.append(
             '<div class="verdict good"><h2>Report queued</h2>'
-            f'<p>{h(report["period"])}, plan={h(report["plan"])}: '
-            f'{h(report["traces_total"])} traces, '
-            f'{h(report["commons_queries_used"])}/{h(report["commons_queries_allowance"])} '
+            f"<p>{h(report['period'])}, plan={h(report['plan'])}: "
+            f"{h(report['traces_total'])} traces, "
+            f"{h(report['commons_queries_used'])}/{h(report['commons_queries_allowance'])} "
             "Knowledge Base consultations used.</p>"
             "<p>Delivered as <code>report.generated</code> to this org's webhook "
             "endpoint(s), the same as a scheduled one would be.</p></div>"
@@ -1223,8 +1359,7 @@ def _render_alerts(
     if rules:
         rows = []
         for r in rules:
-            state = ('<span class="pill ok">enabled</span>' if r.enabled
-                     else '<span class="pill mute">disabled</span>')
+            state = '<span class="pill ok">enabled</span>' if r.enabled else '<span class="pill mute">disabled</span>'
             last = ui_kit.time_html(r.last_triggered_at) if r.last_triggered_at else '<span class="muted">never</span>'
             actions_html = ""
             if is_admin:
@@ -1245,13 +1380,16 @@ def _render_alerts(
             f"<tbody>{''.join(rows)}</tbody></table></div>"
         )
     else:
-        body.append(_empty("alerts", "No alert rules yet",
-                           "A rule watches one metric and tells your webhook endpoints when it crosses the line."))
+        body.append(
+            _empty(
+                "alerts",
+                "No alert rules yet",
+                "A rule watches one metric and tells your webhook endpoints when it crosses the line.",
+            )
+        )
     if is_admin:
         metric_options = "".join(f'<option value="{h(m)}">{h(m)}</option>' for m in alerts.METRICS)
-        comparator_options = "".join(
-            f'<option value="{h(c)}">{h(c)}</option>' for c in alerts.COMPARATORS
-        )
+        comparator_options = "".join(f'<option value="{h(c)}">{h(c)}</option>' for c in alerts.COMPARATORS)
         body.append(
             '<div class="grid-2">'
             '<section class="panel" id="create-alert" aria-labelledby="create-alert-h">'
@@ -1279,21 +1417,37 @@ def _render_alerts(
             '<button type="submit">Generate now</button></form></section></div>'
         )
     else:
-        body.append('<p class="muted">Sign in with an admin-scoped key to create or '
-                    "delete an alert rule, or generate a usage report.</p>")
+        body.append(
+            '<p class="muted">Sign in with an admin-scoped key to create or '
+            "delete an alert rule, or generate a usage report.</p>"
+        )
     return "".join(body)
 
 
 def _render_webhooks(
-    endpoints: list[dict], pending: int, failed: list[dict], is_admin: bool,
-    *, error: str = "", fresh: dict | None = None,
+    endpoints: list[dict],
+    pending: int,
+    failed: list[dict],
+    is_admin: bool,
+    *,
+    error: str = "",
+    fresh: dict | None = None,
 ) -> str:
-    actions = (f'<a class="btn" href="#add-endpoint" data-command="Add a webhook endpoint">{ui_kit.icon("plus")}'
-               "Add an endpoint</a>" if is_admin else "")
-    body = [_head("Webhooks",
-                  "Tell your own systems what happened here — a trace quarantined, an experiment reaching a "
-                  "verdict — without polling for it. Every payload carries only ids, counts and verdicts; a "
-                  "webhook is egress to a third party, and this product's memory content never is.", actions)]
+    actions = (
+        f'<a class="btn" href="#add-endpoint" data-command="Add a webhook endpoint">{ui_kit.icon("plus")}'
+        "Add an endpoint</a>"
+        if is_admin
+        else ""
+    )
+    body = [
+        _head(
+            "Webhooks",
+            "Tell your own systems what happened here — a trace quarantined, an experiment reaching a "
+            "verdict — without polling for it. Every payload carries only ids, counts and verdicts; a "
+            "webhook is egress to a third party, and this product's memory content never is.",
+            actions,
+        )
+    ]
     if error:
         body.append(f'<p class="err" role="alert">{h(error)}</p>')
     if fresh and fresh.get("secret"):
@@ -1302,20 +1456,24 @@ def _render_webhooks(
             "(shown once)</b>"
             '<span class="muted">Verify the delivery signature with this. It cannot be shown '
             "again — rotate the endpoint to get a new one.</span>"
-            f'{secret_field(fresh["secret"], "webhook-secret-label")}</div>'
+            f"{secret_field(fresh['secret'], 'webhook-secret-label')}</div>"
         )
-    body.append(_tiles([
-        ("Endpoints", _num(len(endpoints))),
-        ("Deliveries pending", _num(pending)),
-        ("Gave up on delivering", f'<span class="{"bad" if failed else ""}">{_num(len(failed))}</span>'),
-    ]))
+    body.append(
+        _tiles(
+            [
+                ("Endpoints", _num(len(endpoints))),
+                ("Deliveries pending", _num(pending)),
+                ("Gave up on delivering", f'<span class="{"bad" if failed else ""}">{_num(len(failed))}</span>'),
+            ]
+        )
+    )
     if endpoints:
         rows = []
         for e in endpoints:
-            state = ('<span class="pill ok">enabled</span>' if e["enabled"]
-                     else '<span class="pill bad">DISABLED</span>')
+            state = '<span class="pill ok">enabled</span>' if e["enabled"] else '<span class="pill bad">DISABLED</span>'
             subscribed = "".join(f'<span class="pill">{h(ev)}</span> ' for ev in e["events"]) or (
-                '<span class="muted">(none)</span>')
+                '<span class="muted">(none)</span>'
+            )
             actions_html = ""
             if is_admin and e["enabled"]:
                 actions_html = (
@@ -1336,8 +1494,13 @@ def _render_webhooks(
             f"<th>Key</th>{_ACTIONS_TH}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         )
     else:
-        body.append(_empty("webhooks", "No webhook endpoints configured",
-                           "Add one to have verdicts, quarantines and alerts delivered to your own systems."))
+        body.append(
+            _empty(
+                "webhooks",
+                "No webhook endpoints configured",
+                "Add one to have verdicts, quarantines and alerts delivered to your own systems.",
+            )
+        )
     if failed:
         frows = "".join(
             f"<tr><td>{ui_kit.time_html(d['created_at'])}</td><td><code>{h(d['event_type'])}</code></td>"
@@ -1345,9 +1508,11 @@ def _render_webhooks(
             for d in failed
         )
         body.append(
-            _section("Gave up on delivering",
-                     "Retried and failed enough times that this stopped retrying — a misconfigured endpoint, "
-                     "not a transient blip.")
+            _section(
+                "Gave up on delivering",
+                "Retried and failed enough times that this stopped retrying — a misconfigured endpoint, "
+                "not a transient blip.",
+            )
             + "<div class='scroll'><table><thead><tr><th>When</th><th>Event</th><th>Last error</th></tr></thead>"
             f"<tbody>{frows}</tbody></table></div>"
         )
@@ -1363,23 +1528,33 @@ def _render_webhooks(
             f'<form method="post" action="{CONSOLE_PATH}/webhooks/create" class="stack" style="max-width:none">'
             '<div><label for="new-webhook-url">URL</label>'
             '<input type="url" id="new-webhook-url" name="url" placeholder="https://…" required></div>'
-            f'<fieldset><legend>Events</legend>{event_boxes}</fieldset>'
+            f"<fieldset><legend>Events</legend>{event_boxes}</fieldset>"
             '<button type="submit">Add endpoint</button></form></section>'
         )
     else:
-        body.append('<p class="muted">Sign in with an admin-scoped key to add, rotate, or '
-                    "disable a webhook endpoint.</p>")
+        body.append(
+            '<p class="muted">Sign in with an admin-scoped key to add, rotate, or disable a webhook endpoint.</p>'
+        )
     return "".join(body)
 
 
 def _render_audit_log(entries: list[AuditLogEntry], offset: int, limit: int, has_more: bool) -> str:
-    body = [_head("Audit log",
-                  "Consequential actions on your organisation — writes through the MCP tools and every admin "
-                  "action, including the ones taken from this console itself. Ordinary reads (searches, "
-                  "lookups) are not logged here.")]
+    body = [
+        _head(
+            "Audit log",
+            "Consequential actions on your organisation — writes through the MCP tools and every admin "
+            "action, including the ones taken from this console itself. Ordinary reads (searches, "
+            "lookups) are not logged here.",
+        )
+    ]
     if not entries:
-        body.append(_empty("audit", "No audit entries yet",
-                           "Every write and every admin action will be recorded here, with who did it."))
+        body.append(
+            _empty(
+                "audit",
+                "No audit entries yet",
+                "Every write and every admin action will be recorded here, with who did it.",
+            )
+        )
         return "".join(body)
     rows = "".join(
         f"<tr><td>{ui_kit.time_html(e.created_at)}</td><td><code>{h(e.actor)}</code></td>"
@@ -1432,20 +1607,34 @@ def _setup_steps(data: dict, causal: dict, setup: dict | None) -> str:
     traces = int(((data.get("entitlements") or {}).get("traces") or {}).get("used", 0) or 0)
     searches = int((data.get("search") or {}).get("searches", 0) or 0)
     steps = [
-        (traces > 0, "Capture a first trace",
-         "Your agents call <code>contribute_trace</code> after a task, or import one with "
-         "<code>unimem sync</code>."),
-        (searches > 0, "Retrieve before a task",
-         "Agents call <code>search_traces</code> with the task in their own words."),
-        (bool(causal.get("experiment_running")), "Start a randomized holdout",
-         f'From <a href="{CONSOLE_PATH}/proof">Proof</a>: the only thing that separates this memory\'s '
-         "effect from everything else that changed."),
-        (bool(causal.get("n_observations")), "Report outcomes",
-         "Agents call <code>record_occasion_outcome</code> when a task ends — the experiment measures "
-         "nothing without it."),
-        (bool(setup.get("alerts") or setup.get("webhooks")), "Get told, not polled",
-         f'Add an <a href="{CONSOLE_PATH}/alerts">alert</a> or a <a href="{CONSOLE_PATH}/webhooks">'
-         "webhook</a> so a verdict reaches your own systems."),
+        (
+            traces > 0,
+            "Capture a first trace",
+            "Your agents call <code>contribute_trace</code> after a task, or import one with <code>unimem sync</code>.",
+        ),
+        (
+            searches > 0,
+            "Retrieve before a task",
+            "Agents call <code>search_traces</code> with the task in their own words.",
+        ),
+        (
+            bool(causal.get("experiment_running")),
+            "Start a randomized holdout",
+            f'From <a href="{CONSOLE_PATH}/proof">Proof</a>: the only thing that separates this memory\'s '
+            "effect from everything else that changed.",
+        ),
+        (
+            bool(causal.get("n_observations")),
+            "Report outcomes",
+            "Agents call <code>record_occasion_outcome</code> when a task ends — the experiment measures "
+            "nothing without it.",
+        ),
+        (
+            bool(setup.get("alerts") or setup.get("webhooks")),
+            "Get told, not polled",
+            f'Add an <a href="{CONSOLE_PATH}/alerts">alert</a> or a <a href="{CONSOLE_PATH}/webhooks">'
+            "webhook</a> so a verdict reaches your own systems.",
+        ),
     ]
     done = sum(1 for ok, *_ in steps if ok)
     if done == len(steps):
@@ -1490,14 +1679,17 @@ def _working_panel(causal: dict, activity: dict | None) -> str:
                     "the validity checks on Proof</div></div></div>"
                 )
             chart = ui_kit.rate_chart(
-                "rate", activity.get("weeks", []), activity.get("treated", []), activity.get("control", []),
+                "rate",
+                activity.get("weeks", []),
+                activity.get("treated", []),
+                activity.get("control", []),
                 title="Weekly success rate, with and without memory",
             )
         return (
             '<section class="panel" aria-labelledby="working-h"><div class="panel-head"><div>'
             '<h2 id="working-h">Is the memory working?</h2>'
             f'<p class="muted">A randomized holdout is running: {_num(causal.get("n_observations", 0))} '
-            f'resolved observation(s) across {_num(causal.get("n_occasions", 0))} occasion(s). '
+            f"resolved observation(s) across {_num(causal.get('n_occasions', 0))} occasion(s). "
             f'Validity: <span class="pill {pill}">{h(verdict)}</span></p></div>'
             f'<a class="btn secondary" href="{CONSOLE_PATH}/proof">{ui_kit.icon("proof")}See the causal report</a>'
             f"</div>{hero}{chart}"
@@ -1531,14 +1723,14 @@ _SIGNIN = (
     '<form method="post" action="{path}/signin">'
     '<label for="api_key">API key</label>'
     '<input type="password" id="api_key" name="api_key" placeholder="unimem_live_…" autocomplete="off" '
-    "autofocus required spellcheck=\"false\">"
+    'autofocus required spellcheck="false">'
     '<button type="submit">Sign in</button>'
     "</form>"
     "{error}"
     '<div class="trust">'
-    f'<span>{ui_kit.icon("shield")}The key is checked once; the session cookie never contains it</span>'
-    f'<span>{ui_kit.icon("lock")}Revoking the key ends every session it opened</span>'
-    f'<span>{ui_kit.icon("audit")}Every change made here is authenticated and audited</span>'
+    f"<span>{ui_kit.icon('shield')}The key is checked once; the session cookie never contains it</span>"
+    f"<span>{ui_kit.icon('lock')}Revoking the key ends every session it opened</span>"
+    f"<span>{ui_kit.icon('audit')}Every change made here is authenticated and audited</span>"
     "</div>"
     '<p class="fine">Most of this console is read-only — capturing a trace, running the '
     "experiment, proposing to the Knowledge Base still goes through your agents or the CLI. "
@@ -1609,16 +1801,21 @@ def add_console_routes(
                         *((ApiKey.id == str(claims["kid"]),) if claims.get("kid") else ()),
                         ApiKey.revoked_at.is_(None),
                         or_(ApiKey.expires_at.is_(None), ApiKey.expires_at > now),
-                    ).limit(1)
+                    )
+                    .limit(1)
                 )
             ).first()
         if row is None or not scopes.satisfies(row[1], scopes.SCOPE_READ):
             return None
         claims["scopes"] = row[1]
-        _VIEW.set({
-            "org_name": row[2], "plan": row[3], "key_prefix": prefix,
-            "is_admin": scopes.satisfies(row[1], scopes.SCOPE_ADMIN),
-        })
+        _VIEW.set(
+            {
+                "org_name": row[2],
+                "plan": row[3],
+                "key_prefix": prefix,
+                "is_admin": scopes.satisfies(row[1], scopes.SCOPE_ADMIN),
+            }
+        )
         return claims
 
     def _is_admin(claims: dict) -> bool:
@@ -1633,9 +1830,7 @@ def add_console_routes(
         return _page("Sign in", _SIGNIN.format(path=CONSOLE_PATH, error=""), signed_in=False)
 
     async def signin(request: Request) -> Response:
-        allowed, retry_after = await signin_limiter.check(
-            rate_limit_key(request, trusted_proxy_hops)
-        )
+        allowed, retry_after = await signin_limiter.check(rate_limit_key(request, trusted_proxy_hops))
         if not allowed:
             return _page(
                 "Sign in",
@@ -1676,11 +1871,14 @@ def add_console_routes(
         if request.method != "POST":
             if await _claims(request) is None:
                 return _redirect_to_signin()
-            return _page("Sign out", (
-                "<h1>Sign out?</h1>"
-                f'<form method="post" action="{CONSOLE_PATH}/signout">'
-                '<button type="submit" class="btn">Sign out</button></form>'
-            ))
+            return _page(
+                "Sign out",
+                (
+                    "<h1>Sign out?</h1>"
+                    f'<form method="post" action="{CONSOLE_PATH}/signout">'
+                    '<button type="submit" class="btn">Sign out</button></form>'
+                ),
+            )
         response = RedirectResponse(f"{CONSOLE_PATH}/signin", status_code=303)
         response.delete_cookie(SESSION_COOKIE, path=CONSOLE_PATH)
         return response
@@ -1705,12 +1903,12 @@ def add_console_routes(
             "has_subscription": bool(org and org.stripe_subscription_id),
             "plan": current_plan,
             "available_plans": [
-                name for name in plans.BILLABLE_PLANS
-                if stripe.price_for_plan(name) and name != current_plan
+                name for name in plans.BILLABLE_PLANS if stripe.price_for_plan(name) and name != current_plan
             ],
         }
         return _page(
-            "Your fleet", _render_overview(data, causal, billing_state, activity, setup),
+            "Your fleet",
+            _render_overview(data, causal, billing_state, activity, setup),
             auto_refresh_seconds=45,
         )
 
@@ -1734,8 +1932,11 @@ def add_console_routes(
         base_url = str(request.url.replace(path=CONSOLE_PATH, query=""))
         try:
             checkout_url = await create_checkout_session(
-                stripe, org=org, plan=plan,
-                success_url=f"{base_url}?upgraded=1", cancel_url=base_url,
+                stripe,
+                org=org,
+                plan=plan,
+                success_url=f"{base_url}?upgraded=1",
+                cancel_url=base_url,
             )
         except Exception:  # noqa: BLE001 - Stripe being unreachable must not 500 the console
             logger.exception("stripe checkout session creation failed for org %s", org_id)
@@ -1754,7 +1955,9 @@ def add_console_routes(
         return_url = str(request.url.replace(path=CONSOLE_PATH, query=""))
         try:
             portal_url = await create_billing_portal_session(
-                stripe, customer_id=org.stripe_customer_id, return_url=return_url,
+                stripe,
+                customer_id=org.stripe_customer_id,
+                return_url=return_url,
             )
         except Exception:  # noqa: BLE001 - Stripe being unreachable must not 500 the console
             logger.exception("stripe billing portal session creation failed for org %s", org_id)
@@ -1762,7 +1965,11 @@ def add_console_routes(
         return RedirectResponse(portal_url, status_code=303)
 
     async def _proof_view(
-        request: Request, org_id: str, is_admin: bool, *, experiment_error: str = "",
+        request: Request,
+        org_id: str,
+        is_admin: bool,
+        *,
+        experiment_error: str = "",
         share_url: str | None = None,
     ) -> Response:
         try:
@@ -1780,10 +1987,17 @@ def add_console_routes(
         flash = _SHARE_FLASH.get(request.query_params.get("done", ""), "")
         if flash:
             share_box = f'<p class="flash" role="status">{h(flash)}</p>' + share_box
-        return _page("Proof", _render_proof(
-            outcomes, causal, worth, is_admin=is_admin, experiment_error=experiment_error,
-            controls=share_box,
-        ))
+        return _page(
+            "Proof",
+            _render_proof(
+                outcomes,
+                causal,
+                worth,
+                is_admin=is_admin,
+                experiment_error=experiment_error,
+                controls=share_box,
+            ),
+        )
 
     async def proof(request: Request) -> Response:
         claims = await _claims(request)
@@ -1816,8 +2030,12 @@ def add_console_routes(
             if org is not None:
                 org.share_generation = int(org.share_generation) + 1
                 await audit.record(
-                    session, actor=actor, action="revoke_share_links",
-                    org_id=org_id, target_type="organization", target_id=org_id,
+                    session,
+                    actor=actor,
+                    action="revoke_share_links",
+                    org_id=org_id,
+                    target_type="organization",
+                    target_id=org_id,
                     summary=f"share_generation={org.share_generation}",
                 )
         return RedirectResponse(f"{CONSOLE_PATH}/proof?done=revoked", status_code=303)
@@ -1832,7 +2050,8 @@ def add_console_routes(
         if not allowed:
             return HTMLResponse(
                 "This report is being viewed heavily right now -- try again shortly.",
-                status_code=429, headers={"Retry-After": str(int(retry_after) + 1)},
+                status_code=429,
+                headers={"Retry-After": str(int(retry_after) + 1)},
             )
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
@@ -1852,7 +2071,8 @@ def add_console_routes(
             assignments = await crud.holdout_assignments(session, org_id)
         result = raw_export.export(assignments)
         return Response(
-            result.csv_text, media_type="text/csv",
+            result.csv_text,
+            media_type="text/csv",
             headers={
                 "Content-Disposition": 'attachment; filename="unimem-assignments.csv"',
                 "Cache-Control": "no-store, private",
@@ -1873,20 +2093,22 @@ def add_console_routes(
         try:
             rate = float(rate_raw)
         except ValueError:
-            return await _proof_view(
-                request, org_id, True, experiment_error="Holdout rate must be a number.")
+            return await _proof_view(request, org_id, True, experiment_error="Holdout rate must be a number.")
         if not 0 < rate < 1:
             return await _proof_view(
-                request, org_id, True,
-                experiment_error="Holdout rate must be strictly between 0 and 1.")
+                request, org_id, True, experiment_error="Holdout rate must be strictly between 0 and 1."
+            )
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         ok = await manage.start_experiment(
-            org_id, rate=str(rate), outcome=outcome, notes=notes,
-            session_factory=session_factory, actor=actor,
+            org_id,
+            rate=str(rate),
+            outcome=outcome,
+            notes=notes,
+            session_factory=session_factory,
+            actor=actor,
         )
         if not ok:
-            return await _proof_view(
-                request, org_id, True, experiment_error="Could not start the experiment.")
+            return await _proof_view(request, org_id, True, experiment_error="Could not start the experiment.")
         return RedirectResponse(f"{CONSOLE_PATH}/proof", status_code=303)
 
     async def experiment_stop(request: Request) -> Response:
@@ -1899,8 +2121,7 @@ def add_console_routes(
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         ok = await manage.stop_experiment(org_id, session_factory=session_factory, actor=actor)
         if not ok:
-            return await _proof_view(
-                request, org_id, True, experiment_error="No experiment is running.")
+            return await _proof_view(request, org_id, True, experiment_error="No experiment is running.")
         return RedirectResponse(f"{CONSOLE_PATH}/proof", status_code=303)
 
     async def memory(request: Request) -> Response:
@@ -1923,16 +2144,19 @@ def add_console_routes(
         return _page("Memory", _render_memory(result, tags))
 
     async def _kb_view(
-        org_id: str, claims: dict, *, tag: str = "", offset: int = 0,
-        error: str = "", flash: str = "",
+        org_id: str,
+        claims: dict,
+        *,
+        tag: str = "",
+        offset: int = 0,
+        error: str = "",
+        flash: str = "",
     ) -> Response:
         async with session_scope(session_factory) as session:
             submissions = await crud.list_my_kb_submissions(session, org_id)
             ent = await crud.entitlements(session, org_id)
             organization = await session.get(Organization, org_id)
-            auto_contribute = bool(
-                organization is not None and organization.commons_auto_contribute
-            )
+            auto_contribute = bool(organization is not None and organization.commons_auto_contribute)
             vote_counts = commons.vote_counts_toward_standing(
                 trace_count=(organization.trace_count if organization else 0),
                 org_created_at=(organization.created_at if organization else None),
@@ -1944,12 +2168,16 @@ def add_console_routes(
         return _page(
             "Knowledge Base",
             _render_kb(
-                submissions, ent, browse, tag=tag,
+                submissions,
+                ent,
+                browse,
+                tag=tag,
                 can_submit=_is_admin(claims),
                 can_vote=scopes.satisfies(claims.get("scopes"), scopes.SCOPE_WRITE),
                 vote_counts=vote_counts,
                 auto_contribute=auto_contribute,
-                error=error, flash=flash,
+                error=error,
+                flash=flash,
             ),
         )
 
@@ -1959,15 +2187,17 @@ def add_console_routes(
             return _redirect_to_signin()
         org_id = str(claims["org"])
         if not commons_enabled:
-            return _page("Knowledge Base",
-                         "<h1>Knowledge Base</h1><p class=\"sub\">The Knowledge Base is "
-                         "not enabled on this deployment.</p>")
+            return _page(
+                "Knowledge Base",
+                '<h1>Knowledge Base</h1><p class="sub">The Knowledge Base is not enabled on this deployment.</p>',
+            )
         try:
             offset = min(100_000, max(0, int(request.query_params.get("offset", "0"))))
         except ValueError:
             offset = 0
         return await _kb_view(
-            org_id, claims,
+            org_id,
+            claims,
             tag=request.query_params.get("tag", "")[:64],
             offset=max(0, offset),
             flash=_KB_FLASH.get(request.query_params.get("done", ""), ""),
@@ -1983,7 +2213,8 @@ def add_console_routes(
             return _redirect_to_signin()
         if not _is_admin(claims):
             return await _kb_view(
-                org_id, claims,
+                org_id,
+                claims,
                 error="Proposing an entry needs an admin-scoped key.",
             )
         form = await request.form()
@@ -1992,7 +2223,8 @@ def add_console_routes(
         solution_text = str(form.get("solution_text") or "").strip()
         if not (title and context_text and solution_text):
             return await _kb_view(
-                org_id, claims,
+                org_id,
+                claims,
                 error="Title, the problem and what fixed it are all required.",
             )
         tags = [t.strip() for t in str(form.get("tags") or "").split(",") if t.strip()]
@@ -2000,7 +2232,10 @@ def add_console_routes(
         try:
             async with session_scope(session_factory) as session:
                 await crud.submit_kb_entry(
-                    session, org_id, submit_config, submit_limiter,
+                    session,
+                    org_id,
+                    submit_config,
+                    submit_limiter,
                     title=title,
                     context_text=context_text,
                     solution_text=solution_text,
@@ -2012,11 +2247,13 @@ def add_console_routes(
             return await _kb_view(org_id, claims, error=str(exc))
         except RateLimited:
             return await _kb_view(
-                org_id, claims,
+                org_id,
+                claims,
                 error="Too many proposals just now. Try again shortly.",
             )
         return RedirectResponse(
-            f"{CONSOLE_PATH}/kb?done=proposed", status_code=303,
+            f"{CONSOLE_PATH}/kb?done=proposed",
+            status_code=303,
         )
 
     async def kb_auto_contribute(request: Request) -> Response:
@@ -2029,7 +2266,8 @@ def add_console_routes(
             return _redirect_to_signin()
         if not _is_admin(claims):
             return await _kb_view(
-                org_id, claims,
+                org_id,
+                claims,
                 error="Changing automatic contribution needs an admin-scoped key.",
             )
         form = await request.form()
@@ -2043,7 +2281,9 @@ def add_console_routes(
                 session,
                 actor=audit.actor_for_api_key(str(claims.get("key") or "")),
                 action="set_commons_auto_contribute",
-                org_id=org_id, target_type="org", target_id=org_id,
+                org_id=org_id,
+                target_type="org",
+                target_id=org_id,
                 summary=f"enabled={enabled}",
             )
         done = "auto_on" if enabled else "auto_off"
@@ -2058,8 +2298,7 @@ def add_console_routes(
         if not commons_enabled:
             return _redirect_to_signin()
         if not scopes.satisfies(claims.get("scopes"), scopes.SCOPE_WRITE):
-            return await _kb_view(
-                org_id, claims, error="Voting needs a key with the 'write' scope.")
+            return await _kb_view(org_id, claims, error="Voting needs a key with the 'write' scope.")
         form = await request.form()
         vote_type = str(form.get("vote") or "").strip()
         trace_id = str(form.get("trace_id") or "").strip()
@@ -2067,7 +2306,10 @@ def add_console_routes(
         try:
             async with session_scope(session_factory) as session:
                 voted = await crud.vote_trace(
-                    session, org_id, trace_id, vote_type,
+                    session,
+                    org_id,
+                    trace_id,
+                    vote_type,
                     feedback_tag=feedback_tag,
                     actor=audit.actor_for_api_key(str(claims.get("key") or "")),
                 )
@@ -2075,7 +2317,8 @@ def add_console_routes(
             return await _kb_view(org_id, claims, error=str(exc))
         if voted is None:
             return await _kb_view(
-                org_id, claims,
+                org_id,
+                claims,
                 error="That entry is no longer in the Knowledge Base.",
             )
         done = "voted" if voted.get("vote_counted", True) else "voted_uncounted"
@@ -2083,11 +2326,11 @@ def add_console_routes(
 
     async def _list_users(org_id: str) -> list[User]:
         async with session_scope(session_factory) as session:
-            return list((
-                await session.execute(
-                    select(User).where(User.org_id == org_id).order_by(User.created_at)
-                )
-            ).scalars().all())
+            return list(
+                (await session.execute(select(User).where(User.org_id == org_id).order_by(User.created_at)))
+                .scalars()
+                .all()
+            )
 
     async def users_page(request: Request) -> Response:
         claims = await _claims(request)
@@ -2104,8 +2347,7 @@ def add_console_routes(
         org_id = str(claims["org"])
         if not _is_admin(claims):
             users = await _list_users(org_id)
-            return _page("Users & roles", _render_users(
-                users, False, error="An admin-scoped API key is required."))
+            return _page("Users & roles", _render_users(users, False, error="An admin-scoped API key is required."))
         form = await request.form()
         email = str(form.get("email") or "").strip()
         role = str(form.get("role") or "").strip()
@@ -2118,8 +2360,12 @@ def add_console_routes(
         else:
             actor = audit.actor_for_api_key(str(claims.get("key") or ""))
             if not await manage.create_user(
-                org_id, email, role, display_name,
-                session_factory=session_factory, actor=actor,
+                org_id,
+                email,
+                role,
+                display_name,
+                session_factory=session_factory,
+                actor=actor,
             ):
                 error = f"Your organization already has a user with email {email}."
         if error:
@@ -2128,7 +2374,9 @@ def add_console_routes(
         return RedirectResponse(f"{CONSOLE_PATH}/users", status_code=303)
 
     async def _mutate_own_org_user(
-        request: Request, user_id: str, action,
+        request: Request,
+        user_id: str,
+        action,
     ) -> Response:
         claims = await _claims(request)
         if claims is None:
@@ -2136,14 +2384,12 @@ def add_console_routes(
         org_id = str(claims["org"])
         if not _is_admin(claims):
             users = await _list_users(org_id)
-            return _page("Users & roles", _render_users(
-                users, False, error="An admin-scoped API key is required."))
+            return _page("Users & roles", _render_users(users, False, error="An admin-scoped API key is required."))
         async with session_scope(session_factory) as session:
             user = await session.get(User, user_id)
         if user is None or user.org_id != org_id:
             users = await _list_users(org_id)
-            return _page("Users & roles", _render_users(
-                users, True, error="No such user in your organization."))
+            return _page("Users & roles", _render_users(users, True, error="No such user in your organization."))
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         error = await action(user_id, actor)
         if error:
@@ -2157,8 +2403,7 @@ def add_console_routes(
         async def action(user_id: str, actor: str) -> str:
             if role not in rbac.ROLES:
                 return f"Unknown role {role!r}."
-            await manage.set_user_role(
-                user_id, role, session_factory=session_factory, actor=actor)
+            await manage.set_user_role(user_id, role, session_factory=session_factory, actor=actor)
             return ""
 
         return await _mutate_own_org_user(request, request.path_params["user_id"], action)
@@ -2179,11 +2424,11 @@ def add_console_routes(
 
     async def _list_keys(org_id: str) -> list[ApiKey]:
         async with session_scope(session_factory) as session:
-            return list((
-                await session.execute(
-                    select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at)
-                )
-            ).scalars().all())
+            return list(
+                (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at)))
+                .scalars()
+                .all()
+            )
 
     async def keys_page(request: Request) -> Response:
         claims = await _claims(request)
@@ -2216,9 +2461,17 @@ def add_console_routes(
                 expires_days = 0
             if not 1 <= expires_days <= MAX_KEY_EXPIRY_DAYS:
                 keys = await _list_keys(org_id)
-                return _page("API keys", _render_keys(keys, True, error=(
-                    f"Expiry must be a whole number of days from 1 to {MAX_KEY_EXPIRY_DAYS}, "
-                    "or blank for a key that never expires.")))
+                return _page(
+                    "API keys",
+                    _render_keys(
+                        keys,
+                        True,
+                        error=(
+                            f"Expiry must be a whole number of days from 1 to {MAX_KEY_EXPIRY_DAYS}, "
+                            "or blank for a key that never expires."
+                        ),
+                    ),
+                )
         try:
             granted = scopes.parse(chosen_scopes)
         except scopes.ScopeError as exc:
@@ -2227,16 +2480,22 @@ def add_console_routes(
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         async with session_scope(session_factory) as session:
             issued = await auth.issue_api_key(
-                session, org_id, expires_days=expires_days, scopes=granted,
+                session,
+                org_id,
+                expires_days=expires_days,
+                scopes=granted,
             )
             await audit.record(
-                session, actor=actor, action="issue_key",
-                org_id=org_id, target_type="api_key", target_id=issued.key_id,
+                session,
+                actor=actor,
+                action="issue_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id=issued.key_id,
                 summary=f"prefix={issued.key_prefix} scopes={','.join(issued.scopes)}",
             )
         keys = await _list_keys(org_id)
-        return _page("API keys", _render_keys(
-            keys, True, fresh={"raw_key": issued.raw_key}))
+        return _page("API keys", _render_keys(keys, True, fresh={"raw_key": issued.raw_key}))
 
     async def keys_rotate(request: Request) -> Response:
         claims = await _claims(request)
@@ -2256,13 +2515,16 @@ def add_console_routes(
         async with session_scope(session_factory) as session:
             issued = await auth.rotate_api_key(session, key_id)
             await audit.record(
-                session, actor=actor, action="rotate_key",
-                org_id=org_id, target_type="api_key", target_id=issued.key_id,
+                session,
+                actor=actor,
+                action="rotate_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id=issued.key_id,
                 summary=f"replaces={key_id}",
             )
         keys = await _list_keys(org_id)
-        return _page("API keys", _render_keys(
-            keys, True, fresh={"raw_key": issued.raw_key}))
+        return _page("API keys", _render_keys(keys, True, fresh={"raw_key": issued.raw_key}))
 
     async def keys_revoke(request: Request) -> Response:
         claims = await _claims(request)
@@ -2279,8 +2541,12 @@ def add_console_routes(
             await auth.revoke_api_key(session, key_id)
             actor = audit.actor_for_api_key(str(claims.get("key") or ""))
             await audit.record(
-                session, actor=actor, action="revoke_key",
-                org_id=org_id, target_type="api_key", target_id=key_id,
+                session,
+                actor=actor,
+                action="revoke_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id=key_id,
             )
         return RedirectResponse(f"{CONSOLE_PATH}/keys", status_code=303)
 
@@ -2311,8 +2577,7 @@ def add_console_routes(
             threshold = float(str(form.get("threshold") or ""))
         except ValueError:
             rules = await _list_alert_rules(org_id)
-            return _page("Alerts", _render_alerts(
-                rules, True, error="Threshold must be a number."))
+            return _page("Alerts", _render_alerts(rules, True, error="Threshold must be a number."))
         try:
             cooldown_minutes = int(str(form.get("cooldown_minutes") or alerts.DEFAULT_COOLDOWN_MINUTES))
         except ValueError:
@@ -2321,8 +2586,13 @@ def add_console_routes(
         async with session_scope(session_factory) as session:
             try:
                 await alerts.create_rule(
-                    session, org_id, metric, comparator, threshold,
-                    cooldown_minutes=cooldown_minutes, created_by=actor,
+                    session,
+                    org_id,
+                    metric,
+                    comparator,
+                    threshold,
+                    cooldown_minutes=cooldown_minutes,
+                    created_by=actor,
                 )
             except alerts.AlertError as exc:
                 rules = await _list_alert_rules(org_id)
@@ -2362,7 +2632,11 @@ def add_console_routes(
         return _page("Alerts", _render_alerts(rules, True, report=report))
 
     async def _webhooks_view(
-        org_id: str, is_admin: bool, *, error: str = "", fresh: dict | None = None,
+        org_id: str,
+        is_admin: bool,
+        *,
+        error: str = "",
+        fresh: dict | None = None,
     ) -> Response:
         async with session_scope(session_factory) as session:
             endpoints = await events.endpoints_for(session, org_id)
@@ -2371,20 +2645,15 @@ def add_console_routes(
         rows = [
             {
                 "id": e.id,
-                "url": (cipher.decrypt(e.url) if is_admin
-                        else events.destination_label(cipher.decrypt(e.url))),
+                "url": (cipher.decrypt(e.url) if is_admin else events.destination_label(cipher.decrypt(e.url))),
                 "enabled": e.enabled,
-                "events": list(e.events), "key_version": e.key_version,
+                "events": list(e.events),
+                "key_version": e.key_version,
             }
             for e in endpoints
         ]
-        frows = [
-            {"created_at": d.created_at, "event_type": d.event_type, "last_error": d.last_error}
-            for d in failed
-        ]
-        return _page(
-            "Webhooks", _render_webhooks(rows, pending, frows, is_admin, error=error, fresh=fresh)
-        )
+        frows = [{"created_at": d.created_at, "event_type": d.event_type, "last_error": d.last_error} for d in failed]
+        return _page("Webhooks", _render_webhooks(rows, pending, frows, is_admin, error=error, fresh=fresh))
 
     async def webhooks_page(request: Request) -> Response:
         claims = await _claims(request)
@@ -2402,19 +2671,30 @@ def add_console_routes(
             return await _webhooks_view(org_id, False)
         form = await request.form()
         url = str(form.get("url") or "").strip()
-        chosen_events = form.getlist("events") or None
+        event_fields = form.getlist("events")
+        if any(not isinstance(event, str) for event in event_fields):
+            return await _webhooks_view(org_id, True, error="events must be text fields")
+        chosen_events = [event for event in event_fields if isinstance(event, str)] or None
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         async with session_scope(session_factory) as session:
             try:
                 endpoint, secret = await events.add_endpoint(
-                    session, org_id, url, events=chosen_events,
-                    signing_key=signing_key, cipher=cipher,
+                    session,
+                    org_id,
+                    url,
+                    events=chosen_events,
+                    signing_key=signing_key,
+                    cipher=cipher,
                 )
             except events.EventError as exc:
                 return await _webhooks_view(org_id, True, error=str(exc))
             await audit.record(
-                session, actor=actor, action="webhook.add",
-                org_id=org_id, target_type="webhook_endpoint", target_id=endpoint.id,
+                session,
+                actor=actor,
+                action="webhook.add",
+                org_id=org_id,
+                target_type="webhook_endpoint",
+                target_id=endpoint.id,
                 summary=f"{url} ({len(endpoint.events)} event types)",
             )
         return await _webhooks_view(org_id, True, fresh={"secret": secret})
@@ -2434,11 +2714,15 @@ def add_console_routes(
         actor = audit.actor_for_api_key(str(claims.get("key") or ""))
         async with session_scope(session_factory) as session:
             secret = await events.rotate_secret(session, endpoint_id, signing_key=signing_key)
-            endpoint = await session.get(WebhookEndpoint, endpoint_id)
+            endpoint = await session.get_one(WebhookEndpoint, endpoint_id)
             await audit.record(
-                session, actor=actor, action="webhook.rotate",
-                org_id=org_id, target_type="webhook_endpoint",
-                target_id=endpoint_id, summary=f"key v{endpoint.key_version}",
+                session,
+                actor=actor,
+                action="webhook.rotate",
+                org_id=org_id,
+                target_type="webhook_endpoint",
+                target_id=endpoint_id,
+                summary=f"key v{endpoint.key_version}",
             )
         return await _webhooks_view(org_id, True, fresh={"secret": secret})
 
@@ -2457,9 +2741,13 @@ def add_console_routes(
             endpoint.enabled = False
             actor = audit.actor_for_api_key(str(claims.get("key") or ""))
             await audit.record(
-                session, actor=actor, action="webhook.disable",
-                org_id=org_id, target_type="webhook_endpoint",
-                target_id=endpoint_id, summary=cipher.decrypt(endpoint.url),
+                session,
+                actor=actor,
+                action="webhook.disable",
+                org_id=org_id,
+                target_type="webhook_endpoint",
+                target_id=endpoint_id,
+                summary=cipher.decrypt(endpoint.url),
             )
         return RedirectResponse(f"{CONSOLE_PATH}/webhooks", status_code=303)
 
@@ -2468,27 +2756,52 @@ def add_console_routes(
         if claims is None:
             return _redirect_to_signin()
         from hub.models import IncidentSnapshot
+
         org_id = str(claims["org"])
         async with session_scope(session_factory, org_id=org_id) as session:
-            rows = list((await session.execute(select(IncidentSnapshot).where(IncidentSnapshot.org_id == org_id)
-                .order_by(IncidentSnapshot.known_at.desc()).limit(100))).scalars())
+            rows = list(
+                (
+                    await session.execute(
+                        select(IncidentSnapshot)
+                        .where(IncidentSnapshot.org_id == org_id)
+                        .order_by(IncidentSnapshot.known_at.desc())
+                        .limit(100)
+                    )
+                ).scalars()
+            )
         controls = ""
         if _is_admin(claims) and signing_key:
-            controls = (f'<form method="post" action="{CONSOLE_PATH}/incidents/freeze">'
+            controls = (
+                f'<form method="post" action="{CONSOLE_PATH}/incidents/freeze">'
                 '<label for="incident-id">Incident ID</label>'
                 '<input id="incident-id" name="id" required maxlength="128" pattern="[A-Za-z0-9_-]+">'
                 '<label for="incident-time">Event time (ISO 8601 with timezone)</label>'
                 '<input id="incident-time" name="valid_time" required maxlength="64" '
                 f'value="{h(datetime.now(timezone.utc).isoformat())}">'
-                '<button type="submit">Freeze evidence and place legal hold</button></form>')
-        records = "".join('<tr><td>' + h(row.id) + '</td><td>' + h(row.known_at.isoformat()) +
-            '</td><td><a href="' + CONSOLE_PATH + '/incidents/' + _url_quote(row.id, safe="") +
-            '/pack">Download signed evidence pack</a></td></tr>' for row in rows)
-        return _page("Incidents", '<h1>Incident evidence</h1><p>Preserve the recorded decision state before '
-            'investigating corrections. Freeze places a legal hold; erasure requires its explicit release. '
-            'Verify control mappings against the Official Journal.</p>' + controls +
-            '<table><thead><tr><th>Incident</th><th>Frozen at</th><th>Evidence</th></tr></thead><tbody>' +
-            records + '</tbody></table>')
+                '<button type="submit">Freeze evidence and place legal hold</button></form>'
+            )
+        records = "".join(
+            "<tr><td>"
+            + h(row.id)
+            + "</td><td>"
+            + h(row.known_at.isoformat())
+            + '</td><td><a href="'
+            + CONSOLE_PATH
+            + "/incidents/"
+            + _url_quote(row.id, safe="")
+            + '/pack">Download signed evidence pack</a></td></tr>'
+            for row in rows
+        )
+        return _page(
+            "Incidents",
+            "<h1>Incident evidence</h1><p>Preserve the recorded decision state before "
+            "investigating corrections. Freeze places a legal hold; erasure requires its explicit release. "
+            "Verify control mappings against the Official Journal.</p>"
+            + controls
+            + "<table><thead><tr><th>Incident</th><th>Frozen at</th><th>Evidence</th></tr></thead><tbody>"
+            + records
+            + "</tbody></table>",
+        )
 
     async def incidents_freeze(request: Request) -> Response:
         claims = await _claims(request)
@@ -2501,12 +2814,19 @@ def add_console_routes(
         if len(await request.body()) > 4096:
             return JSONResponse({"error": "incident request exceeds 4 KiB"}, status_code=400)
         from hub import incidents
+
         form = await request.form()
         try:
             async with session_scope(session_factory, org_id=str(claims["org"])) as session:
-                await incidents.freeze(session, str(claims["org"]), str(form.get("id", "")),
-                    str(form.get("valid_time", "")), actor=audit.actor_for_api_key(str(claims.get("key", ""))),
-                    secret=signing_key, algorithm=config.transparency_algorithm if config else "hmac-sha256")
+                await incidents.freeze(
+                    session,
+                    str(claims["org"]),
+                    str(form.get("id", "")),
+                    str(form.get("valid_time", "")),
+                    actor=audit.actor_for_api_key(str(claims.get("key", ""))),
+                    secret=signing_key,
+                    algorithm=config.transparency_algorithm if config else "hmac-sha256",
+                )
         except (ValueError, KeyError, TypeError) as exc:
             return JSONResponse({"error": "invalid_incident_request", "detail": str(exc)}, status_code=400)
         return RedirectResponse(f"{CONSOLE_PATH}/incidents", status_code=303)
@@ -2522,14 +2842,20 @@ def add_console_routes(
             return JSONResponse({"error": "invalid_incident_identifier"}, status_code=400)
         from hub import incidents
         from hub.models import IncidentSnapshot
+
         regime = request.query_params.get("regime", "eu-ai-act")
         try:
             async with session_scope(session_factory, org_id=str(claims["org"])) as session:
                 row = await session.get(IncidentSnapshot, (str(claims["org"]), identity))
                 if row is None:
                     return JSONResponse({"error": "incident_not_found"}, status_code=404)
-                pack = await incidents.evidence_pack(session, row, regime, secret=signing_key,
-                    algorithm=config.transparency_algorithm if config else "hmac-sha256")
+                pack = await incidents.evidence_pack(
+                    session,
+                    row,
+                    regime,
+                    secret=signing_key,
+                    algorithm=config.transparency_algorithm if config else "hmac-sha256",
+                )
             return JSONResponse(pack, headers={"Content-Disposition": 'attachment; filename="incident-evidence.json"'})
         except (ValueError, KeyError, TypeError) as exc:
             return JSONResponse({"error": "invalid_incident_request", "detail": str(exc)}, status_code=400)
@@ -2545,16 +2871,23 @@ def add_console_routes(
             offset = 0
         limit = 50
         async with session_scope(session_factory) as session:
-            rows = list((
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.org_id == org_id)
-                    .order_by(AuditLogEntry.created_at.desc())
-                    .limit(limit + 1).offset(offset)
+            rows = list(
+                (
+                    await session.execute(
+                        select(AuditLogEntry)
+                        .where(AuditLogEntry.org_id == org_id)
+                        .order_by(AuditLogEntry.created_at.desc())
+                        .limit(limit + 1)
+                        .offset(offset)
+                    )
                 )
-            ).scalars().all())
+                .scalars()
+                .all()
+            )
         has_more = len(rows) > limit
         return _page(
-            "Audit log", _render_audit_log(rows[:limit], offset, limit, has_more),
+            "Audit log",
+            _render_audit_log(rows[:limit], offset, limit, has_more),
             auto_refresh_seconds=20,
         )
 
@@ -2564,9 +2897,7 @@ def add_console_routes(
     app.add_route(CONSOLE_PATH, overview, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/proof", proof, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/proof/share", refuse_cross_origin(proof_share), methods=["POST"])
-    app.add_route(
-        f"{CONSOLE_PATH}/proof/share/revoke", refuse_cross_origin(proof_share_revoke), methods=["POST"]
-    )
+    app.add_route(f"{CONSOLE_PATH}/proof/share/revoke", refuse_cross_origin(proof_share_revoke), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/proof/shared/{{token}}", proof_shared, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/proof/assignments.csv", assignments_csv, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/proof/experiment/start", refuse_cross_origin(experiment_start), methods=["POST"])
@@ -2577,8 +2908,7 @@ def add_console_routes(
     app.add_route(f"{CONSOLE_PATH}/kb", knowledge_base, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/kb/submit", refuse_cross_origin(kb_submit), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/kb/vote", refuse_cross_origin(kb_vote), methods=["POST"])
-    app.add_route(
-        f"{CONSOLE_PATH}/kb/auto-contribute", refuse_cross_origin(kb_auto_contribute), methods=["POST"])
+    app.add_route(f"{CONSOLE_PATH}/kb/auto-contribute", refuse_cross_origin(kb_auto_contribute), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/users", users_page, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/users/create", refuse_cross_origin(users_create), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/users/{{user_id}}/role", refuse_cross_origin(users_set_role), methods=["POST"])
@@ -2592,18 +2922,20 @@ def add_console_routes(
     app.add_route(f"{CONSOLE_PATH}/alerts/create", refuse_cross_origin(alerts_create), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/alerts/{{rule_id}}/delete", refuse_cross_origin(alerts_delete), methods=["POST"])
     app.add_route(
-        f"{CONSOLE_PATH}/alerts/generate-report", refuse_cross_origin(alerts_generate_report), methods=["POST"])
+        f"{CONSOLE_PATH}/alerts/generate-report", refuse_cross_origin(alerts_generate_report), methods=["POST"]
+    )
     app.add_route(f"{CONSOLE_PATH}/webhooks", webhooks_page, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/webhooks/create", refuse_cross_origin(webhooks_create), methods=["POST"])
     app.add_route(
-        f"{CONSOLE_PATH}/webhooks/{{endpoint_id}}/rotate", refuse_cross_origin(webhooks_rotate), methods=["POST"])
+        f"{CONSOLE_PATH}/webhooks/{{endpoint_id}}/rotate", refuse_cross_origin(webhooks_rotate), methods=["POST"]
+    )
     app.add_route(
-        f"{CONSOLE_PATH}/webhooks/{{endpoint_id}}/disable", refuse_cross_origin(webhooks_disable), methods=["POST"])
+        f"{CONSOLE_PATH}/webhooks/{{endpoint_id}}/disable", refuse_cross_origin(webhooks_disable), methods=["POST"]
+    )
     app.add_route(f"{CONSOLE_PATH}/audit", audit_page, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/incidents", incidents_page, methods=["GET"])
     app.add_route(f"{CONSOLE_PATH}/incidents/freeze", refuse_cross_origin(incidents_freeze), methods=["POST"])
     app.add_route(f"{CONSOLE_PATH}/incidents/{{incident_id}}/pack", incidents_download, methods=["GET"])
-
 
 
 __all__ = ["CONSOLE_PATH", "add_console_routes", "issue_session", "read_session"]

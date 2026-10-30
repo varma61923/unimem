@@ -13,6 +13,7 @@ always the turn's own text), and they are deleted with their turn, so forgetting
 expiry and session deletion remove them too. Output that trips the injection screen
 is discarded. Without a configured LLM nothing runs.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,8 +44,10 @@ Do not invent facts that the turn does not state or clearly imply.
 Return JSON only: a list of objects {{"id": <turn number>, "questions": [...], "keywords": [...]}}."""
 
 
-_SCHEMA = ("CREATE TABLE IF NOT EXISTS anticipated (turn INTEGER PRIMARY KEY "
-           "REFERENCES turns(id) ON DELETE CASCADE) WITHOUT ROWID")
+_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS anticipated (turn INTEGER PRIMARY KEY "
+    "REFERENCES turns(id) ON DELETE CASCADE) WITHOUT ROWID"
+)
 
 
 def _ensure(store: Store) -> None:
@@ -66,9 +69,13 @@ def pending(store: Store, *, limit: int | None = None) -> list[int]:
 
 def _render(store: Store, batch: list[int]) -> tuple[str, dict[int, int]]:
     turns = store.turns(batch)
-    sessions = {row[0]: row[1] for row in store.db.execute(
-        "SELECT id, started_at FROM sessions WHERE id IN (SELECT value FROM json_each(?))",
-        (json.dumps(sorted({t.session for t in turns.values()})),))}
+    sessions = {
+        row[0]: row[1]
+        for row in store.db.execute(
+            "SELECT id, started_at FROM sessions WHERE id IN (SELECT value FROM json_each(?))",
+            (json.dumps(sorted({t.session for t in turns.values()})),),
+        )
+    }
     lines, numbering = [], {}
     for n, turn_id in enumerate(batch, 1):
         turn = turns.get(turn_id)
@@ -86,7 +93,7 @@ def _parse(text: str) -> list[dict]:
     if lo < 0 or hi <= lo:
         return []
     try:
-        items = json.loads(text[lo:hi + 1])
+        items = json.loads(text[lo : hi + 1])
     except ValueError:
         return []
     return [item for item in items if isinstance(item, dict)]
@@ -102,8 +109,14 @@ def _expansion(item: dict) -> str:
     return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", " ", body).strip()
 
 
-def expand(store: Store, complete: Callable[[str], tuple[str, dict]], *, limit: int | None = None,
-           batch: int = BATCH, workers: int = 1) -> dict:
+def expand(
+    store: Store,
+    complete: Callable[[str], tuple[str, dict]],
+    *,
+    limit: int | None = None,
+    batch: int = BATCH,
+    workers: int = 1,
+) -> dict:
     """Generate and index anticipated questions for up to `limit` pending turns.
 
     `complete(prompt) -> (text, usage)` is the configured LLM; `workers` model calls
@@ -114,7 +127,7 @@ def expand(store: Store, complete: Callable[[str], tuple[str, dict]], *, limit: 
 
     report = {"turns": 0, "indexed": 0, "empty": 0, "rejected": 0, "failed_batches": 0}
     todo = pending(store, limit=limit)
-    chunks = [todo[i:i + max(1, batch)] for i in range(0, len(todo), max(1, batch))]
+    chunks = [todo[i : i + max(1, batch)] for i in range(0, len(todo), max(1, batch))]
     rendered = [_render(store, chunk) for chunk in chunks]
 
     def ask(prompt: str) -> str | None:
@@ -130,9 +143,12 @@ def expand(store: Store, complete: Callable[[str], tuple[str, dict]], *, limit: 
                 continue
             produced = {}
             for item in _parse(answer or ""):
+                identity = item.get("id")
+                if isinstance(identity, bool) or not isinstance(identity, (int, str)):
+                    continue
                 try:
-                    n = int(item.get("id"))
-                except (TypeError, ValueError):
+                    n = int(identity)
+                except ValueError:
                     continue
                 if n in numbering:
                     produced[numbering[n]] = _expansion(item)
@@ -154,7 +170,8 @@ def _write(store: Store, numbering: dict[int, int], produced: dict[int, str], re
             if body:
                 uid = store.db.execute(
                     "INSERT INTO units (turn, part, body, hash) VALUES (?, ?, ?, ?)",
-                    (turn_id, EXPANSION_PART, body, _hash(body))).lastrowid
+                    (turn_id, EXPANSION_PART, body, _hash(body)),
+                ).lastrowid
                 if FTS5:
                     store.db.execute("INSERT INTO units_fts (rowid, body) VALUES (?, ?)", (uid, body))
             report["turns"] += 1

@@ -13,9 +13,12 @@ def _lesson(root, slug: str, *, actor: str = "cli:test", status: str = "active")
     os.makedirs(ldir, exist_ok=True)
     path = os.path.join(ldir, f"lesson_{slug}.md")
     lesson_io.write_lesson(
-        path, {"name": slug, "status": status},
+        path,
+        {"name": slug, "status": status},
         f"## Rule\n{slug}.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
-        root=str(root), actor=actor, reason="seed",
+        root=str(root),
+        actor=actor,
+        reason="seed",
     )
     return path
 
@@ -73,7 +76,11 @@ class TestScheduledActivation:
         cut = _cut(tmp_path, actor="cli:alice")
         tomorrow = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
         environments.promote(
-            str(tmp_path), cut.release_id, "stage", actor="cli:alice", activate_at=tomorrow,
+            str(tmp_path),
+            cut.release_id,
+            "stage",
+            actor="cli:alice",
+            activate_at=tomorrow,
         )
         assert environments.current(str(tmp_path), "stage") is None
 
@@ -82,7 +89,11 @@ class TestScheduledActivation:
         cut = _cut(tmp_path, actor="cli:alice")
         soon = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
         environments.promote(
-            str(tmp_path), cut.release_id, "stage", actor="cli:alice", activate_at=soon,
+            str(tmp_path),
+            cut.release_id,
+            "stage",
+            actor="cli:alice",
+            activate_at=soon,
         )
         later = soon + datetime.timedelta(minutes=1)
         assert environments.current(str(tmp_path), "stage", now=later) == cut.release_id
@@ -94,14 +105,23 @@ class TestScheduledActivation:
         later = now + datetime.timedelta(days=2)
         sooner = now + datetime.timedelta(days=1)
         environments.promote(
-            str(tmp_path), cut.release_id, "stage", actor="cli:alice", activate_at=later,
+            str(tmp_path),
+            cut.release_id,
+            "stage",
+            actor="cli:alice",
+            activate_at=later,
         )
         environments.promote(
-            str(tmp_path), cut.release_id, "stage", actor="cli:alice", activate_at=sooner,
+            str(tmp_path),
+            cut.release_id,
+            "stage",
+            actor="cli:alice",
+            activate_at=sooner,
         )
         upcoming = environments.pending(str(tmp_path), "stage", now=now)
         assert [r["activate_at"] for r in upcoming] == [
-            sooner.isoformat(), later.isoformat(),
+            sooner.isoformat(),
+            later.isoformat(),
         ]
 
     def test_pending_excludes_promotions_already_in_effect(self, tmp_path):
@@ -115,7 +135,11 @@ class TestScheduledActivation:
         cut = _cut(tmp_path, actor="cli:alice")
         yesterday = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1)
         environments.promote(
-            str(tmp_path), cut.release_id, "dev", actor="cli:alice", activate_at=yesterday,
+            str(tmp_path),
+            cut.release_id,
+            "dev",
+            actor="cli:alice",
+            activate_at=yesterday,
         )
         assert environments.current(str(tmp_path), "dev") == cut.release_id
 
@@ -174,7 +198,8 @@ class TestApprovalGate:
         ldir = paths.lessons_dir(str(tmp_path))
         os.makedirs(ldir, exist_ok=True)
         frontmatter.write(
-            os.path.join(ldir, "lesson_orphan.md"), {"name": "orphan", "status": "active"},
+            os.path.join(ldir, "lesson_orphan.md"),
+            {"name": "orphan", "status": "active"},
             "## Rule\nr.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
         )
         cut = _cut(tmp_path, actor="cli:alice")

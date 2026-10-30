@@ -33,13 +33,9 @@ def _relevance_floor(raw: str) -> float:
     try:
         value = float(raw)
     except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"--relevance-floor must be a number, got {raw!r}"
-        ) from None
+        raise argparse.ArgumentTypeError(f"--relevance-floor must be a number, got {raw!r}") from None
     if not math.isfinite(value) or not 0.0 <= value <= 1.0:
-        raise argparse.ArgumentTypeError(
-            f"--relevance-floor must be in [0.0, 1.0], got {value}"
-        )
+        raise argparse.ArgumentTypeError(f"--relevance-floor must be in [0.0, 1.0], got {value}")
     return value
 
 
@@ -47,13 +43,9 @@ def _holdout_rate(raw: str) -> float:
     try:
         value = float(raw)
     except ValueError:
-        raise argparse.ArgumentTypeError(
-            f"--holdout-rate must be a number, got {raw!r}"
-        ) from None
+        raise argparse.ArgumentTypeError(f"--holdout-rate must be a number, got {raw!r}") from None
     if not math.isfinite(value) or not 0.0 <= value <= 1.0:
-        raise argparse.ArgumentTypeError(
-            f"--holdout-rate must be in [0.0, 1.0], got {value}"
-        )
+        raise argparse.ArgumentTypeError(f"--holdout-rate must be in [0.0, 1.0], got {value}")
     return value
 
 
@@ -73,35 +65,45 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("task", help="Incoming task / query string")
     p.add_argument("--top-k", type=_positive_int, default=10)
     p.add_argument(
-        "--lexical", action="store_true",
+        "--lexical",
+        action="store_true",
         help="Force the pure-Python lexical fallback even if the attention extra is installed.",
     )
     p.add_argument("--agent-type", default=None)
     p.add_argument(
-        "--scope", default="",
+        "--scope",
+        default="",
         help="Retrieve lessons for this project/team scope plus unscoped global lessons.",
     )
     p.add_argument(
-        "--as-of", default="", metavar="DATE",
+        "--as-of",
+        default="",
+        metavar="DATE",
         help="Retrieve lessons valid at this date/time (YYYY-MM-DD or ISO 8601). Defaults to now.",
     )
     p.add_argument(
-        "--show-expired", action="store_true",
+        "--show-expired",
+        action="store_true",
         help="Include lessons past their `expires` TTL (hidden by default).",
     )
     p.add_argument(
-        "--relevance-floor", type=_relevance_floor, default=None,
+        "--relevance-floor",
+        type=_relevance_floor,
+        default=None,
         help="Minimum relevance (0-1) a lesson must reach to be retrieved at all. "
-             "Defaults to this store's configured floor (`unimem retrieval`). "
-             "Under --experiment this also decides which lessons are logged as "
-             "eligible, so lowering it admits weak matches into the causal estimate.",
+        "Defaults to this store's configured floor (`unimem retrieval`). "
+        "Under --experiment this also decides which lessons are logged as "
+        "eligible, so lowering it admits weak matches into the causal estimate.",
     )
     p.add_argument(
-        "--graph-weight", type=float, default=None,
+        "--graph-weight",
+        type=float,
+        default=None,
         help="Override knowledge graph boost weight (default: store's configured graph_weight, or 1.0).",
     )
     p.add_argument(
-        "--experiment", action="store_true",
+        "--experiment",
+        action="store_true",
         help="Randomized holdout mode: deliberately withhold a fraction of otherwise-"
         "matching lessons and log the assignment, so `unimem experiment` can later "
         "measure whether injection actually CAUSES better outcomes. Without this, every "
@@ -109,12 +111,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "each lesson.",
     )
     p.add_argument(
-        "--occasion-id", default=None,
+        "--occasion-id",
+        default=None,
         help="Identifier for this decision, used to join the holdout assignment to its "
         "outcome later. Must match the episode `name` or trace `id` you record afterwards.",
     )
     p.add_argument(
-        "--context", default="",
+        "--context",
+        default="",
         help="Short label for the kind of occasion (task family, agent type). With a causal-gate "
         "allocation schedule (`unimem allocate enable --mode thompson`), each lesson is "
         "withheld at the rate the gate set for this context.",
@@ -126,39 +130,53 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         type=int,
         default=None,
         help=(
-            "Always include lessons with importance >= this floor "
-            "(safety override, default: 4 in semantic retriever)."
+            "Always include lessons with importance >= this floor (safety override, default: 4 in semantic retriever)."
         ),
     )
     p.add_argument(
-        "--exclude-shown", default=None, metavar="OCCASION_ID",
+        "--exclude-shown",
+        default=None,
+        metavar="OCCASION_ID",
         help="Skip any lesson already logged as injected (not withheld) for this "
-             "occasion in a prior `--experiment` call, so a long multi-turn task "
-             "does not re-inject the same guidance on every call. Reads the holdout "
-             "log (unimem/holdout_io.py); a prior query for this occasion that "
-             "did NOT use --experiment left no record, so nothing is excluded for it.",
+        "occasion in a prior `--experiment` call, so a long multi-turn task "
+        "does not re-inject the same guidance on every call. Reads the holdout "
+        "log (unimem/holdout_io.py); a prior query for this occasion that "
+        "did NOT use --experiment left no record, so nothing is excluded for it.",
     )
     p.add_argument("--dest", default=None)
     p.set_defaults(func=run)
 
 
 def _iter_active_lessons(
-    root: str, agent_type: str | None, scope: str = "", as_of: str = "",
+    root: str,
+    agent_type: str | None,
+    scope: str = "",
+    as_of: str = "",
     show_expired: bool = False,
 ) -> list[tuple[str, dict]]:
     lessons = lesson_cache.load_active(
-        root, agent_type, reader=lambda p: read_or_warn(frontmatter.read, p),
+        root,
+        agent_type,
+        reader=lambda p: read_or_warn(frontmatter.read, p),
     )
     return lesson_cache.filter_eligible(
-        lessons, scope=scope, as_of=as_of or None, show_expired=show_expired,
+        lessons,
+        scope=scope,
+        as_of=as_of or None,
+        show_expired=show_expired,
     )
 
 
 def _expired_hidden_notice(
-    lessons: list[tuple[str, dict]], scope: str = "", as_of: str | None = None,
+    lessons: list[tuple[str, dict]],
+    scope: str = "",
+    as_of: str | None = None,
 ) -> str:
     in_scope = lesson_cache.filter_eligible(
-        lessons, scope=scope, as_of=as_of, show_expired=True,
+        lessons,
+        scope=scope,
+        as_of=as_of,
+        show_expired=True,
     )
     hidden = ttl.count_expired(in_scope, as_of)
     return ttl.format_notice(hidden) if hidden else ""
@@ -176,10 +194,7 @@ def _exclude_shown(
 ) -> list[tuple[str, dict]]:
     if not already_shown:
         return lessons
-    return [
-        (path, fm) for path, fm in lessons
-        if dosage.is_core(fm) or str(fm.get("name", "")) not in already_shown
-    ]
+    return [(path, fm) for path, fm in lessons if dosage.is_core(fm) or str(fm.get("name", "")) not in already_shown]
 
 
 def _ranking_adjustments(
@@ -187,12 +202,8 @@ def _ranking_adjustments(
     lessons: list[tuple[str, dict]],
     config: retrieval_io.RetrievalConfig,
 ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
-    reliability_lookup = (
-        evidence_io.reliability_snapshot(root) if config.reliability_weight > 0 else None
-    )
-    recency_lu = (
-        recency.recency_lookup(lessons) if config.recency_weight > 0 else None
-    )
+    reliability_lookup = evidence_io.reliability_snapshot(root) if config.reliability_weight > 0 else None
+    recency_lu = recency.recency_lookup(lessons) if config.recency_weight > 0 else None
     return reliability_lookup, recency_lu
 
 
@@ -212,17 +223,26 @@ def _print_withdrawn(slugs: list[str], harmful: dict[str, dict]) -> None:
         if isinstance(lo, (int, float)) and isinstance(hi, (int, float)):
             figure += f", 95% CI {lo:+.1%} to {hi:+.1%}"
         parts.append(f"{slug} ({figure})")
-    print("\n[unimem] withdrawn -- measured to make outcomes worse, so not "
-          "injected (unimem retrieval --on-harm): " + ", ".join(parts))
+    print(
+        "\n[unimem] withdrawn -- measured to make outcomes worse, so not "
+        "injected (unimem retrieval --on-harm): " + ", ".join(parts)
+    )
 
 
 def _withdraw_from_semantic(
-    stdout: str, harmful: dict[str, dict], core: set[str], top_k: int,
+    stdout: str,
+    harmful: dict[str, dict],
+    core: set[str],
+    top_k: int,
 ) -> tuple[str, list[str]]:
     if not harmful:
         return stdout, []
     kept_slugs, removed_slugs = harm.split(
-        _slugs_from_semantic_output(stdout), harmful, core, top_k, slug_of=lambda s: s,
+        _slugs_from_semantic_output(stdout),
+        harmful,
+        core,
+        top_k,
+        slug_of=lambda s: s,
     )
     keep = set(kept_slugs)
     lines = []
@@ -237,9 +257,14 @@ def _semantic_lines(stdout: str) -> list[str]:
     """Keep ranking rows and bounded numeric headers, never arbitrary stdout prose."""
     lines = []
     for line in stdout.splitlines():
-        if _slug_of_semantic_line(line) is not None or re.fullmatch(
-            r"# Top-[0-9]{1,9} retrieval \((?:\+ importance>=[0-9]{1,9} override|override disabled)\)", line,
-        ) or re.fullmatch(r"# Index: [0-9]{1,12} lessons, model=[A-Za-z0-9_./-]{1,200}", line):
+        if (
+            _slug_of_semantic_line(line) is not None
+            or re.fullmatch(
+                r"# Top-[0-9]{1,9} retrieval \((?:\+ importance>=[0-9]{1,9} override|override disabled)\)",
+                line,
+            )
+            or re.fullmatch(r"# Index: [0-9]{1,12} lessons, model=[A-Za-z0-9_./-]{1,200}", line)
+        ):
             lines.append(line)
     return lines
 
@@ -274,8 +299,14 @@ def _semantic_query_header(text: str, task: str | None) -> str:
 
 
 def _screen_semantic(
-    stdout: str, root: str, *, active: list[tuple[str, dict]], scope: str = "", as_of: str = "",
-    agent_type: str | None = None, show_expired: bool = False,
+    stdout: str,
+    root: str,
+    *,
+    active: list[tuple[str, dict]],
+    scope: str = "",
+    as_of: str = "",
+    agent_type: str | None = None,
+    show_expired: bool = False,
 ) -> str:
     by_slug = {str(fm.get("name", "")): (path, fm) for path, fm in active}
     verdicts: dict[str, dict | None] = {}
@@ -294,19 +325,37 @@ def _screen_semantic(
                     continue
                 fm, body = parsed
                 if not lesson_cache._fresh_metadata_eligible(
-                    path, fm, slug, scope=scope, as_of=as_of or None, agent_type=agent_type,
-                    expected_core=dosage.is_core(cached), show_expired=show_expired,
+                    path,
+                    fm,
+                    slug,
+                    scope=scope,
+                    as_of=as_of or None,
+                    agent_type=agent_type,
+                    expected_core=dosage.is_core(cached),
+                    show_expired=show_expired,
                 ):
                     continue
-                labels = injection_guard.injection_labels({
-                    "description": fm.get("description"), "applies_when": fm.get("applies_when"),
-                    "do_not_apply_when": fm.get("do_not_apply_when"), "body": body})
+                labels = injection_guard.injection_labels(
+                    {
+                        "description": fm.get("description"),
+                        "applies_when": fm.get("applies_when"),
+                        "do_not_apply_when": fm.get("do_not_apply_when"),
+                        "body": body,
+                    }
+                )
                 if labels:
-                    print(f"[unimem] quarantined {slug}: injection screen: {', '.join(labels)}",
-                          file=sys.stderr)
+                    print(f"[unimem] quarantined {slug}: injection screen: {', '.join(labels)}", file=sys.stderr)
                 elif lesson_cache.fresh_eligible(
-                    path, fm, slug, scope=scope, as_of=as_of or None, agent_type=agent_type,
-                    expected_core=dosage.is_core(cached), show_expired=show_expired, body=body, root=root,
+                    path,
+                    fm,
+                    slug,
+                    scope=scope,
+                    as_of=as_of or None,
+                    agent_type=agent_type,
+                    expected_core=dosage.is_core(cached),
+                    show_expired=show_expired,
+                    body=body,
+                    root=root,
                 ):
                     verdicts[slug] = fm
             current = verdicts[slug]
@@ -318,33 +367,52 @@ def _screen_semantic(
 
 
 def _semantic_dose_or_pinned(
-    stdout: str, root: str, agent_type: str | None, config: retrieval_io.RetrievalConfig, dosed: bool,
-    scope: str = "", as_of: str = "", show_expired: bool = False, *, task: str | None = None,
+    stdout: str,
+    root: str,
+    agent_type: str | None,
+    config: retrieval_io.RetrievalConfig,
+    dosed: bool,
+    scope: str = "",
+    as_of: str = "",
+    show_expired: bool = False,
+    *,
+    task: str | None = None,
 ) -> tuple[str, list[str], str]:
     active = _iter_active_lessons(root, agent_type, scope, as_of, show_expired)
     notice = ""
     if not show_expired:
         notice = _expired_hidden_notice(
             lesson_cache.load_active(
-                root, agent_type, reader=lambda p: read_or_warn(frontmatter.read, p),
+                root,
+                agent_type,
+                reader=lambda p: read_or_warn(frontmatter.read, p),
             ),
-            scope=scope, as_of=as_of or None,
+            scope=scope,
+            as_of=as_of or None,
         )
         if notice:
             notice = "\n" + notice + "\n"
     if dosed:
-        text, eligible, note = _dose_semantic(stdout, root, agent_type, config, active=active,
-                                             scope=scope, as_of=as_of, show_expired=show_expired)
+        text, eligible, note = _dose_semantic(
+            stdout, root, agent_type, config, active=active, scope=scope, as_of=as_of, show_expired=show_expired
+        )
         return _semantic_query_header(text, task), eligible, note + notice
-    stdout = _screen_semantic(stdout, root, active=active, scope=scope, as_of=as_of,
-                              agent_type=agent_type, show_expired=show_expired)
+    stdout = _screen_semantic(
+        stdout, root, active=active, scope=scope, as_of=as_of, agent_type=agent_type, show_expired=show_expired
+    )
     return _semantic_query_header(stdout, task), _slugs_from_semantic_output(stdout), notice
 
 
 def _dose_semantic(
-    stdout: str, root: str, agent_type: str | None, config: retrieval_io.RetrievalConfig,
+    stdout: str,
+    root: str,
+    agent_type: str | None,
+    config: retrieval_io.RetrievalConfig,
     active: list[tuple[str, dict]] | None = None,
-    *, scope: str = "", as_of: str = "", show_expired: bool = False,
+    *,
+    scope: str = "",
+    as_of: str = "",
+    show_expired: bool = False,
 ) -> tuple[str, list[str], str]:
     lines = _semantic_lines(stdout)
     order = list(dict.fromkeys(_slugs_from_semantic_output(stdout)))
@@ -360,8 +428,9 @@ def _dose_semantic(
 
     window = max(2 * config.max_lessons, config.max_lessons + 8)
     while True:
-        considered, dose = _apply_dosage(active, ranked[:window], config, scope=scope,
-                                         as_of=as_of, agent_type=agent_type, show_expired=show_expired)
+        considered, dose = _apply_dosage(
+            active, ranked[:window], config, scope=scope, as_of=as_of, agent_type=agent_type, show_expired=show_expired
+        )
         if window >= len(ranked) or len(dose.admitted) >= config.max_lessons:
             break
         window *= 2
@@ -380,19 +449,13 @@ def _dose_semantic(
         if c.slug not in listed:
             out.append(f"{c.slug} | core | importance={c.importance}")
     text = "\n".join(out) + ("\n" if out and (stdout.endswith("\n") or not stdout) else "")
-    eligible = [
-        slug for slug in order
-        if slug in admitted and not admitted[slug].core
-    ]
+    eligible = [slug for slug in order if slug in admitted and not admitted[slug].core]
     dropped = [f"{d.slug} ({d.reason})" for d in dose.dropped]
     if unread:
         dropped.append(f"{unread} more ({dosage.REASON_COUNT})")
     note = ""
     if dropped:
-        note = (
-            "\n[unimem] not injected: " + ", ".join(dropped)
-            + f"\n[unimem] budget: {dose.gauge(unread)}\n"
-        )
+        note = "\n[unimem] not injected: " + ", ".join(dropped) + f"\n[unimem] budget: {dose.gauge(unread)}\n"
     return text, eligible, note
 
 
@@ -400,7 +463,11 @@ def _apply_dosage(
     active: list[tuple[str, dict]],
     ranked: list[tuple[str, float]],
     config: retrieval_io.RetrievalConfig,
-    *, scope: str = "", as_of: str = "", agent_type: str | None = None, show_expired: bool = False,
+    *,
+    scope: str = "",
+    as_of: str = "",
+    agent_type: str | None = None,
+    show_expired: bool = False,
 ) -> tuple[dict[str, dict], "dosage.Dose"]:
     path_by_slug = {str(fm.get("name", "")): path for path, fm in active}
     core_slugs_all = {str(fm.get("name", "")) for path, fm in active if dosage.is_core(fm)}
@@ -418,27 +485,50 @@ def _apply_dosage(
         if parsed is None:
             return
         fm, body = parsed
-        if not lesson_cache._fresh_metadata_eligible(path, fm, slug, scope=scope, as_of=as_of or None,
-                                          agent_type=agent_type, expected_core=slug in core_slugs_all,
-                                          show_expired=show_expired):
+        if not lesson_cache._fresh_metadata_eligible(
+            path,
+            fm,
+            slug,
+            scope=scope,
+            as_of=as_of or None,
+            agent_type=agent_type,
+            expected_core=slug in core_slugs_all,
+            show_expired=show_expired,
+        ):
             return
-        labels = injection_guard.injection_labels({
-            "description": fm.get("description"), "applies_when": fm.get("applies_when"),
-            "do_not_apply_when": fm.get("do_not_apply_when"), "body": body,
-        })
+        labels = injection_guard.injection_labels(
+            {
+                "description": fm.get("description"),
+                "applies_when": fm.get("applies_when"),
+                "do_not_apply_when": fm.get("do_not_apply_when"),
+                "body": body,
+            }
+        )
         if labels:
             print(
                 f"[unimem] quarantined {slug}: injection screen: {', '.join(labels)}",
                 file=sys.stderr,
             )
             return
-        if not lesson_cache.fresh_eligible(path, fm, slug, scope=scope, as_of=as_of or None,
-                                          agent_type=agent_type, expected_core=slug in core_slugs_all,
-                                          show_expired=show_expired, body=body):
+        if not lesson_cache.fresh_eligible(
+            path,
+            fm,
+            slug,
+            scope=scope,
+            as_of=as_of or None,
+            agent_type=agent_type,
+            expected_core=slug in core_slugs_all,
+            show_expired=show_expired,
+            body=body,
+        ):
             return
         considered[slug] = {
-            "slug": slug, "path": path, "relevance": relevance,
-            "core": slug in core_slugs_all, "fm": fm, "body": body,
+            "slug": slug,
+            "path": path,
+            "relevance": relevance,
+            "core": slug in core_slugs_all,
+            "fm": fm,
+            "body": body,
         }
 
     for slug in sorted(core_slugs_all - ranked_slugs):
@@ -481,8 +571,15 @@ def _apply_holdout(
 ) -> set[str]:
     rate, salt = _effective_holdout(args, root)
     return holdout_io.assign_and_log(
-        root, slugs, occasion_id=args.occasion_id, rate=rate, salt=salt,
-        relevance=relevance, scorer=scorer, floor=floor, context=getattr(args, "context", "") or "",
+        root,
+        slugs,
+        occasion_id=args.occasion_id,
+        rate=rate,
+        salt=salt,
+        relevance=relevance,
+        scorer=scorer,
+        floor=floor,
+        context=getattr(args, "context", "") or "",
     )
 
 
@@ -519,7 +616,11 @@ def _semantic_model_from_output(stdout: str) -> str | None:
 
 
 def _rerank_depth(
-    config: retrieval_io.RetrievalConfig, top_k: int, embedder: str = "", *, candidates: int = 1,
+    config: retrieval_io.RetrievalConfig,
+    top_k: int,
+    embedder: str = "",
+    *,
+    candidates: int = 1,
 ) -> tuple[bool, int, str]:
     if config.rerank == retrieval_io.RERANK_NONE or candidates <= 0:
         return False, top_k, ""
@@ -541,12 +642,17 @@ def _rerank_pool(
     path_by_slug = {str(fm.get("name", "")): path for path, fm in lessons}
     try:
         page, on_page = rerank_arm.rerank(
-            task, [slug for slug, _ in first_stage],
+            task,
+            [slug for slug, _ in first_stage],
             rerank_arm.texts(
                 [slug for slug, _ in first_stage] + list(withdrawn),
-                path_by_slug, frontmatter.read,
+                path_by_slug,
+                frontmatter.read,
             ),
-            top_k, withdrawn=withdrawn, mode=mode, admit=admit,
+            top_k,
+            withdrawn=withdrawn,
+            mode=mode,
+            admit=admit,
         )
     except Exception as exc:  # noqa: BLE001 - a failed rerank serves the first stage
         return None, withdrawn, f"the reranker failed: {type(exc).__name__}: {exc}"
@@ -565,7 +671,9 @@ def _note_rerank_skipped(config: retrieval_io.RetrievalConfig, why: str, label: 
 
 def _run_lexical(args: argparse.Namespace, root: str) -> int:
     lessons, term_cache = lesson_cache.load_active_with_terms(
-        root, args.agent_type, reader=lambda p: read_or_warn(frontmatter.read, p),
+        root,
+        args.agent_type,
+        reader=lambda p: read_or_warn(frontmatter.read, p),
     )
     scope = getattr(args, "scope", "")
     as_of = getattr(args, "as_of", "") or None
@@ -587,21 +695,25 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
 
     graph_w = getattr(args, "graph_weight", None)
     if graph_w is None:
-        graph_w = getattr(config, "graph_weight", 1.0)
+        graph_w = config.graph_weight
 
     candidate_slugs = [str(fm.get("name", "")) for _, fm in lessons]
     as_of_val = getattr(args, "as_of", "") or None
     graph_boosts = (
-        graph.graph_boost_for_lessons(root, args.task, candidate_slugs, as_of=as_of_val)
-        if graph_w > 0.0 else None
+        graph.graph_boost_for_lessons(root, args.task, candidate_slugs, as_of=as_of_val) if graph_w > 0.0 else None
     )
 
     ranked = retrieval.rank_lessons(
-        args.task, lessons, top_k=depth + len(harmful), floor=floor,
+        args.task,
+        lessons,
+        top_k=depth + len(harmful),
+        floor=floor,
         scorer=config.scorer,
         term_cache=term_cache,
-        reliability_lookup=reliability_lookup, reliability_weight=config.reliability_weight,
-        recency_lookup=recency_lu, recency_weight=config.recency_weight,
+        reliability_lookup=reliability_lookup,
+        reliability_weight=config.reliability_weight,
+        recency_lookup=recency_lu,
+        recency_weight=config.recency_weight,
         adaptive_tail=not reranking,
         graph_boost_lookup=graph_boosts,
         graph_weight=graph_w,
@@ -612,7 +724,8 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
     reranked = None
     if reranking:
         reranked, withdrawn, rerank_skipped = _rerank_pool(
-            args.task, lessons, page, withdrawn, args.top_k, config.rerank)
+            args.task, lessons, page, withdrawn, args.top_k, config.rerank
+        )
         page = reranked if reranked is not None else page[: args.top_k]
     label = retrieval_io.rerank_label(
         config.scorer,
@@ -642,17 +755,22 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
         return 0
 
     ranked_by_slug = {r.slug: r for r in ranked}
-    considered, dose = _apply_dosage(lessons, page, config, scope=getattr(args, "scope", ""),
-                                     as_of=getattr(args, "as_of", ""), agent_type=args.agent_type,
-                                     show_expired=getattr(args, "show_expired", False))
+    considered, dose = _apply_dosage(
+        lessons,
+        page,
+        config,
+        scope=getattr(args, "scope", ""),
+        as_of=getattr(args, "as_of", ""),
+        agent_type=args.agent_type,
+        show_expired=getattr(args, "show_expired", False),
+    )
     if not dose.admitted:
         if notice:
             print(notice)
         print(
             f"[unimem] {len(ranked)} lesson(s) matched, but this store's injection "
             f"budget ({dose.gauge()}) admitted none. Widen it with `unimem retrieval "
-            "--max-lessons`/`--max-chars`. Dropped: "
-            + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
+            "--max-lessons`/`--max-chars`. Dropped: " + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
         )
         _print_withdrawn(withdrawn, harmful)
         return 0
@@ -669,7 +787,9 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
             )
             return 1
         withheld = _apply_holdout(
-            args, root, eligible,
+            args,
+            root,
+            eligible,
             relevance={c.slug: c.relevance for c in dose.admitted},
             scorer=label,
             floor=floor,
@@ -693,10 +813,7 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
     if notice:
         print(notice)
     if dose.dropped:
-        print(
-            "\n[unimem] not injected: "
-            + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
-        )
+        print("\n[unimem] not injected: " + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped))
     _print_withdrawn(withdrawn, harmful)
     print(f"[unimem] budget: {dose.gauge()}")
 
@@ -711,18 +828,23 @@ def _run_lexical(args: argparse.Namespace, root: str) -> int:
 
 
 def _semantic_slugs(
-    args, root: str, missing_hint: str, extra: int = 0,
+    args,
+    root: str,
+    missing_hint: str,
+    extra: int = 0,
 ) -> tuple[int, list[str], str]:
     script_args = ["--top-k", str(args.top_k + extra)]
     if args.include_importance_floor is not None:
-        script_args.extend(
-            ["--include-importance-floor", str(args.include_importance_floor)])
+        script_args.extend(["--include-importance-floor", str(args.include_importance_floor)])
     if args.agent_type:
         script_args.extend(["--agent-type", args.agent_type])
     script_args.extend(["--", args.task])
     rc, stdout = run_script(
-        root, os.path.join("memory", "attention", "query.py"),
-        script_args, missing_hint, capture=True,
+        root,
+        os.path.join("memory", "attention", "query.py"),
+        script_args,
+        missing_hint,
+        capture=True,
     )
     if rc != 0:
         return rc, [], stdout
@@ -734,7 +856,9 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
     floor = config.floor if args.relevance_floor is None else args.relevance_floor
 
     lessons, term_cache = lesson_cache.load_active_with_terms(
-        root, args.agent_type, reader=lambda p: read_or_warn(frontmatter.read, p),
+        root,
+        args.agent_type,
+        reader=lambda p: read_or_warn(frontmatter.read, p),
     )
     scope = getattr(args, "scope", "")
     as_of = getattr(args, "as_of", "") or None
@@ -776,21 +900,25 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
 
     graph_w = getattr(args, "graph_weight", None)
     if graph_w is None:
-        graph_w = getattr(config, "graph_weight", 1.0)
+        graph_w = config.graph_weight
 
     candidate_slugs = [str(fm.get("name", "")) for _, fm in lessons]
     as_of_val = getattr(args, "as_of", "") or None
     graph_boosts = (
-        graph.graph_boost_for_lessons(root, args.task, candidate_slugs, as_of=as_of_val)
-        if graph_w > 0.0 else None
+        graph.graph_boost_for_lessons(root, args.task, candidate_slugs, as_of=as_of_val) if graph_w > 0.0 else None
     )
 
     lexical = retrieval.rank_lessons(
-        args.task, lessons, top_k=depth + len(harmful), floor=0.0 if gated else floor,
+        args.task,
+        lessons,
+        top_k=depth + len(harmful),
+        floor=0.0 if gated else floor,
         scorer=config.scorer,
         term_cache=term_cache,
-        reliability_lookup=reliability_lookup, reliability_weight=config.reliability_weight,
-        recency_lookup=recency_lu, recency_weight=config.recency_weight,
+        reliability_lookup=reliability_lookup,
+        reliability_weight=config.reliability_weight,
+        recency_lookup=recency_lu,
+        recency_weight=config.recency_weight,
         adaptive_tail=not reranking,
         graph_boost_lookup=graph_boosts,
         graph_weight=graph_w,
@@ -799,11 +927,11 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
     floor_cleared = {r.slug for r in lexical + withdrawn_lexical if r.relevance >= floor}
 
     rc, semantic, stdout = (
-        early if early is not None and early_depth == depth
+        early
+        if early is not None and early_depth == depth
         else _semantic_slugs(args, root, missing_hint, extra=len(harmful) + depth - args.top_k)
     )
-    semantic, withdrawn_semantic = harm.split(
-        semantic, harmful, core, depth, slug_of=lambda s: s)
+    semantic, withdrawn_semantic = harm.split(semantic, harmful, core, depth, slug_of=lambda s: s)
     if already_shown and rc == 0:
         core_slugs = {str(fm.get("name", "")) for _p, fm in lessons if dosage.is_core(fm)}
         semantic = [s for s in semantic if s in core_slugs or s not in already_shown]
@@ -824,15 +952,21 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
     else:
         fused = retrieval.reciprocal_rank_fusion(
             {"lexical": [r.slug for r in lexical], "semantic": semantic},
-            k=config.rrf_k, top_k=depth,
+            k=config.rrf_k,
+            top_k=depth,
         )
-    withdrawn = list(dict.fromkeys(
-        [r.slug for r in withdrawn_lexical] + list(withdrawn_semantic)))
+    withdrawn = list(dict.fromkeys([r.slug for r in withdrawn_lexical] + list(withdrawn_semantic)))
     reranked = None
     if reranking:
         reranked, withdrawn, rerank_skipped = _rerank_pool(
-            args.task, lessons, fused, withdrawn, args.top_k, config.rerank,
-            admit=rerank_arm.admit_gated(floor_cleared, config.rerank, embedder) if gated else None)
+            args.task,
+            lessons,
+            fused,
+            withdrawn,
+            args.top_k,
+            config.rerank,
+            admit=rerank_arm.admit_gated(floor_cleared, config.rerank, embedder) if gated else None,
+        )
         if reranked is None and gated:
             return _run_lexical(args, root)
         fused = reranked if reranked is not None else fused[: args.top_k]
@@ -852,17 +986,22 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
 
     by_slug = {r.slug: r for r in lexical}
 
-    _considered, dose = _apply_dosage(lessons, fused, config, scope=getattr(args, "scope", ""),
-                                      as_of=getattr(args, "as_of", ""), agent_type=args.agent_type,
-                                      show_expired=getattr(args, "show_expired", False))
+    _considered, dose = _apply_dosage(
+        lessons,
+        fused,
+        config,
+        scope=getattr(args, "scope", ""),
+        as_of=getattr(args, "as_of", ""),
+        agent_type=args.agent_type,
+        show_expired=getattr(args, "show_expired", False),
+    )
     if not dose.admitted:
         if notice:
             print(notice)
         print(
             f"[unimem] {len(fused)} lesson(s) matched, but this store's injection "
             f"budget ({dose.gauge()}) admitted none. Widen it with `unimem retrieval "
-            "--max-lessons`/`--max-chars`. Dropped: "
-            + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
+            "--max-lessons`/`--max-chars`. Dropped: " + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
         )
         _print_withdrawn(withdrawn, harmful)
         return 0
@@ -879,7 +1018,9 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
             )
             return 1
         withheld = _apply_holdout(
-            args, root, eligible,
+            args,
+            root,
+            eligible,
             relevance={c.slug: c.relevance for c in dose.admitted},
             scorer=label,
             floor=floor,
@@ -899,8 +1040,11 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
         if slug in semantic:
             arms.append("semantic")
         score_label = (
-            (f"ce={fused_score_by_slug[slug]:+5.2f}" if reranked is not None
-             else f"rrf={fused_score_by_slug[slug]:5.3f}")
+            (
+                f"ce={fused_score_by_slug[slug]:+5.2f}"
+                if reranked is not None
+                else f"rrf={fused_score_by_slug[slug]:5.3f}"
+            )
             if slug in fused_score_by_slug
             else "[core]     "
         )
@@ -910,10 +1054,7 @@ def _run_hybrid(args: argparse.Namespace, root: str, missing_hint: str) -> int:
     if notice:
         print(notice)
     if dose.dropped:
-        print(
-            "\n[unimem] not injected: "
-            + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped)
-        )
+        print("\n[unimem] not injected: " + ", ".join(f"{d.slug} ({d.reason})" for d in dose.dropped))
     _print_withdrawn(withdrawn, harmful)
     print(f"[unimem] budget: {dose.gauge()}")
 
@@ -937,14 +1078,19 @@ def _refresh_stale_index(root: str) -> str:
     if not reason:
         return ""
     rc, out = run_script(
-        root, os.path.join("memory", "attention", "build_index.py"), _fallback_model_args(root),
-        "The reference attention scripts ship inside the package.", capture=True,
+        root,
+        os.path.join("memory", "attention", "build_index.py"),
+        _fallback_model_args(root),
+        "The reference attention scripts ship inside the package.",
+        capture=True,
     )
     after = _index_is_unusable(root)
     if rc == 0 and not after:
-        print(f"[unimem] semantic index was stale ({reason}); refreshed it. "
-              f"{out.strip().splitlines()[-1] if out.strip() else ''}".rstrip(),
-              file=sys.stderr)
+        print(
+            f"[unimem] semantic index was stale ({reason}); refreshed it. "
+            f"{out.strip().splitlines()[-1] if out.strip() else ''}".rstrip(),
+            file=sys.stderr,
+        )
         return ""
     return after or reason
 
@@ -974,7 +1120,8 @@ def _index_is_unusable(root: str) -> str:
 
 def _has_candidates(args: argparse.Namespace, root: str) -> bool:
     lessons, _terms = lesson_cache.load_active_with_terms(
-        root, args.agent_type, reader=lambda p: read_or_warn(frontmatter.read, p))
+        root, args.agent_type, reader=lambda p: read_or_warn(frontmatter.read, p)
+    )
     lessons = lesson_cache.filter_eligible(
         lessons,
         scope=getattr(args, "scope", ""),
@@ -1003,11 +1150,7 @@ def _run(args: argparse.Namespace) -> int:
     config = retrieval_io.load_config(root)
     if not _has_candidates(args, root):
         return _run_lexical(args, root)
-    if (
-        not args.lexical
-        and config.fusion == retrieval_io.FUSION_NONE
-        and config.rerank != retrieval_io.RERANK_NONE
-    ):
+    if not args.lexical and config.fusion == retrieval_io.FUSION_NONE and config.rerank != retrieval_io.RERANK_NONE:
         return _run_lexical(args, root)
 
     if not args.lexical and has_attention_deps():
@@ -1051,10 +1194,15 @@ def _run(args: argparse.Namespace) -> int:
 
     core: set[str] = set()
     if harmful:
-        core = _core_slugs(_iter_active_lessons(
-            root, args.agent_type, getattr(args, "scope", ""), getattr(args, "as_of", ""),
-            bool(getattr(args, "show_expired", False)),
-        ))
+        core = _core_slugs(
+            _iter_active_lessons(
+                root,
+                args.agent_type,
+                getattr(args, "scope", ""),
+                getattr(args, "as_of", ""),
+                bool(getattr(args, "show_expired", False)),
+            )
+        )
     dosed = not retrieval_io.semantic_only_undosed_pinned(root)
 
     if not args.experiment:
@@ -1064,8 +1212,13 @@ def _run(args: argparse.Namespace) -> int:
             return rc
         stdout, withdrawn = _withdraw_from_semantic(stdout, harmful, core, args.top_k)
         stdout, _eligible, note = _semantic_dose_or_pinned(
-            stdout, root, args.agent_type, config, dosed,
-            getattr(args, "scope", ""), getattr(args, "as_of", ""),
+            stdout,
+            root,
+            args.agent_type,
+            config,
+            dosed,
+            getattr(args, "scope", ""),
+            getattr(args, "as_of", ""),
             bool(getattr(args, "show_expired", False)),
             task=args.task,
         )
@@ -1087,8 +1240,13 @@ def _run(args: argparse.Namespace) -> int:
         return rc
     stdout, withdrawn = _withdraw_from_semantic(stdout, harmful, core, args.top_k)
     stdout, slugs, note = _semantic_dose_or_pinned(
-        stdout, root, args.agent_type, config, dosed,
-        getattr(args, "scope", ""), getattr(args, "as_of", ""),
+        stdout,
+        root,
+        args.agent_type,
+        config,
+        dosed,
+        getattr(args, "scope", ""),
+        getattr(args, "as_of", ""),
         bool(getattr(args, "show_expired", False)),
         task=args.task,
     )
@@ -1103,9 +1261,13 @@ def _run(args: argparse.Namespace) -> int:
         return 0
 
     withheld = _apply_holdout(
-        args, root, slugs,
+        args,
+        root,
+        slugs,
         scorer=retrieval_io.semantic_only_label(
-            retrieval_io.embedder_tag(_semantic_model_from_output(stdout)), dosed=dosed))
+            retrieval_io.embedder_tag(_semantic_model_from_output(stdout)), dosed=dosed
+        ),
+    )
     for line in stdout.splitlines():
         slug = _slug_of_semantic_line(line)
         if slug is not None and slug in withheld:
