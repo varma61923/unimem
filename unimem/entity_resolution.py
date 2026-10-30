@@ -360,9 +360,17 @@ def tiered_candidates(
     provider = kg_similarity.embedder(embedder)
     if provider is not None:
         scores = _embedding_scores(root, nodes, provider, False)
+        # Bucket qualifying pairs by their first node in one pass. Scanning the
+        # whole N^2/2 score map once per node was O(N^3) (~20 s at 1k entities,
+        # minutes at the 2k cap); bucketing is O(N^2). Buckets keep the score
+        # map's insertion order, so the stable sort below is unchanged.
+        by_first: dict[int, list[tuple[int, float]]] = {}
+        for (x, b), score in scores.items():
+            if score >= cosine_threshold:
+                by_first.setdefault(x, []).append((b, score))
         for a in range(len(nodes)):
             candidates = sorted(
-                [(b, score) for (x, b), score in scores.items() if x == a and score >= cosine_threshold],
+                by_first.get(a, ()),
                 key=lambda pair: (-pair[1], nodes[pair[0]].id),
             )[:top_k]
             for b, score in candidates:
