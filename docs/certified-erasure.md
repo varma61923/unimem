@@ -9,7 +9,8 @@ filesystem reference and the destruction interface.
 
 `certified_erasure.erase` checks incident holds and hazards before any destructive
 step, revokes the supplied records and their registered lineage descendants,
-purges canonical facts/lesson histories and graph mirrors, and destroys the
+purges canonical facts/lesson histories, graph mirrors and entity-index links
+(the names extracted from erased text), and destroys the
 subject wrapping key. It returns a signed certificate with a transparency anchor,
 a hash tombstone, explicit live-probe status and backup scope. `verify` checks its
 bytes and anchor offline. Unrelated subjects retain their own keys. Dream-rewrite
