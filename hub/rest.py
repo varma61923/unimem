@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from hub import audit, auth, crud, scopes
+from hub import audit, auth, crud, rbac, scopes
 from hub.abuse import RateLimited, TraceRejected, make_named_limiter, rate_limit_key, reject_unstorable_text
 from hub.config import HubConfig
 from hub.db import session_scope
@@ -32,6 +32,15 @@ _MAX_SEARCH_LIMIT = 50
 _MAX_NAME_CHARS = 200
 
 _DEFAULT_AGENT_TYPE = "general"
+
+# The capability a person needs for a route that only names a scope; mirrors
+# rbac.TOOL_CAPABILITY (reads are view, writes curate, admin is security).
+# Routes with finer needs pass `capability=` to require_scope.
+_SCOPE_CAPABILITY = {
+    scopes.SCOPE_READ: rbac.CAP_VIEW,
+    scopes.SCOPE_WRITE: rbac.CAP_CURATE,
+    scopes.SCOPE_ADMIN: rbac.CAP_SECURITY,
+}
 
 
 def _json_error(status: int, error: str, detail: str = "") -> JSONResponse:
@@ -170,10 +179,11 @@ def add_rest_routes(
                     auth_limiter.refund(client_key)
                     return await _admit(
                         request,
-                        auth.AuthenticatedKey(
+                        auth.UserPrincipal(
                             person.org_id,
                             f"user:{person.id}",
                             rbac.scopes_of(person.role),
+                            role=person.role,
                         ),
                     )
             return None, _json_error(401, "unauthorized", "OIDC bearer token was rejected or is not linked")
@@ -187,13 +197,24 @@ def add_rest_routes(
         auth_limiter.refund(client_key)
         return await _admit(request, authenticated)
 
-    def _require_scope(authenticated, required: str) -> Response | None:
+    def _require_scope(authenticated, required: str, capability: str | None = None) -> Response | None:
         if not scopes.satisfies(authenticated.scopes, required):
             return _json_error(
                 403,
                 "forbidden",
                 f"this key does not carry the '{required}' scope",
             )
+        if isinstance(authenticated, auth.UserPrincipal):
+            # A person is also bound by their role's capabilities, as on MCP:
+            # an analyst holds `write` but not `curate`, so without this check
+            # REST let them contribute traces and forget memory records.
+            needed = capability or _SCOPE_CAPABILITY.get(required, rbac.CAP_SECURITY)
+            if not rbac.has_capability(authenticated.role, needed):
+                return _json_error(
+                    403,
+                    "forbidden",
+                    f"role '{authenticated.role}' does not grant the '{needed}' capability",
+                )
         return None
 
     async def create_key(request: Request) -> Response:
