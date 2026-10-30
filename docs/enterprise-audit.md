@@ -73,3 +73,14 @@ phase 5, all with warnings promoted to errors. Full lint/format pass. Mypy basel
 passes 632 files; its notes about untyped test bodies are not proof of strict typing.
 Full-suite coverage, packaging, dependency audits and final remote CI are pending
 at the time of this commit. Never infer a completed remote result from these gates.
+
+### Additional verification finding A06 (P2)
+
+The full local Hub run exposed 14 authorization-test assertion failures after
+pepper configuration tests reloaded `hub.auth`: dataclasses from the old and new
+module instances had identical authenticated fields but unequal class identities.
+Compare all dataclass fields explicitly, retaining exact call count and values.
+The reload sequence plus the complete surface-authorization file passes 26 tests
+with `-W error`. The preceding full Hub run had 2,753 passed and 45 skipped;
+its 14 failed cases are all covered by this deterministic reload regression run.
+Remote Hub CI passed under its different worker scheduling before this test fix.
