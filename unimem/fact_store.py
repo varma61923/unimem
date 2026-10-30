@@ -489,9 +489,11 @@ class FactMap(MutableMapping):
         """Load existing facts by id in bounded queries, preserving request order."""
         requested = list(dict.fromkeys(keys))
         missing = [key for key in requested if key not in self.removed and key not in self.loaded]
-        for group in _chunks(missing):
-            placeholders = ",".join("?" for _ in group)
-            rows = self.connection.execute(f"SELECT id,payload FROM facts WHERE id IN ({placeholders})", group)
+        if missing:
+            rows = self.connection.execute(
+                "SELECT id,payload FROM facts WHERE id IN (SELECT value FROM json_each(?))",
+                (json.dumps(missing),),
+            )
             from unimem.hierarchical import _coerce_fact
 
             for identity, payload in rows:
