@@ -199,6 +199,23 @@ async def authorize(request, authenticated, config, factory):
     request.scope["unimem.authorization"] = authorization
 
 
+async def requires_capability(authenticated, config, factory) -> bool:
+    """Whether *authenticated* is an enrolled delegate bound to a capability.
+
+    Surfaces that cannot verify capability and possession headers (the
+    customer console sign-in) must refuse such keys outright; otherwise the raw
+    key bypasses the label and namespace narrowing REST and MCP enforce.
+    """
+    if not config or not config.capability_directory:
+        return False
+    directory = os.path.realpath(config.capability_directory)
+    root = os.path.join(directory, str(authenticated.org_id))
+    if os.path.dirname(os.path.realpath(root)) != directory:
+        raise PermissionError("UniMem invalid authenticated tenant directory")
+    await drain(factory, authenticated.org_id, root)
+    return bool(io.required(root, authenticated.key_prefix))
+
+
 async def admit_request(request, authenticated, config, factory):
     try:
         await authorize(request, authenticated, config, factory)

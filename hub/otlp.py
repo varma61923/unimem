@@ -81,6 +81,14 @@ def add_otlp_routes(
         auth_limiter.refund(client_key)
         if not scopes.satisfies(authenticated.scopes, scopes.SCOPE_WRITE):
             return _json_error(403, "forbidden", "this key does not carry the 'write' scope")
+        # Same delegation gate as REST/MCP: an enrolled delegate must present a
+        # capability, and OTLP supports none, so such a key is refused here
+        # rather than writing unscoped traces with the raw key.
+        from hub import delegation
+
+        denied = await delegation.admit_request(request, authenticated, config, session_factory)
+        if denied is not None:
+            return denied
 
         content_type = request.headers.get("content-type", "")
         if content_type and "json" not in content_type:
