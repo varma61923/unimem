@@ -118,7 +118,12 @@ def test_monitor_is_fast_for_bounded_trace(tmp_path):
     shield.register(root, "force_limit", formula=formula, memory_id="m", embodiment="r", description="limit")
     trace = [{"t": i / 1000, "force": 5.0} for i in range(10_000)]
     result = shield.check(root, "force_limit", action={"move": "start"}, trace=trace, source_memory_ids=["m"])
-    assert result["verdict"] == "safe" and result["latency_ms"] < 500
+    # The bounded formula selects 101 samples, so the monitor should perform
+    # exactly one root visit plus one predicate visit per selected sample.
+    assert result["verdict"] == "safe" and result["monitor_work"] == 102
+    # Keep a coarse host-level regression guard, while leaving throughput
+    # comparisons to the dedicated performance job to avoid runner jitter.
+    assert result["latency_ms"] < 750
 
 
 def test_partial_and_nested_trace_horizons_hold_the_action(tmp_path):

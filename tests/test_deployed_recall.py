@@ -37,6 +37,9 @@ def _locomo(path):
 @pytest.mark.parametrize("persistent", [True, False])
 def test_gateway_serves_the_same_contexts_as_in_process_recall(tmp_path, monkeypatch, capsys, persistent):
     monkeypatch.setenv("UNIMEM_CONVERSATION_EMBEDDER", "none")
+    # URL-safe tokens may start with '-', which argparse otherwise treats as
+    # another option when the token is passed as a separate argv item.
+    monkeypatch.setattr(deployed_recall.secrets, "token_urlsafe", lambda _n: "-test-token-with-leading-dash")
     data = tmp_path / "locomo.json"
     _locomo(data)
     out = tmp_path / "result.json"
