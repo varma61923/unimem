@@ -15,7 +15,7 @@ import socket
 import time
 import urllib.error
 from collections.abc import Callable
-from typing import TypeVar
+from typing import Any, TypeVar
 
 MAX_RETRIES = 4
 MAX_WAIT_SECONDS = 60.0
@@ -96,7 +96,7 @@ def call_with_retries(
     return None, error
 
 
-def read_within(response, limit: int, seconds: float) -> bytes:
+def read_within(response: Any, limit: int, seconds: float) -> bytes:
     """Read at most ``limit + 1`` body bytes, failing once *seconds* elapse in total.
 
     urllib's ``timeout`` bounds each socket read, not the whole body: a server
@@ -109,7 +109,7 @@ def read_within(response, limit: int, seconds: float) -> bytes:
     if read is None:
         # Not an http.client response (a wrapper or test double): keep the
         # historical single bounded read, whose stream semantics are unknown.
-        return response.read(limit + 1)
+        return bytes(response.read(limit + 1))
     deadline = time.monotonic() + seconds
     body = bytearray()
     while len(body) <= limit:
