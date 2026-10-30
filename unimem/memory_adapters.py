@@ -414,8 +414,15 @@ class VendorReadAdapter:
                 raise ValueError("vendor memory response exceeds 1 MiB")
             return response.json()
         deadline = time.monotonic() + 10.0
-        with stream("POST", self.endpoint, json=payload, headers=self._headers, timeout=10) as response:
+        headers = {key: value for key, value in self._headers.items() if key.lower() != "accept-encoding"}
+        headers["Accept-Encoding"] = "identity"
+        with stream("POST", self.endpoint, json=payload, headers=headers, timeout=10) as response:
             response.raise_for_status()
+            # httpx decodes a compressed chunk before yielding it to
+            # iter_bytes. Checking its size afterwards cannot bound that
+            # allocation, so require the identity encoding we requested.
+            if response.headers.get("content-encoding", "identity").strip().lower() not in {"", "identity"}:
+                raise ValueError("vendor memory response must use identity encoding")
             declared = response.headers.get("content-length")
             if declared is not None and declared.isdigit() and int(declared) > limit:
                 raise ValueError("vendor memory response exceeds 1 MiB")

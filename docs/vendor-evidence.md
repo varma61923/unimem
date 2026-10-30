@@ -19,6 +19,10 @@ total response deadline as well as socket timeouts. A trickling body cannot
 extend the call indefinitely; deadline enforcement can overshoot by at most one
 socket read timeout. Custom non-streaming transports must enforce their own
 read deadlines and buffering limits.
+The streaming transport requests `Accept-Encoding: identity` and rejects
+compressed responses before reading them: an automatic decoder can allocate an
+oversized output chunk before application code checks its size. Retrieval
+endpoints must honor identity encoding.
 
 Wrap an adapter in `MeasuredMemory(adapter, root=...)`. Before a foreign item can
 reach the agent it receives external-integrity lineage and the normal injection

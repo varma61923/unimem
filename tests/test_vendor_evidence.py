@@ -163,3 +163,32 @@ def test_httpx_vendor_reads_decode_a_normal_response():
     httpx = pytest.importorskip("httpx")
     adapter = _httpx_adapter(lambda request: httpx.Response(200, json=FIXTURES["mem0"]))
     assert [item.text for item in adapter.search("object")] == ["Verify the object class"]
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate", "br", "zstd", "gzip, identity"])
+def test_vendor_reads_reject_compression_before_decoding(encoding):
+    httpx = pytest.importorskip("httpx")
+    pulled, closed = [], []
+
+    class Compressed(httpx.SyncByteStream):
+        def __iter__(self):
+            # A decoder must never see these bytes: its output allocation
+            # could exceed the byte ceiling before iter_bytes yields a chunk.
+            pulled.append(True)
+            yield b"compressed payload"
+
+        def close(self):
+            closed.append(True)
+
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, headers={"Content-Encoding": encoding}, stream=Compressed())
+
+    adapter = _httpx_adapter(handler)
+    with pytest.raises(ValueError, match="memory read failed"):
+        adapter.search("object")
+    assert requests[0].headers["Accept-Encoding"] == "identity"
+    assert pulled == []
+    assert closed == [True]
