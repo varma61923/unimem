@@ -13,7 +13,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from alembic import command
 from alembic.config import Config
@@ -140,7 +140,7 @@ async def run(operation: str, **kwargs: Any) -> dict[str, Any]:
                 result = await connection.run_sync(lambda sync: execute(sync, operation, **kwargs))
                 if not isinstance(result, dict) or any(not isinstance(key, str) for key in result):
                     raise MigrationError("migration operation returned an invalid result")
-                return cast(dict[str, Any], result)
+                return result
             finally:
                 await connection.rollback()
                 await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK})
