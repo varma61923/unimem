@@ -109,6 +109,68 @@ def test_pair_budgets_require_nonnegative_integers():
     for limit in (-1, True, 1.5):
         with pytest.raises(ValueError, match="max_pairs"):
             interactions.analyze([], max_pairs=limit)
+    with pytest.raises(ValueError, match="max_pairs"):
+        interactions.analyze([], max_pairs=interactions.MAX_PAIRS + 1)
     for count in (True, 2.5):
         with pytest.raises(ValueError, match="min_cell"):
             interactions.analyze([], min_cell=count)
+
+
+def test_interaction_analysis_bounds_observations_and_occasion_arms():
+    import pytest
+
+    observations = (
+        experiment.HoldoutObservation("lesson", str(index), False, False)
+        for index in range(interactions.MAX_OBSERVATIONS + 1)
+    )
+    with pytest.raises(ValueError, match="observations"):
+        interactions.analyze(observations)
+
+    arms = [
+        experiment.HoldoutObservation(f"lesson-{index}", "occasion", False, False)
+        for index in range(interactions.MAX_ARMS_PER_OCCASION + 1)
+    ]
+    with pytest.raises(ValueError, match="lesson arms"):
+        interactions.analyze(arms, max_pairs=1)
+
+
+def test_interaction_analysis_bounds_pair_work_even_when_output_is_one_pair():
+    import pytest
+
+    group_count = interactions.MAX_PAIR_OCCURRENCES // (256 * 255 // 2) + 1
+    observations = [
+        experiment.HoldoutObservation(f"lesson-{arm}", f"occasion-{occasion}", False, False)
+        for occasion in range(group_count)
+        for arm in range(256)
+    ]
+    with pytest.raises(ValueError, match="pair occurrences"):
+        interactions.analyze(observations, max_pairs=1)
+
+
+def test_interaction_analysis_bounds_distinct_candidate_pairs():
+    import pytest
+
+    group_count = interactions.MAX_CANDIDATE_PAIRS // 6 + 1
+    observations = [
+        experiment.HoldoutObservation(f"lesson-{occasion}-{arm}", f"occasion-{occasion}", False, False)
+        for occasion in range(group_count)
+        for arm in range(4)
+    ]
+    with pytest.raises(ValueError, match="candidate pairs"):
+        interactions.analyze(observations, max_pairs=1)
+
+
+def test_interaction_cli_reports_budget_refusal(capsys):
+    from types import SimpleNamespace
+
+    from unimem.commands import experiment_cmd
+
+    observations = (
+        experiment.HoldoutObservation("lesson", str(index), False, False)
+        for index in range(interactions.MAX_OBSERVATIONS + 1)
+    )
+    args = SimpleNamespace(alpha=0.05, json=False, strict=False)
+    report = SimpleNamespace(verdict="SOUND")
+
+    assert experiment_cmd._run_interactions(args, observations, report) == 2
+    assert "interaction analysis refused" in capsys.readouterr().err

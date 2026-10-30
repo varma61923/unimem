@@ -32,6 +32,10 @@ from unimem import experiment
 
 DEFAULT_MIN_CELL = 10
 MAX_PAIRS = 200
+MAX_OBSERVATIONS = 100_000
+MAX_ARMS_PER_OCCASION = 256
+MAX_CANDIDATE_PAIRS = 50_000
+MAX_PAIR_OCCURRENCES = 2_000_000
 FLAG_SYNERGY = "SYNERGY"
 FLAG_INTERFERENCE = "INTERFERENCE"
 FLAG_ADDITIVE = "ADDITIVE"
@@ -78,19 +82,30 @@ def analyze(
         raise ValueError("alpha must be between 0 and 1")
     if isinstance(min_cell, bool) or not isinstance(min_cell, int) or min_cell < 2:
         raise ValueError("min_cell must be an integer of at least 2")
-    if isinstance(max_pairs, bool) or not isinstance(max_pairs, int) or max_pairs < 0:
-        raise ValueError("max_pairs must be a nonnegative integer")
+    if isinstance(max_pairs, bool) or not isinstance(max_pairs, int) or not 0 <= max_pairs <= MAX_PAIRS:
+        raise ValueError(f"max_pairs must be an integer in 0..{MAX_PAIRS}")
     if max_pairs == 0:
         return []
     by_occasion: dict[str, dict[str, bool]] = defaultdict(dict)
     outcome: dict[str, bool] = {}
-    for obs in observations:
-        by_occasion[obs.occasion_id][obs.lesson_slug] = obs.injected
+    for count, obs in enumerate(observations, start=1):
+        if count > MAX_OBSERVATIONS:
+            raise ValueError(f"interaction analysis is limited to {MAX_OBSERVATIONS} observations")
+        arms = by_occasion[obs.occasion_id]
+        if obs.lesson_slug not in arms and len(arms) >= MAX_ARMS_PER_OCCASION:
+            raise ValueError(f"an occasion may contain at most {MAX_ARMS_PER_OCCASION} lesson arms")
+        arms[obs.lesson_slug] = obs.injected
         outcome[obs.occasion_id] = obs.succeeded
     co: defaultdict[tuple[str, str], int] = defaultdict(int)
+    pair_occurrences = 0
     for arms in by_occasion.values():
-        for a, b in itertools.combinations(sorted(arms), 2):
-            co[(a, b)] += 1
+        pair_occurrences += len(arms) * (len(arms) - 1) // 2
+        if pair_occurrences > MAX_PAIR_OCCURRENCES:
+            raise ValueError(f"interaction analysis is limited to {MAX_PAIR_OCCURRENCES} pair occurrences")
+        for candidate_key in itertools.combinations(sorted(arms), 2):
+            if candidate_key not in co and len(co) >= MAX_CANDIDATE_PAIRS:
+                raise ValueError(f"interaction analysis is limited to {MAX_CANDIDATE_PAIRS} candidate pairs")
+            co[candidate_key] += 1
     # The most frequently co-eligible pairs first; a cap bounds the multiple-testing burden.
     pairs = heapq.nsmallest(max_pairs, co, key=lambda k: (-co[k], k))
     staged: list[PairInteraction] = []

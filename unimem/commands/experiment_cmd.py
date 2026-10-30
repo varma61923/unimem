@@ -672,7 +672,11 @@ def _run_interactions(args, obs, report) -> int:
             file=sys.stderr,
         )
         return 1
-    results = interactions.analyze(obs, alpha=args.alpha)
+    try:
+        results = interactions.analyze(obs, alpha=args.alpha)
+    except ValueError as exc:
+        print(f"[unimem] interaction analysis refused: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(
             json.dumps(
