@@ -395,6 +395,34 @@ class VendorReadAdapter:
         self.client, self.name, self.endpoint = client, provider, endpoint
         self.scope, self._headers = copy.deepcopy(scope), dict(headers or {})
 
+    def _post_bounded(self, payload: dict[str, Any], limit: int) -> Any:
+        """POST and decode JSON, never buffering more than *limit* body bytes.
+
+        A non-streaming read loads the whole body before any size check, so a
+        hostile or broken vendor could exhaust memory. httpx clients stream and
+        abort past the limit; duck-typed injected clients keep the plain path.
+        """
+        import json
+
+        stream = getattr(self.client, "stream", None)
+        if stream is None:
+            response = self.client.post(self.endpoint, json=payload, headers=self._headers, timeout=10)
+            response.raise_for_status()
+            if len(response.content) > limit:
+                raise ValueError("vendor memory response exceeds 1 MiB")
+            return response.json()
+        with stream("POST", self.endpoint, json=payload, headers=self._headers, timeout=10) as response:
+            response.raise_for_status()
+            declared = response.headers.get("content-length")
+            if declared is not None and declared.isdigit() and int(declared) > limit:
+                raise ValueError("vendor memory response exceeds 1 MiB")
+            body = bytearray()
+            for chunk in response.iter_bytes():
+                body += chunk
+                if len(body) > limit:
+                    raise ValueError("vendor memory response exceeds 1 MiB")
+        return json.loads(bytes(body))
+
     def search(self, query: str, **kwargs: Any) -> list[Item]:
         from unimem import frontier_protocol as fp
 
@@ -408,11 +436,7 @@ class VendorReadAdapter:
         elif self.name == "vertex":
             payload = {"similaritySearchParams": {"searchQuery": query, "topK": limit}, **self.scope}
         try:
-            response = self.client.post(self.endpoint, json=payload, headers=self._headers, timeout=10)
-            response.raise_for_status()
-            if len(response.content) > fp.MAX_BYTES:
-                raise ValueError("vendor memory response exceeds 1 MiB")
-            data = response.json()
+            data = self._post_bounded(payload, fp.MAX_BYTES)
         except Exception:
             # Exceptions from transports commonly echo URLs or authorization.
             raise ValueError(f"{self.name} memory read failed; inspect the configured transport privately") from None

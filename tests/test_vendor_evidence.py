@@ -99,3 +99,42 @@ def test_one_bad_vendor_item_is_skipped_not_fatal(tmp_path):
     holdout_io.configure(root, rate=0.5, salt="foreign")
     measured = memory_adapters.MeasuredMemory(adapter, root=root, check_every=1000)
     assert measured.recall_detailed("class", occasion_id="one").items is not None
+
+
+def _httpx_adapter(handler):
+    httpx = pytest.importorskip("httpx")
+    client = httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
+    return memory_adapters.VendorReadAdapter(
+        "mem0", endpoint="https://memory.example/retrieve", scope={"tenant_id": "acme"}, client=client
+    )
+
+
+def test_httpx_vendor_reads_stream_and_stop_at_the_size_limit():
+    # Regression: the whole body was buffered before the 1 MiB check, so a
+    # hostile endpoint could stream hundreds of MiB into memory.
+    httpx = pytest.importorskip("httpx")
+    pulled = []
+
+    def endless():
+        for _ in range(200):
+            pulled.append(1)
+            yield b" " * 65536
+
+    adapter = _httpx_adapter(lambda request: httpx.Response(200, content=endless()))
+    with pytest.raises(ValueError, match="read failed"):
+        adapter.search("object")
+    assert len(pulled) * 65536 <= fp.MAX_BYTES + 2 * 65536
+
+
+def test_httpx_vendor_reads_refuse_an_oversized_declared_length():
+    httpx = pytest.importorskip("httpx")
+    big = b"{}" + b" " * (fp.MAX_BYTES + 10)
+    adapter = _httpx_adapter(lambda request: httpx.Response(200, content=big))
+    with pytest.raises(ValueError, match="read failed"):
+        adapter.search("object")
+
+
+def test_httpx_vendor_reads_decode_a_normal_response():
+    httpx = pytest.importorskip("httpx")
+    adapter = _httpx_adapter(lambda request: httpx.Response(200, json=FIXTURES["mem0"]))
+    assert [item.text for item in adapter.search("object")] == ["Verify the object class"]
