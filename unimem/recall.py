@@ -339,6 +339,7 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
         and fact_store.enabled(root)
         and fact_vector_projection._backend(root) == "lance"
     ):
+        candidate_limit = max(200, min(1000, k * 16))
         watermark = fact_vector_projection._watermark(model, "lance")
         moment = datetime.now(timezone.utc)
         with fact_store.transaction(root) as current:
@@ -353,16 +354,18 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                     dict.fromkeys(
                         row[0]
                         for row in current.connection.execute(
-                            "SELECT fact_id FROM events WHERE seq>? ORDER BY seq", (cursor,)
+                            "SELECT fact_id FROM events WHERE seq>? ORDER BY seq DESC LIMIT ?",
+                            (cursor, candidate_limit),
                         )
                     )
                 )
                 if indexed
                 else []
             )
+            facts_by_id = current.get_many(pending_ids)
             pending_facts = []
             for identity in pending_ids:
-                fact = current.get(identity)
+                fact = facts_by_id.get(identity)
                 if (
                     fact is not None
                     and not fact.forgotten
@@ -374,12 +377,10 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                     pending_facts.append(fact)
         if indexed:
             try:
-                candidates = fact_vector_projection.search(
-                    root, question, model=model, limit=max(200, min(1000, k * 16))
-                )
+                candidates = fact_vector_projection.search(root, question, model=model, limit=candidate_limit)
                 # A stale projection can omit newly added or revised facts. Score
-                # just that bounded outbox tail exactly instead of rescanning the
-                # full canonical store, then merge it with indexed candidates.
+                # the bounded newest outbox events exactly instead of rescanning
+                # the backlog or issuing one canonical lookup per event.
                 pending_scores = fact_embeddings.scores(question, pending_facts, model=model, root=root) or {}
                 candidate_scores = dict(candidates)
                 candidate_scores.update(pending_scores)

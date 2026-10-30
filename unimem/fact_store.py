@@ -14,7 +14,7 @@ import json
 import os
 import sqlite3
 from collections import Counter
-from collections.abc import Iterator, Mapping, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -484,6 +484,20 @@ class FactMap(MutableMapping):
             self.loaded[key] = _coerce_fact(json.loads(row[0]))
             self.before[key] = row[0]
         return self.loaded[key]
+
+    def get_many(self, keys: Sequence[str]) -> dict[str, Any]:
+        """Load existing facts by id in bounded queries, preserving request order."""
+        requested = list(dict.fromkeys(keys))
+        missing = [key for key in requested if key not in self.removed and key not in self.loaded]
+        for group in _chunks(missing):
+            placeholders = ",".join("?" for _ in group)
+            rows = self.connection.execute(f"SELECT id,payload FROM facts WHERE id IN ({placeholders})", group)
+            from unimem.hierarchical import _coerce_fact
+
+            for identity, payload in rows:
+                self.loaded[identity] = _coerce_fact(json.loads(payload))
+                self.before[identity] = payload
+        return {key: self.loaded[key] for key in requested if key not in self.removed and key in self.loaded}
 
     def __setitem__(self, key, value):
         if key != value.id:
