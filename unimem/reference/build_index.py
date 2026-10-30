@@ -235,7 +235,7 @@ def index_model(index_path: str, fallback: "str | None" = None) -> str:
     try:
         if np is None:
             raise RuntimeError("NumPy is required to load an attention index")
-        with np.load(index_path, allow_pickle=False) as data:
+        with open(index_path, "rb") as source, np.load(source, allow_pickle=False) as data:
             name = str(data["model_name"])
             if name in TRUSTED_MODELS and int(data["embeddings"].shape[0]) > 0:
                 return name
@@ -317,7 +317,7 @@ def build_or_update_index(
     cached_vectors: dict[tuple[str, str], _numpy.ndarray] = {}
     if os.path.exists(output_path) and not force_rebuild:
         try:
-            with np.load(output_path, allow_pickle=False) as data:
+            with open(output_path, "rb") as source, np.load(source, allow_pickle=False) as data:
                 if (
                     str(data.get("model_name", "")) == model_name
                     and str(data.get("encoded_field", "")) == ENCODED_FIELD
@@ -427,7 +427,7 @@ def main() -> int:
             default=0.0,
         )
         try:
-            with np.load(INDEX_PATH, allow_pickle=False) as data:
+            with open(INDEX_PATH, "rb") as source, np.load(source, allow_pickle=False) as data:
                 indexed_slugs = {str(s) for s in data["slugs"]}
                 model_matches = (
                     str(data["model_name"]) == model_name

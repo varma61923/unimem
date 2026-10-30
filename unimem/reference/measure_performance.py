@@ -804,7 +804,7 @@ def compute_semantic_duplicates(
             ),
         }
     try:
-        with np.load(path, allow_pickle=False) as data:
+        with open(path, "rb") as source, np.load(source, allow_pickle=False) as data:
             slugs = [str(s) for s in data["slugs"]]
             embeddings = np.asarray(data["embeddings"], dtype=np.float32)
     except Exception as exc:  # noqa: BLE001 - any load failure degrades, never crashes
