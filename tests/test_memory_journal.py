@@ -297,3 +297,23 @@ def test_content_redaction_preserves_principal_and_record_identity(tmp_path):
     assert "alice@example.com" not in record.payload["text"]
     assert journal.search("Contact", scope=scope)[0].id == record.id
     assert journal.search("Contact", scope={"user": "bob@example.com", "agent": "a"}) == []
+
+
+def test_vector_batch_preserves_order_duplicates_misses_and_isolation(tmp_path):
+    journal = Journal(str(tmp_path))
+    first = MemoryRecord("first", "fact", 1, {"text": "first"})
+    second = MemoryRecord("second", "fact", 1, {"text": "second"})
+    journal.cache_vectors([("first", "first", [1.0, 0.0]), ("second", "second", [0.0, 1.0])], "model")
+    records = [(second, "second"), (first, "changed"), (first, "first"), (second, "second")]
+    assert journal.vectors(records, "model") == [[0.0, 1.0], None, [1.0, 0.0], [0.0, 1.0]]
+    assert journal.vectors(records, "other-model") == [None] * 4
+    assert journal.vectors([], "model") == []
+    # Larger than SQLite's traditional parameter limit; one JSON bind suffices.
+    assert journal.vectors([(first, "first")] * 1200, "model") == [[1.0, 0.0]] * 1200
+
+
+def test_vector_batch_rejects_nonfinite_values_before_any_write(tmp_path):
+    journal = Journal(str(tmp_path))
+    with pytest.raises(ValueError):
+        journal.cache_vectors([("good", "first", [1.0]), ("bad", "second", [float("nan")])], "model")
+    assert journal.vector("good", "model", "first") is None
