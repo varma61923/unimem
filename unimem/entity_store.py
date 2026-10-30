@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 import os
 import re
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -223,6 +224,18 @@ def unlink_memory(root: str, memory_id: str) -> int:
     """Remove *memory_id* from every entity list; drop entities left with none."""
     if not memory_id:
         return 0
+    return unlink_memories(root, [memory_id])
+
+
+def unlink_memories(root: str, memory_ids: Iterable[str]) -> int:
+    """Remove every id in *memory_ids* with one locked load and one atomic save.
+
+    Returns the number of entity entries touched. Erasure uses this so a purge
+    of N ids costs one index rewrite rather than N.
+    """
+    drop = {str(m) for m in memory_ids if m}
+    if not drop:
+        return 0
     path = _entities_file(root)
     with _jsonl.locked(path):
         entities = load_entities(root)
@@ -231,8 +244,8 @@ def unlink_memory(root: str, memory_id: str) -> int:
         touched = 0
         for name in list(entities):
             entry = entities[name]
-            if str(memory_id) in entry["memory_ids"]:
-                entry["memory_ids"] = [m for m in entry["memory_ids"] if m != str(memory_id)]
+            if not drop.isdisjoint(entry["memory_ids"]):
+                entry["memory_ids"] = [m for m in entry["memory_ids"] if m not in drop]
                 touched += 1
                 if not entry["memory_ids"]:
                     del entities[name]
@@ -252,6 +265,16 @@ def rebuild_entity_index(root: str) -> dict[str, int]:
     aside, which is wall-clock). Returns ``{"entities": n, "facts": f,
     "lessons": l}``.
     """
+    # Hold the index lock across snapshot *and* save: otherwise a concurrent
+    # unlink (delete/forget/invalidate) or link landing mid-rebuild is
+    # overwritten by the stale snapshot, resurrecting erased links. Safe from
+    # lock inversion: hierarchical links/unlinks only after releasing the
+    # facts lock, so nothing holds facts -> entities while we hold entities.
+    with _jsonl.locked(_entities_file(root)):
+        return _rebuild_entity_index_locked(root)
+
+
+def _rebuild_entity_index_locked(root: str) -> dict[str, int]:
     from unimem import hierarchical
 
     entities: dict[str, dict[str, Any]] = {}
@@ -281,9 +304,7 @@ def rebuild_entity_index(root: str) -> dict[str, int]:
             continue
         _link_into(entities, slug, f"{slug.replace('-', ' ').replace('_', ' ')}\n{body}")
         lessons += 1
-    path = _entities_file(root)
-    with _jsonl.locked(path):
-        save_entities(root, entities)
+    save_entities(root, entities)
     return {"entities": len(entities), "facts": facts, "lessons": lessons}
 
 
