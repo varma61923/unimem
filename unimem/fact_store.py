@@ -948,6 +948,7 @@ def search(
     if limit <= 0 or (selected == "bm25-v1" and not terms):
         return []
     with transaction(root) as facts:
+        lineage_blocked = memory_authority.lineage_checker(root)
 
         def eligible(fact):
             return (
@@ -961,7 +962,7 @@ def search(
                     else h._known_at(fact, known) and (not as_of or h._valid_at(fact, moment))
                 )
                 and (show_expired or not h._is_expired(fact, moment))
-                and (include_forgotten or not memory_authority.lineage_blocked(root, fact.id))
+                and (include_forgotten or not lineage_blocked(fact.id))
             )
 
         candidates: set[str] = set()

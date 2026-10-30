@@ -11,8 +11,10 @@ import json
 import os
 import secrets
 import stat
+from collections.abc import Callable
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import Any
 
 from unimem import _jsonl, capabilities, origin, paths
 
@@ -340,42 +342,75 @@ def source_ids(record: dict) -> list[str]:
 
 
 def lineage_blocked(root: str, record_id: str, *, canonical_only: bool = False) -> bool:
-    if not canonical_only:
-        from unimem import sentinel_io
+    return lineage_checker(root, canonical_only=canonical_only)(record_id)
 
-        if sentinel_io.blocked(root, record_id):
-            return True
-    if not canonical_only and os.path.isfile(os.path.join(paths.memory_dir(root), "capabilities.json")):
-        from unimem import capability_io
 
-        if capability_io.quarantined(root, record_id):
-            return True
-    filename = os.path.join(paths.memory_dir(root), "forgetting.jsonl")
-    if not os.path.isfile(filename):
+def lineage_checker(root: str, *, canonical_only: bool = False) -> Callable[[str], bool]:
+    """A reusable ``lineage_blocked`` for one batch of identities.
+
+    ``lineage_blocked`` re-reads and signature-verifies forgetting.jsonl (and,
+    once anything is forgotten, all of origins.jsonl) on every call, so a loop
+    over N facts cost O(N * (F + O)) verifications -- quadratic, since origins
+    grow with facts (1k facts with 1k origins: ~4 min). The checker loads and
+    verifies each ledger at most once, on first need, so per-identity order of
+    checks (sentinel, quarantine, then ledgers) and error behavior match.
+    Use it within one operation; it snapshots the ledgers it has read.
+    """
+    memory = paths.memory_dir(root)
+    forgetting_file = os.path.join(memory, "forgetting.jsonl")
+    quarantine = not canonical_only and os.path.isfile(os.path.join(memory, "capabilities.json"))
+    ledger: dict[str, Any] = {}
+
+    def forgotten() -> dict[str, Any] | None:
+        if "forgotten" not in ledger:
+            if not os.path.isfile(forgetting_file):
+                ledger["forgotten"] = None
+            else:
+                rows = {}
+                for row in _jsonl.read_rows(forgetting_file):
+                    record = {k: v for k, v in row.items() if k != "origin"}
+                    if not verify(root, row.get("origin", {}), record):
+                        raise PermissionError("forgetting receipt is invalid")
+                    rows[row["target_id"]] = row["forgotten"]
+                ledger["forgotten"] = rows if any(rows.values()) else None
+        return ledger["forgotten"]
+
+    def parents() -> dict[str, list[str]]:
+        if "parents" not in ledger:
+            ledger["parents"] = {
+                r["record"].get("id"): source_ids(r["record"])
+                for r in _jsonl.read_rows(os.path.join(memory, "origins.jsonl"))
+                if verify(root, r)
+            }
+        return ledger["parents"]
+
+    def blocked(record_id: str) -> bool:
+        if not canonical_only:
+            from unimem import sentinel_io
+
+            if sentinel_io.blocked(root, record_id):
+                return True
+        if quarantine:
+            from unimem import capability_io
+
+            if capability_io.quarantined(root, record_id):
+                return True
+        targets = forgotten()
+        if targets is None:
+            return False
+        graph = parents()
+        pending, visited = [record_id], set()
+        while pending:
+            item = pending.pop()
+            if targets.get(item):
+                return True
+            if item in visited:
+                continue
+            visited.add(item)
+            pending.extend(graph.get(item, []))
         return False
-    forgotten = {}
-    for row in _jsonl.read_rows(filename):
-        record = {k: v for k, v in row.items() if k != "origin"}
-        if not verify(root, row.get("origin", {}), record):
-            raise PermissionError("forgetting receipt is invalid")
-        forgotten[row["target_id"]] = row["forgotten"]
-    if not any(forgotten.values()):
-        return False
-    parents = {
-        r["record"].get("id"): source_ids(r["record"])
-        for r in _jsonl.read_rows(os.path.join(paths.memory_dir(root), "origins.jsonl"))
-        if verify(root, r)
-    }
-    pending, visited = [record_id], set()
-    while pending:
-        item = pending.pop()
-        if forgotten.get(item):
-            return True
-        if item in visited:
-            continue
-        visited.add(item)
-        pending.extend(parents.get(item, []))
-    return False
+
+    return blocked
 
 
 def record_forgetting(root: str, record_id: str, *, forgotten: bool):

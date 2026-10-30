@@ -1693,12 +1693,14 @@ def list_facts(
     resolver = EvidenceResolver(root, facts, as_of=as_of)
     from unimem import memory_authority
 
+    # One ledger load for the whole listing, not one per fact (see lineage_checker).
+    lineage_blocked = memory_authority.lineage_checker(root)
     for fact in facts.values():
         from unimem import capabilities
 
         if capabilities.CURRENT.get() is not None and not memory_authority.permits(root, fact):
             continue
-        if not include_forgotten and memory_authority.lineage_blocked(root, fact.id):
+        if not include_forgotten and lineage_blocked(fact.id):
             continue
         if fact.forgotten and not include_forgotten:
             continue
