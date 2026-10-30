@@ -367,6 +367,25 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
         return 0, {"error": str(exc)}
 
 
+def _recall_partition(response: dict) -> tuple[set[str], set[str]] | None:
+    deliver = response.get("deliver", [])
+    withheld = response.get("withheld", [])
+    if not isinstance(deliver, list) or not isinstance(withheld, list):
+        return None
+    ids: set[str] = set()
+    withheld_ids: set[str] = set()
+    for item in deliver:
+        identity = item.get("id") if isinstance(item, dict) else item
+        if not isinstance(identity, str):
+            return None
+        ids.add(identity)
+    for item in withheld:
+        if not isinstance(item, str):
+            return None
+        withheld_ids.add(item)
+    return ids, withheld_ids
+
+
 def check_gateway(base: str, token: str) -> list[Result]:
     run = hashlib.sha256(os.urandom(8)).hexdigest()[:10]
     out: list[Result] = []
@@ -390,8 +409,11 @@ def check_gateway(base: str, token: str) -> list[Result]:
     add("gateway:recall answers", status == 200, f"HTTP {status}")
     if status != 200:
         return out
-    delivered = {x["id"] if isinstance(x, dict) else x for x in first.get("deliver", [])}
-    withheld = set(first.get("withheld", []))
+    partition = _recall_partition(first)
+    if partition is None:
+        add("gateway:recall partitions the candidates", False, "invalid recall response")
+        return out
+    delivered, withheld = partition
     candidates = {i["id"] for i in items}
     add(
         "gateway:recall partitions the candidates",
@@ -402,9 +424,9 @@ def check_gateway(base: str, token: str) -> list[Result]:
         "gateway:a protected memory is always delivered",
         protected["id"] in delivered and protected["id"] not in withheld,
     )
-    _, second = _call(base, "POST", "/v1/recall", token, {"occasion_id": occasion, "items": [*items, protected]})
-    again = {x["id"] if isinstance(x, dict) else x for x in second.get("deliver", [])}
-    add("gateway:the same occasion gets the same partition", again == delivered)
+    status, second = _call(base, "POST", "/v1/recall", token, {"occasion_id": occasion, "items": [*items, protected]})
+    again = _recall_partition(second) if status == 200 else None
+    add("gateway:the same occasion gets the same partition", again == partition)
 
     status, _ = _call(base, "POST", "/v1/recall", token, {"items": "not a list"})
     add("gateway:a malformed request is a 400, not a crash", status == 400, f"HTTP {status}")

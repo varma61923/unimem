@@ -240,3 +240,34 @@ def test_gateway_invalid_json_response_is_reported(body):
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("response", [{"deliver": None}, {"deliver": [{}]}, {"withheld": [[]]}])
+def test_gateway_malformed_recall_response_is_reported(monkeypatch, response):
+    def call(base, method, path, token, body=None):
+        if path == "/v1/status":
+            return 401, {}
+        if path == "/v1/recall":
+            return 200, response
+        return 200, {}
+
+    monkeypatch.setattr(conformance, "_call", call)
+    results = conformance.check_gateway("http://example.test", "token")
+    assert any(r.name == "gateway:recall partitions the candidates" and not r.ok for r in results)
+
+
+def test_gateway_repeated_recall_checks_withheld_partition(monkeypatch):
+    recalls = 0
+
+    def call(base, method, path, token, body=None):
+        nonlocal recalls
+        if path == "/v1/status":
+            return 401, {}
+        if path == "/v1/recall" and body and isinstance(body.get("items"), list):
+            recalls += 1
+            return 200, {"deliver": body["items"], "withheld": [] if recalls == 1 else ["extra"]}
+        return 200, {}
+
+    monkeypatch.setattr(conformance, "_call", call)
+    results = conformance.check_gateway("http://example.test", "token")
+    assert any(r.name == "gateway:the same occasion gets the same partition" and not r.ok for r in results)
