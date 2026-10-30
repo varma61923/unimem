@@ -139,6 +139,14 @@ initialization, notification, ping and tool-list protocol messages. Other tools
 with delegated headers are denied. Capability-enabled Hub MCP uses stateless
 JSON responses so sessions cannot retain another request's delegation context.
 An HTTP client must sign each protocol request, including handshake messages.
+OTLP trace ingest runs the same gate and supports no delegated operation, so an
+enrolled delegate's key is refused there; the customer console cannot verify a
+capability and refuses an enrolled delegate's key at sign-in.
+
+A Hub `user:<uuid>` principal on REST is also bound by its role's capabilities,
+as on MCP: reads need `view`, trace contribution and record put need `curate`,
+record turns need `analyze`, and record forget, reap and admin routes need
+`security`. A role's read/write/admin scopes alone no longer suffice.
 
 Scope and class predicates run before sparse ranking, document-frequency
 selection and record hydration. Dense record search supplies native allowed IDs
