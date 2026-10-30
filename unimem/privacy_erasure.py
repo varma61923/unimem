@@ -155,6 +155,7 @@ def _purge_fact(root: str, identity: str, *, reason: str) -> dict:
             "observations",
             "control revisions",
             "graph mirrors",
+            "entity index links",
         ],
         "remote_erasure": False,
         "source_and_backup_erasure": "operator required",
@@ -227,4 +228,10 @@ def _purge_mirrors(root: str, deleted: set[str]) -> set[str]:
                 graph._edges_file(root),
                 [row for row in edges if row.get("source") not in node_ids and row.get("target") not in node_ids],
             )
+    # The entity index stores names extracted from the erased text (often the
+    # very PII being erased) keyed by fact id or lesson slug; leaving the
+    # links behind would keep those names live in recall boosts and multihop.
+    from unimem import entity_store
+
+    entity_store.unlink_memories(root, derived)
     return derived - deleted

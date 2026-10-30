@@ -40,3 +40,22 @@ def test_hard_erasure_removes_dense_candidates_and_control_revisions(tmp_path):
     with sqlite3.connect(index_path(root)) as db:
         assert db.execute("SELECT count(*) FROM unimem_vectors").fetchone()[0] == 0
     assert not list((tmp_path / "memory" / "controls" / "mental-model").glob("*.md"))
+
+
+def test_hard_erasure_unlinks_extracted_entity_names(tmp_path):
+    # Regression: purge_fact removed the fact but left the names extracted from
+    # its text (often the very PII being erased) in memory/entities/.
+    from unimem import entity_store
+
+    root = str(tmp_path)
+    erased, _ = hierarchical.add_fact(root, 'Patient "Alice Johnson" lives at ZetaCorp.Office-7')
+    kept, _ = hierarchical.add_fact(root, 'Customer "Grace Hopper" prefers email')
+    assert "alice johnson" in entity_store.load_entities(root)
+    result = purge_fact(root, erased.id, reason="gdpr")
+    assert "entity index links" in result["erased_surfaces"]
+    entities = entity_store.load_entities(root)
+    assert "alice johnson" not in entities
+    assert "zetacorp.office-7" not in entities
+    assert all(erased.id not in e["memory_ids"] for e in entities.values())
+    assert kept.id in entities["grace hopper"]["memory_ids"]
+    assert b"Alice Johnson".lower() not in (tmp_path / "memory" / "entities" / "entities.jsonl").read_bytes().lower()
