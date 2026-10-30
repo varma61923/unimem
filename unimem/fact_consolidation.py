@@ -336,19 +336,21 @@ def cluster_facts(
         members_of: dict[int, list[int]] = defaultdict(list)
         for i in range(len(group)):
             members_of[_find(parent, i)].append(i)
-        for indices in members_of.values():
+        # Both endpoints of every link share a root after the unions above, so
+        # grouping the once-sorted links by root yields each cluster's links in
+        # sorted order. Re-sorting and rescanning all links per cluster was
+        # O(C * L log L): quadratic with many small clusters (16k facts: 25 s).
+        links_of: dict[int, list[tuple[tuple[int, int], dict]]] = defaultdict(list)
+        for pair, scores in sorted(links.items()):
+            links_of[_find(parent, pair[0])].append((pair, scores))
+        for root_index, indices in members_of.items():
             if len(indices) < 2:
                 continue
             members = [group[i] for i in indices]
             canonical = _canonical(members)
             ids = sorted(f.id for f in members)
             digest = hashlib.sha256(json.dumps([list(scope_key), ids]).encode("utf-8")).hexdigest()[:16]
-            index_set = set(indices)
-            cluster_links = [
-                {"a": group[i].id, "b": group[j].id, **scores}
-                for (i, j), scores in sorted(links.items())
-                if i in index_set and j in index_set
-            ]
+            cluster_links = [{"a": group[i].id, "b": group[j].id, **scores} for (i, j), scores in links_of[root_index]]
             statements = [f.statement for f in sorted(members, key=lambda f: f.id)]
             entities = _entities(statements)
             summary, method = "", ""
