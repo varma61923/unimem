@@ -63,3 +63,69 @@ def test_nofollow_refuses_a_symlinked_journal_before_writing(tmp_path):
     with pytest.raises(OSError):
         _jsonl.append_row(str(link), {"id": "a"}, nofollow=True)
     assert target.read_text() == ""
+
+
+def test_a_failed_partial_append_is_rolled_back_so_the_next_row_survives(tmp_path, monkeypatch):
+    # Regression: a short write followed by ENOSPC used to leave an
+    # unterminated fragment; the next successful append was glued onto it and
+    # read_rows silently dropped the merged line.
+    path = str(tmp_path / "rows.jsonl")
+    _jsonl.append_row(path, {"n": 1})
+    real_write = os.write
+    calls = []
+
+    def short_then_full(fd, data):
+        calls.append(1)
+        if len(calls) == 1:
+            return real_write(fd, bytes(data[:5]))
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(_jsonl.os, "write", short_then_full)
+    with pytest.raises(OSError, match="No space"):
+        _jsonl.append_row(path, {"n": 2})
+    monkeypatch.setattr(_jsonl.os, "write", real_write)
+    with open(path, encoding="utf-8") as fh:
+        assert fh.read() == '{"n": 1}\n'
+    _jsonl.append_row(path, {"n": 3})
+    assert _jsonl.read_rows(path) == [{"n": 1}, {"n": 3}]
+
+
+def test_a_partial_append_is_kept_when_another_writer_interleaved(tmp_path, monkeypatch):
+    # Truncating to our start offset would destroy a concurrent appender's row,
+    # so rollback only happens when the file grew by exactly our bytes.
+    path = str(tmp_path / "rows.jsonl")
+    _jsonl.append_row(path, {"n": 1})
+    real_write = os.write
+    calls = []
+
+    def interleaved(fd, data):
+        calls.append(1)
+        if len(calls) == 1:
+            written = real_write(fd, bytes(data[:5]))
+            with open(path, "a", encoding="utf-8") as other:
+                other.write('{"other": true}\n')
+            return written
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(_jsonl.os, "write", interleaved)
+    with pytest.raises(OSError):
+        _jsonl.append_row(path, {"n": 2})
+    with open(path, encoding="utf-8") as fh:
+        assert '{"other": true}\n' in fh.read()
+
+
+def test_an_interrupt_mid_append_also_rolls_back(tmp_path, monkeypatch):
+    path = str(tmp_path / "rows.jsonl")
+    real_write = os.write
+    calls = []
+
+    def interrupted(fd, data):
+        calls.append(1)
+        if len(calls) == 1:
+            return real_write(fd, bytes(data[:3]))
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_jsonl.os, "write", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        _jsonl.append_row(path, {"n": 1})
+    assert os.path.getsize(path) == 0
