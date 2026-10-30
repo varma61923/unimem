@@ -1,5 +1,6 @@
 """The durable job queue: enqueue, dedupe, claim with lease, retries with backoff,
 dead jobs, handlers, the daemon hook, the CLI, and the batch API's fallback."""
+
 import json
 import sqlite3
 import subprocess
@@ -204,8 +205,10 @@ def test_live_worker_renews_lease_and_stops_heartbeat(root, monkeypatch):
 def test_queue_migrates_legacy_schema_without_losing_jobs(root, flaky):
     with sqlite3.connect(jobs.db_path(root)) as db:
         db.executescript(jobs._SCHEMA.replace("    lease_token TEXT,\n", ""))
-        db.execute("INSERT INTO jobs (id, kind, payload, run_after, created, updated) VALUES (?, ?, ?, 0, 0, 0)",
-                   ("legacy", "test", '{"x": 1}'))
+        db.execute(
+            "INSERT INTO jobs (id, kind, payload, run_after, created, updated) VALUES (?, ?, ?, 0, 0, 0)",
+            ("legacy", "test", '{"x": 1}'),
+        )
     claimed = jobs.claim(root)
     assert claimed.id == "legacy" and claimed.payload == {"x": 1} and claimed.lease_token
     jobs.complete(root, claimed.id, {"ok": True}, lease_token=claimed.lease_token)
@@ -285,8 +288,13 @@ def test_daemon_runs_queued_jobs(root, flaky):
 
 def test_cli(root):
     def ct(*args):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "jobs", *args, "--dest", root],  # nosec
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "jobs", *args, "--dest", root],  # nosec
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     out = ct("add", "link", "--payload", '{"spacy": false}', "--json")
     job_id = json.loads(out.stdout)["id"]
     assert ct("run").returncode == 0

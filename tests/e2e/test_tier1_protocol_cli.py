@@ -52,13 +52,20 @@ def test_export_validates_kind_choices(cli_runner: Callable[..., CLIResult], iso
 
 
 def test_lesson_new_validates_slug_pattern(cli_runner: Callable[..., CLIResult], isolated_store: Path) -> None:
-    res = cli_runner([
-        "lesson", "new",
-        "--slug", "../traversal_lesson",
-        "--description", "desc",
-        "--domain", "security",
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "lesson",
+            "new",
+            "--slug",
+            "../traversal_lesson",
+            "--description",
+            "desc",
+            "--domain",
+            "security",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code in (1, 2)
     assert "invalid --slug" in res.stderr or "error" in res.stderr
 
@@ -74,7 +81,9 @@ def test_exit_code_0_on_success(cli_runner: Callable[..., CLIResult], isolated_s
     assert res_version.exit_code == 0
 
 
-def test_exit_code_1_on_operational_and_validation_error(cli_runner: Callable[..., CLIResult], isolated_store: Path) -> None:
+def test_exit_code_1_on_operational_and_validation_error(
+    cli_runner: Callable[..., CLIResult], isolated_store: Path
+) -> None:
     res = cli_runner(["lesson", "validate", "/nonexistent/path.md", "--dest", str(isolated_store)])
     assert res.exit_code == 1
     assert "error" in res.stderr.lower()
@@ -106,14 +115,21 @@ def test_capture_refuses_negative_tokens_used_pre_write(
     traces_dir = isolated_store / "memory" / "traces"
     existing_files = set(traces_dir.glob("*.md")) if traces_dir.exists() else set()
 
-    res = cli_runner([
-        "capture",
-        "--title", "Test Negative Tokens",
-        "--context", "Problem with negative tokens",
-        "--solution", "Attempted fix",
-        "--tokens-used", "-100",
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Test Negative Tokens",
+            "--context",
+            "Problem with negative tokens",
+            "--solution",
+            "Attempted fix",
+            "--tokens-used",
+            "-100",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code == 1
     assert "refusing to write an invalid trace" in res.stderr
 
@@ -128,14 +144,21 @@ def test_capture_refuses_negative_llm_calls_pre_write(
     traces_dir = isolated_store / "memory" / "traces"
     existing_files = set(traces_dir.glob("*.md")) if traces_dir.exists() else set()
 
-    res = cli_runner([
-        "capture",
-        "--title", "Test Negative LLM Calls",
-        "--context", "Problem with negative calls",
-        "--solution", "Attempted fix",
-        "--llm-calls", "-1",
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Test Negative LLM Calls",
+            "--context",
+            "Problem with negative calls",
+            "--solution",
+            "Attempted fix",
+            "--llm-calls",
+            "-1",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code == 1
     assert "refusing to write an invalid trace" in res.stderr
 
@@ -147,16 +170,24 @@ def test_capture_writes_valid_schema_and_validates(
     cli_runner: Callable[..., CLIResult],
     isolated_store: Path,
 ) -> None:
-    res_cap = cli_runner([
-        "capture",
-        "--title", "Valid Trace Verification",
-        "--context", "Valid problem context",
-        "--solution", "Valid solution implemented",
-        "--tokens-used", "500",
-        "--llm-calls", "3",
-        "--resolved",
-        "--dest", str(isolated_store),
-    ])
+    res_cap = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Valid Trace Verification",
+            "--context",
+            "Valid problem context",
+            "--solution",
+            "Valid solution implemented",
+            "--tokens-used",
+            "500",
+            "--llm-calls",
+            "3",
+            "--resolved",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res_cap.exit_code == 0
     assert "captured trace" in res_cap.output.lower()
 
@@ -169,6 +200,7 @@ def test_lesson_new_refuses_oversized_payload(
     isolated_store: Path,
 ) -> None:
     from unimem.commands._validators import REFUSE_CHARS, check_text_size
+
     fields = {"description": "X" * (REFUSE_CHARS + 100), "applies_when": "always"}
     assert check_text_size(fields, what="lesson") is False
 
@@ -296,9 +328,19 @@ def test_install_sh_supports_in_place_flag() -> None:
         text=True,
     )
     assert res.returncode == 0
-    assert "Install complete" in res.stdout or "Installation complete" in res.stdout or "Setup complete" in res.stdout or "Done" in res.stdout
+    assert (
+        "Install complete" in res.stdout
+        or "Installation complete" in res.stdout
+        or "Setup complete" in res.stdout
+        or "Done" in res.stdout
+    )
 
 
 def test_install_sh_references_valid_reference_paths() -> None:
     content = INSTALL_SCRIPT.read_text(encoding="utf-8")
-    assert "unimem/reference/build_index.py" in content or "unimem.cli index" in content or "unimem index" in content or "memory/attention/build_index.py" in content
+    assert (
+        "unimem/reference/build_index.py" in content
+        or "unimem.cli index" in content
+        or "unimem index" in content
+        or "memory/attention/build_index.py" in content
+    )

@@ -1,4 +1,5 @@
 """Review pages stay exact without hydrating the full knowledge corpus."""
+
 from __future__ import annotations
 
 import uuid
@@ -26,9 +27,16 @@ async def owner(session_factory):
 
 def entry(owner, number, **overrides):
     fields = dict(
-        id=str(uuid.UUID(int=number)), org_id=owner, title=f"entry {number}",
-        context_text="context", solution_text="solution", tags=[], agent_type="code",
-        shared_with_commons=True, commons_source="seed", commons_hits=4,
+        id=str(uuid.UUID(int=number)),
+        org_id=owner,
+        title=f"entry {number}",
+        context_text="context",
+        solution_text="solution",
+        tags=[],
+        agent_type="code",
+        shared_with_commons=True,
+        commons_source="seed",
+        commons_hits=4,
     )
     fields.update(overrides)
     return fields
@@ -56,11 +64,14 @@ async def test_priority_visibility_and_unestablished_security_reports(session_fa
         await session.flush()
         await session.execute(insert(Trace), entries)
         # Trust eligibility applies to standing, never to safety reports.
-        await session.execute(insert(Vote), [
-            dict(trace_id=e["id"], org_id=young_voter.id, vote_type="up",
-                 feedback_tag="security_concern")
-            for e in entries if int(uuid.UUID(e["id"])) in (4, 7, 8, 9, 10, 11)
-        ])
+        await session.execute(
+            insert(Vote),
+            [
+                dict(trace_id=e["id"], org_id=young_voter.id, vote_type="up", feedback_tag="security_concern")
+                for e in entries
+                if int(uuid.UUID(e["id"])) in (4, 7, 8, 9, 10, 11)
+            ],
+        )
     async with session_scope(session_factory) as session:
         queue, total = await crud.kb_review_queue_and_total(session, limit=2)
         full = await crud.kb_review_queue(session)

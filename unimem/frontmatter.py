@@ -1,4 +1,5 @@
 """Read/write Markdown files with YAML frontmatter (the UniMem file format)."""
+
 from __future__ import annotations
 
 import collections
@@ -35,9 +36,7 @@ _DROPPED_YAML_TAGS = frozenset({"tag:yaml.org,2002:bool", "tag:yaml.org,2002:tim
 
 class _StrictBoolLoader(yaml.SafeLoader):
     yaml_implicit_resolvers = {
-        first_char: [
-            (tag, regexp) for tag, regexp in resolvers if tag not in _DROPPED_YAML_TAGS
-        ]
+        first_char: [(tag, regexp) for tag, regexp in resolvers if tag not in _DROPPED_YAML_TAGS]
         for first_char, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
     }
 
@@ -45,7 +44,8 @@ class _StrictBoolLoader(yaml.SafeLoader):
         event = self.peek_event()
         if isinstance(event, yaml.events.AliasEvent) or getattr(event, "anchor", None) is not None:
             raise yaml.composer.ComposerError(
-                None, None,
+                None,
+                None,
                 "YAML anchors/aliases are not permitted in UniMem frontmatter",
                 event.start_mark,
             )
@@ -60,8 +60,11 @@ _StrictBoolLoader.add_implicit_resolver(
 
 
 if getattr(yaml, "__with_libyaml__", False):
-    class _CStrictBoolLoader(yaml.CSafeLoader):  # type: ignore[name-defined, misc]
+
+    class _CStrictBoolLoaderClass(yaml.CSafeLoader):  # type: ignore[name-defined, misc]
         yaml_implicit_resolvers = _StrictBoolLoader.yaml_implicit_resolvers
+
+    _CStrictBoolLoader: type[_CStrictBoolLoaderClass] | None = _CStrictBoolLoaderClass
 else:  # pragma: no cover -- exercised where PyYAML was built without libyaml
     _CStrictBoolLoader = None
 
@@ -75,8 +78,7 @@ def load_text(fm_text: str) -> Any:
     return yaml.load(fm_text, Loader=_StrictBoolLoader)  # nosec B506
 
 
-class FrontmatterError(ValueError):
-    ...
+class FrontmatterError(ValueError): ...
 
 
 _PARSED: "collections.OrderedDict[str, Any]" = collections.OrderedDict()
@@ -159,9 +161,9 @@ def parse_content(content: str, *, source: str = "document") -> tuple[dict[str, 
         return {}, content
     first = _DELIM_RE.search(content)
     second = _DELIM_RE.search(content, first.end()) if first else None
-    if second is None:
+    if first is None or second is None:
         return {}, content
-    fm_text = content[first.end():second.start()]
+    fm_text = content[first.end() : second.start()]
     try:
         fm = _parse(fm_text)
     except yaml.YAMLError as exc:
@@ -169,10 +171,8 @@ def parse_content(content: str, *, source: str = "document") -> tuple[dict[str, 
     if fm is None:
         fm = {}
     if not isinstance(fm, dict):
-        raise FrontmatterError(
-            f"{source}: frontmatter must be a YAML mapping, got {type(fm).__name__}"
-        )
-    body = content[second.end():].lstrip("\n")
+        raise FrontmatterError(f"{source}: frontmatter must be a YAML mapping, got {type(fm).__name__}")
+    body = content[second.end() :].lstrip("\n")
     return fm, body
 
 
@@ -188,7 +188,7 @@ def read_body(path: str) -> str:
     second = _DELIM_RE.search(content, first.end()) if first else None
     if second is None:
         return content
-    return content[second.end():].lstrip("\n")
+    return content[second.end() :].lstrip("\n")
 
 
 def validate_expires(value: object) -> str:
@@ -343,7 +343,8 @@ def locked(path: str, *, timeout: float = _LOCK_TIMEOUT_SECONDS):
         warnings.warn(
             "frontmatter.locked: no fcntl/msvcrt on this platform; "
             "the lock is a no-op and concurrent read-modify-write is unsafe",
-            RuntimeWarning, stacklevel=2,
+            RuntimeWarning,
+            stacklevel=2,
         )
         yield
         return

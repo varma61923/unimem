@@ -1,4 +1,5 @@
 """Transport validation rejects malformed batches before writing any memory."""
+
 from __future__ import annotations
 
 import asyncio
@@ -35,14 +36,27 @@ def running_gateway(root: Path) -> Iterator[tuple[str, int]]:
 @pytest.mark.parametrize("field", ["text", "content", "role", "speaker", "name"])
 @pytest.mark.parametrize("value", [{"arbitrary": "object"}, ["system"], True, 123])
 def test_real_http_rejects_invalid_batch_before_creating_store(
-    tmp_path: Path, field: str, value: Any,
+    tmp_path: Path,
+    field: str,
+    value: Any,
 ) -> None:
-    messages = [{"text": "This first valid turn must not be partly persisted."},
-                {"text": "A second turn.", field: value}]
+    messages = [
+        {"text": "This first valid turn must not be partly persisted."},
+        {"text": "A second turn.", field: value},
+    ]
     with running_gateway(tmp_path) as address, contextlib.closing(http.client.HTTPConnection(*address)) as client:
-        client.request("POST", "/v1/conversation/add", body=json.dumps({
-            "space": "untrusted", "session": "batch", "messages": messages,
-        }), headers={"Authorization": "Bearer test-only-token", "Content-Type": "application/json"})
+        client.request(
+            "POST",
+            "/v1/conversation/add",
+            body=json.dumps(
+                {
+                    "space": "untrusted",
+                    "session": "batch",
+                    "messages": messages,
+                }
+            ),
+            headers={"Authorization": "Bearer test-only-token", "Content-Type": "application/json"},
+        )
         response = client.getresponse()
         payload = json.loads(response.read())
         assert response.status == 400
@@ -51,15 +65,26 @@ def test_real_http_rejects_invalid_batch_before_creating_store(
 
 
 def test_valid_nullable_messages_and_numeric_ids_keep_capture_compatibility(tmp_path: Path) -> None:
-    messages = [{"text": None, "content": None, "role": None, "speaker": None, "name": None},
-                {"content": "The team works in Oslo.", "id": 123, "role": "user"}]
+    messages = [
+        {"text": None, "content": None, "role": None, "speaker": None, "name": None},
+        {"content": "The team works in Oslo.", "id": 123, "role": "user"},
+    ]
     validate_messages(messages)
     assert messages[0]["text"] is None
     with running_gateway(tmp_path) as address, contextlib.closing(http.client.HTTPConnection(*address)) as client:
         for _ in range(2):
-            client.request("POST", "/v1/conversation/add", body=json.dumps({
-                "space": "compatible", "session": "batch", "messages": messages,
-            }), headers={"Authorization": "Bearer test-only-token", "Content-Type": "application/json"})
+            client.request(
+                "POST",
+                "/v1/conversation/add",
+                body=json.dumps(
+                    {
+                        "space": "compatible",
+                        "session": "batch",
+                        "messages": messages,
+                    }
+                ),
+                headers={"Authorization": "Bearer test-only-token", "Content-Type": "application/json"},
+            )
             response = client.getresponse()
             payload = json.loads(response.read())
             assert response.status == 200
@@ -71,10 +96,16 @@ def test_valid_nullable_messages_and_numeric_ids_keep_capture_compatibility(tmp_
 def test_mcp_invalid_batch_is_refused_without_memory_write(tmp_path: Path) -> None:
     pytest.importorskip("mcp")
     server = mcp_server.build_server(str(tmp_path))
-    result = asyncio.run(server.call_tool("conversation_add", {
-        "space": "untrusted", "session": "batch",
-        "messages": [{"text": "Valid first turn."}, {"text": {"not": "a string"}}],
-    }))
+    result = asyncio.run(
+        server.call_tool(
+            "conversation_add",
+            {
+                "space": "untrusted",
+                "session": "batch",
+                "messages": [{"text": "Valid first turn."}, {"text": {"not": "a string"}}],
+            },
+        )
+    )
     payload = json.loads(result.content[0].text)
     assert payload["ok"] is False
     assert "must be a string or null" in payload["error"]

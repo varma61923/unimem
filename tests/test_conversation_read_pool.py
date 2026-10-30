@@ -1,4 +1,5 @@
 """Production read reuse preserves source boundaries and bounded capacity."""
+
 import os
 import sqlite3
 import threading
@@ -153,8 +154,10 @@ def test_close_allows_active_read_to_finish_then_releases_handle(tmp_path):
             pytest.fail("closed pool reopened")
 
 
-@pytest.mark.parametrize("limits", [{"maximum": 0}, {"per_path": 17}, {"wait_seconds": float("nan")},
-                                   {"idle_seconds": "60"}, {"wait_seconds": True}])
+@pytest.mark.parametrize(
+    "limits",
+    [{"maximum": 0}, {"per_path": 17}, {"wait_seconds": float("nan")}, {"idle_seconds": "60"}, {"wait_seconds": True}],
+)
 def test_invalid_resource_limits_fail_closed(limits):
     with pytest.raises(ValueError):
         ReadPool(**limits)

@@ -4,6 +4,7 @@ The hardcoded digests below were generated from the pre-move implementations in
 hub/crud.py and unimem/hub_client.py; they prove the move to
 unimem.fingerprints kept every output identical.
 """
+
 from __future__ import annotations
 
 import json
@@ -95,9 +96,11 @@ class TestIngestorResumption:
 
         docs = tmp_path / "docs"
         docs.mkdir()
-        (docs / "guide.md").write_text("# Architecture\n\nPrefer async IO for all service calls everywhere. "
-                                        "This keeps tail latency low under load.\n",
-                                       encoding="utf-8")
+        (docs / "guide.md").write_text(
+            "# Architecture\n\nPrefer async IO for all service calls everywhere. "
+            "This keeps tail latency low under load.\n",
+            encoding="utf-8",
+        )
         first = ingest_markdown_documentation(store, str(docs), scope="arch")
         assert first.facts_written > 0
         second = ingest_markdown_documentation(store, str(docs), scope="arch")
@@ -108,8 +111,10 @@ class TestIngestorResumption:
 
         log = tmp_path / "svc.jsonl"
         log.write_text(
-            json.dumps({"level": "ERROR", "message": "timeout to payments service"}) + "\n"
-            + json.dumps({"level": "ERROR", "message": "timeout to payments service"}) + "\n",
+            json.dumps({"level": "ERROR", "message": "timeout to payments service"})
+            + "\n"
+            + json.dumps({"level": "ERROR", "message": "timeout to payments service"})
+            + "\n",
             encoding="utf-8",
         )
         first = ingest_json_logs(store, str(log), scope="pay")
@@ -121,8 +126,10 @@ class TestIngestorResumption:
         from unimem.ingest import ingest_failure_transcript
 
         run = tmp_path / "run.jsonl"
-        run.write_text(json.dumps({"step_index": 1, "status": "ERROR", "content": "database is unreachable"}) + "\n",
-                       encoding="utf-8")
+        run.write_text(
+            json.dumps({"step_index": 1, "status": "ERROR", "content": "database is unreachable"}) + "\n",
+            encoding="utf-8",
+        )
         first = ingest_failure_transcript(store, str(run))
         assert first.traces_written == 1
         second = ingest_failure_transcript(store, str(run))
@@ -132,8 +139,9 @@ class TestIngestorResumption:
         from unimem.ingest import ingest_fact_triples
 
         path = tmp_path / "triples.json"
-        path.write_text(json.dumps([{"subject": "svc:api", "predicate": "depends_on", "object": "svc:db"}]),
-                        encoding="utf-8")
+        path.write_text(
+            json.dumps([{"subject": "svc:api", "predicate": "depends_on", "object": "svc:db"}]), encoding="utf-8"
+        )
         first = ingest_fact_triples(str(path), store)
         assert first.facts_written == 1
         second = ingest_fact_triples(str(path), store)
@@ -149,8 +157,10 @@ class TestIngestorResumption:
         from unimem.ingest import ingest_multimodal_document
 
         page = tmp_path / "page.html"
-        page.write_text("<html><head><title>Runbook</title></head><body><p>" + ("Retry with backoff. " * 40)
-                        + "</p></body></html>", encoding="utf-8")
+        page.write_text(
+            "<html><head><title>Runbook</title></head><body><p>" + ("Retry with backoff. " * 40) + "</p></body></html>",
+            encoding="utf-8",
+        )
         first = ingest_multimodal_document(store, str(page))
         assert first.chunks_extracted > 0
         second = ingest_multimodal_document(store, str(page))
@@ -243,8 +253,9 @@ class TestManifestAccounting:
         docs = tmp_path / "docs"
         docs.mkdir()
         for i in range(4):
-            (docs / f"d{i}.md").write_text(f"# Doc {i}\n\nThis paragraph states operational fact number {i} here.\n",
-                                           encoding="utf-8")
+            (docs / f"d{i}.md").write_text(
+                f"# Doc {i}\n\nThis paragraph states operational fact number {i} here.\n", encoding="utf-8"
+            )
         res = pl.create_document_pipeline(str(docs), store, contextualize="none", max_files=1).run()
         assert res.truncated == 3
 
@@ -270,8 +281,16 @@ class TestManifestAccounting:
         assert res.chunks_extracted == 0 and res.errors
         ihdr = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
         png = tmp_path / "dot.png"
-        png.write_bytes(b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + ihdr + b"\x00\x00\x00\x00"
-                        + struct.pack(">I", 0) + b"IEND" + b"\x00\x00\x00\x00")
+        png.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + struct.pack(">I", 13)
+            + b"IHDR"
+            + ihdr
+            + b"\x00\x00\x00\x00"
+            + struct.pack(">I", 0)
+            + b"IEND"
+            + b"\x00\x00\x00\x00"
+        )
         chunks = mm.INGEST_FNS[".png"](str(png))
         assert len(chunks) == 1 and "1x1" in chunks[0].content
 
@@ -286,9 +305,12 @@ class TestConversationSessionKeys:
         dir_b = tmp_path / "b"
         dir_a.mkdir()
         dir_b.mkdir()
-        (dir_a / "notes.md").write_text("# Alpha notes\n\nThe alpha service restarts at midnight daily.\n",
-                                        encoding="utf-8")
-        (dir_b / "notes.md").write_text("# Beta notes\n\nThe beta service compacts its queue hourly.\n", encoding="utf-8")
+        (dir_a / "notes.md").write_text(
+            "# Alpha notes\n\nThe alpha service restarts at midnight daily.\n", encoding="utf-8"
+        )
+        (dir_b / "notes.md").write_text(
+            "# Beta notes\n\nThe beta service compacts its queue hourly.\n", encoding="utf-8"
+        )
         pl.create_document_pipeline(str(dir_a), store, space="s", contextualize="none").run()
         pl.create_document_pipeline(str(dir_b), store, space="s", contextualize="none").run()
         with Store(store, "s") as conv:
@@ -303,8 +325,9 @@ class TestConversationSessionKeys:
         os.makedirs(os.path.join(store, "memory"), exist_ok=True)
         docs = tmp_path / "docs"
         docs.mkdir()
-        (docs / "notes.md").write_text("# Notes\n\nThegamma service restarts at midnight daily here.\n",
-                                       encoding="utf-8")
+        (docs / "notes.md").write_text(
+            "# Notes\n\nThegamma service restarts at midnight daily here.\n", encoding="utf-8"
+        )
         pl.create_document_pipeline(str(docs), store, space="s", contextualize="none").run()
         pl.create_document_pipeline(str(docs), store, space="s", contextualize="none").run()
         with Store(store, "s") as conv:

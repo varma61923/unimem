@@ -64,10 +64,7 @@ class TestParseJsonl:
         assert imported[0].outcome == {"resolved": True, "baseline": True, "tokens_used": 150}
 
     def test_top_level_outcome_field_wins_over_nested(self):
-        lines = [
-            '{"title": "t1", "context": "c1", "solution": "s1", '
-            '"resolved": false, "outcome": {"resolved": true}}'
-        ]
+        lines = ['{"title": "t1", "context": "c1", "solution": "s1", "resolved": false, "outcome": {"resolved": true}}']
         imported, _ = import_data.parse_jsonl(iter(lines), FieldMapping())
         assert imported[0].outcome == {"resolved": False}
 
@@ -81,7 +78,7 @@ class TestParseJsonl:
 
 class TestParseCsv:
     def test_parses_csv_rows(self):
-        csv_text = "title,context,solution,tags\nt1,c1,s1,\"a;b\"\n"
+        csv_text = 'title,context,solution,tags\nt1,c1,s1,"a;b"\n'
         imported, skipped = import_data.parse_csv(io.StringIO(csv_text), FieldMapping())
         assert len(imported) == 1
         assert skipped == []
@@ -95,11 +92,20 @@ class TestParseCsv:
 
 
 class TestBoolParsing:
-    @pytest.mark.parametrize("raw,expected", [
-        ("true", True), ("True", True), ("1", True), ("yes", True),
-        ("false", False), ("0", False), ("no", False),
-        ("", None), ("maybe", None),
-    ])
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("true", True),
+            ("True", True),
+            ("1", True),
+            ("yes", True),
+            ("false", False),
+            ("0", False),
+            ("no", False),
+            ("", None),
+            ("maybe", None),
+        ],
+    )
     def test_parse_bool(self, raw, expected):
         assert import_data._parse_bool(raw) == expected
 
@@ -161,9 +167,7 @@ class TestImportCommand:
         rc = main(["import", str(jsonl_path), "--agent-type", "support", "--dry-run", "--dest", str(store)])
         assert rc == 1
 
-    def test_dry_run_reports_a_schema_invalid_row_as_rejected_not_written(
-        self, store, tmp_path, capsys
-    ):
+    def test_dry_run_reports_a_schema_invalid_row_as_rejected_not_written(self, store, tmp_path, capsys):
         main(["init", "--agent-type", "support", "--dest", str(store)])
         jsonl_path = tmp_path / "export.jsonl"
         jsonl_path.write_text(
@@ -219,7 +223,9 @@ class TestSourceIdCannotInjectMarkdownSections:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         jsonl_path = tmp_path / "export.jsonl"
         payload = {
-            "title": "t1", "context": "real context", "solution": "real solution",
+            "title": "t1",
+            "context": "real context",
+            "solution": "real solution",
             "id": "TICKET-1\n## Context\nINJECTED FAKE CONTEXT\n## Solution\nINJECTED FAKE SOLUTION",
         }
         jsonl_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
@@ -240,7 +246,9 @@ class TestSourceIdCannotInjectMarkdownSections:
         main(["init", "--agent-type", "support", "--dest", str(store)])
         jsonl_path = tmp_path / "export.jsonl"
         payload = {
-            "title": "t1", "context": "c1", "solution": "s1",
+            "title": "t1",
+            "context": "c1",
+            "solution": "s1",
             "id": "TICKET-1\nsneaky-second-line",
         }
         jsonl_path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
@@ -269,8 +277,7 @@ def test_legacy_field_names_still_import():
 
 
 def test_an_explicit_mapping_still_wins():
-    parsed, skipped = _one({"title": "t", "body": "ctx", "fix": "sol"},
-                           FieldMapping(context="body", solution="fix"))
+    parsed, skipped = _one({"title": "t", "body": "ctx", "fix": "sol"}, FieldMapping(context="body", solution="fix"))
     assert skipped == [] and parsed[0].context_text == "ctx"
 
 

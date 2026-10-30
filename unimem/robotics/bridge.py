@@ -1,4 +1,5 @@
 """Planner-level recall/act/outcome bridge with a lazy ROS 2 node adapter."""
+
 from __future__ import annotations
 
 import json
@@ -14,8 +15,7 @@ class GatewayTransport(Protocol):
 
 
 class _NoRedirect(HTTPRedirectHandler):
-    def redirect_request(self, req: Any, fp: Any, code: int, msg: str,
-                         headers: Any, newurl: str) -> Any:
+    def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
         raise ValueError("robot gateway redirects are refused")
 
 
@@ -23,18 +23,28 @@ class HTTPGateway:
     def __init__(self, endpoint: str, token: str, *, timeout: float = 10) -> None:
         fp.text(endpoint, "gateway endpoint", 2048)
         parsed = urlsplit(endpoint)
-        if (parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost"))
-                or parsed.username or parsed.password or parsed.query or parsed.fragment):
+        if (
+            parsed.scheme != "https"
+            and not (parsed.scheme == "http" and parsed.hostname in ("127.0.0.1", "localhost"))
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
+        ):
             raise ValueError("gateway requires HTTPS or loopback HTTP without embedded credentials")
         fp.text(token, "gateway token", 4096)
         self.endpoint, self._token = endpoint.rstrip("/"), token
-        self.timeout = fp.number(timeout, .1, 60)
+        self.timeout = fp.number(timeout, 0.1, 60)
 
     def post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         if path not in ("/v1/recall", "/v1/outcome"):
             raise ValueError("robot bridge permits only recall and outcome gateway operations")
-        req = Request(self.endpoint + path, fp.wire(body), method="POST",
-                      headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json"})
+        req = Request(
+            self.endpoint + path,
+            fp.wire(body),
+            method="POST",
+            headers={"Authorization": "Bearer " + self._token, "Content-Type": "application/json"},
+        )
         try:
             with build_opener(_NoRedirect()).open(req, timeout=self.timeout) as response:
                 raw = response.read(fp.MAX_BYTES + 1)
@@ -50,8 +60,17 @@ class HTTPGateway:
 
 
 class RobotBridge:
-    def __init__(self, transport: GatewayTransport, *, embodiment: str, site: str, skill: str, robot: str,
-                 outcome_queue: Any = None, prewarm: Callable[[str], object] | None = None) -> None:
+    def __init__(
+        self,
+        transport: GatewayTransport,
+        *,
+        embodiment: str,
+        site: str,
+        skill: str,
+        robot: str,
+        outcome_queue: Any = None,
+        prewarm: Callable[[str], object] | None = None,
+    ) -> None:
         from unimem import holdout_io
 
         self.transport = transport
@@ -70,8 +89,12 @@ class RobotBridge:
     def start(self, occasion: str, query: str, *, items: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         fp.text(occasion)
         fp.text(query, "planner query", 4096)
-        body: dict[str, Any] = {"occasion_id": occasion, "query": query, "agent_id": self.robot,
-                                "context": self.context}
+        body: dict[str, Any] = {
+            "occasion_id": occasion,
+            "query": query,
+            "agent_id": self.robot,
+            "context": self.context,
+        }
         if items is not None:
             fp.count(len(items), 0, 200)
             body["items"] = items
@@ -84,10 +107,17 @@ class RobotBridge:
                 self._recalls.pop(next(iter(self._recalls)))
         return result
 
-    def authorize_action(self, occasion: str, action: dict[str, Any], *, spec_id: str,
-                         trace: list[dict[str, Any]], monitor: Callable[[dict[str, Any]], dict[str, Any]] | None,
-                         recovery_context: dict[str, str] | None = None,
-                         failure_type: str | None = None) -> dict[str, Any]:
+    def authorize_action(
+        self,
+        occasion: str,
+        action: dict[str, Any],
+        *,
+        spec_id: str,
+        trace: list[dict[str, Any]],
+        monitor: Callable[[dict[str, Any]], dict[str, Any]] | None,
+        recovery_context: dict[str, str] | None = None,
+        failure_type: str | None = None,
+    ) -> dict[str, Any]:
         """Fail closed unless an action is checked against memory recalled this occasion."""
         fp.text(occasion, "occasion", 128)
         if not isinstance(action, dict) or not action:
@@ -97,10 +127,13 @@ class RobotBridge:
         memories = recall.get("deliver", []) if recall else []
         source_ids = sorted({row["id"] for row in memories if isinstance(row, dict) and isinstance(row.get("id"), str)})
         if monitor is None or not source_ids:
-            return {"allowed": False, "reason": "shield is not configured or no memory was recalled",
-                    "verdict": "hold"}
-        request: dict[str, Any] = {"spec_id": spec_id, "action": action, "trace": trace,
-                                   "source_memory_ids": source_ids}
+            return {"allowed": False, "reason": "shield is not configured or no memory was recalled", "verdict": "hold"}
+        request: dict[str, Any] = {
+            "spec_id": spec_id,
+            "action": action,
+            "trace": trace,
+            "source_memory_ids": source_ids,
+        }
         if recovery_context is not None:
             request["recovery_context"] = recovery_context
         if failure_type is not None:
@@ -109,8 +142,12 @@ class RobotBridge:
         if not isinstance(result, dict):
             return {"allowed": False, "reason": "invalid monitor response", "verdict": "hold"}
         allowed = result.get("verdict") == "safe" and result.get("action") == "continue"
-        return {"allowed": allowed, "verdict": result.get("verdict", "invalid-monitor-response"),
-                "lineage_id": result.get("lineage_id"), "monitor": result}
+        return {
+            "allowed": allowed,
+            "verdict": result.get("verdict", "invalid-monitor-response"),
+            "lineage_id": result.get("lineage_id"),
+            "monitor": result,
+        }
 
     def finish(self, occasion: str, succeeded: bool) -> dict[str, Any]:
         fp.text(occasion)
@@ -131,12 +168,19 @@ class RobotBridge:
         return result
 
 
-def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, node_factory: Any = None,
-                message_type: Any = None, on_failure: Callable[[dict[str, Any]], Any] | None = None,
-                on_scene: Callable[[dict[str, Any]], Any] | None = None,
-                on_ask: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                service_type: Any = None, on_shield: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                shield_service_type: Any = None) -> Any:
+def create_node(
+    bridge: RobotBridge,
+    *,
+    topics: dict[str, str] | None = None,
+    node_factory: Any = None,
+    message_type: Any = None,
+    on_failure: Callable[[dict[str, Any]], Any] | None = None,
+    on_scene: Callable[[dict[str, Any]], Any] | None = None,
+    on_ask: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    service_type: Any = None,
+    on_shield: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    shield_service_type: Any = None,
+) -> Any:
     """Use std_msgs/String JSON envelopes; injectable node/message types keep CI ROS-free.
 
     Success-detector/task-end topics call finish. Failures and scene deltas are
@@ -150,10 +194,17 @@ def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, no
         except ImportError:
             raise RuntimeError("install ROS 2 rclpy/std_msgs and unimem[robotics] to start the ROS node") from None
         node_factory, message_type = Node, String
-    config = {"start": "/task/start", "end": "/task/end", "success": "/task/success",
-              "failure": "/task/failure", "scene": "/scene/deltas", "memories": "/planner/memories",
-              "ask_service": "/unimem/robot_"+fp.digest(bridge.robot)[:16]+"/should_ask",
-              "shield_service": "/unimem/robot_"+fp.digest(bridge.robot)[:16]+"/shield", **(topics or {})}
+    config = {
+        "start": "/task/start",
+        "end": "/task/end",
+        "success": "/task/success",
+        "failure": "/task/failure",
+        "scene": "/scene/deltas",
+        "memories": "/planner/memories",
+        "ask_service": "/unimem/robot_" + fp.digest(bridge.robot)[:16] + "/should_ask",
+        "shield_service": "/unimem/robot_" + fp.digest(bridge.robot)[:16] + "/shield",
+        **(topics or {}),
+    }
     for topic in config.values():
         fp.text(topic, "ROS topic", 256)
     node = node_factory("unimem_memory")
@@ -169,6 +220,7 @@ def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, no
                 logger = getattr(node, "get_logger", None)
                 if callable(logger):
                     logger().error(f"unimem memory callback rejected a message: {type(exc).__name__}")
+
         return callback
 
     def decode(message: Any) -> dict[str, Any]:
@@ -203,8 +255,7 @@ def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, no
             try:
                 from unimem_interfaces.srv import ShouldAsk
             except ImportError:
-                raise RuntimeError(
-                    "build and source ros2/unimem_interfaces to enable the ShouldAsk service") from None
+                raise RuntimeError("build and source ros2/unimem_interfaces to enable the ShouldAsk service") from None
             service_type = ShouldAsk
 
         def should_ask_service(request: Any, response: Any) -> Any:
@@ -228,8 +279,7 @@ def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, no
             try:
                 from unimem_interfaces.srv import CheckShield
             except ImportError:
-                raise RuntimeError(
-                    "build and source ros2/unimem_interfaces to enable the shield service") from None
+                raise RuntimeError("build and source ros2/unimem_interfaces to enable the shield service") from None
             shield_service_type = CheckShield
 
         def shield_service(request: Any, response: Any) -> Any:
@@ -260,25 +310,30 @@ def create_node(bridge: RobotBridge, *, topics: dict[str, str] | None = None, no
     return node
 
 
-def household_scene_handler(root: str, *, room_resolver: Callable[[dict[str, Any]], str],
-                            robot_identity_resolver: Callable[[dict[str, Any]], list[dict[str, Any]]],
-                            persist: Callable[[dict[str, Any], list[dict[str, str]], dict[str, Any]], Any]
-                            ) -> Callable[[dict[str, Any]], dict[str, Any]]:
+def household_scene_handler(
+    root: str,
+    *,
+    room_resolver: Callable[[dict[str, Any]], str],
+    robot_identity_resolver: Callable[[dict[str, Any]], list[dict[str, Any]]],
+    persist: Callable[[dict[str, Any], list[dict[str, str]], dict[str, Any]], Any],
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """Bind robot-stack identity and room signals to the household write gate."""
     from unimem.household import bridge_scene_handler
 
-    return bridge_scene_handler(root, room_resolver=room_resolver,
-                                identity_resolver=robot_identity_resolver, persist=persist)
+    return bridge_scene_handler(
+        root, room_resolver=room_resolver, identity_resolver=robot_identity_resolver, persist=persist
+    )
 
 
-def signature_sample_handler(root: str, *, skill: str, embodiment: str, site: str,
-                             scopes: list[str] | None = None) -> Callable[[dict[str, Any]], dict[str, Any]]:
+def signature_sample_handler(
+    root: str, *, skill: str, embodiment: str, site: str, scopes: list[str] | None = None
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
     """Bind ROS/MCAP sensor samples to the force-signature anomaly registry."""
     from unimem.robotics import signatures
 
     def handle(sample: dict[str, Any]) -> dict[str, Any]:
-        return signatures.check(root, sample, skill=skill, embodiment=embodiment,
-                                site=site, scopes=scopes or [])
+        return signatures.check(root, sample, skill=skill, embodiment=embodiment, site=site, scopes=scopes or [])
+
     return handle
 
 
@@ -290,16 +345,28 @@ def shield_service_handler(root: str) -> Callable[[dict[str, Any]], dict[str, An
         action = request.get("action")
         if not isinstance(action, dict):
             raise ValueError("shield service requires the proposed robot action")
-        return shield.check(root, request["spec_id"], action=action, trace=request["trace"],
-                            source_memory_ids=request["source_memory_ids"],
-                            recovery_memory_ids=request.get("recovery_memory_ids"),
-                            recovery_context=request.get("recovery_context"),
-                            failure_type=request.get("failure_type"))
+        return shield.check(
+            root,
+            request["spec_id"],
+            action=action,
+            trace=request["trace"],
+            source_memory_ids=request["source_memory_ids"],
+            recovery_memory_ids=request.get("recovery_memory_ids"),
+            recovery_context=request.get("recovery_context"),
+            failure_type=request.get("failure_type"),
+        )
+
     return handle
 
 
-def working_memory_node(memory: Any, *, root: str | None = None, node_factory: Any = None, message_type: Any = None,
-                        topics: dict[str, str] | None = None) -> Any:
+def working_memory_node(
+    memory: Any,
+    *,
+    root: str | None = None,
+    node_factory: Any = None,
+    message_type: Any = None,
+    topics: dict[str, str] | None = None,
+) -> Any:
     """Optional ROS 2 endpoint for local keyframe add/retrieve/consolidate operations."""
     if node_factory is None or message_type is None:
         try:
@@ -308,8 +375,12 @@ def working_memory_node(memory: Any, *, root: str | None = None, node_factory: A
         except ImportError:
             raise RuntimeError("install ROS 2 rclpy/std_msgs to start the working-memory endpoint") from None
         node_factory, message_type = Node, String
-    config = {"add": "/unimem/working_memory/add", "query": "/unimem/working_memory/query",
-              "consolidate": "/unimem/working_memory/consolidate", **(topics or {})}
+    config = {
+        "add": "/unimem/working_memory/add",
+        "query": "/unimem/working_memory/query",
+        "consolidate": "/unimem/working_memory/consolidate",
+        **(topics or {}),
+    }
     node = node_factory("unimem_working_memory")
     publisher = node.create_publisher(message_type, "/unimem/working_memory/result", 10)
 
@@ -331,11 +402,14 @@ def working_memory_node(memory: Any, *, root: str | None = None, node_factory: A
             response = message_type()
             response.data = fp.wire(result).decode()
             publisher.publish(response)
+
         node.create_subscription(message_type, topic, callback, 10)
 
     subscribe(config["add"], lambda body: memory.add(**body))
     subscribe(config["query"], lambda body: memory.retrieve(**body))
     if root is not None:
-        subscribe(config["consolidate"], lambda body: memory.consolidate(
-            root, body["episode_id"], scopes=body.get("scopes", [])))
+        subscribe(
+            config["consolidate"],
+            lambda body: memory.consolidate(root, body["episode_id"], scopes=body.get("scopes", [])),
+        )
     return node

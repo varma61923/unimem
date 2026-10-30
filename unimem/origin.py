@@ -4,6 +4,7 @@ Keys come from a trusted operator, never from a self-signup or memory payload.
 This binds origin and authority to immutable bytes; it does not prove truth or
 defend against a compromised signer. Distinct principals are not distinct orgs.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,9 +46,13 @@ def bind(record: dict, principal: Principal, *, _detached: bool = False) -> dict
     if len(principal.key) < 32:
         raise ValueError("origin signing key must be at least 32 bytes")
     # Detach shared object identities: strict Markdown frontmatter forbids YAML aliases.
-    body = {"record": record if _detached else json.loads(_bytes(record)),
-            "principal": principal.id, "organization": principal.organization,
-            "authority": principal.authority, "digest": hashlib.sha256(_bytes(record)).hexdigest()}
+    body = {
+        "record": record if _detached else json.loads(_bytes(record)),
+        "principal": principal.id,
+        "organization": principal.organization,
+        "authority": principal.authority,
+        "digest": hashlib.sha256(_bytes(record)).hexdigest(),
+    }
     if principal.algorithm == "ed25519":
         import base64
 
@@ -76,19 +81,23 @@ def verify(receipt: dict, principals: dict[str, Principal], *, authority: str | 
 
             try:
                 Ed25519PublicKey.from_public_bytes(principal.public_key).verify(
-                    base64.b64decode(receipt["signature"], validate=True), _bytes(body))
+                    base64.b64decode(receipt["signature"], validate=True), _bytes(body)
+                )
             except Exception:
                 return False
             signature_valid = True
         else:
             expected = hmac.new(principal.key, _bytes(body), hashlib.sha256).hexdigest()
-            signature_valid = hmac.compare_digest(expected.encode(),
-                                                  str(receipt["signature"]).encode("utf-8", "replace"))
-        return (signature_valid
-                and receipt["organization"] == principal.organization
-                and receipt["authority"] == principal.authority
-                and (authority is None or authority == principal.authority)
-                and receipt["digest"] == hashlib.sha256(_bytes(receipt["record"])).hexdigest())
+            signature_valid = hmac.compare_digest(
+                expected.encode(), str(receipt["signature"]).encode("utf-8", "replace")
+            )
+        return (
+            signature_valid
+            and receipt["organization"] == principal.organization
+            and receipt["authority"] == principal.authority
+            and (authority is None or authority == principal.authority)
+            and receipt["digest"] == hashlib.sha256(_bytes(receipt["record"])).hexdigest()
+        )
     except (KeyError, TypeError, ValueError, ImportError):
         return False
 
@@ -108,7 +117,7 @@ def collusion_signals(votes: list[dict], *, agreement_threshold: float = 0.95) -
     result = []
     names = sorted(by_principal)
     for i, first in enumerate(names):
-        for second in names[i + 1:]:
+        for second in names[i + 1 :]:
             shared = set(by_principal[first]) & set(by_principal[second])
             if len(shared) < 5:
                 continue

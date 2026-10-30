@@ -5,15 +5,54 @@ import pytest
 from unimem.cache_gate import is_trivial_prompt
 
 TRIVIAL = [
-    "ok", "OK!", "okay.", "k", "kk",
-    "yes", "no", "y", "n", "yep", "nope", "nah", "yeah",
-    "thanks", "Thanks!", "thank you", "ty", "cheers",
-    "hi", "hey", "hello", "yo", "good morning",
-    "continue", "go ahead", "proceed.", "do it", "carry on",
-    "got it", "understood", "makes sense", "sounds good", "agreed",
-    "cool", "nice", "great", "perfect", "done", "next", "lgtm", "ship it",
-    "please", "now", "again",
-    "cool!!!", "  lgtm  ", "sure...", "ok?",
+    "ok",
+    "OK!",
+    "okay.",
+    "k",
+    "kk",
+    "yes",
+    "no",
+    "y",
+    "n",
+    "yep",
+    "nope",
+    "nah",
+    "yeah",
+    "thanks",
+    "Thanks!",
+    "thank you",
+    "ty",
+    "cheers",
+    "hi",
+    "hey",
+    "hello",
+    "yo",
+    "good morning",
+    "continue",
+    "go ahead",
+    "proceed.",
+    "do it",
+    "carry on",
+    "got it",
+    "understood",
+    "makes sense",
+    "sounds good",
+    "agreed",
+    "cool",
+    "nice",
+    "great",
+    "perfect",
+    "done",
+    "next",
+    "lgtm",
+    "ship it",
+    "please",
+    "now",
+    "again",
+    "cool!!!",
+    "  lgtm  ",
+    "sure...",
+    "ok?",
 ]
 
 REAL = [
@@ -49,9 +88,7 @@ class TestItCatchesContentlessTurns:
 class TestItNeverSwallowsARealQuery:
     @pytest.mark.parametrize("text", REAL)
     def test_a_real_query_reaches_the_ranker(self, text):
-        assert is_trivial_prompt(text) is False, (
-            f"{text!r} would have been silently skipped"
-        )
+        assert is_trivial_prompt(text) is False, f"{text!r} would have been silently skipped"
 
     def test_sharing_a_first_word_is_not_enough(self):
         assert is_trivial_prompt("no") is True

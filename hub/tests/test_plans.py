@@ -33,9 +33,17 @@ async def _contribute(session_factory, config, org_id, title, **kw):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text="ctx", solution_text="fix",
-            tags=[], agent_type="code", actor="test", **kw,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text="ctx",
+            solution_text="fix",
+            tags=[],
+            agent_type="code",
+            actor="test",
+            **kw,
         )
 
 
@@ -43,8 +51,11 @@ async def _seed_kb_entry(session_factory, operator_org_id, title, context="ctx")
     async with session_scope(session_factory) as session:
         trace = Trace(
             org_id=operator_org_id,
-            title=title, context_text=context, solution_text="fix",
-            tags=[], agent_type="code",
+            title=title,
+            context_text=context,
+            solution_text="fix",
+            tags=[],
+            agent_type="code",
             shared_with_commons=True,
             shared_at=datetime.now(timezone.utc),
             shared_rationale="test fixture",
@@ -89,9 +100,9 @@ class TestPlanResolution:
 class TestStorageEntitlement:
     async def test_refuses_a_write_past_the_trace_limit(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=2, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=2, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         for i in range(2):
             await _contribute(session_factory, config, orgs["payer"], f"t{i}")
@@ -102,84 +113,90 @@ class TestStorageEntitlement:
 
     async def test_the_refused_write_stored_nothing(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         await _contribute(session_factory, config, orgs["payer"], "first")
         with pytest.raises(plans.EntitlementExceeded):
             await _contribute(session_factory, config, orgs["payer"], "second")
         async with session_scope(session_factory) as session:
-            n = await session.scalar(
-                select(Trace).where(Trace.org_id == orgs["payer"], Trace.title == "second")
-            )
+            n = await session.scalar(select(Trace).where(Trace.org_id == orgs["payer"], Trace.title == "second"))
         assert n is None
 
-    async def test_an_idempotent_retry_is_not_refused_at_the_cap(
-        self, session_factory, config, orgs, monkeypatch
-    ):
+    async def test_an_idempotent_retry_is_not_refused_at_the_cap(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         first = await _contribute(
-            session_factory, config, orgs["payer"], "only one", idempotency_key="k1",
+            session_factory,
+            config,
+            orgs["payer"],
+            "only one",
+            idempotency_key="k1",
         )
         replay = await _contribute(
-            session_factory, config, orgs["payer"], "only one", idempotency_key="k1",
+            session_factory,
+            config,
+            orgs["payer"],
+            "only one",
+            idempotency_key="k1",
         )
         assert replay["id"] == first["id"]
 
-    async def test_one_orgs_usage_does_not_consume_anothers(
-        self, session_factory, config, orgs, monkeypatch
-    ):
+    async def test_one_orgs_usage_does_not_consume_anothers(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         await _contribute(session_factory, config, orgs["payer"], "mine")
         await _contribute(session_factory, config, orgs["freeloader"], "theirs")
 
-    async def test_amend_trace_is_refused_past_the_trace_limit(
-        self, session_factory, config, orgs, monkeypatch
-    ):
+    async def test_amend_trace_is_refused_past_the_trace_limit(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         original = await _contribute(session_factory, config, orgs["payer"], "only one")
         rate_limiter = make_rate_limiter(config)
         with pytest.raises(plans.EntitlementExceeded) as exc:
             async with session_scope(session_factory) as session:
                 await crud.amend_trace(
-                    session, orgs["payer"], original["id"], config, rate_limiter,
-                    title="amended", actor="test",
+                    session,
+                    orgs["payer"],
+                    original["id"],
+                    config,
+                    rate_limiter,
+                    title="amended",
+                    actor="test",
                 )
         assert exc.value.metric == "traces"
 
-    async def test_amend_trace_refusal_stores_nothing(
-        self, session_factory, config, orgs, monkeypatch
-    ):
+    async def test_amend_trace_refusal_stores_nothing(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         original = await _contribute(session_factory, config, orgs["payer"], "only one")
         rate_limiter = make_rate_limiter(config)
         with pytest.raises(plans.EntitlementExceeded):
             async with session_scope(session_factory) as session:
                 await crud.amend_trace(
-                    session, orgs["payer"], original["id"], config, rate_limiter,
-                    title="amended", actor="test",
+                    session,
+                    orgs["payer"],
+                    original["id"],
+                    config,
+                    rate_limiter,
+                    title="amended",
+                    actor="test",
                 )
         async with session_scope(session_factory) as session:
-            count = await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == orgs["payer"])
-            )
+            count = await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == orgs["payer"]))
         assert count == 1
 
 
@@ -188,16 +205,18 @@ class TestCommonsQueryMetering:
         await _seed_kb_entry(session_factory, orgs["operator"], "shared thing")
         async with session_scope(session_factory) as session:
             await crud.commons_overlap(
-                session, orgs["payer"], [_failure("f", "shared thing")],
+                session,
+                orgs["payer"],
+                [_failure("f", "shared thing")],
             )
         async with session_scope(session_factory) as session:
             assert await crud._usage(session, orgs["payer"], crud.METRIC_COMMONS_QUERIES) == 1
 
     async def test_refuses_past_the_allowance(self, session_factory, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1_000, commons_queries_per_month=2,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1_000, commons_queries_per_month=2, commons_access=True, summary="test"),
         )
         await _seed_kb_entry(session_factory, orgs["operator"], "shared thing")
         for _ in range(2):
@@ -219,7 +238,9 @@ class TestCommonsQueryMetering:
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["payer"], [{"label": "f", "signature": [1, 2, 3]}],
+                    session,
+                    orgs["payer"],
+                    [{"label": "f", "signature": [1, 2, 3]}],
                 )
         async with session_scope(session_factory) as session:
             assert await crud._usage(session, orgs["payer"], crud.METRIC_COMMONS_QUERIES) == 0
@@ -257,13 +278,11 @@ class TestMeteringIsAtomic:
         async with session_scope(session_factory) as session:
             assert await crud._usage(session, orgs["payer"], crud.METRIC_COMMONS_QUERIES) == 20
 
-    async def test_the_entitlement_check_itself_is_serialized_at_the_boundary(
-        self, session_factory, orgs, monkeypatch
-    ):
+    async def test_the_entitlement_check_itself_is_serialized_at_the_boundary(self, session_factory, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1_000, commons_queries_per_month=3,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1_000, commons_queries_per_month=3, commons_access=True, summary="test"),
         )
         await _seed_kb_entry(session_factory, orgs["operator"], "shared thing")
         async with session_scope(session_factory) as session:
@@ -292,9 +311,11 @@ class TestMeteringIsAtomic:
             await crud._meter(session, orgs["payer"], "metric_a")
             await crud._meter(session, orgs["payer"], "metric_b")
         async with session_scope(session_factory) as session:
-            rows = (await session.execute(
-                select(UsageCounter).where(UsageCounter.org_id == orgs["payer"])
-            )).scalars().all()
+            rows = (
+                (await session.execute(select(UsageCounter).where(UsageCounter.org_id == orgs["payer"])))
+                .scalars()
+                .all()
+            )
         assert {r.metric for r in rows} == {"metric_a", "metric_b"}
         assert all(r.n == 1 for r in rows)
 
@@ -304,28 +325,45 @@ class TestTheErrorIsActionable:
     def test_it_is_not_reported_as_a_rate_limit(self):
         from hub.server import _error_response
 
-        body = _error_response(plans.EntitlementExceeded(
-            metric="commons_queries", limit=20, used=20, plan="free",
-            remedy="Share traces to the commons.",
-        ))
+        body = _error_response(
+            plans.EntitlementExceeded(
+                metric="commons_queries",
+                limit=20,
+                used=20,
+                plan="free",
+                remedy="Share traces to the commons.",
+            )
+        )
         assert body["error"] == "entitlement_exceeded"
         assert body["error"] != "rate_limited"
 
     def test_it_carries_what_a_client_needs_to_render_an_upgrade_path(self):
         from hub.server import _error_response
 
-        body = _error_response(plans.EntitlementExceeded(
-            metric="traces", limit=1_000, used=1_000, plan="free", remedy="Purge or upgrade.",
-        ))
+        body = _error_response(
+            plans.EntitlementExceeded(
+                metric="traces",
+                limit=1_000,
+                used=1_000,
+                plan="free",
+                remedy="Purge or upgrade.",
+            )
+        )
         for field in ("metric", "limit", "used", "plan", "remedy"):
             assert field in body, field
 
     def test_it_leaks_no_internals(self):
         from hub.server import _error_response
 
-        body = _error_response(plans.EntitlementExceeded(
-            metric="traces", limit=1, used=1, plan="free", remedy="Upgrade.",
-        ))
+        body = _error_response(
+            plans.EntitlementExceeded(
+                metric="traces",
+                limit=1,
+                used=1,
+                plan="free",
+                remedy="Upgrade.",
+            )
+        )
         blob = " ".join(str(v) for v in body.values()).lower()
         for leak in ("select ", "traceback", "sqlalchemy", "asyncpg", "/app/", "org_id="):
             assert leak not in blob, leak
@@ -335,39 +373,48 @@ class TestTheValueLinkedPricingShape:
     @staticmethod
     def _effect(verdict, n_injected, size, lo, hi):
         return experiment.CausalEffect(
-            lesson_slug="m", n_injected=n_injected, n_withheld=200,
-            rate_injected=0.7, rate_withheld=0.7 - size, effect=size,
-            ci_low=lo, ci_high=hi, p_value=0.01,
+            lesson_slug="m",
+            n_injected=n_injected,
+            n_withheld=200,
+            rate_injected=0.7,
+            rate_withheld=0.7 - size,
+            effect=size,
+            ci_low=lo,
+            ci_high=hi,
+            p_value=0.01,
             significant=verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS),
-            min_detectable_effect=0.05, verdict=verdict, note="",
+            min_detectable_effect=0.05,
+            verdict=verdict,
+            note="",
         )
 
     @staticmethod
     def _sound():
-        return integrity.audit([
-            integrity.Assignment("m", f"o{i}", i % 2 == 0, 0.5, "s",
-                                 i % 3 == 0, None, "rev")
-            for i in range(60)
-        ])
+        return integrity.audit(
+            [integrity.Assignment("m", f"o{i}", i % 2 == 0, 0.5, "s", i % 3 == 0, None, "rev") for i in range(60)]
+        )
 
     async def test_the_share_is_of_measured_value(self):
         report = value.compute(
             [self._effect(experiment.VERDICT_HELPS, 1000, 0.10, 0.05, 0.15)],
-            self._sound(), value_per_occasion=20.0,
+            self._sound(),
+            value_per_occasion=20.0,
         )
         assert plans.billable_value(report) == pytest.approx(400.0)
 
     async def test_nothing_is_billable_when_the_experiment_is_not_readable(self):
         report = value.compute(
             [self._effect(experiment.VERDICT_HELPS, 1000, 0.10, 0.05, 0.15)],
-            None, value_per_occasion=20.0,
+            None,
+            value_per_occasion=20.0,
         )
         assert plans.billable_value(report) is None
 
     async def test_a_memory_that_hurt_produces_a_negative_charge(self):
         report = value.compute(
             [self._effect(experiment.VERDICT_HURTS, 1000, -0.10, -0.15, -0.05)],
-            self._sound(), value_per_occasion=20.0,
+            self._sound(),
+            value_per_occasion=20.0,
         )
         assert plans.billable_value(report) == pytest.approx(-400.0)
 
@@ -388,7 +435,8 @@ class TestTheValueLinkedPricingShape:
     async def test_the_share_is_overridable_without_editing_the_module(self):
         report = value.compute(
             [self._effect(experiment.VERDICT_HELPS, 1000, 0.10, 0.05, 0.15)],
-            self._sound(), value_per_occasion=20.0,
+            self._sound(),
+            value_per_occasion=20.0,
         )
         assert plans.billable_value(report, share=0.5) == pytest.approx(1000.0)
 

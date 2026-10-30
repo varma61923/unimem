@@ -1,4 +1,5 @@
 """Multimodal episodes: stored as governed traces, media content-addressed and never decoded beyond its header."""
+
 import base64
 import json
 import os
@@ -10,8 +11,9 @@ TOKEN = "e" * 40
 
 
 def _post(gw, body):
-    response = gw.handle("POST", "/v1/episode", {"Authorization": "Bearer " + TOKEN, "Host": "localhost"},
-                         json.dumps(body).encode())
+    response = gw.handle(
+        "POST", "/v1/episode", {"Authorization": "Bearer " + TOKEN, "Host": "localhost"}, json.dumps(body).encode()
+    )
     return response.status, json.loads(response.body)
 
 
@@ -20,11 +22,24 @@ def test_episode_becomes_a_trace_with_media_and_sensors(tmp_path):
     gateway.save_config(root, gateway.GatewayConfig(env="real"))
     gw = gateway.Gateway(root, token=TOKEN)
     image = _png(20, 10, 128)
-    status, out = _post(gw, {"occasion_id": "pick-1", "agent_id": "floor-01", "summary": "Dropped a mug.",
-                             "sensors": {"grip_force_n": 31.5, "fragile": True, "zone": "B"},
-                             "media": [{"kind": "image", "mime": "image/png", "caption": "wrist camera",
-                                        "data_b64": base64.b64encode(image).decode()}],
-                             "succeeded": False})
+    status, out = _post(
+        gw,
+        {
+            "occasion_id": "pick-1",
+            "agent_id": "floor-01",
+            "summary": "Dropped a mug.",
+            "sensors": {"grip_force_n": 31.5, "fragile": True, "zone": "B"},
+            "media": [
+                {
+                    "kind": "image",
+                    "mime": "image/png",
+                    "caption": "wrist camera",
+                    "data_b64": base64.b64encode(image).decode(),
+                }
+            ],
+            "succeeded": False,
+        },
+    )
     assert status == 200, out
     [media] = out["media"]
     assert (media["width"], media["height"], media["bytes"]) == (20, 10, len(image)) and out["env"] == "real"
@@ -52,6 +67,7 @@ def test_bad_episodes_are_refused(tmp_path):
         status, _out = _post(gw, body)
         assert status == 400, body
     gateway.save_config(str(tmp_path), gateway.GatewayConfig(env="sim"))
-    status, _out = _post(gateway.Gateway(str(tmp_path), token=TOKEN),
-                         {"occasion_id": "o", "summary": "x", "env": "real"})
+    status, _out = _post(
+        gateway.Gateway(str(tmp_path), token=TOKEN), {"occasion_id": "o", "summary": "x", "env": "real"}
+    )
     assert status == 409  # simulation and reality are never pooled

@@ -25,7 +25,11 @@ class TestUncapturedRetrievalCounts:
     def test_counts_accumulate_across_distinct_occasions(self, root):
         for i in range(10):
             holdout_io.assign_and_log(
-                root, ["never_captured"], occasion_id=f"occ-{i}", rate=0.0, salt="s",
+                root,
+                ["never_captured"],
+                occasion_id=f"occ-{i}",
+                rate=0.0,
+                salt="s",
             )
         assert evidence_io.uncaptured_retrieval_counts(root) == {"never_captured": 10}
 
@@ -36,8 +40,9 @@ class TestUncapturedRetrievalCounts:
         traces_dir = os.path.join(root, "memory", "traces")
         os.makedirs(traces_dir, exist_ok=True)
         fm = {
-            "id": "occ-1", "title": "t", "extensions": {"lessons_retrieved": ["a"],
-                                                          "lessons_hit": []},
+            "id": "occ-1",
+            "title": "t",
+            "extensions": {"lessons_retrieved": ["a"], "lessons_hit": []},
             "outcome": {"resolved": False},
         }
         with open(os.path.join(traces_dir, "occ-1.md"), "w", encoding="utf-8") as fh:
@@ -51,8 +56,7 @@ class TestUncapturedRetrievalCounts:
         holdout_io.assign_and_log(root, ["a"], occasion_id="ep-1", rate=0.0, salt="s")
         eps_dir = os.path.join(root, "memory", "episodes")
         os.makedirs(eps_dir, exist_ok=True)
-        fm = {"name": "ep-1", "verdict": "CONFORM",
-              "lessons_retrieved_by_alpha": ["a"], "lessons_hit": ["a"]}
+        fm = {"name": "ep-1", "verdict": "CONFORM", "lessons_retrieved_by_alpha": ["a"], "lessons_hit": ["a"]}
         with open(os.path.join(eps_dir, "ep-1.md"), "w", encoding="utf-8") as fh:
             fh.write("---\n" + yaml.safe_dump(fm) + "---\n\nbody\n")
 

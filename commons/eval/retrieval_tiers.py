@@ -1,4 +1,5 @@
 """Why the two retrieval tiers get wildly different recall on identical data."""
+
 from __future__ import annotations
 
 import json
@@ -22,13 +23,16 @@ def _load(p: Path) -> list[dict]:
 
 def as_lessons(corpus: list[dict]) -> list[tuple[str, dict]]:
     return [
-        (r["title"], {
-            "name": r["title"],
-            "description": r["title"],
-            "applies_when": r.get("context_text", ""),
-            "tags": r.get("tags") or [],
-            "domain": "",
-        })
+        (
+            r["title"],
+            {
+                "name": r["title"],
+                "description": r["title"],
+                "applies_when": r.get("context_text", ""),
+                "tags": r.get("tags") or [],
+                "domain": "",
+            },
+        )
         for r in corpus
     ]
 
@@ -45,8 +49,7 @@ def evaluate() -> dict:
 
     def recall_at(k: int) -> float:
         hits = sum(
-            1 for p in pos
-            if any(r.slug == p["target"] for r in retrieval.rank_lessons(_query(p), lessons, top_k=k))
+            1 for p in pos if any(r.slug == p["target"] for r in retrieval.rank_lessons(_query(p), lessons, top_k=k))
         )
         return hits / len(pos) if pos else 0.0
 
@@ -61,10 +64,7 @@ def evaluate() -> dict:
         "recall": {k: recall_at(k) for k in (1, 3, 5, 10)},
         "recall_anywhere": recall_at(len(lessons)),
         "neg_returns_something": {
-            k: (
-                sum(1 for p in neg if retrieval.rank_lessons(_query(p), lessons, top_k=k)) / len(neg)
-                if neg else 0.0
-            )
+            k: (sum(1 for p in neg if retrieval.rank_lessons(_query(p), lessons, top_k=k)) / len(neg) if neg else 0.0)
             for k in (1, 3, 5)
         },
         "score_true": [top_score(p) for p in pos],
@@ -74,8 +74,7 @@ def evaluate() -> dict:
 
 def main() -> int:
     r = evaluate()
-    print(f"corpus {r['n_corpus']} records | {r['n_pos']} held-out positives, "
-          f"{r['n_neg']} negative controls")
+    print(f"corpus {r['n_corpus']} records | {r['n_pos']} held-out positives, {r['n_neg']} negative controls")
     print()
     print("PER-ORG lexical retrieval (unimem/retrieval.py, ranked, no threshold)")
     for k, v in r["recall"].items():
@@ -88,13 +87,11 @@ def main() -> int:
     print()
     t, a = r["score_true"], r["score_absent"]
     if t:
-        print(f"  top-1 score, true match      median {statistics.median(t):.1f}  "
-              f"range {min(t):.1f}-{max(t):.1f}")
+        print(f"  top-1 score, true match      median {statistics.median(t):.1f}  range {min(t):.1f}-{max(t):.1f}")
     else:
         print("  top-1 score, true match      (no positive probes)")
     if a:
-        print(f"  top-1 score, absent          median {statistics.median(a):.1f}  "
-              f"range {min(a):.1f}-{max(a):.1f}")
+        print(f"  top-1 score, absent          median {statistics.median(a):.1f}  range {min(a):.1f}-{max(a):.1f}")
     else:
         print("  top-1 score, absent          (no negative-control probes)")
     print("  (distributions overlap -- the score separates on average, not per case)")

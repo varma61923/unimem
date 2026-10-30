@@ -30,7 +30,11 @@ def _seeded_run(root: str, *, true_effect: float, baseline: float, seed: int, ra
     for i in range(PER_ARM):
         occasion = f"occ-{i}"
         withheld = holdout_io.assign_and_log(
-            root, ["L"], occasion_id=occasion, rate=rate, salt=config.salt,
+            root,
+            ["L"],
+            occasion_id=occasion,
+            rate=rate,
+            salt=config.salt,
         )
         p = baseline if "L" in withheld else baseline + true_effect
         holdout_io.record_outcome(root, occasion, rng.random() < p)

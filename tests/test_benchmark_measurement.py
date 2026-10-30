@@ -1,4 +1,5 @@
 """Real-store evaluation fidelity and source/cache provenance regressions."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,19 +29,51 @@ from unimem.conversation import Store
 def _args(tmp_path: Path, **changes: object) -> argparse.Namespace:
     source = tmp_path / "dataset.json"
     if not source.exists():
-        source.write_text(json.dumps([
-            {"sample_id": f"c{i}", "conversation": {
-                "session_1_date_time": "2024-01-01", "session_1": [
-                    {"dia_id": "D1:1", "speaker": "user", "text": "The orchid launch completed on Tuesday."},
-                    {"dia_id": "D1:2", "speaker": "assistant", "text": "The launch is complete."},
-                ]}, "qa": [{"question": "When did the orchid launch complete?", "answer": "Tuesday",
-                            "category": 2, "evidence": ["D1:1", "missing"]}]}
-            for i in range(3)
-        ]), encoding="utf-8")
+        source.write_text(
+            json.dumps(
+                [
+                    {
+                        "sample_id": f"c{i}",
+                        "conversation": {
+                            "session_1_date_time": "2024-01-01",
+                            "session_1": [
+                                {
+                                    "dia_id": "D1:1",
+                                    "speaker": "user",
+                                    "text": "The orchid launch completed on Tuesday.",
+                                },
+                                {"dia_id": "D1:2", "speaker": "assistant", "text": "The launch is complete."},
+                            ],
+                        },
+                        "qa": [
+                            {
+                                "question": "When did the orchid launch complete?",
+                                "answer": "Tuesday",
+                                "category": 2,
+                                "evidence": ["D1:1", "missing"],
+                            }
+                        ],
+                    }
+                    for i in range(3)
+                ]
+            ),
+            encoding="utf-8",
+        )
     values: dict[str, object] = {
-        "dataset": "locomo", "data": str(source), "root": str(tmp_path / "store"), "budget": "1500,4000",
-        "embedder": "none", "rerank": "none", "neighbours": 1, "profile_facts": 4, "rerank_blend": 1.,
-        "limit": 0, "seed": 0, "answer": False, "personas": "", "bootstrap": False,
+        "dataset": "locomo",
+        "data": str(source),
+        "root": str(tmp_path / "store"),
+        "budget": "1500,4000",
+        "embedder": "none",
+        "rerank": "none",
+        "neighbours": 1,
+        "profile_facts": 4,
+        "rerank_blend": 1.0,
+        "limit": 0,
+        "seed": 0,
+        "answer": False,
+        "personas": "",
+        "bootstrap": False,
     }
     values.update(changes)
     return argparse.Namespace(**values)
@@ -52,19 +85,19 @@ def test_unresolved_labels_remain_misses_in_real_store_and_both_budgets(tmp_path
     for budget in (1500, 4000):
         summary = result[budget]
         assert summary["overall"]["n"] == 3
-        assert summary["overall"]["evidence"] == .5
-        assert summary["overall"]["complete"] == 0.
+        assert summary["overall"]["evidence"] == 0.5
+        assert summary["overall"]["complete"] == 0.0
         assert summary["overall"]["unresolved_gold_turn_references"] == 3
         assert summary["bootstrap_95ci"]["sample_unit"] == "conversation"
-        assert summary["bootstrap_95ci"]["overall"]["evidence"]["ci_lower"] == .5
+        assert summary["bootstrap_95ci"]["overall"]["evidence"]["ci_lower"] == 0.5
         for row in summary["rows"]:
             assert row["gold_turn_ids"] == ["D1:1", "missing"]
             assert row["unresolved_gold_turn_ids"] == ["missing"]
-            assert row["turn_recall_at_5"] == .5
+            assert row["turn_recall_at_5"] == 0.5
             assert row["recall_latency_s"] >= 0
         # Pairing is independent of a warmed cache and keeps exact gold identities.
         second = bench.run(args)[budget]
-        assert compare_runs(summary, second)["overall"]["evidence"]["delta"] == 0.
+        assert compare_runs(summary, second)["overall"]["evidence"]["delta"] == 0.0
 
 
 def test_every_budget_runs_public_recall_with_question_clock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,11 +168,14 @@ def test_same_size_edited_corpus_cannot_reuse_source_store(tmp_path: Path) -> No
         bench.run(args)
 
 
-@pytest.mark.parametrize("sql", [
-    "UPDATE sessions SET started_at='2025-01-01'",
-    "UPDATE turns SET speaker='another speaker'",
-    "UPDATE turns SET text='changed source'",
-])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE sessions SET started_at='2025-01-01'",
+        "UPDATE turns SET speaker='another speaker'",
+        "UPDATE turns SET text='changed source'",
+    ],
+)
 def test_canonical_edits_fail_even_without_unit_journal_change(tmp_path: Path, sql: str) -> None:
     args = _args(tmp_path)
     bench.run(args)
@@ -152,8 +188,13 @@ def test_canonical_edits_fail_even_without_unit_journal_change(tmp_path: Path, s
 
 def test_split_passage_rankings_collapse_to_distinct_raw_turns_and_sessions(tmp_path: Path) -> None:
     with Store(str(tmp_path), "raw") as store:
-        store.add("s1", [{"id": "raw1", "speaker": "user", "text": "Orchid launch complete."},
-                               {"id": "raw2", "speaker": "user", "text": "Followed by daisy launch."}])
+        store.add(
+            "s1",
+            [
+                {"id": "raw1", "speaker": "user", "text": "Orchid launch complete."},
+                {"id": "raw2", "speaker": "user", "text": "Followed by daisy launch."},
+            ],
+        )
         ids = [row[0] for row in store.db.execute("SELECT id FROM turns ORDER BY id")]
         # Repeated candidate IDs count once at the raw-turn and session levels.
         rows = ranking_fields([ids[0], ids[0], ids[1]], store.turns(ids), ["raw1"], ["s1"])
@@ -171,10 +212,12 @@ def test_session_annotations_expand_fragments_and_unknown_gold_stays_missing() -
 
 
 def test_shared_answer_sessions_cluster_across_cases_but_filler_does_not() -> None:
-    cases = [("a", [], None, [{"sessions": {"s1"}}]),
-             ("b", [], None, [{"sessions": {"s1", "s2"}}]),
-             ("c", [], None, [{"sessions": {"s2"}}]),
-             ("d", [], None, [{"sessions": set()}])]
+    cases = [
+        ("a", [], None, [{"sessions": {"s1"}}]),
+        ("b", [], None, [{"sessions": {"s1", "s2"}}]),
+        ("c", [], None, [{"sessions": {"s2"}}]),
+        ("d", [], None, [{"sessions": set()}]),
+    ]
     assert shared_source_clusters(cases) == {"a": "a", "b": "a", "c": "a", "d": "d"}
     assert shared_source_clusters(list(reversed(cases))) == shared_source_clusters(cases)
 
@@ -203,8 +246,9 @@ def test_digests_pin_content_and_source_metadata_without_question_leakage(tmp_pa
         assert canonical_digest(store) != old
 
 
-@pytest.mark.parametrize("changes", [{"budget": "0"}, {"budget": "1500,1500"},
-                                    {"modes": "memory,memory"}, {"limit": -1}, {"seed": -1}])
+@pytest.mark.parametrize(
+    "changes", [{"budget": "0"}, {"budget": "1500,1500"}, {"modes": "memory,memory"}, {"limit": -1}, {"seed": -1}]
+)
 def test_invalid_configuration_refused_before_source_ingestion(tmp_path: Path, changes: dict) -> None:
     args = _args(tmp_path, **changes)
     with pytest.raises(ValueError):
@@ -216,10 +260,19 @@ def test_longmemeval_limit_is_exact_even_for_unequal_categories(tmp_path: Path) 
     data = []
     for category, count in (("single-session-user", 2), ("multi-session", 7), ("knowledge-update", 1)):
         for n in range(count):
-            data.append({"question_type": category, "question_id": f"{category}{n}", "question": "What?",
-                         "answer": "answer", "question_date": "2024-01-01", "haystack_session_ids": ["s"],
-                         "haystack_dates": ["2024-01-01"], "haystack_sessions": [[
-                             {"role": "user", "content": "orchid", "has_answer": True}]], "answer_session_ids": ["s"]})
+            data.append(
+                {
+                    "question_type": category,
+                    "question_id": f"{category}{n}",
+                    "question": "What?",
+                    "answer": "answer",
+                    "question_date": "2024-01-01",
+                    "haystack_session_ids": ["s"],
+                    "haystack_dates": ["2024-01-01"],
+                    "haystack_sessions": [[{"role": "user", "content": "orchid", "has_answer": True}]],
+                    "answer_session_ids": ["s"],
+                }
+            )
     source = tmp_path / "lme.json"
     source.write_text(json.dumps(data))
     assert len(list(bench.longmemeval_cases(str(source), 10, 0))) == 10
@@ -236,21 +289,43 @@ def test_comparison_cli_cannot_silently_ignore_legacy_rows(tmp_path: Path, capsy
         summary.pop("provenance")
     baseline = tmp_path / "legacy.json"
     baseline.write_text(json.dumps(legacy))
-    rc = bench.main(["--dataset", "locomo", "--data", args.data, "--root", args.root,
-                     "--budget", "1500,4000", "--embedder", "none", "--rerank", "none",
-                     "--compare", str(baseline)])
+    rc = bench.main(
+        [
+            "--dataset",
+            "locomo",
+            "--data",
+            args.data,
+            "--root",
+            args.root,
+            "--budget",
+            "1500,4000",
+            "--embedder",
+            "none",
+            "--rerank",
+            "none",
+            "--compare",
+            str(baseline),
+        ]
+    )
     assert rc == 2
     assert "Comparison error" in capsys.readouterr().err
 
 
-def test_judged_provenance_binds_endpoint_without_exposing_credentials(tmp_path: Path,
-                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+def test_judged_provenance_binds_endpoint_without_exposing_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     args = _args(tmp_path, answer=True, answer_model="fixture-reader", judge_model="fixture-judge")
     endpoint = "https://user:private-password@service.invalid/v1?token=private-token"
 
     def config(model):
-        return llm.Config(provider="openai-compatible", model=model, api_key="private-api-key",
-                          base_url=endpoint, region="private-region", project="private-project")
+        return llm.Config(
+            provider="openai-compatible",
+            model=model,
+            api_key="private-api-key",
+            base_url=endpoint,
+            region="private-region",
+            project="private-project",
+        )
 
     def grade(**kwargs):
         return {"correct": True, "score": 1.0}
@@ -259,7 +334,14 @@ def test_judged_provenance_binds_endpoint_without_exposing_credentials(tmp_path:
     monkeypatch.setattr(bench, "grade_answer", grade)
     first = bench.run(args)[1500]
     encoded = json.dumps(first)
-    for secret in (endpoint, "private-password", "private-token", "private-api-key", "private-project", "private-region"):
+    for secret in (
+        endpoint,
+        "private-password",
+        "private-token",
+        "private-api-key",
+        "private-project",
+        "private-region",
+    ):
         assert secret not in encoded
     binding = first["provenance"]["evaluation"]["reader"]
     assert len(binding["configuration_sha256"]) == 64

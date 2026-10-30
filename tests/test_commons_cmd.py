@@ -130,9 +130,12 @@ class TestUsageShowsBonus:
 
     def _usage(self, bonus=0):
         return {
-            "plan": "free", "period": "2026-01",
+            "plan": "free",
+            "period": "2026-01",
             "commons_queries": {
-                "used": 3, "allowance": 20 + bonus, "remaining": 17 + bonus,
+                "used": 3,
+                "allowance": 20 + bonus,
+                "remaining": 17 + bonus,
                 "bonus_from_accepted_submissions": bonus,
             },
             "traces": {"used": 1, "limit": 1000},
@@ -158,10 +161,14 @@ class TestUsageShowsBonus:
 class TestSubmit:
     def _args(self, **over):
         base = dict(
-            title="Stripe webhooks retry", context_text="duplicate delivery on 500",
-            solution_text="use an idempotency key", tags="stripe,webhooks", agent_type="code",
+            title="Stripe webhooks retry",
+            context_text="duplicate delivery on 500",
+            solution_text="use an idempotency key",
+            tags="stripe,webhooks",
+            agent_type="code",
             rationale="substrate, not our business logic",
-            hub_url="http://hub.invalid/mcp", hub_api_key="unimem_live_test",
+            hub_url="http://hub.invalid/mcp",
+            hub_api_key="unimem_live_test",
         )
         base.update(over)
         return type("A", (), base)()
@@ -210,14 +217,25 @@ class TestSubmissions:
 
     def test_renders_status_for_each_submission(self, capsys, monkeypatch):
         async def fake_list(hub, key, limit=None):
-            return {"submissions": [
-                {"id": "s1", "status": "pending", "created_at": "2026-01-01T00:00:00+00:00",
-                 "title": "A"},
-                {"id": "s2", "status": "approved", "created_at": "2026-01-02T00:00:00+00:00",
-                 "title": "B", "credit_awarded": 25},
-                {"id": "s3", "status": "rejected", "created_at": "2026-01-03T00:00:00+00:00",
-                 "title": "C", "rejection_reason": "too generic"},
-            ]}
+            return {
+                "submissions": [
+                    {"id": "s1", "status": "pending", "created_at": "2026-01-01T00:00:00+00:00", "title": "A"},
+                    {
+                        "id": "s2",
+                        "status": "approved",
+                        "created_at": "2026-01-02T00:00:00+00:00",
+                        "title": "B",
+                        "credit_awarded": 25,
+                    },
+                    {
+                        "id": "s3",
+                        "status": "rejected",
+                        "created_at": "2026-01-03T00:00:00+00:00",
+                        "title": "C",
+                        "rejection_reason": "too generic",
+                    },
+                ]
+            }
 
         monkeypatch.setattr(commons_cmd.hub_client, "list_my_kb_submissions", fake_list)
         assert commons_cmd.run_submissions(self._args()) == 0
@@ -238,65 +256,105 @@ class TestSubmissions:
 
 class TestRender:
     def test_headline_states_the_fraction(self):
-        rendered = commons_cmd._render({
-            "n_failures": 3, "n_covered": 2, "covered_fraction": 2 / 3,
-            "n_commons_traces": 10, "threshold": 0.3,
-            "by_agent_type": {"code": 2}, "matches": [], "note": "",
-        })
+        rendered = commons_cmd._render(
+            {
+                "n_failures": 3,
+                "n_covered": 2,
+                "covered_fraction": 2 / 3,
+                "n_commons_traces": 10,
+                "threshold": 0.3,
+                "by_agent_type": {"code": 2},
+                "matches": [],
+                "note": "",
+            }
+        )
         assert "**2 of 3**" in rendered
         assert "67%" in rendered
 
     def test_note_is_surfaced_not_buried(self):
-        rendered = commons_cmd._render({
-            "n_failures": 1, "n_covered": 0, "covered_fraction": 0.0,
-            "n_commons_traces": 0, "threshold": 0.3,
-            "by_agent_type": {}, "matches": [],
-            "note": "The Knowledge Base has no entries yet, so this measures nothing.",
-        })
+        rendered = commons_cmd._render(
+            {
+                "n_failures": 1,
+                "n_covered": 0,
+                "covered_fraction": 0.0,
+                "n_commons_traces": 0,
+                "threshold": 0.3,
+                "by_agent_type": {},
+                "matches": [],
+                "note": "The Knowledge Base has no entries yet, so this measures nothing.",
+            }
+        )
         assert "Knowledge Base has no entries" in rendered
 
     def test_matches_include_the_solution(self):
-        rendered = commons_cmd._render({
-            "n_failures": 1, "n_covered": 1, "covered_fraction": 1.0,
-            "n_commons_traces": 1, "threshold": 0.3, "by_agent_type": {"code": 1},
-            "matches": [{
-                "failure_label": "f1", "similarity": 0.51, "agent_type": "code",
-                "tags": ["stripe"],
-                "trace": {"title": "Stripe webhook", "solution_text": "Use an idempotency key"},
-            }],
-            "note": "",
-        })
+        rendered = commons_cmd._render(
+            {
+                "n_failures": 1,
+                "n_covered": 1,
+                "covered_fraction": 1.0,
+                "n_commons_traces": 1,
+                "threshold": 0.3,
+                "by_agent_type": {"code": 1},
+                "matches": [
+                    {
+                        "failure_label": "f1",
+                        "similarity": 0.51,
+                        "agent_type": "code",
+                        "tags": ["stripe"],
+                        "trace": {"title": "Stripe webhook", "solution_text": "Use an idempotency key"},
+                    }
+                ],
+                "note": "",
+            }
+        )
         assert "Stripe webhook" in rendered
         assert "Use an idempotency key" in rendered
 
     def test_disputed_matches_are_shown_and_marked_as_not_counted(self):
-        rendered = commons_cmd._render({
-            "n_failures": 1, "n_covered": 0, "covered_fraction": 0.0,
-            "n_commons_traces": 1, "threshold": 0.3, "by_agent_type": {},
-            "matches": [],
-            "disputed_matches": [{
-                "failure_label": "f1", "similarity": 0.62, "agent_type": "code",
-                "tags": ["react"],
-                "trace": {
-                    "title": "React 18 hydration workaround",
-                    "solution_text": "Suppress the warning",
-                    "vote_count": 6,
-                    "standing": "disputed",
-                },
-            }],
-            "note": "",
-        })
+        rendered = commons_cmd._render(
+            {
+                "n_failures": 1,
+                "n_covered": 0,
+                "covered_fraction": 0.0,
+                "n_commons_traces": 1,
+                "threshold": 0.3,
+                "by_agent_type": {},
+                "matches": [],
+                "disputed_matches": [
+                    {
+                        "failure_label": "f1",
+                        "similarity": 0.62,
+                        "agent_type": "code",
+                        "tags": ["react"],
+                        "trace": {
+                            "title": "React 18 hydration workaround",
+                            "solution_text": "Suppress the warning",
+                            "vote_count": 6,
+                            "standing": "disputed",
+                        },
+                    }
+                ],
+                "note": "",
+            }
+        )
         assert "disputed" in rendered.lower()
         assert "React 18 hydration workaround" in rendered
         assert "6 fleet(s)" in rendered
         assert "not counted above" in rendered.lower()
 
     def test_a_report_with_no_disputed_matches_says_nothing_about_them(self):
-        rendered = commons_cmd._render({
-            "n_failures": 1, "n_covered": 1, "covered_fraction": 1.0,
-            "n_commons_traces": 1, "threshold": 0.3, "by_agent_type": {"code": 1},
-            "matches": [], "note": "",
-        })
+        rendered = commons_cmd._render(
+            {
+                "n_failures": 1,
+                "n_covered": 1,
+                "covered_fraction": 1.0,
+                "n_commons_traces": 1,
+                "threshold": 0.3,
+                "by_agent_type": {"code": 1},
+                "matches": [],
+                "note": "",
+            }
+        )
         assert "disputed" not in rendered.lower()
 
 
@@ -304,18 +362,28 @@ class TestRenderCandidates:
     @staticmethod
     def _result(standing, vote_count=6, trust=0.17):
         return {
-            "n_candidates": 1, "n_commons_traces": 4, "n_commons_traces_total": 4,
-            "corpus_truncated": False, "note": "candidates, not coverage",
-            "candidates": [{
-                "rank": 1, "similarity": 0.42, "commons_hits": 3,
-                "trace": {
-                    "title": "React 18 hydration workaround",
-                    "context_text": "SSR mismatch",
-                    "solution_text": "Suppress the warning",
-                    "tags": ["react"], "agent_type": "code",
-                    "trust": trust, "vote_count": vote_count, "standing": standing,
-                },
-            }],
+            "n_candidates": 1,
+            "n_commons_traces": 4,
+            "n_commons_traces_total": 4,
+            "corpus_truncated": False,
+            "note": "candidates, not coverage",
+            "candidates": [
+                {
+                    "rank": 1,
+                    "similarity": 0.42,
+                    "commons_hits": 3,
+                    "trace": {
+                        "title": "React 18 hydration workaround",
+                        "context_text": "SSR mismatch",
+                        "solution_text": "Suppress the warning",
+                        "tags": ["react"],
+                        "agent_type": "code",
+                        "trust": trust,
+                        "vote_count": vote_count,
+                        "standing": standing,
+                    },
+                }
+            ],
         }
 
     def test_a_disputed_candidate_carries_a_warning(self):
@@ -325,29 +393,21 @@ class TestRenderCandidates:
         assert "Suppress the warning" in rendered
 
     def test_a_stale_candidate_says_it_is_overdue_not_wrong(self):
-        rendered = commons_cmd._render_candidates(
-            self._result("stale", vote_count=0, trust=0.5), "hydration error"
-        )
+        rendered = commons_cmd._render_candidates(self._result("stale", vote_count=0, trust=0.5), "hydration error")
         assert "review date" in rendered
         assert "Disputed" not in rendered
 
     def test_an_ordinary_candidate_gets_no_warning(self):
-        rendered = commons_cmd._render_candidates(
-            self._result("unproven", vote_count=0, trust=0.5), "hydration error"
-        )
+        rendered = commons_cmd._render_candidates(self._result("unproven", vote_count=0, trust=0.5), "hydration error")
         assert "Disputed" not in rendered
         assert "review date" not in rendered
 
     def test_trust_is_shown_with_its_denominator(self):
-        rendered = commons_cmd._render_candidates(
-            self._result("disputed", vote_count=12, trust=0.0), "hydration error"
-        )
+        rendered = commons_cmd._render_candidates(self._result("disputed", vote_count=12, trust=0.0), "hydration error")
         assert "trust 0.00 from 12 fleet(s)" in rendered
 
     def test_trust_is_hidden_entirely_when_nobody_has_voted(self):
-        rendered = commons_cmd._render_candidates(
-            self._result("unproven", vote_count=0, trust=0.5), "hydration error"
-        )
+        rendered = commons_cmd._render_candidates(self._result("unproven", vote_count=0, trust=0.5), "hydration error")
         assert "trust" not in rendered
 
 
@@ -355,16 +415,22 @@ class TestSignFromAnExistingExport:
     def _export(self, tmp_path):
         p = os.path.join(str(tmp_path), "incidents.csv")
         with open(p, "w", encoding="utf-8") as fh:
-            fh.write("Summary,Description\n"
-                     "Pool exhausted,spike drained the connection pool\n"
-                     "Duplicate charge,webhook redelivered after a timeout\n")
+            fh.write(
+                "Summary,Description\n"
+                "Pool exhausted,spike drained the connection pool\n"
+                "Duplicate charge,webhook redelivered after a timeout\n"
+            )
         return p
 
     def test_signs_without_any_unimem_store(self, tmp_path, capsys):
         out = os.path.join(str(tmp_path), "sig.json")
-        rc = commons_cmd.run_sign(argparse.Namespace(
-            out=out, from_file=self._export(tmp_path), dest=str(tmp_path),
-        ))
+        rc = commons_cmd.run_sign(
+            argparse.Namespace(
+                out=out,
+                from_file=self._export(tmp_path),
+                dest=str(tmp_path),
+            )
+        )
         assert rc == 0
         with open(out, encoding="utf-8") as fh:
             payload = json.load(fh)
@@ -373,9 +439,13 @@ class TestSignFromAnExistingExport:
 
     def test_says_what_it_read_and_what_travels(self, tmp_path, capsys):
         out = os.path.join(str(tmp_path), "sig.json")
-        commons_cmd.run_sign(argparse.Namespace(
-            out=out, from_file=self._export(tmp_path), dest=str(tmp_path),
-        ))
+        commons_cmd.run_sign(
+            argparse.Namespace(
+                out=out,
+                from_file=self._export(tmp_path),
+                dest=str(tmp_path),
+            )
+        )
         printed = capsys.readouterr().out
         assert "as csv" in printed
         assert "Failure text is NOT in this file" in printed
@@ -385,27 +455,46 @@ class TestSignFromAnExistingExport:
         bad = os.path.join(str(tmp_path), "bad.jsonl")
         with open(bad, "w", encoding="utf-8") as fh:
             fh.write("{not json}\n")
-        rc = commons_cmd.run_sign(argparse.Namespace(
-            out=os.path.join(str(tmp_path), "sig.json"), from_file=bad, dest=str(tmp_path),
-        ))
+        rc = commons_cmd.run_sign(
+            argparse.Namespace(
+                out=os.path.join(str(tmp_path), "sig.json"),
+                from_file=bad,
+                dest=str(tmp_path),
+            )
+        )
         assert rc == 1
         assert "line 1" in capsys.readouterr().err
 
     def test_report_refuses_both_input_flags(self, tmp_path, capsys):
-        rc = commons_cmd.run_report(argparse.Namespace(
-            signatures="a.json", from_file="b.csv", threshold=None, counts_only=False,
-            json=False, hub_url="http://x/mcp", hub_api_key="k", dest=str(tmp_path),
-        ))
+        rc = commons_cmd.run_report(
+            argparse.Namespace(
+                signatures="a.json",
+                from_file="b.csv",
+                threshold=None,
+                counts_only=False,
+                json=False,
+                hub_url="http://x/mcp",
+                hub_api_key="k",
+                dest=str(tmp_path),
+            )
+        )
         assert rc == 1
         assert "not both" in capsys.readouterr().err
 
 
 def _report_args(**kw):
     base = dict(
-        signatures=None, from_file=None, from_format=None, threshold=None,
-        counts_only=False, candidates=False,
+        signatures=None,
+        from_file=None,
+        from_format=None,
+        threshold=None,
+        counts_only=False,
+        candidates=False,
         candidate_limit=commons_cmd.DEFAULT_CANDIDATE_LOOKUPS,
-        json=False, hub_url="http://hub.test/mcp", hub_api_key="unimem_live_test", dest=None,
+        json=False,
+        hub_url="http://hub.test/mcp",
+        hub_api_key="unimem_live_test",
+        dest=None,
     )
     base.update(kw)
     return argparse.Namespace(**base)
@@ -438,16 +527,18 @@ def _failures():
 
 def _coverage(n_covered=0, matches=None, disputed=None):
     return {
-        "n_failures": 3, "n_covered": n_covered,
-        "covered_fraction": n_covered / 3, "n_commons_traces": 46, "threshold": 0.3,
-        "matches": matches or [], "disputed_matches": disputed or [],
+        "n_failures": 3,
+        "n_covered": n_covered,
+        "covered_fraction": n_covered / 3,
+        "n_commons_traces": 46,
+        "threshold": 0.3,
+        "matches": matches or [],
+        "disputed_matches": disputed or [],
     }
 
 
 class TestTheReportNoLongerReadsAsAnEmptyKnowledgeBase:
-    def test_an_uncovered_report_explains_the_bar_and_offers_the_lookup(
-        self, monkeypatch, capsys
-    ):
+    def test_an_uncovered_report_explains_the_bar_and_offers_the_lookup(self, monkeypatch, capsys):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
         _stub_hub(monkeypatch, report=_coverage())
 
@@ -460,8 +551,7 @@ class TestTheReportNoLongerReadsAsAnEmptyKnowledgeBase:
 
     def test_a_fully_covered_report_makes_no_such_offer(self, monkeypatch, capsys):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
-        matches = [{"failure_label": f["label"], "similarity": 0.9, "trace": {"title": "t"}}
-                   for f in _failures()]
+        matches = [{"failure_label": f["label"], "similarity": 0.9, "trace": {"title": "t"}} for f in _failures()]
         _stub_hub(monkeypatch, report=_coverage(n_covered=3, matches=matches))
 
         assert commons_cmd.run_report(_report_args()) == 0
@@ -476,8 +566,9 @@ class TestCandidatesAreLookedUpButNeverCounted:
         calls = _stub_hub(
             monkeypatch,
             report=_coverage(n_covered=1, matches=matches),
-            searches={(2, 2, 2): [{"rank": 1, "similarity": 0.15,
-                                   "trace": {"title": "beta answer", "solution_text": "do x"}}]},
+            searches={
+                (2, 2, 2): [{"rank": 1, "similarity": 0.15, "trace": {"title": "beta answer", "solution_text": "do x"}}]
+            },
         )
 
         assert commons_cmd.run_report(_report_args(candidates=True)) == 0
@@ -489,8 +580,7 @@ class TestCandidatesAreLookedUpButNeverCounted:
     def test_a_disputed_match_is_not_looked_up_again(self, monkeypatch):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
         disputed = [{"failure_label": "beta", "similarity": 0.4, "trace": {"title": "d"}}]
-        calls = _stub_hub(
-            monkeypatch, report=_coverage(n_covered=0, disputed=disputed))
+        calls = _stub_hub(monkeypatch, report=_coverage(n_covered=0, disputed=disputed))
 
         commons_cmd.run_report(_report_args(candidates=True))
         assert [1, 1, 1] in calls and [3, 3, 3] in calls
@@ -499,10 +589,12 @@ class TestCandidatesAreLookedUpButNeverCounted:
     def test_the_coverage_figure_is_untouched_by_the_lookups(self, monkeypatch, capsys):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
         _stub_hub(
-            monkeypatch, report=_coverage(),
-            searches={(s, s, s): [{"rank": 1, "similarity": 0.5,
-                                   "trace": {"title": f"answer {s}", "solution_text": "x"}}]
-                      for s in (1, 2, 3)},
+            monkeypatch,
+            report=_coverage(),
+            searches={
+                (s, s, s): [{"rank": 1, "similarity": 0.5, "trace": {"title": f"answer {s}", "solution_text": "x"}}]
+                for s in (1, 2, 3)
+            },
         )
 
         assert commons_cmd.run_report(_report_args(candidates=True)) == 0
@@ -513,8 +605,7 @@ class TestCandidatesAreLookedUpButNeverCounted:
 
     def test_json_marks_the_lookups_as_not_coverage(self, monkeypatch, capsys):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
-        _stub_hub(monkeypatch, report=_coverage(),
-                  searches={(1, 1, 1): [{"rank": 1, "trace": {"title": "a"}}]})
+        _stub_hub(monkeypatch, report=_coverage(), searches={(1, 1, 1): [{"rank": 1, "trace": {"title": "a"}}]})
 
         assert commons_cmd.run_report(_report_args(candidates=True, json=True)) == 0
         payload = json.loads(capsys.readouterr().out)
@@ -525,9 +616,7 @@ class TestCandidatesAreLookedUpButNeverCounted:
 
 
 class TestTheLookupsAreBoundedAndSurviveFailure:
-    def test_the_budget_caps_lookups_and_says_how_many_were_skipped(
-        self, monkeypatch, capsys
-    ):
+    def test_the_budget_caps_lookups_and_says_how_many_were_skipped(self, monkeypatch, capsys):
         monkeypatch.setattr(commons_cmd, "build_signatures", lambda root: _failures())
         calls = _stub_hub(monkeypatch, report=_coverage())
 
@@ -558,29 +647,45 @@ def _local_args(tmp_path, corpus_records, export_records, **kw):
     efile = tmp_path / "export.jsonl"
     efile.write_text("\n".join(json.dumps(r) for r in export_records), encoding="utf-8")
     base = dict(
-        signatures=None, from_file=str(efile), from_format=None, threshold=None,
-        counts_only=False, candidates=False,
+        signatures=None,
+        from_file=str(efile),
+        from_format=None,
+        threshold=None,
+        counts_only=False,
+        candidates=False,
         candidate_limit=commons_cmd.DEFAULT_CANDIDATE_LOOKUPS,
-        corpus=str(cfile), semantic=False,
-        json=False, hub_url=None, hub_api_key=None, dest=None,
+        corpus=str(cfile),
+        semantic=False,
+        json=False,
+        hub_url=None,
+        hub_api_key=None,
+        dest=None,
     )
     base.update(kw)
     return argparse.Namespace(**base)
 
 
 _CORPUS = [
-    {"title": "Connection pool exhausted during a retry storm",
-     "context_text": "callers queue waiting to acquire a connection",
-     "tags": ["postgres"], "solution_text": "bound retries with jittered backoff"},
-    {"title": "Payment webhook delivered more than once",
-     "context_text": "the provider redelivers after a timeout",
-     "tags": ["billing"], "solution_text": "persist the event id"},
+    {
+        "title": "Connection pool exhausted during a retry storm",
+        "context_text": "callers queue waiting to acquire a connection",
+        "tags": ["postgres"],
+        "solution_text": "bound retries with jittered backoff",
+    },
+    {
+        "title": "Payment webhook delivered more than once",
+        "context_text": "the provider redelivers after a timeout",
+        "tags": ["billing"],
+        "solution_text": "persist the event id",
+    },
 ]
 _EXPORT = [
-    {"title": "Connection pool exhausted during a retry storm",
-     "context_text": "callers queue waiting to acquire a connection", "tags": ["postgres"]},
-    {"title": "the office coffee machine leaks", "context_text": "water on the floor",
-     "tags": ["facilities"]},
+    {
+        "title": "Connection pool exhausted during a retry storm",
+        "context_text": "callers queue waiting to acquire a connection",
+        "tags": ["postgres"],
+    },
+    {"title": "the office coffee machine leaks", "context_text": "water on the floor", "tags": ["facilities"]},
 ]
 
 
@@ -596,8 +701,7 @@ class TestALocalReportTouchesNothing:
         assert "computed locally" in capsys.readouterr().out.lower()
 
     def test_it_needs_no_hub_url_or_api_key(self, tmp_path, capsys):
-        assert commons_cmd.run_report(
-            _local_args(tmp_path, _CORPUS, _EXPORT, hub_url=None, hub_api_key=None)) == 0
+        assert commons_cmd.run_report(_local_args(tmp_path, _CORPUS, _EXPORT, hub_url=None, hub_api_key=None)) == 0
         out = capsys.readouterr().out
         assert "of 2" in out
 
@@ -629,9 +733,7 @@ class TestSemanticIsOptOutAndFailsLoudly:
         assert commons_cmd.run_report(args) == 1
         assert "--semantic needs --corpus" in capsys.readouterr().err
 
-    def test_a_missing_model_stack_is_reported_not_raised(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_a_missing_model_stack_is_reported_not_raised(self, tmp_path, monkeypatch, capsys):
         def unavailable(*a, **kw):
             raise commons_cmd.semantic.SemanticUnavailable("install the extra")
 
@@ -661,8 +763,7 @@ class TestSemanticIsOptOutAndFailsLoudly:
             return [{"best": None, "matches": []} for _ in queries]
 
         monkeypatch.setattr(commons_cmd.semantic, "best_matches", fake)
-        commons_cmd.run_report(
-            _local_args(tmp_path, _CORPUS, _EXPORT, semantic=True, threshold=0.5))
+        commons_cmd.run_report(_local_args(tmp_path, _CORPUS, _EXPORT, semantic=True, threshold=0.5))
         assert seen["threshold"] == 0.5
 
 
@@ -692,8 +793,10 @@ class TestTheCorpusFileIsValidated:
 class TestFetchingTheCorpus:
     def _args(self, tmp_path, **kw):
         base = dict(
-            out=str(tmp_path / "corpus.jsonl"), limit=None,
-            hub_url="http://hub.test/mcp", hub_api_key="unimem_live_test",
+            out=str(tmp_path / "corpus.jsonl"),
+            limit=None,
+            hub_url="http://hub.test/mcp",
+            hub_api_key="unimem_live_test",
         )
         base.update(kw)
         return argparse.Namespace(**base)
@@ -711,49 +814,53 @@ class TestFetchingTheCorpus:
         return seen
 
     def test_it_writes_the_corpus_as_jsonl(self, tmp_path, monkeypatch, capsys):
-        self._stub(monkeypatch, {"entries": [
-            {"title": "a", "context_text": "c", "solution_text": "s", "tags": ["t"]},
-            {"title": "b", "context_text": "c", "solution_text": "s", "tags": []},
-        ], "n_entries": 2})
+        self._stub(
+            monkeypatch,
+            {
+                "entries": [
+                    {"title": "a", "context_text": "c", "solution_text": "s", "tags": ["t"]},
+                    {"title": "b", "context_text": "c", "solution_text": "s", "tags": []},
+                ],
+                "n_entries": 2,
+            },
+        )
         args = self._args(tmp_path)
         assert commons_cmd.run_fetch(args) == 0
 
-        written = [json.loads(x) for x in
-                   Path(args.out).read_text(encoding='utf-8').splitlines() if x.strip()]
+        written = [json.loads(x) for x in Path(args.out).read_text(encoding="utf-8").splitlines() if x.strip()]
         assert [r["title"] for r in written] == ["a", "b"]
         assert commons_cmd._load_corpus(args.out) == written
 
     def test_it_tells_you_the_next_command(self, tmp_path, monkeypatch, capsys):
-        self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}],
-                                 "n_entries": 1})
+        self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}], "n_entries": 1})
         commons_cmd.run_fetch(self._args(tmp_path))
         out = capsys.readouterr().out
         assert "--corpus" in out
         assert "nothing needs to leave this machine" in out
 
     def test_truncation_is_reported(self, tmp_path, monkeypatch, capsys):
-        self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}],
-                                 "n_entries": 1, "truncated": True})
+        self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}], "n_entries": 1, "truncated": True})
         commons_cmd.run_fetch(self._args(tmp_path))
         assert "truncated" in capsys.readouterr().err
 
     def test_a_disabled_export_is_reported_not_raised(self, tmp_path, monkeypatch, capsys):
-        self._stub(monkeypatch, commons_cmd.hub_client.HubConnectionError(
-            "commons_export failed: entitlement_exceeded: ... "
-            "ask the operator to set HUB_COMMONS_EXPORT_ENABLED=true."))
+        self._stub(
+            monkeypatch,
+            commons_cmd.hub_client.HubConnectionError(
+                "commons_export failed: entitlement_exceeded: ... "
+                "ask the operator to set HUB_COMMONS_EXPORT_ENABLED=true."
+            ),
+        )
         assert commons_cmd.run_fetch(self._args(tmp_path)) == 1
         assert "HUB_COMMONS_EXPORT_ENABLED" in capsys.readouterr().err
 
-    def test_an_empty_corpus_is_not_written_as_a_valid_file(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_an_empty_corpus_is_not_written_as_a_valid_file(self, tmp_path, monkeypatch, capsys):
         self._stub(monkeypatch, {"entries": [], "n_entries": 0})
         args = self._args(tmp_path)
         assert commons_cmd.run_fetch(args) == 1
         assert not os.path.exists(args.out)
 
     def test_the_limit_is_passed_through(self, tmp_path, monkeypatch):
-        seen = self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}],
-                                        "n_entries": 1})
+        seen = self._stub(monkeypatch, {"entries": [{"title": "a", "solution_text": "s"}], "n_entries": 1})
         commons_cmd.run_fetch(self._args(tmp_path, limit=10))
         assert seen["limit"] == 10

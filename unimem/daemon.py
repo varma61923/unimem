@@ -1,4 +1,5 @@
 """Consolidation daemon: cron/idle/event triggers, file lock, crash recovery."""
+
 from __future__ import annotations
 
 import json
@@ -185,6 +186,7 @@ def _invoke_hooks(root: str) -> dict:
     results: dict = {}
     try:
         from unimem.commands import dream_cmd
+
         main_dream = getattr(dream_cmd, "main_dream", None)
         if callable(main_dream):
             results["dream"] = main_dream(root, draft=False)
@@ -195,6 +197,7 @@ def _invoke_hooks(root: str) -> dict:
     try:
         from unimem import consolidate as consolidate_mod
         from unimem import evidence_io
+
         lessons = evidence_io.load_active_lessons(root)
         report = consolidate_mod.build_report(lessons)
         results["consolidate"] = {
@@ -242,12 +245,16 @@ def run_once(root: str, triggers=None) -> dict:
         trigger_list = [triggers]
     state = _load_daemon_state(root)
     if not any(should_run(t, state) for t in trigger_list):
-        return {"ok": True, "ran": False, "skipped": True,
-                "reason": "no trigger fired", "root": root}
+        return {"ok": True, "ran": False, "skipped": True, "reason": "no trigger fired", "root": root}
     lock = acquire_lock(root)
     if lock is None:
-        return {"ok": False, "ran": False, "reason": "locked",
-                "error": "another daemon pass holds the lock", "root": root}
+        return {
+            "ok": False,
+            "ran": False,
+            "reason": "locked",
+            "error": "another daemon pass holds the lock",
+            "root": root,
+        }
     try:
         mpath = marker_path(root)
         recovered = False
@@ -261,16 +268,17 @@ def run_once(root: str, triggers=None) -> dict:
             pass
         hooks = _invoke_hooks(root)
         now = time.time()
-        state.update({"last_run": now, "last_hooks": {
-            k: (v if isinstance(v, (int, float, str, bool)) else "ok")
-            for k, v in hooks.items()
-        }})
+        state.update(
+            {
+                "last_run": now,
+                "last_hooks": {k: (v if isinstance(v, (int, float, str, bool)) else "ok") for k, v in hooks.items()},
+            }
+        )
         _save_daemon_state(root, state)
         try:
             os.unlink(mpath)
         except OSError:
             pass
-        return {"ok": True, "ran": True, "recovered": recovered,
-                "hooks": hooks, "last_run": now, "root": root}
+        return {"ok": True, "ran": True, "recovered": recovered, "hooks": hooks, "last_run": now, "root": root}
     finally:
         lock.release()

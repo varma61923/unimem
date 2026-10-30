@@ -24,11 +24,22 @@ def _only_trace(store):
 
 
 def _capture(store, *extra):
-    return main([
-        "capture", "--title", "Refund delayed", "--context", "customer asked twice",
-        "--solution", "state the window up front", "--agent-type", "support",
-        "--dest", str(store), *extra,
-    ])
+    return main(
+        [
+            "capture",
+            "--title",
+            "Refund delayed",
+            "--context",
+            "customer asked twice",
+            "--solution",
+            "state the window up front",
+            "--agent-type",
+            "support",
+            "--dest",
+            str(store),
+            *extra,
+        ]
+    )
 
 
 class TestCaptureAgentId:
@@ -44,10 +55,23 @@ class TestCaptureAgentId:
 
     def test_two_agents_of_the_same_type_are_distinguishable(self, store):
         _capture(store, "--agent-id", "worker-a")
-        main([
-            "capture", "--title", "Another", "--context", "ctx", "--solution", "fix",
-            "--agent-type", "support", "--agent-id", "worker-b", "--dest", str(store),
-        ])
+        main(
+            [
+                "capture",
+                "--title",
+                "Another",
+                "--context",
+                "ctx",
+                "--solution",
+                "fix",
+                "--agent-type",
+                "support",
+                "--agent-id",
+                "worker-b",
+                "--dest",
+                str(store),
+            ]
+        )
         tdir = store / "memory" / "traces"
         ids = set()
         types = set()
@@ -101,11 +125,23 @@ class TestHubClientForwardsAgentId:
 
         ldir = paths.lessons_dir(str(store))
         fm = {
-            "name": "lesson_a", "description": "d", "tags": [], "agent_type": "support",
-            "domain": "testing", "importance": 3, "importance_rationale": "r",
-            "importance_history": [], "applies_when": "when", "do_not_apply_when": "never",
-            "uses": 0, "last_hit": "NEVER", "source_traces": [], "source_episodes": [],
-            "hub_trace_id": None, "status": "active", "agent_id": "support-worker-7",
+            "name": "lesson_a",
+            "description": "d",
+            "tags": [],
+            "agent_type": "support",
+            "domain": "testing",
+            "importance": 3,
+            "importance_rationale": "r",
+            "importance_history": [],
+            "applies_when": "when",
+            "do_not_apply_when": "never",
+            "uses": 0,
+            "last_hit": "NEVER",
+            "source_traces": [],
+            "source_episodes": [],
+            "hub_trace_id": None,
+            "status": "active",
+            "agent_id": "support-worker-7",
         }
         frontmatter.write(os.path.join(ldir, "lesson_a.md"), fm, "## Rule\nx\n")
 
@@ -128,11 +164,22 @@ class TestHubClientForwardsAgentId:
 
         ldir = paths.lessons_dir(str(store))
         fm = {
-            "name": "lesson_b", "description": "d", "tags": [], "agent_type": "support",
-            "domain": "testing", "importance": 3, "importance_rationale": "r",
-            "importance_history": [], "applies_when": "when", "do_not_apply_when": "never",
-            "uses": 0, "last_hit": "NEVER", "source_traces": [], "source_episodes": [],
-            "hub_trace_id": None, "status": "active",
+            "name": "lesson_b",
+            "description": "d",
+            "tags": [],
+            "agent_type": "support",
+            "domain": "testing",
+            "importance": 3,
+            "importance_rationale": "r",
+            "importance_history": [],
+            "applies_when": "when",
+            "do_not_apply_when": "never",
+            "uses": 0,
+            "last_hit": "NEVER",
+            "source_traces": [],
+            "source_episodes": [],
+            "hub_trace_id": None,
+            "status": "active",
         }
         frontmatter.write(os.path.join(ldir, "lesson_b.md"), fm, "## Rule\nx\n")
 

@@ -5,6 +5,7 @@ SSE and Streamable HTTP. This module adds the local store's rotating credential
 boundary and bounded admission. A token grants access to one entire store;
 multi-tenant deployments use the Hub's organization-scoped authorization.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -28,8 +29,14 @@ class BearerBoundary:
     Admission never allocates an unbounded queue of waiting requests.
     """
 
-    def __init__(self, app: ASGIApp, token_provider: Callable[[], str | None], *, max_connections: int = 128,
-                 oauth_server: ResourceServer | None = None):
+    def __init__(
+        self,
+        app: ASGIApp,
+        token_provider: Callable[[], str | None],
+        *,
+        max_connections: int = 128,
+        oauth_server: ResourceServer | None = None,
+    ):
         """`oauth_server`: an optional `unimem.oauth.ResourceServer`. When set, a JWT access
         token carrying ``unimem:mcp`` or ``unimem:admin`` is accepted beside the file
         token, and the RFC 9728 metadata document is served without authentication."""
@@ -56,9 +63,17 @@ class BearerBoundary:
                 import json
 
                 body = json.dumps(self.oauth_server.config.metadata()).encode("utf-8")
-                await send({"type": "http.response.start", "status": 200, "headers": [
-                    (b"content-type", b"application/json"), (b"cache-control", b"max-age=300"),
-                    (b"content-length", str(len(body)).encode("ascii"))]})
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"cache-control", b"max-age=300"),
+                            (b"content-length", str(len(body)).encode("ascii")),
+                        ],
+                    }
+                )
                 await send({"type": "http.response.body", "body": body})
                 return
         if self._active >= self.max_connections:
@@ -80,8 +95,12 @@ class BearerBoundary:
                     expected = await asyncio.to_thread(self.token_provider)
                 except Exception:
                     expected = None
-            accepted = expected is not None and expected != "" and supplied is not None \
+            accepted = (
+                expected is not None
+                and expected != ""
+                and supplied is not None
                 and secrets.compare_digest(supplied, expected.encode("utf-8"))
+            )
             if not accepted and supplied is not None and self.oauth_server is not None:
                 from unimem import oauth
 
@@ -113,8 +132,11 @@ class BearerBoundary:
         return claims.is_admin or oauth.SCOPE_MCP in claims.scopes
 
     async def _deny(self, send: Send, status: int, body: bytes) -> None:
-        headers = [(b"content-type", b"application/json"), (b"cache-control", b"no-store"),
-                   (b"content-length", str(len(body)).encode("ascii"))]
+        headers = [
+            (b"content-type", b"application/json"),
+            (b"cache-control", b"no-store"),
+            (b"content-length", str(len(body)).encode("ascii")),
+        ]
         if status == 401 and self.oauth_server is not None:
             from unimem import oauth
 
@@ -169,22 +191,29 @@ def build_http_app(
         raise ValueError("a remote listener requires explicit allowed_hosts")
     hosts = list(allowed_hosts) or ["127.0.0.1:*", "localhost:*", "[::1]:*"]
     origins = list(allowed_origins) or (
-        ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"] if loopback else [])
+        ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"] if loopback else []
+    )
     security = TransportSecuritySettings(
-        enable_dns_rebinding_protection=True, allowed_hosts=hosts, allowed_origins=origins,
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
     )
     server = mcp_server.build_server(root, allow_approval=allow_approval)
     if transport == "sse":
         app = server.sse_app(host=host, transport_security=security, max_request_body_size=max_request_body_size)
     else:
         app = server.streamable_http_app(
-            host=host, transport_security=security, max_request_body_size=max_request_body_size,
-            max_sessions=max_sessions, session_idle_timeout=session_idle_timeout,
+            host=host,
+            transport_security=security,
+            max_request_body_size=max_request_body_size,
+            max_sessions=max_sessions,
+            session_idle_timeout=session_idle_timeout,
         )
     if token_provider is None:
         gateway_tokens.load_or_create_token(root)
         token_provider = gateway_tokens.FileTokenProvider(root)
     from unimem import oauth
 
-    return BearerBoundary(app, token_provider, max_connections=max_connections,
-                          oauth_server=oauth.resource_server(root))
+    return BearerBoundary(
+        app, token_provider, max_connections=max_connections, oauth_server=oauth.resource_server(root)
+    )

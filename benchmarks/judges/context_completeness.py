@@ -4,6 +4,7 @@ The three-level rubric adapts the context-completeness metric in the checked-out
 Zep LoCoMo evaluator. It judges the retrieved context itself and never sees a
 generated answer.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,7 @@ def format_prompt(question: str, gold_answer: str, context: str) -> str:
         + "means little or none of the needed information is present. Identify concise present "
         + "and missing information elements.\nINPUT_JSON:\n"
         + payload
-        + '\n\nUse exactly this JSON shape: '
+        + "\n\nUse exactly this JSON shape: "
         '{"grade":"COMPLETE|PARTIAL|INSUFFICIENT","reasoning":"...",'
         '"present_elements":["..."],"missing_elements":["..."]}'
     )
@@ -64,8 +65,10 @@ def parse_response(raw: str) -> dict[str, Any]:
 
     def elements(field: str) -> list[str]:
         value = payload.get(field)
-        if not isinstance(value, list) or len(value) > 20 or any(
-            not isinstance(item, str) or not item.strip() or len(item) > 300 for item in value
+        if (
+            not isinstance(value, list)
+            or len(value) > 20
+            or any(not isinstance(item, str) or not item.strip() or len(item) > 300 for item in value)
         ):
             raise ValueError("invalid context completeness response: " + field)
         return list(dict.fromkeys(item.strip() for item in value))
@@ -114,8 +117,9 @@ class ContextCompletenessJudge:
         if complete_fn is None:
             from unimem import llm
 
-            config = llm.Config(provider="openai-compatible", model=model or self.model,
-                                api_key=llm.load_config().api_key)
+            config = llm.Config(
+                provider="openai-compatible", model=model or self.model, api_key=llm.load_config().api_key
+            )
             raw, _usage = llm.complete(prompt, config=config)
         else:
             raw, _usage = complete_fn(prompt)

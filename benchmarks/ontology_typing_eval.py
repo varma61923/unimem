@@ -18,6 +18,7 @@ Run with ``python -m benchmarks.ontology_typing_eval --fixture FILE --json`` (ad
 ``--methods keyword,embedding --embedder fastembed:BAAI/bge-small-en-v1.5`` or
 ``--llm`` to include the model tiers; those numbers depend on the model).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,7 +79,9 @@ def score(rows: list[dict[str, Any]], predictions: list[str | None]) -> dict[str
         "macro_f1": round(sum(f1s) / len(f1s), 4) if f1s else 0.0,
         "typed": typed,
         "typed_precision": round(typed_right / typed, 4) if typed else 0.0,
-        "by_slice": {k: {"accuracy": round(sum(v) / len(v), 4), "examples": len(v)} for k, v in sorted(by_slice.items())},
+        "by_slice": {
+            k: {"accuracy": round(sum(v) / len(v), 4), "examples": len(v)} for k, v in sorted(by_slice.items())
+        },
         "by_type": {k: {"accuracy": round(sum(v) / len(v), 4), "examples": len(v)} for k, v in sorted(by_type.items())},
         "errors": dict(confusion.most_common()),
     }
@@ -98,15 +101,15 @@ def predict_pipeline(rows, onto, embedder=None) -> list[str | None]:
     for row in rows:
         found = entities.extract(row["context"], onto=onto, use_spacy=False, embedder=embedder)
         name = row["name"].lower()
-        match = next((m for m in found if m.name.lower() == name), None) or \
-            next((m for m in found if name in m.name.lower() or m.name.lower() in name), None)
+        match = next((m for m in found if m.name.lower() == name), None) or next(
+            (m for m in found if name in m.name.lower() or m.name.lower() in name), None
+        )
         type_ = match.type if match is not None else None
         out.append(None if type_ in (None, FALLBACK_TYPE) else type_)
     return out
 
 
-def run(path: str, *, methods: tuple[str, ...] = ("keyword",), embedder=None,
-        llm=None) -> dict[str, Any]:
+def run(path: str, *, methods: tuple[str, ...] = ("keyword",), embedder=None, llm=None) -> dict[str, Any]:
     from unimem import ontology
 
     rows = load_fixture(path)
@@ -129,8 +132,9 @@ def run(path: str, *, methods: tuple[str, ...] = ("keyword",), embedder=None,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--fixture", required=True,
-                        help="labeled mentions (JSON, schema_version 1.0.0); none ship with the repository")
+    parser.add_argument(
+        "--fixture", required=True, help="labeled mentions (JSON, schema_version 1.0.0); none ship with the repository"
+    )
     parser.add_argument("--methods", default="keyword", help="comma-separated classify methods")
     parser.add_argument("--embedder", default=None, help="embedding provider tag for the embedding tier")
     parser.add_argument("--llm", action="store_true", help="use the configured LLM for the llm tier")
@@ -149,8 +153,10 @@ def main(argv: list[str] | None = None) -> int:
     for view in ("classifier", "pipeline"):
         part = report[view]
         slices = ", ".join(f"{k} {v['accuracy']:.2f}" for k, v in part["by_slice"].items())
-        print(f"{view:10s} accuracy {part['accuracy']:.3f}  macro-F1 {part['macro_f1']:.3f}  "
-              f"typed precision {part['typed_precision']:.3f}  ({slices})  {part['ms_per_mention']} ms/mention")
+        print(
+            f"{view:10s} accuracy {part['accuracy']:.3f}  macro-F1 {part['macro_f1']:.3f}  "
+            f"typed precision {part['typed_precision']:.3f}  ({slices})  {part['ms_per_mention']} ms/mention"
+        )
     return 0
 
 

@@ -6,6 +6,7 @@ Provides:
 2. Document catalog:
    summary-list vs full-content-get so agents stop dumping entire documents into prompts.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -98,13 +99,14 @@ def _registered_documents(root: str):
                 if _MANIFEST_LOADING.get(path) == generation:
                     _MANIFEST_LOADING.pop(path, None)
                     _MANIFEST_CACHE.pop(path, None)
-                    if (len(ids) + len(sources) <= _MAX_CACHED_DOCUMENTS
-                            and cache_bytes <= _MAX_MANIFEST_CACHE_BYTES):
+                    if len(ids) + len(sources) <= _MAX_CACHED_DOCUMENTS and cache_bytes <= _MAX_MANIFEST_CACHE_BYTES:
                         _MANIFEST_CACHE[path] = (signature, frozen_ids, frozen_sources, cache_bytes)
-                        while (len(_MANIFEST_CACHE) > 8 or
-                               sum(len(entry[1]) + len(entry[2]) for entry in _MANIFEST_CACHE.values())
-                               > _MAX_CACHED_DOCUMENTS or
-                               sum(entry[3] for entry in _MANIFEST_CACHE.values()) > _MAX_MANIFEST_CACHE_BYTES):
+                        while (
+                            len(_MANIFEST_CACHE) > 8
+                            or sum(len(entry[1]) + len(entry[2]) for entry in _MANIFEST_CACHE.values())
+                            > _MAX_CACHED_DOCUMENTS
+                            or sum(entry[3] for entry in _MANIFEST_CACHE.values()) > _MAX_MANIFEST_CACHE_BYTES
+                        ):
                             _MANIFEST_CACHE.popitem(last=False)
         return frozen_ids, frozen_sources
     raise ValueError("document manifest changed during read; retry retrieval")
@@ -192,8 +194,7 @@ def update_ingest_job(
                 curr = IngestJob(**row)
                 if curr.stage in ("done", "failed") and stage != curr.stage:
                     raise ValueError(
-                        f"ingest job {job_id!r} is terminal at {curr.stage!r}; "
-                        f"cannot transition to {stage!r}"
+                        f"ingest job {job_id!r} is terminal at {curr.stage!r}; cannot transition to {stage!r}"
                     )
                 curr.stage = stage
                 curr.updated_at = _now()
@@ -260,6 +261,7 @@ def list_ingest_jobs(root: str, limit: int = 50) -> list[IngestJob]:
 
 # --- Document Catalog: Summary-List vs Full-Content-Get -----------------------
 
+
 @dataclass
 class DocumentSummary:
     id: str
@@ -316,7 +318,8 @@ def record_document(
 
     d_dir = _docs_dir(root)
     os.makedirs(d_dir, exist_ok=True)
-    payload = json.dumps({
+    payload = json.dumps(
+        {
             "id": doc_id,
             "source_path": clean_path,
             "title": doc_title,
@@ -325,13 +328,16 @@ def record_document(
             "token_count": est_tokens,
             "fingerprint": fp,
             "updated_at": doc.updated_at,
-        }, ensure_ascii=False).encode("utf-8")
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
     if len(payload) > MAX_DOCUMENT_BYTES:
         raise ValueError(f"document payload exceeds {MAX_DOCUMENT_BYTES} bytes")
     with _open_directory(d_dir) as directory_fd:
         temp_name = f".{doc_id}.{uuid.uuid4().hex}.tmp"
-        fd = os.open(temp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                     | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=directory_fd)
+        fd = os.open(
+            temp_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=directory_fd
+        )
         try:
             with os.fdopen(fd, "wb") as f:
                 f.write(payload)
@@ -404,6 +410,7 @@ def get_document(
         doc_id = ""
 
     from unimem.ingest import _read_bytes
+
     try:
         ids, sources = _registered_documents(root)
         if doc_id not in ids:
@@ -414,8 +421,12 @@ def get_document(
         data = json.loads(_read_bytes(body_path, MAX_DOCUMENT_BYTES))
     except (OSError, ValueError, RecursionError):
         return None
-    if (not isinstance(data, dict) or data.get("id") != doc_id
-            or not isinstance(data.get("content"), str) or not isinstance(data.get("chunks"), list)):
+    if (
+        not isinstance(data, dict)
+        or data.get("id") != doc_id
+        or not isinstance(data.get("content"), str)
+        or not isinstance(data.get("chunks"), list)
+    ):
         return None
 
     if chunk_index is not None:
@@ -426,5 +437,5 @@ def get_document(
         else:
             data["requested_chunk"] = None
             data["chunk_index"] = chunk_index
-            data["chunk_error"] = f"Chunk index {chunk_index} out of range [0, {len(chunks)-1}]"
+            data["chunk_error"] = f"Chunk index {chunk_index} out of range [0, {len(chunks) - 1}]"
     return data

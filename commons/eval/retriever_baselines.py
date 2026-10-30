@@ -12,6 +12,7 @@ Two corpora, reported separately because they answer different questions:
 Run: python commons/eval/retriever_baselines.py [--no-dense]
 Results and their limits are in the evaluation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,7 +38,8 @@ DENSE_MODELS = ("sentence-transformers/all-MiniLM-L6-v2", "BAAI/bge-small-en-v1.
 _TOKEN = re.compile(r"[a-z0-9]+")
 _STOP = frozenset(
     "a an the of to in on for and or is are was were be been it its this that with as at by from not no do does "
-    "did when than then but if into out up our we you they their there".split())
+    "did when than then but if into out up our we you they their there".split()
+)
 
 
 def _tokens(text: str) -> list[str]:
@@ -129,9 +131,12 @@ def evaluate(dense_models=DENSE_MODELS) -> dict:
 
         def shipped(q, lessons=lessons):
             return [r.slug for r in retrieval.rank_lessons(q, lessons, top_k=len(lessons))]
-        arms = {"shipped lexical": shipped,
-                "Okapi BM25": lambda q, m=bm25, n=names: _ranked(n, m.scores(q), matched_only=True),
-                "TF-IDF cosine": lambda q, m=tfidf, n=names: _ranked(n, m.scores(q), matched_only=True)}
+
+        arms = {
+            "shipped lexical": shipped,
+            "Okapi BM25": lambda q, m=bm25, n=names: _ranked(n, m.scores(q), matched_only=True),
+            "TF-IDF cosine": lambda q, m=tfidf, n=names: _ranked(n, m.scores(q), matched_only=True),
+        }
         for model in dense_models:
             short = model.split("/")[-1]
             enc = Dense(texts, model)
@@ -147,10 +152,19 @@ def evaluate(dense_models=DENSE_MODELS) -> dict:
                 row["r1"] += bool(ranked[:1] and ranked[0] in relevant)
                 row["r3"] += bool(relevant & set(ranked[:3]))
                 row["mrr"] += next((1 / i for i, name in enumerate(ranked, 1) if name in relevant), 0.0)
-    return {corpus: {arm: {"queries": r["n"], "recall@1": r["r1"] / r["n"], "recall@3": r["r3"] / r["n"],
-                           "mrr": r["mrr"] / r["n"], "p50_ms": statistics.median(r["ms"])}
-                     for arm, r in arms.items()}
-            for corpus, arms in totals.items()}
+    return {
+        corpus: {
+            arm: {
+                "queries": r["n"],
+                "recall@1": r["r1"] / r["n"],
+                "recall@3": r["r3"] / r["n"],
+                "mrr": r["mrr"] / r["n"],
+                "p50_ms": statistics.median(r["ms"]),
+            }
+            for arm, r in arms.items()
+        }
+        for corpus, arms in totals.items()
+    }
 
 
 def main() -> int:
@@ -161,6 +175,7 @@ def main() -> int:
     if not args.no_dense:
         try:
             import sentence_transformers  # noqa: F401
+
             models = DENSE_MODELS
         except ImportError:
             print("sentence-transformers is not installed: dense arms skipped", file=sys.stderr)

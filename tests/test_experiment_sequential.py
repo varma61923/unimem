@@ -91,7 +91,10 @@ class TestUnifiedSequentialRule:
         legacy = ex.analyze(obs, sequential=False)[0]
         explicit = ex.analyze(obs, fixed_horizon=True)[0]
         assert (explicit.verdict, explicit.p_value, explicit.ci_low, explicit.ci_high) == (
-            legacy.verdict, legacy.p_value, legacy.ci_low, legacy.ci_high,
+            legacy.verdict,
+            legacy.p_value,
+            legacy.ci_low,
+            legacy.ci_high,
         )
 
     def test_contradictory_modes_are_rejected(self):
@@ -102,9 +105,10 @@ class TestUnifiedSequentialRule:
         # The magic 2.0*detectable multiplier is now named; the default keeps
         # the historical behavior it had as a literal.
         assert ex.SEQUENTIAL_TARGET_EFFECT_MULTIPLE == 2.0
-        assert ex.analyze(_borderline(), sequential=True)[0].verdict == ex.analyze(
-            _borderline(), sequential=True, target_effect_multiple=2.0
-        )[0].verdict
+        assert (
+            ex.analyze(_borderline(), sequential=True)[0].verdict
+            == ex.analyze(_borderline(), sequential=True, target_effect_multiple=2.0)[0].verdict
+        )
 
     def test_the_target_multiple_retunes_the_boundary(self):
         narrow = ex.analyze(_borderline(), sequential=True, target_effect_multiple=4.0)[0]
@@ -157,10 +161,17 @@ def _seed_two_lessons(store):
     for lesson in ("a", "b"):
         for i in range(30):
             occ = f"{lesson}-{i}"
-            lines.append(json.dumps({
-                "occasion_id": occ, "lesson": lesson, "injected": i % 2 == 0,
-                "rate": 0.5, "salt": "default",
-            }))
+            lines.append(
+                json.dumps(
+                    {
+                        "occasion_id": occ,
+                        "lesson": lesson,
+                        "injected": i % 2 == 0,
+                        "rate": 0.5,
+                        "salt": "default",
+                    }
+                )
+            )
             _write_episode(store, occ, "CONFORM" if i % 3 else "ABANDON", (i % 28) + 1)
     with open(holdout_log_path(str(store)), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")

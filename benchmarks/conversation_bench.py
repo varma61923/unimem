@@ -16,6 +16,7 @@ For DolphinBench the evidence of a test is the history messages that establish i
 load-bearing facts; the query is the task request as the user typed it, asked on
 the test's anchor date.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -92,9 +93,9 @@ def product_options(**requested) -> Options:
         elif name in _OFF_BY_DEFAULT and value == _OFF_BY_DEFAULT[name]:
             continue
         else:
-            raise ValueError(f"the measured product revision has no {name!r} option; "
-                             "run without the flag that sets it")
+            raise ValueError(f"the measured product revision has no {name!r} option; run without the flag that sets it")
     return Options(**chosen)
+
 
 LOCOMO_CATEGORIES = {1: "multi-hop", 2: "temporal", 3: "open-domain", 4: "single-hop"}
 
@@ -126,9 +127,17 @@ def chunk_fingerprint(dataset: str, data: str, limit: int, seed: int, personas: 
         size, mtime = st.st_size, int(st.st_mtime)
     except OSError:
         size, mtime = -1, -1
-    return {"dataset": dataset, "data": path, "size": size, "mtime": mtime,
-            "limit": int(limit or 0), "seed": int(seed or 0), "personas": personas or "",
-            "dataset_sha256": dataset_digest(path), "adapter_sha256": adapter_digest(__file__)}
+    return {
+        "dataset": dataset,
+        "data": path,
+        "size": size,
+        "mtime": mtime,
+        "limit": int(limit or 0),
+        "seed": int(seed or 0),
+        "personas": personas or "",
+        "dataset_sha256": dataset_digest(path),
+        "adapter_sha256": adapter_digest(__file__),
+    }
 
 
 def _payload_from_cases(cases) -> list[dict]:
@@ -141,9 +150,14 @@ def _payload_from_cases(cases) -> list[dict]:
                 if isinstance(qn.get(key), set):
                     qn[key] = sorted(qn[key])
             normalized_questions.append(qn)
-        out.append({"space": space, "now": now,
-                    "sessions": [[name, date, messages] for name, date, messages in sessions],
-                    "questions": normalized_questions})
+        out.append(
+            {
+                "space": space,
+                "now": now,
+                "sessions": [[name, date, messages] for name, date, messages in sessions],
+                "questions": normalized_questions,
+            }
+        )
     return out
 
 
@@ -168,17 +182,22 @@ def _load_cases(args) -> list:
             raise ValueError("question exclusions support LoCoMo and LongMemEval only")
         with open(exclusion_path, encoding="utf-8") as source:
             exclusions = json.load(source)
-        if (not isinstance(exclusions, list) or any(not isinstance(q, str) or not q for q in exclusions)
-                or len(set(exclusions)) != len(exclusions)):
+        if (
+            not isinstance(exclusions, list)
+            or any(not isinstance(q, str) or not q for q in exclusions)
+            or len(set(exclusions)) != len(exclusions)
+        ):
             raise ValueError("question exclusions must be a list of distinct nonempty identities")
-        cases = (list(locomo_cases(args.data)) if args.dataset == "locomo"
-                 else list(longmemeval_cases(args.data, 0, args.seed)))
+        cases = (
+            list(locomo_cases(args.data))
+            if args.dataset == "locomo"
+            else list(longmemeval_cases(args.data, 0, args.seed))
+        )
         identities = {q["id"] for _s, _ss, _now, qs in cases for q in qs}
         if set(exclusions) - identities:
             raise ValueError("question exclusions contain identities outside this dataset")
         excluded = set(exclusions)
-        filtered = [(s, ss, now, [q for q in qs if q["id"] not in excluded])
-                    for s, ss, now, qs in cases]
+        filtered = [(s, ss, now, [q for q in qs if q["id"] not in excluded]) for s, ss, now, qs in cases]
         filtered = [case for case in filtered if case[3]]
         if args.dataset == "longmemeval" and args.limit and args.limit < len(filtered):
             # Each question owns a history: conversation strata would have one
@@ -218,8 +237,7 @@ def prepare_chunk_set(args) -> tuple[list, dict]:
     import datetime as dt
     import hashlib as _hashlib
 
-    fingerprint = chunk_fingerprint(args.dataset, args.data, args.limit, args.seed,
-                                    getattr(args, "personas", ""))
+    fingerprint = chunk_fingerprint(args.dataset, args.data, args.limit, args.seed, getattr(args, "personas", ""))
     if getattr(args, "question_exclusions", None):
         fingerprint["question_exclusions_sha256"] = dataset_digest(args.question_exclusions)
     digest = _hashlib.sha256(json.dumps(fingerprint, sort_keys=True).encode("utf-8")).hexdigest()
@@ -236,13 +254,17 @@ def prepare_chunk_set(args) -> tuple[list, dict]:
             manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
         except (ValueError, OSError):
             manifest = None
-        if (manifest and manifest.get("fingerprint") == fingerprint
-                and manifest.get("chunks_sha256") == dataset_digest(chunks_path)):
+        if (
+            manifest
+            and manifest.get("fingerprint") == fingerprint
+            and manifest.get("chunks_sha256") == dataset_digest(chunks_path)
+        ):
             with open(chunks_path, encoding="utf-8") as fh:
                 payload = [json.loads(line) for line in fh if line.strip()]
             info = dict(manifest.get("info") or {})
-            info.update({"name": name, "path": fdir, "reused": True, "layout": CHUNK_SET_LAYOUT,
-                         "fingerprint": fingerprint})
+            info.update(
+                {"name": name, "path": fdir, "reused": True, "layout": CHUNK_SET_LAYOUT, "fingerprint": fingerprint}
+            )
             return _cases_from_payload(payload), info
 
     cases = _load_cases(args)
@@ -252,11 +274,23 @@ def prepare_chunk_set(args) -> tuple[list, dict]:
     with open(chunks_path, "w", encoding="utf-8") as fh:
         for case in payload:
             fh.write(json.dumps(case, ensure_ascii=False, default=str) + "\n")
-    info = {"name": name, "path": fdir, "reused": False, "layout": CHUNK_SET_LAYOUT,
-            "dataset": args.dataset, "cases": len(cases),
-            "questions": sum(len(qs) for _s, _sess, _n, qs in cases), "fingerprint": fingerprint}
-    manifest = {"fingerprint": fingerprint, "info": info, "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                "layout": CHUNK_SET_LAYOUT, "chunks_sha256": dataset_digest(chunks_path)}
+    info = {
+        "name": name,
+        "path": fdir,
+        "reused": False,
+        "layout": CHUNK_SET_LAYOUT,
+        "dataset": args.dataset,
+        "cases": len(cases),
+        "questions": sum(len(qs) for _s, _sess, _n, qs in cases),
+        "fingerprint": fingerprint,
+    }
+    manifest = {
+        "fingerprint": fingerprint,
+        "info": info,
+        "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "layout": CHUNK_SET_LAYOUT,
+        "chunks_sha256": dataset_digest(chunks_path),
+    }
     with open(manifest_path, "w", encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2, sort_keys=True)
     return cases, info
@@ -296,8 +330,11 @@ def sample_cases(cases, limit, seed):
     categories = sorted({kind for kind, _index in strata})
     indices = sorted({index for _kind, index in strata})
     # Rotate category across conversations before revisiting either dimension.
-    schedule = [(categories[(i + phase) % len(categories)], index)
-                for phase in range(len(categories)) for i, index in enumerate(indices)]
+    schedule = [
+        (categories[(i + phase) % len(categories)], index)
+        for phase in range(len(categories))
+        for i, index in enumerate(indices)
+    ]
     selected = defaultdict(list)
     count = 0
     while count < limit:
@@ -305,8 +342,7 @@ def sample_cases(cases, limit, seed):
             if strata[key] and count < limit:
                 selected[key[1]].append(strata[key].pop())
                 count += 1
-    return [(space, sessions, now, selected[i])
-            for i, (space, sessions, now, _qs) in enumerate(cases) if selected[i]]
+    return [(space, sessions, now, selected[i]) for i, (space, sessions, now, _qs) in enumerate(cases) if selected[i]]
 
 
 def locomo_cases(path: str):
@@ -328,9 +364,16 @@ def locomo_cases(path: str):
             if qa.get("category") not in LOCOMO_CATEGORIES:
                 continue
             gold = {str(e).strip() for e in qa.get("evidence", []) if str(e).strip()}
-            questions.append({"id": f"{conv['sample_id']}-{i}", "question": qa["question"],
-                              "answer": str(qa.get("answer", "")), "type": LOCOMO_CATEGORIES[qa["category"]],
-                              "evidence": gold, "sessions": set()})
+            questions.append(
+                {
+                    "id": f"{conv['sample_id']}-{i}",
+                    "question": qa["question"],
+                    "answer": str(qa.get("answer", "")),
+                    "type": LOCOMO_CATEGORIES[qa["category"]],
+                    "evidence": gold,
+                    "sessions": set(),
+                }
+            )
         yield conv["sample_id"], sessions, None, questions
 
 
@@ -383,10 +426,22 @@ def ama_cases(path: str, limit: int = 0, seed: int = 0):
         for turn in row["trajectory"]:
             idx = int(turn["turn_idx"])
             steps.add(idx)
-            messages.append({"id": f"{episode}-s{idx}-a", "role": "assistant", "speaker": "agent",
-                             "text": f"Step {idx} action: {_ama_field(turn.get('action'))}"})
-            messages.append({"id": f"{episode}-s{idx}-o", "role": "user", "speaker": "environment",
-                             "text": f"Step {idx} observation: {_ama_field(turn.get('observation'))}"})
+            messages.append(
+                {
+                    "id": f"{episode}-s{idx}-a",
+                    "role": "assistant",
+                    "speaker": "agent",
+                    "text": f"Step {idx} action: {_ama_field(turn.get('action'))}",
+                }
+            )
+            messages.append(
+                {
+                    "id": f"{episode}-s{idx}-o",
+                    "role": "user",
+                    "speaker": "environment",
+                    "text": f"Step {idx} observation: {_ama_field(turn.get('observation'))}",
+                }
+            )
         questions = []
         for i, qa in enumerate(row["qa_pairs"]):
             named = set()
@@ -395,13 +450,29 @@ def ama_cases(path: str, limit: int = 0, seed: int = 0):
                 if 0 <= end - start <= 20:
                     named.update(range(start, end + 1))
             evidence = {f"{episode}-s{n}-{part}" for n in sorted(named & steps) for part in ("a", "o")}
-            questions.append({"id": f"{episode}-{qa.get('question_uuid', i)}", "question": qa["question"],
-                              "answer": str(qa.get("answer", "")),
-                              "type": AMA_TYPES.get(str(qa.get("type", "")), "other"),
-                              "evidence": evidence, "sessions": set()})
+            questions.append(
+                {
+                    "id": f"{episode}-{qa.get('question_uuid', i)}",
+                    "question": qa["question"],
+                    "answer": str(qa.get("answer", "")),
+                    "type": AMA_TYPES.get(str(qa.get("type", "")), "other"),
+                    "evidence": evidence,
+                    "sessions": set(),
+                }
+            )
         task = f"Task ({row['domain']}): {row['task']}"
-        yield episode, [("trajectory", None, [{"id": f"{episode}-task", "role": "user", "speaker": "user",
-                                              "text": task}] + messages)], None, questions
+        yield (
+            episode,
+            [
+                (
+                    "trajectory",
+                    None,
+                    [{"id": f"{episode}-task", "role": "user", "speaker": "user", "text": task}] + messages,
+                )
+            ],
+            None,
+            questions,
+        )
 
 
 _MAB_DOC = re.compile(r"(?=\bDocument \d+:)")
@@ -423,10 +494,17 @@ def _mab_chat_sessions(space: str, context: str) -> list | None:
         stamp, turns = parsed[k], parsed[k + 1]
         if not (isinstance(stamp, str) and stamp.startswith("Chat Time: ") and isinstance(turns, list)):
             return None
-        messages = [{"id": f"{space}-s{k // 2}-t{j}", "role": t.get("role", "user"),
-                     "speaker": t.get("role", "user"), "text": str(t.get("content", ""))}
-                    for j, t in enumerate(turns) if isinstance(t, dict) and str(t.get("content", "")).strip()]
-        sessions.append((f"session-{k // 2}", stamp[len("Chat Time: "):], messages))
+        messages = [
+            {
+                "id": f"{space}-s{k // 2}-t{j}",
+                "role": t.get("role", "user"),
+                "speaker": t.get("role", "user"),
+                "text": str(t.get("content", "")),
+            }
+            for j, t in enumerate(turns)
+            if isinstance(t, dict) and str(t.get("content", "")).strip()
+        ]
+        sessions.append((f"session-{k // 2}", stamp[len("Chat Time: ") :], messages))
     return sessions or None
 
 
@@ -441,8 +519,9 @@ def _mab_fact_sessions(space: str, context: str) -> list | None:
     for line in context.splitlines()[1:]:
         match = _MAB_FACT.match(line.strip())
         if match:
-            messages.append({"id": f"{space}-f{match.group(1)}", "role": "user", "speaker": "fact",
-                             "text": line.strip()})
+            messages.append(
+                {"id": f"{space}-f{match.group(1)}", "role": "user", "speaker": "fact", "text": line.strip()}
+            )
     return [("facts", None, messages)] if messages else None
 
 
@@ -474,19 +553,39 @@ def mab_cases(path: str, limit: int = 0):
         if sessions is None:
             parts = [p.strip() for p in _MAB_DOC.split(context) if p.strip()]
             if len(parts) < 2:
-                parts = [context[i:i + MAB_CHUNK_CHARS] for i in range(0, len(context), MAB_CHUNK_CHARS)]
-            sessions = [("context", None, [{"id": f"{space}-d{i}", "role": "user", "speaker": "document",
-                                            "text": text} for i, text in enumerate(parts)])]
+                parts = [context[i : i + MAB_CHUNK_CHARS] for i in range(0, len(context), MAB_CHUNK_CHARS)]
+            sessions = [
+                (
+                    "context",
+                    None,
+                    [
+                        {"id": f"{space}-d{i}", "role": "user", "speaker": "document", "text": text}
+                        for i, text in enumerate(parts)
+                    ],
+                )
+            ]
         ids = list(meta.get("qa_pair_ids") if meta.get("qa_pair_ids") is not None else [])
         questions = []
         for i, (question, answers) in enumerate(zip(row["questions"], row["answers"])):
             accepted = [str(a) for a in (list(answers) if not isinstance(answers, str) else [answers]) if str(a)]
-            questions.append({"id": f"{space}-{ids[i] if i < len(ids) else i}", "question": str(question),
-                              "answer": accepted[0] if accepted else "", "answers": accepted,
-                              "type": ("conflict-" + source.split("_")[1] if source.startswith("factconsolidation_")
-                                       else source.split("_")[0] if "_" in source else source),
-                              "answer_scorable": not source.startswith("eventqa"),
-                              "evidence": set(), "sessions": set()})
+            questions.append(
+                {
+                    "id": f"{space}-{ids[i] if i < len(ids) else i}",
+                    "question": str(question),
+                    "answer": accepted[0] if accepted else "",
+                    "answers": accepted,
+                    "type": (
+                        "conflict-" + source.split("_")[1]
+                        if source.startswith("factconsolidation_")
+                        else source.split("_")[0]
+                        if "_" in source
+                        else source
+                    ),
+                    "answer_scorable": not source.startswith("eventqa"),
+                    "evidence": set(),
+                    "sessions": set(),
+                }
+            )
         yield space, sessions, None, questions
         limit -= 1
         if limit == 0:
@@ -527,12 +626,17 @@ def longmemeval_cases(path: str, limit: int, seed: int):
                 ref = f"{sid}#{j}"
                 if turn.get("has_answer"):
                     evidence.add(ref)
-                messages.append({"id": ref, "role": turn["role"], "speaker": turn["role"],
-                                 "text": turn["content"]})
+                messages.append({"id": ref, "role": turn["role"], "speaker": turn["role"], "text": turn["content"]})
             sessions.append((sid, date, messages))
         kind = q["question_type"] + ("-abstain" if q["question_id"].endswith("_abs") else "")
-        question = {"id": q["question_id"], "question": q["question"], "answer": str(q["answer"]),
-                    "type": kind, "evidence": evidence, "sessions": set(q["answer_session_ids"])}
+        question = {
+            "id": q["question_id"],
+            "question": q["question"],
+            "answer": str(q["answer"]),
+            "type": kind,
+            "evidence": evidence,
+            "sessions": set(q["answer_session_ids"]),
+        }
         # LongMemEval treats every haystack session as history, but 43 of its 500
         # questions carry a clock time earlier than an evidence session on the same
         # day. Asking at the end of the question's day keeps recall's point-in-time
@@ -555,19 +659,27 @@ def dolphin_cases(path: str, personas: str = "", limit: int = 0):
             day = str(s["narrative_date"])[:10]
             for j, text in enumerate(s["messages"]):
                 ref = s["id"] if len(s["messages"]) == 1 else f"{s['id']}#{j}"
-                by_day[day].append({"id": ref, "speaker": "user", "role": "user", "text": text,
-                                    "at": str(s["narrative_date"])})
+                by_day[day].append(
+                    {"id": ref, "speaker": "user", "role": "user", "text": text, "at": str(s["narrative_date"])}
+                )
         sessions = [(day, msgs[0]["at"], msgs) for day, msgs in sorted(by_day.items())]
         files = sorted(glob.glob(os.path.join(path, "tests", persona, "[0-9]*.yaml")))
         questions, now = [], None
-        for f in files[:limit or None]:
+        for f in files[: limit or None]:
             t = yaml.safe_load(Path(f).read_text(encoding="utf-8"))
             now = str(t["narrative_anchor_date"])
             evidence = {str(sid) for fid in t["load_bearing_facts"] for sid in facts[fid]["source_session_ids"]}
             n = len(t["load_bearing_facts"])
-            questions.append({"id": f"{persona}-{t['id']}", "question": t["test"], "answer": "",
-                              "type": "1 fact" if n == 1 else ("2-3 facts" if n <= 3 else "4+ facts"),
-                              "evidence": evidence, "sessions": set()})
+            questions.append(
+                {
+                    "id": f"{persona}-{t['id']}",
+                    "question": t["test"],
+                    "answer": "",
+                    "type": "1 fact" if n == 1 else ("2-3 facts" if n <= 3 else "4+ facts"),
+                    "evidence": evidence,
+                    "sessions": set(),
+                }
+            )
         yield persona, sessions, now, questions
 
 
@@ -587,8 +699,11 @@ def _ids(value) -> set[str]:
     if isinstance(value, dict):
         return set().union(*(_ids(v) for v in value.values())) if value else set()
     if isinstance(value, (list, tuple)) or hasattr(value, "tolist"):
-        return {str(int(v)) for v in (value.tolist() if hasattr(value, "tolist") else value)
-                if str(v).strip().lstrip("-").isdigit()}
+        return {
+            str(int(v))
+            for v in (value.tolist() if hasattr(value, "tolist") else value)
+            if str(v).strip().lstrip("-").isdigit()
+        }
     return {str(int(value))} if str(value).strip().isdigit() else set()
 
 
@@ -627,8 +742,15 @@ def beam_cases(path: str, limit: int = 0):
                 except ValueError:
                     when = None
             last = when or last
-            messages = [{"id": str(m["id"]), "role": m["role"], "speaker": m["role"],
-                         "text": BEAM_MARK.sub("", str(m["content"] or ""))} for m in session]
+            messages = [
+                {
+                    "id": str(m["id"]),
+                    "role": m["role"],
+                    "speaker": m["role"],
+                    "text": BEAM_MARK.sub("", str(m["content"] or "")),
+                }
+                for m in session
+            ]
             sessions.append((label, when or last, messages))
         # Four BEAM-1M conversations restart message ids in a later session. Those
         # turns get session-qualified ids, and a citation of a repeated id is
@@ -642,23 +764,29 @@ def beam_cases(path: str, limit: int = 0):
             for message in messages:
                 if message["id"] in repeated:
                     message["id"] = f"{message['id']}@{n + 1}"
-        probing = ast.literal_eval(row["probing_questions"]) if isinstance(row["probing_questions"], str) \
+        probing = (
+            ast.literal_eval(row["probing_questions"])
+            if isinstance(row["probing_questions"], str)
             else row["probing_questions"]
+        )
         questions = []
         for category, items in probing.items():
             for i, q in enumerate(items):
-                answer = q.get("answer") or q.get("ideal_answer") or q.get("ideal_response") or \
-                    q.get("ideal_summary") or ""
-                questions.append({
-                    "id": f"beam{row['conversation_id']}-{category}-{i}",
-                    "question": q["question"],
-                    "answer": str(answer),
-                    "type": category,
-                    "evidence": _ids(q.get("source_chat_ids")) - repeated,
-                    "sessions": set(),
-                    "rubric": q.get("rubric") or [],
-                    "raw": q,
-                })
+                answer = (
+                    q.get("answer") or q.get("ideal_answer") or q.get("ideal_response") or q.get("ideal_summary") or ""
+                )
+                questions.append(
+                    {
+                        "id": f"beam{row['conversation_id']}-{category}-{i}",
+                        "question": q["question"],
+                        "answer": str(answer),
+                        "type": category,
+                        "evidence": _ids(q.get("source_chat_ids")) - repeated,
+                        "sessions": set(),
+                        "rubric": q.get("rubric") or [],
+                        "raw": q,
+                    }
+                )
         yield f"beam{row['conversation_id']}", sessions, None, questions
         limit -= 1
         if limit == 0:
@@ -745,10 +873,15 @@ def _get_llm_config(model: str):
         provider = os.environ.get("UNIMEM_LLM_PROVIDER", "openai-compatible")
         api_key = os.environ.get("UNIMEM_LLM_API_KEY", "")
         base_url = os.environ.get("UNIMEM_LLM_BASE_URL", "")
-        return llm.Config(provider=provider, model=model, api_key=api_key, base_url=base_url or None,
-                          region=os.environ.get("UNIMEM_LLM_REGION") or os.environ.get("AWS_REGION") or None,
-                          project=os.environ.get("UNIMEM_LLM_PROJECT") or None,
-                          cache_namespace=os.environ.get("UNIMEM_LLM_CACHE_NAMESPACE") or None)
+        return llm.Config(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            base_url=base_url or None,
+            region=os.environ.get("UNIMEM_LLM_REGION") or os.environ.get("AWS_REGION") or None,
+            project=os.environ.get("UNIMEM_LLM_PROJECT") or None,
+            cache_namespace=os.environ.get("UNIMEM_LLM_CACHE_NAMESPACE") or None,
+        )
 
 
 def grade_answer(
@@ -777,21 +910,38 @@ def grade_answer(
             if hit is not None:
                 resp, usage, cost = hit
                 guard.record_call(cost, is_cached=True)
-                calls.append({"stage": stage, "model": model, "cache_hit": True,
-                              "usage": usage, "cost_usd": 0.0, "historical_cost_usd": cost})
+                calls.append(
+                    {
+                        "stage": stage,
+                        "model": model,
+                        "cache_hit": True,
+                        "usage": usage,
+                        "cost_usd": 0.0,
+                        "historical_cost_usd": cost,
+                    }
+                )
                 return resp, usage, 0.0, 0.0
 
         resp, usage, cost = bounded_complete(prompt, cfg, guard, output_limit=output_limit)
         latency = time.perf_counter() - t0
-        calls.append({"stage": stage, "model": model, "cache_hit": False, "usage": usage,
-                      "cost_usd": cost, "historical_cost_usd": 0.0})
+        calls.append(
+            {
+                "stage": stage,
+                "model": model,
+                "cache_hit": False,
+                "usage": usage,
+                "cost_usd": cost,
+                "historical_cost_usd": 0.0,
+            }
+        )
         if cache is not None:
             cache.put(model, prompt, resp, usage, cost, binding=binding)
         return resp, usage, latency, cost
 
     # Step 1: Generate answer with the product's own reader prompt
-    ans_prompt = answer_prompt(context, question["question"], now or "now",
-                               abstain=bool(explain and explain.get("abstain") and context))
+    ans_prompt = answer_prompt(
+        context, question["question"], now or "now", abstain=bool(explain and explain.get("abstain") and context)
+    )
     ans_text, ans_usage, ans_lat, ans_cost = call_cached(ans_prompt, ans_model, "answer")
 
     # Step 2: Judge answer
@@ -844,8 +994,9 @@ def grade_answer(
     return res
 
 
-def grade_all(pending: list, workers: int, *, grade=None, rounds: int | None = None,
-              pause_s: float | None = None) -> None:
+def grade_all(
+    pending: list, workers: int, *, grade=None, rounds: int | None = None, pause_s: float | None = None
+) -> None:
     """Grade (row, kwargs) pairs concurrently, updating each row in place.
 
     A provider outage on one question must not discard the others, and a question
@@ -881,8 +1032,10 @@ def grade_all(pending: list, workers: int, *, grade=None, rounds: int | None = N
         if not remaining:
             return
         print(f"grading round {round_number + 1}: {len(remaining)} question(s) failed; retrying", file=sys.stderr)
-    raise RuntimeError(f"{len(remaining)} question(s) could not be graded after {rounds} rounds; "
-                       "rerun the same command to resume from the cache")
+    raise RuntimeError(
+        f"{len(remaining)} question(s) could not be graded after {rounds} rounds; "
+        "rerun the same command to resume from the cache"
+    )
 
 
 def grade_model_context_completeness(
@@ -954,8 +1107,7 @@ def evaluation_config_binding(config: object) -> dict[str, object]:
     # Endpoints may embed userinfo or query credentials; bind their exact
     # configuration without publishing URL bytes or private account metadata.
     fields = {k: getattr(config, k) for k in ("provider", "model", "base_url", "region", "project")}
-    return {"provider": fields["provider"], "model": fields["model"],
-            "configuration_sha256": question_digest(fields)}
+    return {"provider": fields["provider"], "model": fields["model"], "configuration_sha256": question_digest(fields)}
 
 
 def product_digest_for_judges(repository: str) -> str:
@@ -989,8 +1141,9 @@ def run(args) -> dict:
     modes = [m.strip() for m in getattr(args, "modes", "memory").split(",") if m.strip()]
     if not modes:
         modes = ["memory"]
-    if len(set(modes)) != len(modes) or any(m not in ("memory", "full-context", "budgeted-history", "no-memory")
-                                          for m in modes):
+    if len(set(modes)) != len(modes) or any(
+        m not in ("memory", "full-context", "budgeted-history", "no-memory") for m in modes
+    ):
         raise ValueError("modes must be distinct supported reference modes")
     os.makedirs(args.root, exist_ok=True)
 
@@ -1002,7 +1155,7 @@ def run(args) -> dict:
         _, def_j_model = get_default_judge_for_dataset(j_name)
     j_model = getattr(args, "judge_model", None) or def_j_model
     context_completeness_enabled = bool(getattr(args, "context_completeness", False))
-    context_completeness_model = (getattr(args, "completeness_model", None) or j_model)
+    context_completeness_model = getattr(args, "completeness_model", None) or j_model
     ans_model = getattr(args, "answer_model", None) or os.environ.get("UNIMEM_LLM_MODEL") or "claude-sonnet-5"
 
     judge_inst = None
@@ -1036,9 +1189,12 @@ def run(args) -> dict:
         adaptive_budget=bool(getattr(args, "adaptive_budget", False)),
         max_budget=max(budgets[0], getattr(args, "max_budget", None) or 12_000),
     )
-    if getattr(opts, "adaptive_budget", False) and (strict_budget or getattr(args, "memory_adapter", "unimem") != "unimem"):
-        raise ValueError("--adaptive-budget sizes UniMem's own context; it cannot honour a strict cap "
-                         "or a vendor profile")
+    if getattr(opts, "adaptive_budget", False) and (
+        strict_budget or getattr(args, "memory_adapter", "unimem") != "unimem"
+    ):
+        raise ValueError(
+            "--adaptive-budget sizes UniMem's own context; it cannot honour a strict cap or a vendor profile"
+        )
 
     # Cached prep: parse once, then every sweep with the same fingerprint reuses it.
     cases, chunk_info = prepare_chunk_set(args)
@@ -1056,41 +1212,52 @@ def run(args) -> dict:
         "vendor_adapters_sha256": dataset_digest(os.path.join(repository, "benchmarks", "vendor_adapters.py")),
         "artifacts_source_sha256": dataset_digest(os.path.join(repository, "benchmarks", "artifacts.py")),
         "sampling": {"seed": args.seed, "limit": args.limit, "personas": getattr(args, "personas", "")},
-        "evaluation": {"answer_enabled": args.answer,
-                       "context_completeness_enabled": context_completeness_enabled,
-                       "token_accounting": "ceil-characters-divided-by-four",
-                       "adaptive_budget": bool(getattr(args, "adaptive_budget", False)),
-                       "completeness_sha256": dataset_digest(os.path.join(repository, "benchmarks", "completeness.py"))},
+        "evaluation": {
+            "answer_enabled": args.answer,
+            "context_completeness_enabled": context_completeness_enabled,
+            "token_accounting": "ceil-characters-divided-by-four",
+            "adaptive_budget": bool(getattr(args, "adaptive_budget", False)),
+            "completeness_sha256": dataset_digest(os.path.join(repository, "benchmarks", "completeness.py")),
+        },
     }
     if "question_exclusions_sha256" in fingerprint:
         provenance["sampling"]["question_exclusions_sha256"] = fingerprint["question_exclusions_sha256"]
 
     if args.answer:
         cfg_a, cfg_j = _get_llm_config(ans_model), _get_llm_config(j_model)
-        provenance["evaluation"].update({
-            "reader_prompt_sha256": question_digest({"prompt": ANSWER_PROMPT, "guidance": GUIDANCE,
-                                                     "abstain_note": ABSTAIN_NOTE}),
-            "judge_source_sha256": product_digest_for_judges(repository),
-            "completion_source_sha256": dataset_digest(os.path.join(repository, "unimem", "llm.py")),
-            "reader": evaluation_config_binding(cfg_a),
-            "judge": evaluation_config_binding(cfg_j),
-            "generation": {"max_tokens": getattr(args, "max_output_tokens", 1536), "temperature": 0,
-                           "retries": 0, "tokenizer": getattr(args, "tokenizer", None)},
-            "bounded_requests_sha256": dataset_digest(os.path.join(repository, "benchmarks", "requests.py")),
-        })
+        provenance["evaluation"].update(
+            {
+                "reader_prompt_sha256": question_digest(
+                    {"prompt": ANSWER_PROMPT, "guidance": GUIDANCE, "abstain_note": ABSTAIN_NOTE}
+                ),
+                "judge_source_sha256": product_digest_for_judges(repository),
+                "completion_source_sha256": dataset_digest(os.path.join(repository, "unimem", "llm.py")),
+                "reader": evaluation_config_binding(cfg_a),
+                "judge": evaluation_config_binding(cfg_j),
+                "generation": {
+                    "max_tokens": getattr(args, "max_output_tokens", 1536),
+                    "temperature": 0,
+                    "retries": 0,
+                    "tokenizer": getattr(args, "tokenizer", None),
+                },
+                "bounded_requests_sha256": dataset_digest(os.path.join(repository, "benchmarks", "requests.py")),
+            }
+        )
 
     if context_completeness_enabled:
         cfg_c = _get_llm_config(context_completeness_model)
         provenance["evaluation"]["bounded_requests_sha256"] = dataset_digest(
-            os.path.join(repository, "benchmarks", "requests.py"))
+            os.path.join(repository, "benchmarks", "requests.py")
+        )
         provenance["evaluation"]["context_completeness"] = {
             "profile": CONTEXT_COMPLETENESS_PROFILE,
             "model": context_completeness_model,
             "configuration": evaluation_config_binding(cfg_c),
-            "source_sha256": dataset_digest(os.path.join(repository, "benchmarks", "judges", "context_completeness.py")),
+            "source_sha256": dataset_digest(
+                os.path.join(repository, "benchmarks", "judges", "context_completeness.py")
+            ),
             "system_prompt_sha256": question_digest({"prompt": CONTEXT_COMPLETENESS_SYSTEM_PROMPT}),
-            "generation": {"max_tokens": getattr(args, "max_output_tokens", 1536), "temperature": 0,
-                           "retries": 0},
+            "generation": {"max_tokens": getattr(args, "max_output_tokens", 1536), "temperature": 0, "retries": 0},
             "bounded_requests_sha256": dataset_digest(os.path.join(repository, "benchmarks", "requests.py")),
         }
 
@@ -1099,6 +1266,7 @@ def run(args) -> dict:
     if memory_adapter == "unimem":
         from unimem import rerank_arm
         from unimem.conversation import embed
+
         embedding_names = [embed.MODELS[args.embedder][0]] if args.embedder in embed.MODELS else []
         if args.embedder == "auto":
             configured_embedder = embed.configured()
@@ -1112,8 +1280,10 @@ def run(args) -> dict:
     provenance["evaluation"]["context_text_tokenizer"] = getattr(args, "tokenizer", None)
     if strict_budget:
         provenance["evaluation"]["context_budget"] = {
-            "unit": "selected-tokenizer-context-text", "counter": counter_binding,
-            "max_attempts": 16, "full_context": "uncapped",
+            "unit": "selected-tokenizer-context-text",
+            "counter": counter_binding,
+            "max_attempts": 16,
+            "full_context": "uncapped",
             "helper_sha256": dataset_digest(os.path.join(repository, "benchmarks", "context_budget.py")),
             "counter_source_sha256": dataset_digest(os.path.join(repository, "benchmarks", "requests.py")),
         }
@@ -1158,19 +1328,22 @@ def run(args) -> dict:
                     mem_contexts = {}
                     for budget in budgets:
                         t = time.perf_counter()
+
                         def retrieve(native_budget):
                             sized = {"budget": native_budget}
                             if hasattr(opts, "max_budget"):
                                 sized["max_budget"] = max(native_budget, opts.max_budget)
                             opts_b = Options(**{**opts.__dict__, **sized})
-                            return (adapter.retrieve(q["question"], native_budget) if adapter is not None
-                                    else recall(store, q["question"], now=now, options=opts_b))
+                            return (
+                                adapter.retrieve(q["question"], native_budget)
+                                if adapter is not None
+                                else recall(store, q["question"], now=now, options=opts_b)
+                            )
 
                         if "memory" not in modes:
                             r, accounting = Recall(q["question"], "", 0, [], [], None), None
                         elif strict_budget:
-                            r, accounting = retrieve_with_cap(
-                                retrieve, budget, lambda ctx: text_tokens(ctx, tokenizer))
+                            r, accounting = retrieve_with_cap(retrieve, budget, lambda ctx: text_tokens(ctx, tokenizer))
                         else:
                             r, accounting = retrieve(budget), None
                         elapsed = time.perf_counter() - t
@@ -1181,14 +1354,17 @@ def run(args) -> dict:
                         ranking_scores = {
                             level + "_" + metric: value
                             for level in ("turn", "session")
-                            for metric, value in ranking_metrics(source_ranking["ranked_" + level + "_ids"],
-                                                                source_ranking["gold_" + level + "_ids"]).items()
+                            for metric, value in ranking_metrics(
+                                source_ranking["ranked_" + level + "_ids"], source_ranking["gold_" + level + "_ids"]
+                            ).items()
                         }
                         mem_contexts[budget] = (r, refs, sess, elapsed, source_ranking, ranking_scores, accounting)
 
                     for mode in modes:
                         for budget in budgets:
-                            r, refs, sess, recall_elapsed, source_ranking, ranking_scores, accounting = mem_contexts[budget]
+                            r, refs, sess, recall_elapsed, source_ranking, ranking_scores, accounting = mem_contexts[
+                                budget
+                            ]
                             context_accounting = accounting if mode == "memory" else None
                             mem_context, n_tokens = r.context, r.tokens
                             if mode == "memory":
@@ -1202,12 +1378,14 @@ def run(args) -> dict:
                                 rtop = r.explain.get("rerank_top")
                             elif mode in ("full-context", "budgeted-history"):
                                 if mode == "budgeted-history" and strict_budget:
+
                                     def history(native_budget):
                                         context, estimated = make_full_context(sessions, native_budget)
                                         return Recall("", context, estimated, [], [], None, {})
 
                                     h, context_accounting = retrieve_with_cap(
-                                        history, budget, lambda ctx: text_tokens(ctx, tokenizer))
+                                        history, budget, lambda ctx: text_tokens(ctx, tokenizer)
+                                    )
                                     ctx, toks = h.context, h.tokens
                                 else:
                                     ctx, toks = make_full_context(sessions, None if mode == "full-context" else budget)
@@ -1232,28 +1410,34 @@ def run(args) -> dict:
                             # Lexical completeness grader: a second, model-free read on the
                             # same retrieved context, alongside the evidence-id metric above.
                             comp_lex = grade_context_completeness(
-                                ctx, _evidence_texts(sessions, q["evidence"]), answer=q["answer"])
+                                ctx, _evidence_texts(sessions, q["evidence"]), answer=q["answer"]
+                            )
 
                             row = {
                                 "id": q["id"],
                                 "type": q["type"],
                                 "cluster_id": clusters[space],
                                 "question_sha256": question_digest(q),
-                                "unresolved_gold_turn_ids": sorted(turn_gold - {
-                                    str(message["id"]) for _s, _d, messages in sessions for message in messages}),
+                                "unresolved_gold_turn_ids": sorted(
+                                    turn_gold
+                                    - {str(message["id"]) for _s, _d, messages in sessions for message in messages}
+                                ),
                                 **source_ranking,
                                 "recall_latency_s": recall_elapsed if mode == "memory" else None,
-                                "effective_embedders": ([adapter.descriptor["embedder"]] if adapter is not None
-                                                           and "embedder" in adapter.descriptor else sorted(store._embedders)),
+                                "effective_embedders": (
+                                    [adapter.descriptor["embedder"]]
+                                    if adapter is not None and "embedder" in adapter.descriptor
+                                    else sorted(store._embedders)
+                                ),
                                 "memory_adapter": memory_adapter,
-                                "effective_rerank": (r.explain.get("rerank")
-                                                     if "rerank_top" in r.explain else None),
+                                "effective_rerank": (r.explain.get("rerank") if "rerank_top" in r.explain else None),
                                 # Reference-mode ranking metrics are intentionally undefined.
                                 **(ranking_scores if mode == "memory" else {}),
                                 "tokens": toks,
                                 **({"context_budget": context_accounting} if strict_budget else {}),
-                                "context_text_tokens": (text_tokens(ctx, args.tokenizer)
-                                                        if getattr(args, "tokenizer", None) else None),
+                                "context_text_tokens": (
+                                    text_tokens(ctx, args.tokenizer) if getattr(args, "tokenizer", None) else None
+                                ),
                                 "evidence": ev,
                                 "complete": comp,
                                 "session": ses,
@@ -1270,7 +1454,11 @@ def run(args) -> dict:
                                 row["rubric"] = q["rubric"]
                             if context_completeness_enabled:
                                 row["context_completeness_judge"] = grade_model_context_completeness(
-                                    q, ctx, context_completeness_model, cache, cost_guard,
+                                    q,
+                                    ctx,
+                                    context_completeness_model,
+                                    cache,
+                                    cost_guard,
                                     output_limit=getattr(args, "max_output_tokens", 1536),
                                 )
                             if args.answer:
@@ -1296,37 +1484,56 @@ def run(args) -> dict:
             if canonical_digest(store) != initial_canonical:
                 raise RuntimeError("canonical sources changed during measurement; discard this run")
 
-
     if pending_grades:
         # Retrieval ran in order above; only the reader and judge calls run concurrently.
         grade_all(pending_grades, answer_workers)
 
     n = max(1, len(rows_by_mode[modes[0]][budgets[0]]))
-    judge_info = {
-        "judge": j_name,
-        "judge_profile": getattr(judge_inst, "profile", j_name),
-        "judge_model": j_model,
-        "answer_model": ans_model,
-    } if args.answer else {}
-    completeness_judge_info = ({"model": context_completeness_model,
-                                "profile": CONTEXT_COMPLETENESS_PROFILE}
-                               if context_completeness_enabled else None)
+    judge_info = (
+        {
+            "judge": j_name,
+            "judge_profile": getattr(judge_inst, "profile", j_name),
+            "judge_model": j_model,
+            "answer_model": ans_model,
+        }
+        if args.answer
+        else {}
+    )
+    completeness_judge_info = (
+        {"model": context_completeness_model, "profile": CONTEXT_COMPLETENESS_PROFILE}
+        if context_completeness_enabled
+        else None
+    )
 
     results = {}
     for b in budgets:
         if len(modes) == 1:
             m = modes[0]
             results[b] = summarize(
-                rows_by_mode[m][b], args, b, ingest_s, recall_seconds[b] / n, full_tokens, mode=m,
-                judge_info=judge_info, completeness_judge_info=completeness_judge_info,
+                rows_by_mode[m][b],
+                args,
+                b,
+                ingest_s,
+                recall_seconds[b] / n,
+                full_tokens,
+                mode=m,
+                judge_info=judge_info,
+                completeness_judge_info=completeness_judge_info,
             )
             results[b]["chunk_set"] = chunk_info
             results[b].update({"comparison_schema": SCHEMA_VERSION, "provenance": provenance})
         else:
             mode_summaries = {
                 m: summarize(
-                    rows_by_mode[m][b], args, b, ingest_s, recall_seconds[b] / n, full_tokens, mode=m,
-                    judge_info=judge_info, completeness_judge_info=completeness_judge_info,
+                    rows_by_mode[m][b],
+                    args,
+                    b,
+                    ingest_s,
+                    recall_seconds[b] / n,
+                    full_tokens,
+                    mode=m,
+                    judge_info=judge_info,
+                    completeness_judge_info=completeness_judge_info,
                 )
                 for m in modes
             }
@@ -1363,29 +1570,40 @@ def run(args) -> dict:
         raise RuntimeError("retrieval model artifacts changed during measurement")
     if dataset_digest(__file__) != provenance["harness_sha256"]:
         raise RuntimeError("benchmark harness changed during measurement")
-    if dataset_digest(os.path.join(repository, "benchmarks", "vendor_adapters.py")) != provenance["vendor_adapters_sha256"]:
+    if (
+        dataset_digest(os.path.join(repository, "benchmarks", "vendor_adapters.py"))
+        != provenance["vendor_adapters_sha256"]
+    ):
         raise RuntimeError("vendor adapter changed during measurement")
     if dataset_digest(os.path.join(repository, "benchmarks", "artifacts.py")) != provenance["artifacts_source_sha256"]:
         raise RuntimeError("artifact binding code changed during measurement")
     if strict_budget:
         contract = provenance["evaluation"]["context_budget"]
-        if (dataset_digest(os.path.join(repository, "benchmarks", "context_budget.py")) != contract["helper_sha256"]
-                or dataset_digest(os.path.join(repository, "benchmarks", "requests.py")) != contract["counter_source_sha256"]
-                or text_counter_binding(tokenizer) != counter_binding):
+        if (
+            dataset_digest(os.path.join(repository, "benchmarks", "context_budget.py")) != contract["helper_sha256"]
+            or dataset_digest(os.path.join(repository, "benchmarks", "requests.py"))
+            != contract["counter_source_sha256"]
+            or text_counter_binding(tokenizer) != counter_binding
+        ):
             raise RuntimeError("strict context budget implementation or counter changed during measurement")
     if args.answer or context_completeness_enabled:
         if context_completeness_enabled:
             source_path = os.path.join(repository, "benchmarks", "judges", "context_completeness.py")
             if dataset_digest(source_path) != provenance["evaluation"]["context_completeness"]["source_sha256"]:
                 raise RuntimeError("context-completeness judge source changed during measurement")
-        if dataset_digest(os.path.join(repository, "benchmarks", "requests.py")) != provenance["evaluation"]["bounded_requests_sha256"]:
+        if (
+            dataset_digest(os.path.join(repository, "benchmarks", "requests.py"))
+            != provenance["evaluation"]["bounded_requests_sha256"]
+        ):
             raise RuntimeError("bounded completion source changed during measurement")
         for summary in results.values():
             summary["inference_accounting"] = cost_guard.snapshot()
     if dataset_digest(args.data) != provenance["dataset_sha256"]:
         raise RuntimeError("dataset changed during measurement; discard this run")
-    if (getattr(args, "question_exclusions", None)
-            and dataset_digest(args.question_exclusions) != fingerprint["question_exclusions_sha256"]):
+    if (
+        getattr(args, "question_exclusions", None)
+        and dataset_digest(args.question_exclusions) != fingerprint["question_exclusions_sha256"]
+    ):
         raise RuntimeError("question exclusions changed during measurement")
     return results
 
@@ -1395,8 +1613,9 @@ def _mean(values) -> float | None:
     return round(statistics.mean(values), 4) if values else None
 
 
-def summarize(rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory", judge_info=None,
-              completeness_judge_info=None) -> dict:
+def summarize(
+    rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory", judge_info=None, completeness_judge_info=None
+) -> dict:
     def block(rs):
         b_dict = {
             "n": len(rs),
@@ -1406,14 +1625,19 @@ def summarize(rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory"
             "answer_in_context": _mean(r["answer_in_context"] for r in rs),
             "tokens": _mean(r["tokens"] for r in rs),
             "context_text_tokens": _mean(r.get("context_text_tokens") for r in rs),
-            "exact_budget_exceedances": (sum(r["context_text_tokens"] > budget for r in rs)
-                                         if rs and all(r.get("context_text_tokens") is not None for r in rs)
-                                         and mode in ("memory", "budgeted-history") else None),
+            "exact_budget_exceedances": (
+                sum(r["context_text_tokens"] > budget for r in rs)
+                if rs
+                and all(r.get("context_text_tokens") is not None for r in rs)
+                and mode in ("memory", "budgeted-history")
+                else None
+            ),
             "unresolved_gold_turn_references": sum(len(r.get("unresolved_gold_turn_ids", [])) for r in rs),
             "recall_latency": _p50_p95([r.get("recall_latency_s") for r in rs]),
             "ranking": {
                 level + "_" + metric: _mean(r.get(level + "_" + metric) for r in rs)
-                for level in ("turn", "session") for metric in ("recall_at_5", "recall_at_10", "ndcg_at_10")
+                for level in ("turn", "session")
+                for metric in ("recall_at_5", "recall_at_10", "ndcg_at_10")
             },
             # Lexical completeness grader, alongside the evidence-id `complete` above.
             "completeness_score": _mean(r.get("completeness_score") for r in rs),
@@ -1429,7 +1653,9 @@ def summarize(rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory"
             b_dict["mean_score"] = _mean(r["score"] for r in scorable if r.get("score") is not None)
             b_dict["mean_context_tokens"] = _mean(r.get("context_tokens") for r in rs)
             b_dict["mean_answer_tokens_in"] = _mean(r.get("answer_tokens_in") for r in rs)
-            b_dict["answer_latency"] = _p50_p95([r.get("answer_latency_s") for r in rs if not r.get("answer_cache_hit")])
+            b_dict["answer_latency"] = _p50_p95(
+                [r.get("answer_latency_s") for r in rs if not r.get("answer_cache_hit")]
+            )
             b_dict["judge_latency"] = _p50_p95([r.get("judge_latency_s") for r in rs if not r.get("judge_all_cached")])
             b_dict["historical_cached_cost_usd"] = sum(r.get("historical_cached_cost_usd", 0) for r in rs)
             b_dict["cache_hits"] = sum(c["cache_hit"] for r in rs for c in r.get("completion_calls", []))
@@ -1443,23 +1669,25 @@ def summarize(rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory"
             complete_rows = [r for r in scorable if r.get("completeness_bucket") == "COMPLETE"]
             incomplete_rows = [r for r in scorable if r.get("completeness_bucket") in ("PARTIAL", "INSUFFICIENT")]
             b_dict["accuracy_when_complete"] = _mean(
-                r["correct"] for r in complete_rows if r.get("correct") is not None)
+                r["correct"] for r in complete_rows if r.get("correct") is not None
+            )
             b_dict["accuracy_when_incomplete"] = _mean(
-                r["correct"] for r in incomplete_rows if r.get("correct") is not None)
+                r["correct"] for r in incomplete_rows if r.get("correct") is not None
+            )
         else:
             b_dict["accuracy"] = None
 
         if completeness_judge_info:
-            graded = [r["context_completeness_judge"] for r in rs
-                      if isinstance(r.get("context_completeness_judge"), dict)]
+            graded = [
+                r["context_completeness_judge"] for r in rs if isinstance(r.get("context_completeness_judge"), dict)
+            ]
             b_dict["context_completeness_judge"] = {
                 **completeness_judge_info,
                 "n": len(graded),
                 "grades": bucket_counts(g.get("grade") for g in graded),
                 "latency": _p50_p95([g.get("latency_s") for g in graded if not g.get("cache_hit")]),
                 "current_run_cost_usd": round(sum(g.get("cost_usd", 0.0) for g in graded), 6),
-                "historical_cached_cost_usd": round(sum(
-                    g.get("historical_cached_cost_usd", 0.0) for g in graded), 6),
+                "historical_cached_cost_usd": round(sum(g.get("historical_cached_cost_usd", 0.0) for g in graded), 6),
                 "cache_hits": sum(bool(g.get("cache_hit")) for g in graded),
             }
 
@@ -1494,9 +1722,7 @@ def summarize(rows, args, budget, ingest_s, recall_s, full_tokens, mode="memory"
         summary["context_completeness_judge"] = {
             **completeness_judge_info,
             "n": len(rows),
-            "grades": bucket_counts(
-                r.get("context_completeness_judge", {}).get("grade") for r in rows
-            ),
+            "grades": bucket_counts(r.get("context_completeness_judge", {}).get("grade") for r in rows),
         }
 
     if args.dataset == "beam" and args.answer:
@@ -1539,16 +1765,32 @@ def main(argv=None) -> int:
         help="store root, reused between runs so ingestion and embeddings are cached",
     )
     p.add_argument("--budget", default="1500", help="tokens; a comma list assembles each ranking at every budget")
-    p.add_argument("--memory-adapter", choices=PROFILES, default="unimem",
-                   help="Optional local raw-source vendor profile (excludes managed APIs/LLM extraction)")
-    p.add_argument("--embedder", default="auto", type=_embedder_choice,
-                   help="auto, none, a local model (arctic-m, minilm, bge-small, e5-small, nomic) or "
-                        "<provider>:<model>[@dims] (openai, gemini, voyage, cohere, ollama, compat)")
-    p.add_argument("--rerank", default="auto", type=_reranker_choice,
-                   help="auto, none, mmr, or a registered text reranker (including provider:model tags)")
+    p.add_argument(
+        "--memory-adapter",
+        choices=PROFILES,
+        default="unimem",
+        help="Optional local raw-source vendor profile (excludes managed APIs/LLM extraction)",
+    )
+    p.add_argument(
+        "--embedder",
+        default="auto",
+        type=_embedder_choice,
+        help="auto, none, a local model (arctic-m, minilm, bge-small, e5-small, nomic) or "
+        "<provider>:<model>[@dims] (openai, gemini, voyage, cohere, ollama, compat)",
+    )
+    p.add_argument(
+        "--rerank",
+        default="auto",
+        type=_reranker_choice,
+        help="auto, none, mmr, or a registered text reranker (including provider:model tags)",
+    )
     p.add_argument("--neighbours", type=int, default=1)
-    p.add_argument("--bridge-turns", type=int, default=0,
-                   help="fill gaps of up to N turns between a hit and an already-chosen turn (0: off)")
+    p.add_argument(
+        "--bridge-turns",
+        type=int,
+        default=0,
+        help="fill gaps of up to N turns between a hit and an already-chosen turn (0: off)",
+    )
     p.add_argument(
         "--rerank-blend",
         type=float,
@@ -1556,25 +1798,41 @@ def main(argv=None) -> int:
         help="cross-encoder weight beside the fused rank (0 lets it replace that rank)",
     )
     p.add_argument("--profile-facts", type=int, default=4)
-    p.add_argument("--adaptive-budget", action="store_true",
-                   help="treat each --budget as a floor sized by question shape (Options.adaptive_budget); "
-                        "the reported tokens are what was actually delivered")
-    p.add_argument("--max-budget", type=int, default=None,
-                   help="largest context --adaptive-budget may size a question to (default 12000)")
+    p.add_argument(
+        "--adaptive-budget",
+        action="store_true",
+        help="treat each --budget as a floor sized by question shape (Options.adaptive_budget); "
+        "the reported tokens are what was actually delivered",
+    )
+    p.add_argument(
+        "--max-budget",
+        type=int,
+        default=None,
+        help="largest context --adaptive-budget may size a question to (default 12000)",
+    )
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--question-exclusions", help="JSON list of question IDs excluded before stratified sampling")
     p.add_argument("--answer", action="store_true", help="answer and judge with UNIMEM_LLM_*")
-    p.add_argument("--context-completeness", action="store_true",
-                   help="judge retrieved-context sufficiency (COMPLETE/PARTIAL/INSUFFICIENT), separate from answer accuracy")
-    p.add_argument("--answer-workers", type=int, default=1,
-                   help="concurrent reader/judge calls after retrieval (default 1: inline, in order)")
+    p.add_argument(
+        "--context-completeness",
+        action="store_true",
+        help="judge retrieved-context sufficiency (COMPLETE/PARTIAL/INSUFFICIENT), separate from answer accuracy",
+    )
+    p.add_argument(
+        "--answer-workers",
+        type=int,
+        default=1,
+        help="concurrent reader/judge calls after retrieval (default 1: inline, in order)",
+    )
     p.add_argument(
         "--chunk-set",
         default=None,
-        help=("directory name under <root>/runs/chunk_sets/ for the parsed evaluation "
-              "inputs (default: <dataset>-<hash>). Reused across sweeps when the "
-              "dataset, limit, seed and data file are unchanged."),
+        help=(
+            "directory name under <root>/runs/chunk_sets/ for the parsed evaluation "
+            "inputs (default: <dataset>-<hash>). Reused across sweeps when the "
+            "dataset, limit, seed and data file are unchanged."
+        ),
     )
     p.add_argument(
         "--judge",
@@ -1592,8 +1850,11 @@ def main(argv=None) -> int:
         default=None,
         help="model used to judge answers (default: the configured judge profile's model)",
     )
-    p.add_argument("--completeness-model", default=None,
-                   help="model used for --context-completeness (default: dataset judge model)")
+    p.add_argument(
+        "--completeness-model",
+        default=None,
+        help="model used for --context-completeness (default: dataset judge model)",
+    )
     p.add_argument(
         "--modes",
         default="memory",
@@ -1605,10 +1866,18 @@ def main(argv=None) -> int:
         default=None,
         help="Reserve each bounded reader/judge request against this USD cap before dispatch; unknown charges abort.",
     )
-    p.add_argument("--max-output-tokens", type=int, default=1536, help="Per-call output cap; applies to reader and every judge call.")
+    p.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=1536,
+        help="Per-call output cap; applies to reader and every judge call.",
+    )
     p.add_argument("--tokenizer", default=None, help="Optional exact context text counting: tiktoken:<encoding-name>.")
-    p.add_argument("--strict-context-budget", action="store_true",
-                   help="Reassemble capped contexts until selected tokenizer text count fits; requires --tokenizer.")
+    p.add_argument(
+        "--strict-context-budget",
+        action="store_true",
+        help="Reassemble capped contexts until selected tokenizer text count fits; requires --tokenizer.",
+    )
     p.add_argument(
         "--cache-dir",
         default=None,

@@ -1,4 +1,5 @@
 """The ingest pipeline's embedding stage: bounded batches, bounded concurrency, content-hash cache."""
+
 from __future__ import annotations
 
 import os
@@ -91,8 +92,9 @@ def test_configured_stage_embeds_new_chunks_and_skips_cached(tmp_path, monkeypat
 
 def test_bounded_batches_and_concurrency(tmp_path):
     provider = FakeProvider(delay=0.02)
-    embedder = ingest_embedding.ChunkEmbedder(str(tmp_path), "fakeingest:m", provider=provider,
-                                              batch_size=2, max_workers=3)
+    embedder = ingest_embedding.ChunkEmbedder(
+        str(tmp_path), "fakeingest:m", provider=provider, batch_size=2, max_workers=3
+    )
     texts = [f"chunk number {i} about failover" for i in range(13)] + ["chunk number 0 about failover"]
     out = list(embedder.stream(_chunks(texts)))
     assert [c.content for c in out] == texts  # passes chunks through unchanged and in order
@@ -105,8 +107,9 @@ def test_bounded_batches_and_concurrency(tmp_path):
 
 def test_failed_batches_are_counted_and_ingestion_continues(tmp_path):
     provider = FakeProvider()
-    embedder = ingest_embedding.ChunkEmbedder(str(tmp_path), "fakeingest:m", provider=provider,
-                                              batch_size=1, max_workers=2)
+    embedder = ingest_embedding.ChunkEmbedder(
+        str(tmp_path), "fakeingest:m", provider=provider, batch_size=1, max_workers=2
+    )
     out = list(embedder.stream(_chunks(["fine text one", "boom text", "fine text two"])))
     assert len(out) == 3
     assert embedder.stats["embedded"] == 2 and embedder.stats["failed"] == 1

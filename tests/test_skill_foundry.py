@@ -1,4 +1,5 @@
 """UniMem foundry calibration, causal delivery, admission and portable evidence."""
+
 from __future__ import annotations
 
 import json
@@ -50,27 +51,48 @@ def clock(monkeypatch):
 
 
 def source(root, *, success=True, context=(), text="Check the release signature."):
-    path = trace_io.write_new(root, title="Measured release", context="Release review", solution=text,
-                             tags=["release"], outcome={"resolved": success}, extra={"scopes": list(context)})
+    path = trace_io.write_new(
+        root,
+        title="Measured release",
+        context="Release review",
+        solution=text,
+        tags=["release"],
+        outcome={"resolved": success},
+        extra={"scopes": list(context)},
+    )
     return trace_io.read(path)[0]["id"]
 
 
 def tasks(identity, token="signature"):
-    return [{"trace_id": identity, "instruction": "Prevent the measured signature-check failure.",
-             "verifier": {"contains": token}, "passing": "Check the " + token, "failing": "Skip verification."}]
+    return [
+        {
+            "trace_id": identity,
+            "instruction": "Prevent the measured signature-check failure.",
+            "verifier": {"contains": token},
+            "passing": "Check the " + token,
+            "failing": "Skip verification.",
+        }
+    ]
 
 
 def prepare(root, clock, *, name="release-check", context=(), enroll=True):
-    holdout_io.configure(root, rate=.5, salt="skill-pilot")
+    holdout_io.configure(root, rate=0.5, salt="skill-pilot")
     good, bad = source(root, context=context), source(root, success=False, context=context)
     candidate = skill_io.induce(root, name, "Verify release signatures before deployment.", [good], context=context)
     skill_io.screen(root, candidate["id"], tasks(bad), context=context)
     # Freeze the harm calibration from actual ungated, completed pilot assignments.
     for i in range(80):
-        holdout_io.assign_and_log(root, ["pilot"], occasion_id="pilot-"+str(i), rate=.5, salt="skill-pilot",
-                                 relevance={"pilot": 1}, scorer="unimem-skill")
-        holdout_io.record_outcome(root, "pilot-"+str(i), True)
-    conformal_gate.configure(root, alpha=.1, propensity_floor=.5, scorer="unimem-skill")
+        holdout_io.assign_and_log(
+            root,
+            ["pilot"],
+            occasion_id="pilot-" + str(i),
+            rate=0.5,
+            salt="skill-pilot",
+            relevance={"pilot": 1},
+            scorer="unimem-skill",
+        )
+        holdout_io.record_outcome(root, "pilot-" + str(i), True)
+    conformal_gate.configure(root, alpha=0.1, propensity_floor=0.5, scorer="unimem-skill")
     clock.tick()
     if enroll:
         skill_io.trial(root, candidate["id"], context=context, training_size=10, minimum_support=2)
@@ -86,49 +108,55 @@ def test_seeded_delivery_aipw_bias_and_focused_bundle_size_factor():
         observations = []
         bundle_scores = []
         for i in range(300):
-            rate = .2 if i < 150 else .8
+            rate = 0.2 if i < 150 else 0.8
             arm = rng.random() >= rate
             actual = bool(skill_foundry.exposed(candidate, arm))
-            baseline = .1 if i < 150 else .5
-            outcome = rng.random() < baseline + .3*actual
+            baseline = 0.1 if i < 150 else 0.5
+            outcome = rng.random() < baseline + 0.3 * actual
             observations.append(aipw.Observation(arm, outcome, rate))
-            large = rng.random() < .5
+            large = rng.random() < 0.5
             # The bundle factor is independently randomized before inner exposure.
-            bundle_outcome = rng.random() < .4 + .2*large
-            bundle_scores.append((2 if large else -2)*bundle_outcome)
-        estimates.append(sum(aipw.aipw_scores(observations))/len(observations))
-        bundles.append(sum(bundle_scores)/len(bundle_scores))
-    assert sum(estimates)/len(estimates) == pytest.approx(.3, abs=.025)
-    assert sum(bundles)/len(bundles) == pytest.approx(.2, abs=.025)
+            bundle_outcome = rng.random() < 0.4 + 0.2 * large
+            bundle_scores.append((2 if large else -2) * bundle_outcome)
+        estimates.append(sum(aipw.aipw_scores(observations)) / len(observations))
+        bundles.append(sum(bundle_scores) / len(bundle_scores))
+    assert sum(estimates) / len(estimates) == pytest.approx(0.3, abs=0.025)
+    assert sum(bundles) / len(bundles) == pytest.approx(0.2, abs=0.025)
 
 
 def test_seeded_skill_harm_and_useless_promotion():
     rng = random.Random(19)
     loss = false_promotions = 0
     for repeat in range(40):
-        calibration = [conformal_gate.Calibration(.1 if (unsafe := rng.random() < .2) else .9,
-                       rng.random() < .5, unsafe, .5) for _ in range(250)]
-        gate = conformal_gate.calibrate(calibration, alpha=.05, propensity_floor=.5)
-        fresh = [rng.random() < .2 for _ in range(100)]
-        loss += sum(unsafe and conformal_gate.admit(gate, .1 if unsafe else .9) for unsafe in fresh)
-        rows = [{"occasion_id": str(i), "injected": rng.random() < .5, "outcome": int(rng.random() < .5),
-                 "rate": .5} for i in range(220)]
-        false_promotions += promotion.evaluate(rows, {"default": 1}, {"default": 0},
-                               training_size=20, minimum_support=2, propensity_floor=.5)["promote"]
-    assert loss/4000 <= .05
+        calibration = [
+            conformal_gate.Calibration(0.1 if (unsafe := rng.random() < 0.2) else 0.9, rng.random() < 0.5, unsafe, 0.5)
+            for _ in range(250)
+        ]
+        gate = conformal_gate.calibrate(calibration, alpha=0.05, propensity_floor=0.5)
+        fresh = [rng.random() < 0.2 for _ in range(100)]
+        loss += sum(unsafe and conformal_gate.admit(gate, 0.1 if unsafe else 0.9) for unsafe in fresh)
+        rows = [
+            {"occasion_id": str(i), "injected": rng.random() < 0.5, "outcome": int(rng.random() < 0.5), "rate": 0.5}
+            for i in range(220)
+        ]
+        false_promotions += promotion.evaluate(
+            rows, {"default": 1}, {"default": 0}, training_size=20, minimum_support=2, propensity_floor=0.5
+        )["promote"]
+    assert loss / 4000 <= 0.05
     assert false_promotions <= 4
 
 
 def test_template_screen_and_optional_program_sandbox():
-    value = skill_foundry.candidate([{"solution_text": "Check signature."}],
-                                   name="release-check", description="Verify.")
+    value = skill_foundry.candidate(
+        [{"solution_text": "Check signature."}], name="release-check", description="Verify."
+    )
     assert skill_foundry.prescreen(value, tasks("failure"))["passed"]
     assert not skill_foundry.prescreen(value, tasks("failure", "hash"))["passed"]
     program = {**value, "format": "program", "body": "return verified_signature"}
     with pytest.raises(ValueError, match="sandbox"):
         skill_foundry.prescreen(program, tasks("failure"))
     assert skill_foundry.prescreen(program, tasks("failure"), sandbox=lambda program, task: "signature")["passed"]
-    for name in ("-name", "Name", "a--b", "a-", "x"*65):
+    for name in ("-name", "Name", "a--b", "a-", "x" * 65):
         with pytest.raises(ValueError):
             skill_foundry.metadata(name, "description")
     with pytest.raises(ValueError, match="fixtures"):
@@ -143,7 +171,7 @@ def test_schedule_delivery_integrity_and_private_catalog(tmp_path, clock):
     for i in range(20):
         occasion = "episode-" + str(i)
         catalog = skill_io.catalog(root, occasion, context=["team:a"])
-        expected = not experiment.is_held_out(identity, occasion, .5, "skill-pilot")
+        expected = not experiment.is_held_out(identity, occasion, 0.5, "skill-pilot")
         assert bool(catalog["skills"]) is expected
         holdout_io.record_outcome(root, occasion, expected)
         clock.tick(1)
@@ -167,8 +195,8 @@ def test_portable_folder_certificate_and_revocation(tmp_path, clock):
     root = str(tmp_path)
     value = prepare(root, clock)
     for i in range(420):
-        catalog = skill_io.catalog(root, "live-"+str(i))
-        holdout_io.record_outcome(root, "live-"+str(i), bool(catalog["skills"]))
+        catalog = skill_io.catalog(root, "live-" + str(i))
+        holdout_io.record_outcome(root, "live-" + str(i), bool(catalog["skills"]))
         clock.tick(1)
     exported = skill_io.publish(root, value["id"])
     directory = tmp_path / "skills" / value["name"]
@@ -208,12 +236,17 @@ def test_cli_and_mcp_surfaces(tmp_path, clock):
 
     root = str(tmp_path)
     identity = source(root)
-    result = cli("skill", "induce", json.dumps({"name": "check", "description": "Verify signatures.",
-                 "trace_ids": [identity]}), "--dest", root)
+    result = cli(
+        "skill",
+        "induce",
+        json.dumps({"name": "check", "description": "Verify signatures.", "trace_ids": [identity]}),
+        "--dest",
+        root,
+    )
     assert result.returncode == 0, result.stderr
     server = build_server(root)
     assert call(server, "skill_catalog", occasion="not-enrolled")["skills"] == []
-    assert not call(server, "skill_evidence", identity="skill:" + "a"*64)["ok"]
+    assert not call(server, "skill_evidence", identity="skill:" + "a" * 64)["ok"]
 
 
 def test_bundle_size_is_chosen_before_individual_eligibility(tmp_path, clock):
@@ -232,7 +265,7 @@ def test_bundle_size_is_chosen_before_individual_eligibility(tmp_path, clock):
     for i in range(12):
         occasion = "bundle-" + str(i)
         skill_io.catalog(root, occasion)
-        large = not experiment.is_held_out(config["bundle_unit"], occasion, .5, "skill-pilot")
+        large = not experiment.is_held_out(config["bundle_unit"], occasion, 0.5, "skill-pilot")
         assigned = {r.lesson for r in holdout_io.read_log(root)[0] if r.occasion_id == occasion}
         assert config["bundle_unit"] in assigned
         assert set(sorted(members)[:3]) <= assigned

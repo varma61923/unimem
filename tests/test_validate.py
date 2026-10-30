@@ -414,9 +414,18 @@ class TestLessonSchemaValidation:
     @pytest.mark.parametrize(
         "missing_field",
         [
-            "name", "description", "tags", "agent_type", "domain",
-            "importance", "importance_rationale", "applies_when",
-            "do_not_apply_when", "uses", "last_hit", "status",
+            "name",
+            "description",
+            "tags",
+            "agent_type",
+            "domain",
+            "importance",
+            "importance_rationale",
+            "applies_when",
+            "do_not_apply_when",
+            "uses",
+            "last_hit",
+            "status",
         ],
     )
     def test_missing_required_fields_fails(self, lesson_schema, valid_lesson, missing_field):

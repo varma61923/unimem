@@ -1,4 +1,5 @@
 """Named second-stage rerankers: registry, MMR and the retrieval seam."""
+
 import pytest
 
 from unimem import providers, retrieval
@@ -7,8 +8,9 @@ from unimem.retrieval import RankedLesson
 
 
 def _lesson(slug, score, description, terms=()):
-    return RankedLesson(path=f"/nowhere/{slug}.md", slug=slug, description=description, score=score,
-                        matched_terms=list(terms))
+    return RankedLesson(
+        path=f"/nowhere/{slug}.md", slug=slug, description=description, score=score, matched_terms=list(terms)
+    )
 
 
 RANKED = [
@@ -47,8 +49,12 @@ def test_unknown_names_are_a_capability_error_not_an_import():
 def test_custom_registration_and_duplicate_refusal():
     name = "reverse-for-test"
     if name not in providers.RERANKERS.names():
-        providers.register_reranker(name, lambda: (lambda task, ranked: list(reversed(ranked))))
-    assert [r.slug for r in retrieval.apply_reranker("q", RANKED, providers.reranker(name))] == ["idempotency", "retry-b", "retry-a"]
+        providers.register_reranker(name, lambda: lambda task, ranked: list(reversed(ranked)))
+    assert [r.slug for r in retrieval.apply_reranker("q", RANKED, providers.reranker(name))] == [
+        "idempotency",
+        "retry-b",
+        "retry-a",
+    ]
     with pytest.raises(ConfigurationError):
         providers.register_reranker(name, lambda: None)
 

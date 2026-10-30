@@ -1,4 +1,5 @@
 """Shared HTML page shell for the taxonomy/impact/pilot reports."""
+
 from __future__ import annotations
 
 import html

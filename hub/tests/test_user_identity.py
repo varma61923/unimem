@@ -73,8 +73,12 @@ def provider(signing_key):
 async def _linked_user(session_factory, org_id, role=rbac.ROLE_CURATOR, subject="subject-1"):
     async with session_scope(session_factory) as session:
         user = User(
-            org_id=org_id, email="person@example.test", role=role,
-            issuer=ISSUER, external_subject=subject, created_by="test",
+            org_id=org_id,
+            email="person@example.test",
+            role=role,
+            issuer=ISSUER,
+            external_subject=subject,
+            created_by="test",
         )
         session.add(user)
         await session.flush()
@@ -129,17 +133,27 @@ class TestUserModel:
             await session.flush()
             other_id = other.id
         async with session_scope(session_factory) as session:
-            session.add(User(
-                org_id=org, email="a@x.test", role=rbac.ROLE_VIEWER,
-                issuer=ISSUER, external_subject="dupe-subject",
-            ))
+            session.add(
+                User(
+                    org_id=org,
+                    email="a@x.test",
+                    role=rbac.ROLE_VIEWER,
+                    issuer=ISSUER,
+                    external_subject="dupe-subject",
+                )
+            )
             await session.flush()
         with pytest.raises(IntegrityError):
             async with session_scope(session_factory) as session:
-                session.add(User(
-                    org_id=other_id, email="b@x.test", role=rbac.ROLE_VIEWER,
-                    issuer=ISSUER, external_subject="dupe-subject",
-                ))
+                session.add(
+                    User(
+                        org_id=other_id,
+                        email="b@x.test",
+                        role=rbac.ROLE_VIEWER,
+                        issuer=ISSUER,
+                        external_subject="dupe-subject",
+                    )
+                )
                 await session.flush()
 
     async def test_multiple_unlinked_users_do_not_collide(self, session_factory, org):
@@ -150,9 +164,7 @@ class TestUserModel:
 
 
 class TestVerifyUserToken:
-    async def test_a_valid_token_for_a_linked_user_authenticates(
-        self, session_factory, org, signing_key, provider
-    ):
+    async def test_a_valid_token_for_a_linked_user_authenticates(self, session_factory, org, signing_key, provider):
         key, _ = signing_key
         await _linked_user(session_factory, org)
         token = _token(key)
@@ -195,9 +207,7 @@ class TestVerifyUserToken:
         async with session_scope(session_factory) as session:
             assert (await session.get(User, user_id)).last_login_at > stale
 
-    async def test_an_unverifiable_token_authenticates_no_one(
-        self, session_factory, org, provider
-    ):
+    async def test_an_unverifiable_token_authenticates_no_one(self, session_factory, org, provider):
         garbage_key, _ = _keypair()
         await _linked_user(session_factory, org)
         token = _token(garbage_key)
@@ -251,13 +261,21 @@ class TestVerifyUserToken:
         key, _ = signing_key
         await _linked_user(session_factory, org)
         other_provider = IdentityProvider(
-            issuer="https://different-idp.test/", audience=AUDIENCE,
+            issuer="https://different-idp.test/",
+            audience=AUDIENCE,
             jwks=_jwks_for(signing_key[1]),
         )
         token_for_other_issuer = jwt.encode(
-            {"iss": "https://different-idp.test/", "aud": AUDIENCE, "sub": "subject-1",
-             "iat": int(time.time()), "exp": int(time.time()) + 300},
-            key, algorithm="RS256", headers={"kid": "k1"},
+            {
+                "iss": "https://different-idp.test/",
+                "aud": AUDIENCE,
+                "sub": "subject-1",
+                "iat": int(time.time()),
+                "exp": int(time.time()) + 300,
+            },
+            key,
+            algorithm="RS256",
+            headers={"kid": "k1"},
         )
         async with session_scope(session_factory) as session:
             person = await auth.verify_user_token(session, token_for_other_issuer, other_provider)
@@ -273,29 +291,50 @@ class TestCapabilityEnforcementThroughARealTool:
     async def test_a_curator_can_contribute(self, mcp, org):
         person = auth.AuthenticatedUser(id="u1", org_id=org, role=rbac.ROLE_CURATOR, email="c@x.test")
         with _AsUser(org, person):
-            result = payload(await mcp.call_tool("contribute_trace", {
-                "title": "t", "context_text": "c", "solution_text": "s",
-                "agent_type": "support",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "contribute_trace",
+                    {
+                        "title": "t",
+                        "context_text": "c",
+                        "solution_text": "s",
+                        "agent_type": "support",
+                    },
+                )
+            )
         assert result.get("ok", True) is not False
         assert "error" not in result or result["error"] != "forbidden"
 
     async def test_a_viewer_cannot_contribute(self, mcp, org):
         person = auth.AuthenticatedUser(id="u2", org_id=org, role=rbac.ROLE_VIEWER, email="v@x.test")
         with _AsUser(org, person):
-            result = payload(await mcp.call_tool("contribute_trace", {
-                "title": "t", "context_text": "c", "solution_text": "s",
-                "agent_type": "support",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "contribute_trace",
+                    {
+                        "title": "t",
+                        "context_text": "c",
+                        "solution_text": "s",
+                        "agent_type": "support",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
 
     async def test_a_role_with_write_scope_but_no_curate_capability_is_refused(self, mcp, org):
         person = auth.AuthenticatedUser(id="u2b", org_id=org, role=rbac.ROLE_ANALYST, email="an@x.test")
         with _AsUser(org, person):
-            result = payload(await mcp.call_tool("contribute_trace", {
-                "title": "t", "context_text": "c", "solution_text": "s",
-                "agent_type": "support",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "contribute_trace",
+                    {
+                        "title": "t",
+                        "context_text": "c",
+                        "solution_text": "s",
+                        "agent_type": "support",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
         assert result["required_capability"] == rbac.CAP_CURATE
         assert result["role"] == rbac.ROLE_ANALYST
@@ -309,10 +348,17 @@ class TestCapabilityEnforcementThroughARealTool:
     async def test_a_deployer_holds_write_scope_but_still_cannot_curate(self, mcp, org):
         person = auth.AuthenticatedUser(id="u4", org_id=org, role=rbac.ROLE_DEPLOYER, email="d@x.test")
         with _AsUser(org, person):
-            result = payload(await mcp.call_tool("contribute_trace", {
-                "title": "t", "context_text": "c", "solution_text": "s",
-                "agent_type": "support",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "contribute_trace",
+                    {
+                        "title": "t",
+                        "context_text": "c",
+                        "solution_text": "s",
+                        "agent_type": "support",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
         assert result["required_capability"] == rbac.CAP_CURATE
         assert result["role"] == rbac.ROLE_DEPLOYER
@@ -320,9 +366,15 @@ class TestCapabilityEnforcementThroughARealTool:
     async def test_a_curator_holds_write_scope_but_cannot_deploy(self, mcp, org):
         person = auth.AuthenticatedUser(id="u4b", org_id=org, role=rbac.ROLE_CURATOR, email="c2@x.test")
         with _AsUser(org, person):
-            result = payload(await mcp.call_tool("holdout_assign", {
-                "trace_ids": [], "occasion_id": "occ-1",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "holdout_assign",
+                    {
+                        "trace_ids": [],
+                        "occasion_id": "occ-1",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
         assert result["required_capability"] == rbac.CAP_DEPLOY
 
@@ -353,9 +405,7 @@ class TestFullStackJwtAuthentication:
         inner = app
         return httpx.AsyncClient(transport=httpx.ASGITransport(app=inner), base_url="http://test")
 
-    async def test_a_jwt_shaped_token_with_no_configured_provider_is_refused(
-        self, config, session_factory
-    ):
+    async def test_a_jwt_shaped_token_with_no_configured_provider_is_refused(self, config, session_factory):
         from starlette.applications import Starlette
         from starlette.responses import PlainTextResponse
         from starlette.routing import Route
@@ -374,15 +424,11 @@ class TestFullStackJwtAuthentication:
         )
         key, _ = _keypair()
         token = _token(key)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             response = await client.get("/mcp", headers={"authorization": f"Bearer {token}"})
         assert response.status_code == 401
 
-    async def test_a_deprovisioned_user_is_refused_at_the_http_layer(
-        self, session_factory, org, signing_key, provider
-    ):
+    async def test_a_deprovisioned_user_is_refused_at_the_http_layer(self, session_factory, org, signing_key, provider):
         from datetime import datetime, timezone
 
         from starlette.applications import Starlette
@@ -405,9 +451,7 @@ class TestFullStackJwtAuthentication:
             identity_provider=provider,
         )
         token = _token(key)
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             before = await client.get("/mcp", headers={"authorization": f"Bearer {token}"})
             assert before.status_code == 200
 

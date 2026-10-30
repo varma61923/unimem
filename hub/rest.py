@@ -99,9 +99,7 @@ def add_rest_routes(
     from hub import delegation
 
     delegation.install(app, config)
-    auth_limiter = make_named_limiter(
-        config, config.auth_attempts_per_minute, config.auth_attempts_burst, "rest_auth"
-    )
+    auth_limiter = make_named_limiter(config, config.auth_attempts_per_minute, config.auth_attempts_burst, "rest_auth")
     identity_provider = config.identity_provider()
     jwks_cache = None
     if identity_provider is not None and identity_provider.jwks_uri:
@@ -155,21 +153,29 @@ def add_rest_routes(
         raw_key = request.headers.get("X-API-Key", "")
         authorization = request.headers.get("authorization", "")
         if not raw_key and authorization.lower().startswith("bearer "):
-            bearer = authorization[len("bearer "):].strip()
+            bearer = authorization[len("bearer ") :].strip()
             from hub.sso import looks_like_jwt
 
             if identity_provider is not None and looks_like_jwt(bearer):
                 async with session_scope(session_factory) as session:
                     person = await auth.verify_user_token(
-                        session, bearer, identity_provider, jwks_cache=jwks_cache,
+                        session,
+                        bearer,
+                        identity_provider,
+                        jwks_cache=jwks_cache,
                     )
                 if person is not None:
                     from hub import rbac
 
                     auth_limiter.refund(client_key)
-                    return await _admit(request, auth.AuthenticatedKey(
-                        person.org_id, f"user:{person.id}", rbac.scopes_of(person.role),
-                    ))
+                    return await _admit(
+                        request,
+                        auth.AuthenticatedKey(
+                            person.org_id,
+                            f"user:{person.id}",
+                            rbac.scopes_of(person.role),
+                        ),
+                    )
             return None, _json_error(401, "unauthorized", "OIDC bearer token was rejected or is not linked")
         if not raw_key:
             return None, _json_error(401, "unauthorized", "X-API-Key or linked OIDC bearer token is required")
@@ -190,12 +196,9 @@ def add_rest_routes(
             )
         return None
 
-
     async def create_key(request: Request) -> Response:
         """`POST /api/v1/keys` -> `{"api_key", "org_id"}`."""
-        allowed, retry_after = await signup_limiter.check(
-            rate_limit_key(request, trusted_proxy_hops)
-        )
+        allowed, retry_after = await signup_limiter.check(rate_limit_key(request, trusted_proxy_hops))
         if not allowed:
             return JSONResponse(
                 {"error": "rate_limited", "detail": "too many signups from this address"},
@@ -210,9 +213,7 @@ def add_rest_routes(
         display_name = _text(payload.get("display_name"), _MAX_NAME_CHARS)
         org_name = display_name or (email.split("@", 1)[0] if email else "")
         if not org_name:
-            return _json_error(
-                400, "bad_request", "one of display_name or email is required"
-            )
+            return _json_error(400, "bad_request", "one of display_name or email is required")
         try:
             reject_unstorable_text(org_name, "display_name")
         except ValueError as exc:
@@ -224,8 +225,12 @@ def add_rest_routes(
             await session.flush()
             issued = await auth.issue_api_key(session, org.id)
             await audit.record(
-                session, actor=ACTOR_REST_SIGNUP, action="create_org",
-                org_id=org.id, target_type="org", target_id=org.id,
+                session,
+                actor=ACTOR_REST_SIGNUP,
+                action="create_org",
+                org_id=org.id,
+                target_type="org",
+                target_id=org.id,
                 summary=f"name={org_name!r} via {API_PREFIX}/keys",
             )
             org_id = org.id
@@ -234,7 +239,6 @@ def add_rest_routes(
             status_code=201,
             headers={"Cache-Control": "no-store"},
         )
-
 
     async def contribute(request: Request) -> Response:
         """`POST /api/v1/traces` -> `{"id", "quarantined", ...}`."""
@@ -253,16 +257,16 @@ def add_rest_routes(
         context_text = _text(payload.get("context_text"))
         solution_text = _text(payload.get("solution_text"))
         missing = [
-            name for name, value in (
+            name
+            for name, value in (
                 ("title", title),
                 ("context_text", context_text),
                 ("solution_text", solution_text),
-            ) if not value
+            )
+            if not value
         ]
         if missing:
-            return _json_error(
-                400, "bad_request", f"missing required field(s): {', '.join(missing)}"
-            )
+            return _json_error(400, "bad_request", f"missing required field(s): {', '.join(missing)}")
 
         idempotency_key = _text(payload.get("idempotency_key")) or None
         try:
@@ -327,8 +331,13 @@ def add_rest_routes(
         try:
             async with session_scope(session_factory, org_id=authenticated.org_id) as session:
                 found = await crud.search_traces(
-                    session, authenticated.org_id, query=query, limit=limit, brief=True,
-                    scope=scope, as_of=as_of,
+                    session,
+                    authenticated.org_id,
+                    query=query,
+                    limit=limit,
+                    brief=True,
+                    scope=scope,
+                    as_of=as_of,
                 )
         except ValueError as exc:
             return _json_error(400, "bad_request", str(exc))
@@ -338,7 +347,6 @@ def add_rest_routes(
             row["contributor_name"] = trace.get("contributor", "")
             results.append(row)
         return JSONResponse({"results": results})
-
 
     async def telemetry(request: Request) -> Response:
         """`POST /api/v1/telemetry/{install,ping,triggers}` -> 204."""
@@ -364,8 +372,7 @@ def add_rest_routes(
 
             ceiling = oblivious_clearance_resolver(authenticated)
             replica = oblivious_replica_resolver(authenticated.org_id, ceiling)
-            if (not callable(getattr(replica, "handle", None))
-                    or not callable(getattr(replica, "handle_many", None))):
+            if not callable(getattr(replica, "handle", None)) or not callable(getattr(replica, "handle_many", None)):
                 raise TypeError("oblivious resolver must return a two-server PIR endpoint adapter")
             payload = await _read_json(request)
             if payload is None:
@@ -384,8 +391,7 @@ def add_rest_routes(
                 return base64.b64decode(value, validate=True)
 
             if encoded_many is not None:
-                if (not isinstance(encoded_many, list)
-                        or len(encoded_many) > oblivious.MAX_BLOCKS_PER_CLUSTER):
+                if not isinstance(encoded_many, list) or len(encoded_many) > oblivious.MAX_BLOCKS_PER_CLUSTER:
                     raise ValueError("PIR shares must be a bounded array")
                 shares = [decode_share(item) for item in encoded_many]
                 result = await run_in_threadpool(replica.handle_many, cluster, shares)
@@ -406,28 +412,26 @@ def add_rest_routes(
     if not hasattr(app.state, "memory_projection_factory"):
         app.state.memory_projection_factory = ProjectionFactory(session_factory, config.database_url)
     add_memory_routes(app, session_factory, authenticate=_authenticate, require_scope=_require_scope)
-    add_market_routes(app, session_factory, config=config, authenticate=_authenticate,
-                      require_scope=_require_scope)
+    add_market_routes(app, session_factory, config=config, authenticate=_authenticate, require_scope=_require_scope)
     from hub import transparency
 
-    transparency.add_routes(app, session_factory, authenticate=_authenticate,
-                            require_scope=_require_scope, config=config)
+    transparency.add_routes(
+        app, session_factory, authenticate=_authenticate, require_scope=_require_scope, config=config
+    )
     from hub import incidents
 
-    incidents.add_routes(app, session_factory, authenticate=_authenticate,
-                         require_scope=_require_scope, config=config)
+    incidents.add_routes(app, session_factory, authenticate=_authenticate, require_scope=_require_scope, config=config)
     from hub import pooled
 
-    pooled.add_routes(app, session_factory, authenticate=_authenticate,
-                      require_scope=_require_scope, config=config)
+    pooled.add_routes(app, session_factory, authenticate=_authenticate, require_scope=_require_scope, config=config)
     from hub import policies
 
-    policies.add_routes(app, session_factory, authenticate=_authenticate,
-                        require_scope=_require_scope, config=config)
+    policies.add_routes(app, session_factory, authenticate=_authenticate, require_scope=_require_scope, config=config)
     from hub import attestation
 
-    attestation.add_routes(app, session_factory, authenticate=_authenticate,
-                          require_scope=_require_scope, config=config)
+    attestation.add_routes(
+        app, session_factory, authenticate=_authenticate, require_scope=_require_scope, config=config
+    )
     app.add_route(f"{API_PREFIX}/traces", contribute, methods=["POST"])
     app.add_route(f"{API_PREFIX}/traces/search", search, methods=["POST"])
     app.add_route(f"{API_PREFIX}/oblivious/pir", oblivious_pir, methods=["POST"])

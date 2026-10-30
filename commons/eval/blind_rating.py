@@ -21,6 +21,7 @@ Blinding is as good as the text: a draft that reads like a model (or a hand-writ
 person) can be told apart by a rater. `make` reports the one cue it can check, whether the two sources differ in
 length by more than 25%, and says so; it does not rewrite either.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,8 +46,13 @@ def _read_lessons(directory: str) -> list[dict]:
             continue
         fm, body = frontmatter.read(os.path.join(directory, name))
         rule = _section(body, "Rule")
-        out.append({"rule": rule, "applies_when": str(fm.get("applies_when", "")).strip(),
-                    "do_not_apply_when": str(fm.get("do_not_apply_when", "")).strip()})
+        out.append(
+            {
+                "rule": rule,
+                "applies_when": str(fm.get("applies_when", "")).strip(),
+                "do_not_apply_when": str(fm.get("do_not_apply_when", "")).strip(),
+            }
+        )
     return [x for x in out if x["rule"]]
 
 
@@ -59,8 +65,9 @@ def _section(body: str, name: str) -> str:
 
 def render(item: dict) -> str:
     """The one layout every item is shown in. Nothing here can identify its source."""
-    return (f"RULE: {item['rule']}\nAPPLIES WHEN: {item['applies_when']}\n"
-            f"DOES NOT APPLY WHEN: {item['do_not_apply_when']}")
+    return (
+        f"RULE: {item['rule']}\nAPPLIES WHEN: {item['applies_when']}\nDOES NOT APPLY WHEN: {item['do_not_apply_when']}"
+    )
 
 
 def make(drafts: list[dict], handwritten: list[dict], n: int, seed: int) -> tuple[list[dict], dict, dict]:
@@ -69,20 +76,26 @@ def make(drafts: list[dict], handwritten: list[dict], n: int, seed: int) -> tupl
     take = min(n, len(drafts), len(handwritten))
     if take == 0:
         raise ValueError("both sources need at least one lesson")
-    picked = ([("drafts", x) for x in rng.sample(drafts, take)]
-              + [("handwritten", x) for x in rng.sample(handwritten, take)])
+    picked = [("drafts", x) for x in rng.sample(drafts, take)] + [
+        ("handwritten", x) for x in rng.sample(handwritten, take)
+    ]
     rng.shuffle(picked)
     rows, key = [], {}
     for i, (source, item) in enumerate(picked, start=1):
         item_id = f"item-{i:03d}"
         rows.append({"item_id": item_id, "text": render(item), **{c: "" for c in CRITERIA}})
         key[item_id] = source
-    lengths = {s: statistics.fmean(len(render(it)) for src, it in picked if src == s)
-               for s in ("drafts", "handwritten")}
+    lengths = {
+        s: statistics.fmean(len(render(it)) for src, it in picked if src == s) for s in ("drafts", "handwritten")
+    }
     ratio = max(lengths.values()) / max(1.0, min(lengths.values()))
-    report = {"items_per_source": take, "mean_length": lengths,
-              "length_cue": "the sources differ in length by more than 25%; raters may be able to tell them apart"
-              if ratio > 1.25 else "lengths are within 25% of each other"}
+    report = {
+        "items_per_source": take,
+        "mean_length": lengths,
+        "length_cue": "the sources differ in length by more than 25%; raters may be able to tell them apart"
+        if ratio > 1.25
+        else "lengths are within 25% of each other",
+    }
     return rows, key, report
 
 
@@ -120,15 +133,29 @@ def score(ratings: list[dict], key: dict, margin: float = DEFAULT_MARGIN, seed: 
     per_item = {item: statistics.fmean(statistics.fmean(v) for v in crit.values()) for item, crit in by_item.items()}
     out: dict = {"raters": len(raters), "margin": margin, "criteria": {}}
     for c in (*CRITERIA, "overall"):
-        values = {src: [(statistics.fmean(by_item[i][c]) if c != "overall" else per_item[i])
-                        for i in key if key[i] == src] for src in ("drafts", "handwritten")}
+        values = {
+            src: [(statistics.fmean(by_item[i][c]) if c != "overall" else per_item[i]) for i in key if key[i] == src]
+            for src in ("drafts", "handwritten")
+        }
         diff, low, high = _bootstrap_diff(values["drafts"], values["handwritten"], seed)
-        out["criteria"][c] = {"drafts": statistics.fmean(values["drafts"]), "handwritten":
-                              statistics.fmean(values["handwritten"]), "difference": diff, "ci_low": low,
-                              "ci_high": high, "n_per_source": len(values["drafts"])}
+        out["criteria"][c] = {
+            "drafts": statistics.fmean(values["drafts"]),
+            "handwritten": statistics.fmean(values["handwritten"]),
+            "difference": diff,
+            "ci_low": low,
+            "ci_high": high,
+            "n_per_source": len(values["drafts"]),
+        }
     o = out["criteria"]["overall"]
-    out["verdict"] = ("SUPERIOR" if o["ci_low"] > 0 else "NON-INFERIOR" if o["ci_low"] > -margin
-                      else "INFERIOR" if o["ci_high"] < 0 else "INCONCLUSIVE")
+    out["verdict"] = (
+        "SUPERIOR"
+        if o["ci_low"] > 0
+        else "NON-INFERIOR"
+        if o["ci_low"] > -margin
+        else "INFERIOR"
+        if o["ci_high"] < 0
+        else "INCONCLUSIVE"
+    )
     if len(raters) > 1:
         close = []
         for item, crit in by_item.items():
@@ -163,8 +190,10 @@ def main(argv: list[str] | None = None) -> int:
                 w.writerows(rows)
             with open(os.path.join(args.out, "key.json"), "w", encoding="utf-8") as fh:
                 json.dump(key, fh, indent=2)
-            print(f"wrote {len(rows)} items to {args.out}/sheet.csv (give raters this) and key.json (keep it away "
-                  f"from them). {report['length_cue']}.")
+            print(
+                f"wrote {len(rows)} items to {args.out}/sheet.csv (give raters this) and key.json (keep it away "
+                f"from them). {report['length_cue']}."
+            )
             return 0
         with open(args.ratings, encoding="utf-8", newline="") as fh:
             ratings = list(csv.DictReader(fh))
@@ -179,8 +208,10 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{result['raters']} rater(s); margin {result['margin']} points. Drafts minus hand-written:")
         for c, v in result["criteria"].items():
-            print(f"  {c:15s} drafts {v['drafts']:.2f}  hand-written {v['handwritten']:.2f}  "
-                  f"diff {v['difference']:+.2f} [{v['ci_low']:+.2f}, {v['ci_high']:+.2f}]")
+            print(
+                f"  {c:15s} drafts {v['drafts']:.2f}  hand-written {v['handwritten']:.2f}  "
+                f"diff {v['difference']:+.2f} [{v['ci_low']:+.2f}, {v['ci_high']:+.2f}]"
+            )
         print(f"verdict: {result['verdict']}")
     return 0
 

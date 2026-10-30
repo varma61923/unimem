@@ -42,19 +42,34 @@ class TestFromTicketTransition:
     REOPENED = frozenset({"reopened"})
 
     def test_a_resolved_status_is_success(self):
-        assert od.from_ticket_transition(
-            "closed", resolved_statuses=self.RESOLVED, reopened_statuses=self.REOPENED,
-        ) is True
+        assert (
+            od.from_ticket_transition(
+                "closed",
+                resolved_statuses=self.RESOLVED,
+                reopened_statuses=self.REOPENED,
+            )
+            is True
+        )
 
     def test_a_reopened_status_is_failure(self):
-        assert od.from_ticket_transition(
-            "reopened", resolved_statuses=self.RESOLVED, reopened_statuses=self.REOPENED,
-        ) is False
+        assert (
+            od.from_ticket_transition(
+                "reopened",
+                resolved_statuses=self.RESOLVED,
+                reopened_statuses=self.REOPENED,
+            )
+            is False
+        )
 
     def test_an_unlisted_status_is_ambiguous(self):
-        assert od.from_ticket_transition(
-            "pending", resolved_statuses=self.RESOLVED, reopened_statuses=self.REOPENED,
-        ) is None
+        assert (
+            od.from_ticket_transition(
+                "pending",
+                resolved_statuses=self.RESOLVED,
+                reopened_statuses=self.REOPENED,
+            )
+            is None
+        )
 
     def test_vendor_agnostic_vocabularies_work_identically(self):
         jira = {"resolved_statuses": frozenset({"Done"}), "reopened_statuses": frozenset({"Reopened"})}

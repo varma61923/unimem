@@ -3,6 +3,7 @@
 Values must be immutable or copied by the caller. Weights account for retained
 keys and values; active loaders and callers are outside the retention budget.
 """
+
 from __future__ import annotations
 
 import math
@@ -33,8 +34,15 @@ class RuntimeCache(Generic[V]):
     No stale values are returned after expiry or a failed refresh.
     """
 
-    def __init__(self, *, max_entries: int, max_bytes: int, ttl: float,
-                 weigh: Callable[[Hashable, V], int], clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        *,
+        max_entries: int,
+        max_bytes: int,
+        ttl: float,
+        weigh: Callable[[Hashable, V], int],
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         if max_entries < 0 or max_bytes < 0 or not math.isfinite(ttl) or ttl < 0:
             raise ValueError("cache limits must be finite and nonnegative")
         self.max_entries, self.max_bytes, self.ttl = max_entries, max_bytes, ttl
@@ -74,9 +82,14 @@ class RuntimeCache(Generic[V]):
 
     def stats(self) -> dict[str, int]:
         with self._lock:
-            return {"entries": len(self._entries), "bytes": self.bytes_used,
-                    "hits": self.hits, "misses": self.misses,
-                    "coalesced": self.coalesced, "evictions": self.evictions}
+            return {
+                "entries": len(self._entries),
+                "bytes": self.bytes_used,
+                "hits": self.hits,
+                "misses": self.misses,
+                "coalesced": self.coalesced,
+                "evictions": self.evictions,
+            }
 
     def peek(self, key: Hashable) -> V | None:
         """Return a retained live value without loading or waiting for a flight.
@@ -130,10 +143,10 @@ class RuntimeCache(Generic[V]):
                         if now >= self._next_expiry:
                             for old_key in [k for k, e in self._entries.items() if e[0] <= now]:
                                 self.bytes_used -= self._entries.pop(old_key)[2]
-                            self._next_expiry = min((e[0] for e in self._entries.values()),
-                                                    default=float("inf"))
-                        while self._entries and (len(self._entries) >= self.max_entries
-                                                 or self.bytes_used + size > self.max_bytes):
+                            self._next_expiry = min((e[0] for e in self._entries.values()), default=float("inf"))
+                        while self._entries and (
+                            len(self._entries) >= self.max_entries or self.bytes_used + size > self.max_bytes
+                        ):
                             self.bytes_used -= self._entries.popitem(last=False)[1][2]
                             self.evictions += 1
                         self._entries[key] = (now + self.ttl, value, size)

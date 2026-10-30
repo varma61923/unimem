@@ -48,7 +48,10 @@ async def test_t2_hub_idempotency_key_replay(hub_boundary_session):
 
     key = "idem-key-12345"
     t1 = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Idempotent trace test",
         context_text="Ctx",
         solution_text="Sol",
@@ -56,7 +59,10 @@ async def test_t2_hub_idempotency_key_replay(hub_boundary_session):
     )
 
     t2 = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Idempotent trace test",
         context_text="Ctx",
         solution_text="Sol",
@@ -81,7 +87,10 @@ async def test_t2_hub_rate_limiting_enforcement(hub_boundary_session):
     strict_limiter = RateLimiter(per_minute=1, burst=1)
 
     await crud.contribute_trace(
-        session, org_id, config, strict_limiter,
+        session,
+        org_id,
+        config,
+        strict_limiter,
         title="Rate limit test 1",
         context_text="Ctx",
         solution_text="Sol",
@@ -89,7 +98,10 @@ async def test_t2_hub_rate_limiting_enforcement(hub_boundary_session):
 
     with pytest.raises(RateLimited):
         await crud.contribute_trace(
-            session, org_id, config, strict_limiter,
+            session,
+            org_id,
+            config,
+            strict_limiter,
             title="Rate limit test 2",
             context_text="Ctx",
             solution_text="Sol",

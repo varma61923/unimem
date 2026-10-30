@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import threading
+from collections.abc import Sequence
 
 from unimem import paths
 
@@ -12,7 +13,7 @@ _LOCK = threading.Lock()
 _SCRIPT = None
 _BUILDER = None
 _MODELS: dict[str, object] = {}
-_INDEX: dict[str, tuple[tuple, object]] = {}
+_INDEX: dict[str, tuple[tuple | None, Sequence[object]]] = {}
 
 QUERY_SCRIPT = os.path.join("memory", "attention", "query.py")
 BUILD_SCRIPT = os.path.join("memory", "attention", "build_index.py")
@@ -20,8 +21,7 @@ BUILD_SCRIPT = os.path.join("memory", "attention", "build_index.py")
 
 def available() -> bool:
     return (
-        importlib.util.find_spec("numpy") is not None
-        and importlib.util.find_spec("sentence_transformers") is not None
+        importlib.util.find_spec("numpy") is not None and importlib.util.find_spec("sentence_transformers") is not None
     )
 
 
@@ -32,6 +32,8 @@ def _load_reference(root: str, relative: str, name: str):
     if path is None:
         return None
     spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        return None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -93,8 +95,11 @@ def ensure_fresh(root: str) -> str:
             return "; ".join(model.stderr) or reason
         try:
             builder.build_or_update_index(
-                paths.lessons_dir(root), index_path(root),
-                model_name=name, model=model, log=lambda *_a, **_k: None,
+                paths.lessons_dir(root),
+                index_path(root),
+                model_name=name,
+                model=model,
+                log=lambda *_a, **_k: None,
             )
         except Exception as exc:  # noqa: BLE001 - a failed refresh falls back, never crashes retrieval
             return f"{reason}; refreshing it failed: {type(exc).__name__}: {exc}"
@@ -114,7 +119,10 @@ def index_path(root: str) -> str:
 
 
 def ranked_slugs(
-    root: str, query: str, top_k: int, agent_type: str | None = None,
+    root: str,
+    query: str,
+    top_k: int,
+    agent_type: str | None = None,
 ) -> tuple[int, list[str], list[str]]:
     from unimem.commands.query_cmd import _slugs_from_semantic_output
 
@@ -133,7 +141,10 @@ def ranked_slugs(
                 _INDEX.pop(ipath, None)
                 return index.rc, [], index.stderr
             _INDEX[ipath] = (identity, index)
-        model = _model(script, index[0]) if index[0] in script.TRUSTED_MODELS else None
+        model_name = index[0]
+        model = (
+            _model(script, model_name) if isinstance(model_name, str) and model_name in script.TRUSTED_MODELS else None
+        )
         if model is not None and isinstance(model, script.Ranked):
             return model.rc, [], model.stderr
         from unimem import lesson_cache
@@ -141,15 +152,22 @@ def ranked_slugs(
         try:
             index_ns = os.stat(ipath).st_mtime_ns
             mtimes = [
-                (p, lesson_cache.mtime_seconds(ns)) for p, ns, _size in lesson_cache.listing(root)
+                (p, lesson_cache.mtime_seconds(ns))
+                for p, ns, _size in lesson_cache.listing(root)
                 if ns > index_ns - 1_000_000
             ]
         except OSError:
             mtimes = None
         result = script.rank(
-            query, top_k, 4, agent_type,
-            index_path=ipath, lessons_dir=paths.lessons_dir(root),
-            index=index, model=model, lesson_mtimes=mtimes,
+            query,
+            top_k,
+            4,
+            agent_type,
+            index_path=ipath,
+            lessons_dir=paths.lessons_dir(root),
+            index=index,
+            model=model,
+            lesson_mtimes=mtimes,
         )
     if result.rc != 0:
         return result.rc, [], result.stderr

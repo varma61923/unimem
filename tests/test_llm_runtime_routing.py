@@ -26,9 +26,7 @@ def test_project_model_route_is_selected_and_manifested_without_credentials(tmp_
     manifest = runtime.manifest()
     assert seen[0].model == "small-model"
     assert manifest["configured_model_routes"] == {"extract": "small-model"}
-    assert manifest["selected_routes"] == {
-        "extract": {"provider": "openai-compatible", "model": "small-model"}
-    }
+    assert manifest["selected_routes"] == {"extract": {"provider": "openai-compatible", "model": "small-model"}}
     assert "secret-value" not in repr(manifest)
 
 

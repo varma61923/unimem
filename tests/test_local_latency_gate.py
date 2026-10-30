@@ -10,12 +10,20 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _FAST_ARGS = ["--sizes", "50,200", "--runs", "2"]
 
 
-@pytest.mark.parametrize("arguments", [
-    ["--sizes", ""], ["--sizes", "0,10"], ["--sizes", "invalid"],
-    ["--runs", "0"], ["--top-k", "0"], ["--max-total-ms", "nan"],
-    ["--max-alpha", "inf"], ["--sizes", "100", "--max-alpha", "1"],
-    ["--sizes", "100,100", "--max-alpha", "1"],
-])
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--sizes", ""],
+        ["--sizes", "0,10"],
+        ["--sizes", "invalid"],
+        ["--runs", "0"],
+        ["--top-k", "0"],
+        ["--max-total-ms", "nan"],
+        ["--max-alpha", "inf"],
+        ["--sizes", "100", "--max-alpha", "1"],
+        ["--sizes", "100,100", "--max-alpha", "1"],
+    ],
+)
 def test_invalid_gate_inputs_fail_before_creating_a_corpus(monkeypatch, arguments):
     from unimem.reference import measure_local_latency as benchmark
 
@@ -41,9 +49,10 @@ def test_unavailable_scaling_measurements_cannot_pass_the_gate(monkeypatch, caps
 class TestItRunsAsACommand:
     def test_emits_parseable_json(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, "-m", "unimem.reference.measure_local_latency",
-             *_FAST_ARGS, "--json"],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem.reference.measure_local_latency", *_FAST_ARGS, "--json"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
@@ -52,9 +61,10 @@ class TestItRunsAsACommand:
 
     def test_passes_with_a_generous_ceiling(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, "-m", "unimem.reference.measure_local_latency",
-             *_FAST_ARGS, "--max-total-ms", "5000"],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem.reference.measure_local_latency", *_FAST_ARGS, "--max-total-ms", "5000"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
 
@@ -77,7 +87,9 @@ raise SystemExit(benchmark.main())
 """
         gated = subprocess.run(
             [sys.executable, "-c", script, *([] if use_cache else ["--no-cache"])],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert gated.returncode == expected
         assert json.loads(gated.stdout)["use_cache"] is use_cache
@@ -114,7 +126,9 @@ raise SystemExit(benchmark.main())
 """
         result = subprocess.run(
             [sys.executable, "-c", script],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 1
         assert "alpha" in result.stderr

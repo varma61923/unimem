@@ -1,4 +1,5 @@
 """Summary reuse and bounded model context keep long sessions out of request RAM."""
+
 import datetime as dt
 import re
 
@@ -34,8 +35,14 @@ def test_extractive_selection_preserves_recent_temporal_and_distinct_facts():
 @pytest.mark.parametrize("sentences", [1, 3, 20])
 def test_rolling_top_k_preserves_the_full_ranking_prefix(tmp_path, monkeypatch, sentences):
     with Store(str(tmp_path), "selection") as store:
-        store.add("s", [{"text": f"Operational entry {i}: service {i % 7} deployed build {i % 13} in region {i % 4}."}
-                        for i in range(120)], session_at="2026-10-01")
+        store.add(
+            "s",
+            [
+                {"text": f"Operational entry {i}: service {i % 7} deployed build {i % 13} in region {i % 4}."}
+                for i in range(120)
+            ],
+            session_at="2026-10-01",
+        )
         turns = store.session_turns("s")
         select = summary_module._select_candidates
         legacy_state = {}
@@ -65,7 +72,10 @@ def test_unchanged_summary_never_hydrates_source_messages(tmp_path, monkeypatch)
 
         monkeypatch.setattr(store, "session_turns", forbidden)
         assert summarize(store) == {
-            "space": "summary", "summarized": 0, "unchanged": 1, "method": "extractive",
+            "space": "summary",
+            "summarized": 0,
+            "unchanged": 1,
+            "method": "extractive",
         }
         assert summarize(store, ["s"], method="model", complete=forbidden)["unchanged"] == 1
 
@@ -84,8 +94,11 @@ def test_forced_and_changed_summaries_still_use_current_sources(tmp_path):
 
 def test_model_reads_all_source_pages_in_bounded_summary_passes(tmp_path, monkeypatch):
     with Store(str(tmp_path), "summary") as store:
-        store.add("s", [{"text": f"Review entry {i}: " + "scheduled project review details " * 30}
-                        for i in range(80)], session_at="2026-10-01")
+        store.add(
+            "s",
+            [{"text": f"Review entry {i}: " + "scheduled project review details " * 30} for i in range(80)],
+            session_at="2026-10-01",
+        )
         original = store.session_turns
         all_turns = original("s")
         pages, prompts = [], []
@@ -105,11 +118,16 @@ def test_model_reads_all_source_pages_in_bounded_summary_passes(tmp_path, monkey
         assert summarize(store, ["s"], method="model", complete=complete)["summarized"] == 1
         assert len(prompts) > 1
         assert prompts[0].startswith("Summarise this conversation session")
-        assert all(prompt.startswith(("Summarise this conversation session", "Update the running summary"))
-                   for prompt in prompts)
+        assert all(
+            prompt.startswith(("Summarise this conversation session", "Update the running summary"))
+            for prompt in prompts
+        )
         for prompt in prompts:
-            start_marker = "\nNew messages:\n" if prompt.startswith("Update the running summary") else \
-                "\n\nSession of 2026-10-01:\n"
+            start_marker = (
+                "\nNew messages:\n"
+                if prompt.startswith("Update the running summary")
+                else "\n\nSession of 2026-10-01:\n"
+            )
             end_marker = "\n\nUpdated summary:" if prompt.startswith("Update the running summary") else "\n\nSummary:"
             transcript = prompt.split(start_marker, 1)[1].split(end_marker, 1)[0]
             assert len(transcript) <= MAX_TRANSCRIPT_CHARS
@@ -142,8 +160,13 @@ def test_written_consumes_later_turns_after_a_full_context_chunk():
 
     assert written(sources(), complete) == "A summary with the launch date."
     assert len(prompts) == 2
-    assert all(len(prompt) <= MAX_TRANSCRIPT_CHARS + len(ROLLING_PROMPT.format(summary="", transcript=""))
-               + len("A summary with the launch date.") for prompt in prompts)
+    assert all(
+        len(prompt)
+        <= MAX_TRANSCRIPT_CHARS
+        + len(ROLLING_PROMPT.format(summary="", transcript=""))
+        + len("A summary with the launch date.")
+        for prompt in prompts
+    )
     assert "2027-04-12" in prompts[1]
     assert prompts[0].startswith(PROMPT.split("{when}")[0])
     assert prompts[1].startswith("Update the running summary")
@@ -151,8 +174,11 @@ def test_written_consumes_later_turns_after_a_full_context_chunk():
 
 def test_rolling_model_summary_streams_and_folds_every_new_turn(tmp_path, monkeypatch):
     with Store(str(tmp_path), "rolling-summary") as store:
-        store.add("s", [{"text": f"Rolling item {i}: " + "distinct session detail " * 45}
-                        for i in range(60)], session_at="2026-10-01")
+        store.add(
+            "s",
+            [{"text": f"Rolling item {i}: " + "distinct session detail " * 45} for i in range(60)],
+            session_at="2026-10-01",
+        )
         original = store.session_turns
         pages = []
         prompts = []

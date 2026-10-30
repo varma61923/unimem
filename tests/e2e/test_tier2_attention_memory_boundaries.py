@@ -332,11 +332,14 @@ def test_boundary_corrupt_index_file_raises_cleanly(
 
 def test_boundary_cosine_similarity_computation() -> None:
     q_emb = np.array([1.0, 0.0, 0.0], dtype=np.float32)
-    doc_embs = np.array([
-        [-1.0, 0.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [1.0, 0.0, 0.0],
-    ], dtype=np.float32)
+    doc_embs = np.array(
+        [
+            [-1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
 
     scores = doc_embs @ q_emb
     assert scores[0] == -1.0

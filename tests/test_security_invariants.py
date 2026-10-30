@@ -89,7 +89,10 @@ def sqlite_items(tmp_path):
 
 @pytest.mark.parametrize("suffix", ["", "LIMIT 999", "LIMIT -1", "LIMIT 1+99", "LIMIT 5,30", "LIMIT 30 OFFSET 5"])
 def test_sql_limit_preserves_prefix_of_real_query_with_comments_and_nested_limits(sqlite_items, suffix):
-    query = "SELECT /* limit 0; DELETE ignored comment */ id, note FROM (SELECT * FROM items LIMIT 40) ORDER BY id " + suffix
+    query = (
+        "SELECT /* limit 0; DELETE ignored comment */ id, note FROM (SELECT * FROM items LIMIT 40) ORDER BY id "
+        + suffix
+    )
     with sqlite3.connect(sqlite_items) as conn:
         oracle = [dict(zip(("id", "note"), row)) for row in conn.execute(query).fetchmany(7)]
     assert execute_guarded_sql(sqlite_items, query, max_rows=7)["rows"] == oracle
@@ -106,5 +109,5 @@ def test_sql_quotes_containing_comment_and_mutation_markers_are_data(sqlite_item
 def test_sql_deadline_interrupts_real_recursive_work_and_leaves_database_usable(sqlite_items):
     runaway = "WITH RECURSIVE numbers(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM numbers WHERE n<100000000) SELECT sum(n) FROM numbers"
     with pytest.raises(SqlGuardError, match="timeout"):
-        execute_guarded_sql(sqlite_items, runaway, timeout_seconds=.01)
+        execute_guarded_sql(sqlite_items, runaway, timeout_seconds=0.01)
     assert execute_guarded_sql(sqlite_items, "SELECT count(*) AS n FROM items")["rows"] == [{"n": 50}]

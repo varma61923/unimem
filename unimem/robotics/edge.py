@@ -1,4 +1,5 @@
 """Signed offline context updates, witnessed-head continuity and durable outcomes."""
+
 from __future__ import annotations
 
 from typing import Any, Callable, Sequence
@@ -8,8 +9,9 @@ from unimem import frontier_protocol as fp
 from unimem import transparency_log as log
 
 
-def publish_update(root: str, identities: list[str], *, previous_size: int = 0,
-                   context: Sequence[str] = ()) -> dict[str, Any]:
+def publish_update(
+    root: str, identities: list[str], *, previous_size: int = 0, context: Sequence[str] = ()
+) -> dict[str, Any]:
     from unimem import sentinel_io
 
     sentinel_io.assert_generalize(root, identities, context=context)
@@ -41,17 +43,22 @@ def publish_update(root: str, identities: list[str], *, previous_size: int = 0,
 
             if not policy_io.permits(root, {"memory_type": "lesson", "scopes": fm.get("scopes", [])}, action="export"):
                 raise PermissionError("UniMem active finite policy denies this edge lesson export")
-            if (not fm.get("approval_receipt") or not lesson_admission.eligible(root, path, fm, text)
-                    or memory_authority.lineage_blocked(root, identity)
-                    or not set(fm.get("scopes", [])) <= set(context)):
+            if (
+                not fm.get("approval_receipt")
+                or not lesson_admission.eligible(root, path, fm, text)
+                or memory_authority.lineage_blocked(root, identity)
+                or not set(fm.get("scopes", [])) <= set(context)
+            ):
                 raise PermissionError("edge lesson is unapproved, withdrawn or outside the requested scope")
             revision = lesson_io.current_revision(path)
-        rows.append({"id": identity, "text": text,
-                     "hazard": identity in hazards, "source_revision": revision})
+        rows.append({"id": identity, "text": text, "hazard": identity in hazards, "source_revision": revision})
     signed = fp.sign(root, {"type": "edge-context-v1", "items": rows, "issued_at": fp.now()})
     anchor = log.append(root, "edge-context-update", {"manifest_digest": fp.digest(signed)})
-    return {"manifest": signed, "anchor": anchor,
-            "consistency": log.consistent(root, previous_size, anchor["head"]["record"]["tree_size"])}
+    return {
+        "manifest": signed,
+        "anchor": anchor,
+        "consistency": log.consistent(root, previous_size, anchor["head"]["record"]["tree_size"]),
+    }
 
 
 class EdgeCache:
@@ -61,9 +68,12 @@ class EdgeCache:
     def update(self, bundle: dict[str, Any]) -> None:
         try:
             manifest, anchor = bundle["manifest"], bundle["anchor"]
-            if (not fp.verify(self.verify_root, manifest) or not log.verify(self.verify_root, anchor)
-                    or anchor["statement"]["record"]["statement"]["manifest_digest"] != fp.digest(manifest)
-                    or manifest["record"]["type"] != "edge-context-v1"):
+            if (
+                not fp.verify(self.verify_root, manifest)
+                or not log.verify(self.verify_root, anchor)
+                or anchor["statement"]["record"]["statement"]["manifest_digest"] != fp.digest(manifest)
+                or manifest["record"]["type"] != "edge-context-v1"
+            ):
                 raise PermissionError("unsigned or invalid edge update")
             items = manifest["record"]["items"]
             fp.count(len(items), 0, 256)
@@ -81,8 +91,9 @@ class EdgeCache:
                     if anchor["leaf"] < old_anchor["leaf"]:
                         raise PermissionError("stale edge update predates the witnessed manifest")
                     proof = bundle["consistency"]
-                    if not log.verify_consistency(old["tree_size"], head["tree_size"], old["root_hash"],
-                                                  head["root_hash"], proof["proof"]):
+                    if not log.verify_consistency(
+                        old["tree_size"], head["tree_size"], old["root_hash"], head["root_hash"], proof["proof"]
+                    ):
                         raise PermissionError("forked or stale edge update conflicts with the witnessed head")
                     if anchor["leaf"] == old_anchor["leaf"]:
                         if fp.digest(manifest) != fp.digest(previous[-1]["bundle"]["manifest"]):

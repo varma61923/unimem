@@ -31,12 +31,8 @@ class TestFrontmatterLocking:
         frontmatter.write(path, {"status": "review", "importance": 1}, "body")
 
         for _ in range(5):
-            p1 = multiprocessing.Process(
-                target=_locked_read_modify_write, args=(path, "status", "active", 0.05)
-            )
-            p2 = multiprocessing.Process(
-                target=_locked_read_modify_write, args=(path, "importance", "5", 0.05)
-            )
+            p1 = multiprocessing.Process(target=_locked_read_modify_write, args=(path, "status", "active", 0.05))
+            p2 = multiprocessing.Process(target=_locked_read_modify_write, args=(path, "importance", "5", 0.05))
             intentional_fork(p1.start)
             intentional_fork(p2.start)
             p1.join(timeout=10)
@@ -54,12 +50,8 @@ class TestFrontmatterLocking:
 
         for attempt in range(20):
             frontmatter.write(path, {"status": "review", "importance": 1}, "body")
-            p1 = multiprocessing.Process(
-                target=_unlocked_read_modify_write, args=(path, "status", "active", 0.05)
-            )
-            p2 = multiprocessing.Process(
-                target=_unlocked_read_modify_write, args=(path, "importance", "5", 0.05)
-            )
+            p1 = multiprocessing.Process(target=_unlocked_read_modify_write, args=(path, "status", "active", 0.05))
+            p2 = multiprocessing.Process(target=_unlocked_read_modify_write, args=(path, "importance", "5", 0.05))
             intentional_fork(p1.start)
             intentional_fork(p2.start)
             p1.join(timeout=10)

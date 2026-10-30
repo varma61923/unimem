@@ -52,10 +52,8 @@ def term_frequency_stmt(org_id: str, query: str, budget: int | None = None, *, p
         .where(
             Trace.org_id == org_id,
             Trace.quarantined.is_(False),
-            predicate if predicate is not None else True,
-            Trace.search_vector.op("@@")(
-                cast(literal("'") + _sql_escape(lex.c.lexeme) + literal("'"), TSQUERY)
-            ),
+            predicate if predicate is not None else literal(True),
+            Trace.search_vector.op("@@")(cast(literal("'") + _sql_escape(lex.c.lexeme) + literal("'"), TSQUERY)),
         )
         .correlate(lex)
         .limit(budget + 1)
@@ -66,9 +64,7 @@ def term_frequency_stmt(org_id: str, query: str, budget: int | None = None, *, p
 
 
 def _sql_escape(lexeme: ColumnElement) -> ColumnElement:
-    return func.replace(
-        func.replace(lexeme, literal("\\"), literal("\\\\")), literal("'"), literal("''")
-    )
+    return func.replace(func.replace(lexeme, literal("\\"), literal("\\\\")), literal("'"), literal("''"))
 
 
 @dataclass(frozen=True)

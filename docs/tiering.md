@@ -62,8 +62,7 @@ from unimem.robotics.bridge import RobotBridge
 
 warm = tiering.prewarmer(root, "assembly", region="eu", context=["project:assembly"])
 client = MemoryClient(root, context={"project": "assembly"}, prewarm=warm)
-bridge = RobotBridge(transport, embodiment="arm", site="assembly", skill="pick",
-                     robot="arm-7", prewarm=warm)
+bridge = RobotBridge(transport, embodiment="arm", site="assembly", skill="pick", robot="arm-7", prewarm=warm)
 ```
 
 The client invokes `session-start`; the bridge invokes `robot-boot` and

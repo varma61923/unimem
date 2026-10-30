@@ -1,4 +1,5 @@
 """Performance evidence uses a graph attainable through canonical edge writes."""
+
 from __future__ import annotations
 
 from benchmarks import graph_relations

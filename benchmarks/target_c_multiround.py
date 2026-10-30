@@ -4,6 +4,7 @@ Use the same arguments as ``benchmarks.conversation_bench``. This opt-in
 wrapper changes no retrieval code or default; it only sets ``Options.second_pass``
 for the benchmark run.
 """
+
 from __future__ import annotations
 
 from benchmarks import conversation_bench

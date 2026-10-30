@@ -34,15 +34,18 @@ def test_provider_endpoint_account_region_and_project_partition_completions(tmp_
 
     for name in ("_call_anthropic", "_call_openai_compatible", "_call_bedrock", "_call_vertex"):
         monkeypatch.setattr(llm, name, provider)
-    configs = [llm.Config("anthropic", "m", "account-one"), llm.Config("anthropic", "m", "account-two"),
-               llm.Config("openai-compatible", "m", "account-one", "https://one.example/v1"),
-               llm.Config("openai-compatible", "m", "account-one", "https://two.example/v1"),
-               llm.Config("bedrock", "m", "", region="one", cache_namespace="account"),
-               llm.Config("bedrock", "m", "", region="two", cache_namespace="account"),
-               llm.Config("vertex", "m", "", region="one", project="one", cache_namespace="account"),
-               llm.Config("vertex", "m", "", region="one", project="two", cache_namespace="account"),
-               llm.Config("anthropic", "m", "account-one", cache_namespace="tenant-one"),
-               llm.Config("anthropic", "m", "account-one", cache_namespace="tenant-two")]
+    configs = [
+        llm.Config("anthropic", "m", "account-one"),
+        llm.Config("anthropic", "m", "account-two"),
+        llm.Config("openai-compatible", "m", "account-one", "https://one.example/v1"),
+        llm.Config("openai-compatible", "m", "account-one", "https://two.example/v1"),
+        llm.Config("bedrock", "m", "", region="one", cache_namespace="account"),
+        llm.Config("bedrock", "m", "", region="two", cache_namespace="account"),
+        llm.Config("vertex", "m", "", region="one", project="one", cache_namespace="account"),
+        llm.Config("vertex", "m", "", region="one", project="two", cache_namespace="account"),
+        llm.Config("anthropic", "m", "account-one", cache_namespace="tenant-one"),
+        llm.Config("anthropic", "m", "account-one", cache_namespace="tenant-two"),
+    ]
     for cfg in configs:
         first = llm.complete("q", cfg)
         second = llm.complete("q", cfg)

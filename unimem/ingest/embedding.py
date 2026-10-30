@@ -22,6 +22,7 @@ to the submitter:
 Only a bounded window (batch x concurrency x 2 chunks) is held in memory, and
 the SQLite cache is only touched from the consuming thread.
 """
+
 from __future__ import annotations
 
 import json
@@ -93,8 +94,9 @@ def unpack(blob: bytes) -> list[float]:
 class ChunkEmbedder:
     """Embeds chunk text into the content-hash cache, skipping what is already there."""
 
-    def __init__(self, root: str, tag: str, *, provider=None, batch_size: int | None = None,
-                 max_workers: int | None = None):
+    def __init__(
+        self, root: str, tag: str, *, provider=None, batch_size: int | None = None, max_workers: int | None = None
+    ):
         from unimem import embeddings
 
         self.root, self.tag = root, tag
@@ -127,13 +129,15 @@ class ChunkEmbedder:
         if not hashes:
             return set()
         rows = self._connection().execute(
-            "SELECT hash FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),))
+            "SELECT hash FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),)
+        )
         return {row[0] for row in rows}
 
     def vectors(self, hashes: list[str]) -> dict[str, list[float]]:
         """Stored vectors by content hash (for callers and tests)."""
         rows = self._connection().execute(
-            "SELECT hash, v FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),))
+            "SELECT hash, v FROM vec WHERE hash IN (SELECT value FROM json_each(?))", (json.dumps(hashes),)
+        )
         return {h: unpack(v) for h, v in rows}
 
     def close(self) -> None:
@@ -161,7 +165,7 @@ class ChunkEmbedder:
         known = self.cached(list(todo))
         self.stats["cached"] += len(window) - len([h for h in todo if h not in known])
         pending = [(h, t) for h, t in todo.items() if h not in known]
-        batches = [pending[i:i + self.batch_size] for i in range(0, len(pending), self.batch_size)]
+        batches = [pending[i : i + self.batch_size] for i in range(0, len(pending), self.batch_size)]
         rows: list[tuple[str, bytes]] = []
         for batch, vectors, error in bounded_map(self._embed, batches, max_workers=self.max_workers):
             self.stats["batches"] += 1
@@ -192,8 +196,12 @@ class ChunkEmbedder:
             yield from window
 
     def summary(self) -> dict[str, Any]:
-        return {"embedder": self.canonical, **self.stats, "batch_size": self.batch_size,
-                "concurrency": self.max_workers}
+        return {
+            "embedder": self.canonical,
+            **self.stats,
+            "batch_size": self.batch_size,
+            "concurrency": self.max_workers,
+        }
 
 
 def from_env(root: str) -> ChunkEmbedder | None:

@@ -1,6 +1,7 @@
 """Regressions for review findings: revoked agents stay revoked, damaged catalog files
 cannot fail a listing, publishing needs a version tag, and in-process embedders load
 once per tag."""
+
 import json
 import os
 
@@ -46,8 +47,11 @@ def test_gateway_revoke_and_rotate_routes(tmp_path):
     assert post(g, "/v1/agent/revoke", {"agent_id": "nobody"})[0] == 400
     # An agent's own key cannot reach owner routes.
     agent = gateway.Gateway(root, token=TOKEN).handle(
-        "POST", "/v1/agent/revoke", {"Host": "localhost:8787", "Authorization": "Bearer " + issued["token"]},
-        json.dumps({"agent_id": "bot-2"}).encode())
+        "POST",
+        "/v1/agent/revoke",
+        {"Host": "localhost:8787", "Authorization": "Bearer " + issued["token"]},
+        json.dumps({"agent_id": "bot-2"}).encode(),
+    )
     assert agent.status in (401, 403)
 
 
@@ -99,14 +103,18 @@ def test_mmr_recipe_order_matches_the_quadratic_reference():
     cfg = SimpleNamespace(reranker="mmr", mmr_lambda=0.6)
 
     def reference(rows, limit):
-        selected, pool = [], rows[:max(limit * 10, 100)]
+        selected, pool = [], rows[: max(limit * 10, 100)]
         scale = max((r["score"] for r in pool), default=1) or 1
         while pool and len(selected) < limit:
+
             def mmr(row):
                 a = set(search_recipes.terms(row["text"]))
-                red = max((len(a & b) / max(1, len(a | b))
-                           for b in (set(search_recipes.terms(s["text"])) for s in selected)), default=0)
+                red = max(
+                    (len(a & b) / max(1, len(a | b)) for b in (set(search_recipes.terms(s["text"])) for s in selected)),
+                    default=0,
+                )
                 return cfg.mmr_lambda * row["score"] / scale - (1 - cfg.mmr_lambda) * red
+
             chosen = max(pool, key=mmr)
             selected.append(chosen)
             pool.remove(chosen)

@@ -1,4 +1,5 @@
 """Real tokenization and ONNX inference, using small local graphs without downloads."""
+
 from __future__ import annotations
 
 import json
@@ -20,19 +21,24 @@ MODEL = "BAAI/bge-small-en-v1.5"
 @pytest.fixture
 def graph_cache(tmp_path, monkeypatch):
     def create(*, pooled=False, dimension=384, nonfinite=False):
-        tokenizer = tokenizers.Tokenizer(tokenizers.models.WordLevel(
-            {"[PAD]": 0, "[UNK]": 1, "alpha": 2, "beta": 3, "gamma": 4}, unk_token="[UNK]"))
+        tokenizer = tokenizers.Tokenizer(
+            tokenizers.models.WordLevel({"[PAD]": 0, "[UNK]": 1, "alpha": 2, "beta": 3, "gamma": 4}, unk_token="[UNK]")
+        )
         tokenizer.pre_tokenizer = tokenizers.pre_tokenizers.Whitespace()
         tokenizer.save(str(tmp_path / "tokenizer.json"))
-        for name, data in (("config.json", {"pad_token_id": 0}),
-                           ("tokenizer_config.json", {"model_max_length": 4096, "pad_token": "[PAD]"}),
-                           ("special_tokens_map.json", {"pad_token": "[PAD]"})):
+        for name, data in (
+            ("config.json", {"pad_token_id": 0}),
+            ("tokenizer_config.json", {"model_max_length": 4096, "pad_token": "[PAD]"}),
+            ("special_tokens_map.json", {"pad_token": "[PAD]"}),
+        ):
             (tmp_path / name).write_text(json.dumps(data))
         weights = np.arange(5 * dimension, dtype=np.float32).reshape(5, dimension) + 1
         if nonfinite:
             weights[2, 0] = np.nan
-        inputs = [onnx.helper.make_tensor_value_info(name, onnx.TensorProto.INT64, [None, None])
-                  for name in ("input_ids", "attention_mask", "token_type_ids")]
+        inputs = [
+            onnx.helper.make_tensor_value_info(name, onnx.TensorProto.INT64, [None, None])
+            for name in ("input_ids", "attention_mask", "token_type_ids")
+        ]
         nodes = [onnx.helper.make_node("Gather", ["weights", "input_ids"], ["tokens"])]
         initializers = [onnx.numpy_helper.from_array(weights, name="weights")]
         if pooled:
@@ -54,6 +60,7 @@ def graph_cache(tmp_path, monkeypatch):
 
         monkeypatch.setattr(hub, "snapshot_download", cached)
         return weights, downloads
+
     return create
 
 
@@ -72,11 +79,15 @@ def test_real_cpu_inference_keeps_vectors_ordered_normalized_and_bounded(graph_c
     assert engine._session.get_providers() == ["CPUExecutionProvider"]
     options = engine._session.get_session_options()
     assert options.intra_op_num_threads == options.inter_op_num_threads == 2
-    assert downloads == [{
-        "repo_id": embeddings._ONNX_MODELS[MODEL][0], "revision": embeddings._ONNX_MODELS[MODEL][1],
-        "cache_dir": downloads[0]["cache_dir"], "allow_patterns": list(embeddings._ONNX_MODEL_FILES),
-        "local_files_only": True,
-    }]
+    assert downloads == [
+        {
+            "repo_id": embeddings._ONNX_MODELS[MODEL][0],
+            "revision": embeddings._ONNX_MODELS[MODEL][1],
+            "cache_dir": downloads[0]["cache_dir"],
+            "allow_patterns": list(embeddings._ONNX_MODEL_FILES),
+            "local_files_only": True,
+        }
+    ]
 
 
 def test_tokenization_clips_to_512_and_sets_masks_and_segment_ids(graph_cache):

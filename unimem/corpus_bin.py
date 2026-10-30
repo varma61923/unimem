@@ -1,4 +1,5 @@
 """Persisted corpus index for UniMem lexical retrieval."""
+
 from __future__ import annotations
 
 import os
@@ -64,15 +65,12 @@ def save(cache_dir: str, scorer: str, fingerprint, index) -> bool:
         n = len(entries)
         chunks.append(struct.pack(f"<{n}I", *index.n_terms))
         chunks.append(struct.pack(f"<{n}d", *index.length_factors))
-        chunks.append(struct.pack(
-            f"<{n}i", *(t[0] for t in index.tie_breaks)))
-        chunks.append(struct.pack(
-            f"<{n}i", *(t[1] for t in index.tie_breaks)))
+        chunks.append(struct.pack(f"<{n}i", *(t[0] for t in index.tie_breaks)))
+        chunks.append(struct.pack(f"<{n}i", *(t[1] for t in index.tie_breaks)))
         blob = b"".join(chunks)
         os.makedirs(cache_dir, exist_ok=True)
         target = bin_path(cache_dir, scorer)
-        fd, tmp = tempfile.mkstemp(
-            dir=cache_dir, prefix=os.path.basename(target) + ".", suffix=".tmp")
+        fd, tmp = tempfile.mkstemp(dir=cache_dir, prefix=os.path.basename(target) + ".", suffix=".tmp")
         try:
             with os.fdopen(fd, "wb") as fh:
                 fh.write(blob)
@@ -103,7 +101,7 @@ def load(cache_dir: str, scorer: str, lessons, fingerprint):
         off += _HEADER.size
         if magic != _MAGIC or ver != _VERSION:
             return None
-        stored_tag = blob[off:off + scorer_len]
+        stored_tag = blob[off : off + scorer_len]
         off += scorer_len
         if stored_tag != _tag(scorer):
             return None
@@ -118,7 +116,7 @@ def load(cache_dir: str, scorer: str, lessons, fingerprint):
         for i in range(n_docs):
             (plen, device, inode, mtime_ns, ctime_ns, size) = _PATH_STAMP.unpack_from(blob, off)
             off += _PATH_STAMP.size
-            path = blob[off:off + plen].decode("utf-8")
+            path = blob[off : off + plen].decode("utf-8")
             off += plen
             fpath, identity = fingerprint[i]
             if path != fpath or (device, inode, mtime_ns, ctime_ns, size) != tuple(map(int, identity)):
@@ -132,7 +130,7 @@ def load(cache_dir: str, scorer: str, lessons, fingerprint):
         for _ in range(vocab_size):
             (tlen, df, npost) = _TERM_HEAD.unpack_from(blob, off)
             off += _TERM_HEAD.size
-            term = blob[off:off + tlen].decode("utf-8")
+            term = blob[off : off + tlen].decode("utf-8")
             off += tlen
             docs = struct.unpack_from(f"<{npost}I", blob, off)
             off += 4 * npost

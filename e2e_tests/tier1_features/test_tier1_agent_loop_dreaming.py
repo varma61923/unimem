@@ -11,8 +11,9 @@ def test_t1_agent_loop_execution_turn_cycle(isolated_store: str):
     require_milestone("M3")
     reply = {"response": "Added a composite index on users(email, created_at).", "done": True, "memory": []}
     with fake_model(reply) as (env, prompts):
-        res = run_cli("agent", "run", "--prompt", "Optimize SQL index for users table", "--json",
-                      dest=isolated_store, env=env)
+        res = run_cli(
+            "agent", "run", "--prompt", "Optimize SQL index for users table", "--json", dest=isolated_store, env=env
+        )
     res.assert_success()
     out = res.json()
     assert out["success"] is True and out["turns"] == 1
@@ -24,12 +25,17 @@ def test_t1_agent_loop_execution_turn_cycle(isolated_store: str):
 def test_t1_agent_loop_memory_block_dynamic_updates(isolated_store: str):
     require_milestone("M3")
     run_cli("block", "set", "project", "Initial task state", dest=isolated_store).assert_success()
-    reply = {"response": "Recorded the milestone.", "done": True, "memory": [
-        {"type": "memory_block_update", "name": "project", "content": "Milestone 1 completed", "mode": "set"},
-    ]}
+    reply = {
+        "response": "Recorded the milestone.",
+        "done": True,
+        "memory": [
+            {"type": "memory_block_update", "name": "project", "content": "Milestone 1 completed", "mode": "set"},
+        ],
+    }
     with fake_model(reply) as (env, prompts):
-        res = run_cli("agent", "run", "--prompt", "Update project status with milestone 1 completed",
-                      dest=isolated_store, env=env)
+        res = run_cli(
+            "agent", "run", "--prompt", "Update project status with milestone 1 completed", dest=isolated_store, env=env
+        )
     res.assert_success()
     assert "Initial task state" in prompts[0]
     block = run_cli("block", "get", "project", dest=isolated_store).assert_success()
@@ -37,15 +43,19 @@ def test_t1_agent_loop_memory_block_dynamic_updates(isolated_store: str):
 
 
 def test_t1_agent_loop_refuses_without_a_model(isolated_store: str):
-    res = run_cli("agent", "run", "--prompt", "Anything", dest=isolated_store,
-                  env={"UNIMEM_LLM_PROVIDER": "anthropic", "UNIMEM_LLM_API_KEY": ""})
+    res = run_cli(
+        "agent",
+        "run",
+        "--prompt",
+        "Anything",
+        dest=isolated_store,
+        env={"UNIMEM_LLM_PROVIDER": "anthropic", "UNIMEM_LLM_API_KEY": ""},
+    )
     res.assert_failure(expected_code=2)
 
 
 def test_t1_dreaming_profile_synthesis(isolated_store: str):
-    run_cli(
-        "block", "set", "persona", "Autonomous Database Reliability Engineer", dest=isolated_store
-    ).assert_success()
+    run_cli("block", "set", "persona", "Autonomous Database Reliability Engineer", dest=isolated_store).assert_success()
     run_cli(
         "fact", "add", "Maximum Postgres connection count is 100", "--confidence", "0.9", dest=isolated_store
     ).assert_success()
@@ -81,10 +91,14 @@ def test_t1_dreaming_report_log_generation(isolated_store: str):
 def test_t1_dreaming_trace_mining(isolated_store: str):
     res_cap = run_cli(
         "capture",
-        "--title", "Postgres lock contention timeout",
-        "--context", "Heavy concurrent batch jobs acquired shared exclusive locks",
-        "--solution", "Partition batches and set statement_timeout",
-        "--agent-type", "coding",
+        "--title",
+        "Postgres lock contention timeout",
+        "--context",
+        "Heavy concurrent batch jobs acquired shared exclusive locks",
+        "--solution",
+        "Partition batches and set statement_timeout",
+        "--agent-type",
+        "coding",
         dest=isolated_store,
     )
     res_cap.assert_success()

@@ -40,10 +40,7 @@ def test_apply_redaction_google_aq_format_key():
 def test_apply_redaction_cloud_and_tokens():
     slack_tok = "-".join(["xoxb", "1234567890", "123456789012", "abcdefghijklmnopqrstuvwx"])
     gh_tok = "ghp_" + ("a" * 36)
-    text = (
-        f"AWS AKIAIOSFODNN7EXAMPLE with session ASIAIOSFODNN7EXAMPLE and "
-        f"GitHub {gh_tok} and Slack {slack_tok}."
-    )
+    text = f"AWS AKIAIOSFODNN7EXAMPLE with session ASIAIOSFODNN7EXAMPLE and GitHub {gh_tok} and Slack {slack_tok}."
     result = apply_redaction(text)
     assert "aws_access_key" in result.matched_types
     assert "aws_session_token" in result.matched_types
@@ -109,10 +106,12 @@ def test_screen_content_policies():
 
 
 def test_parse_policy_valid_and_invalid():
-    pol = parse_policy({
-        "enabled": True,
-        "rules": [{"on": "sensitive_data", "action": "block"}],
-    })
+    pol = parse_policy(
+        {
+            "enabled": True,
+            "rules": [{"on": "sensitive_data", "action": "block"}],
+        }
+    )
     assert pol.enabled is True
     assert pol.rules[0].action == DefenseAction.BLOCK
 

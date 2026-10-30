@@ -13,6 +13,7 @@ synthetic row shared near-identical title text, so the probe query matched
 100% of the corpus. Fixing the fixture moved the realistic case to 0.19.
 `TestGeneratedCorpusIsSelective` exists so that cannot silently come back.
 """
+
 from __future__ import annotations
 
 import re

@@ -27,7 +27,8 @@ class TestAdjustmentOrdering:
     def test_exactly_one_half_life_old_is_neutral(self):
         now = datetime.datetime(2026, 6, 1, tzinfo=datetime.timezone.utc)
         adj = recency.adjustment(
-            _iso_days_ago(recency.DEFAULT_HALF_LIFE_DAYS, now), now=now,
+            _iso_days_ago(recency.DEFAULT_HALF_LIFE_DAYS, now),
+            now=now,
         )
         assert abs(adj) < 1e-9
 

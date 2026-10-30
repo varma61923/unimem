@@ -11,9 +11,13 @@ from unimem.runtime_cache import RuntimeCache
 
 
 def make_cache(**kwargs):
-    return RuntimeCache(max_entries=kwargs.pop("max_entries", 2),
-                        max_bytes=kwargs.pop("max_bytes", 20),
-                        ttl=kwargs.pop("ttl", 10), weigh=lambda _k, v: len(v), **kwargs)
+    return RuntimeCache(
+        max_entries=kwargs.pop("max_entries", 2),
+        max_bytes=kwargs.pop("max_bytes", 20),
+        ttl=kwargs.pop("ttl", 10),
+        weigh=lambda _k, v: len(v),
+        **kwargs,
+    )
 
 
 def test_ttl_lru_byte_limits_and_oversized_values():

@@ -27,9 +27,19 @@ async def _verify(session_factory, raw_key):
         return await auth.verify_api_key(session, raw_key)
 
 
-@pytest.mark.parametrize("deployment,org,served", [
-    ("us", "eu", False), ("eu", "eu", True), ("eu", None, True), ("", "eu", True), ("", None, True),
-    ("EU", "eu", True), (" eu ", "EU", True), ("eu-west-1", "eu", False)])
+@pytest.mark.parametrize(
+    "deployment,org,served",
+    [
+        ("us", "eu", False),
+        ("eu", "eu", True),
+        ("eu", None, True),
+        ("", "eu", True),
+        ("", None, True),
+        ("EU", "eu", True),
+        (" eu ", "EU", True),
+        ("eu-west-1", "eu", False),
+    ],
+)
 async def test_who_a_deployment_serves(session_factory, config, deployment, org, served):
     _, key = await _org_with_key(session_factory, region=org)
     auth.configure_region(deployment)
@@ -48,6 +58,7 @@ async def test_the_legacy_scan_path_is_enforced_too(session_factory, config):
     from sqlalchemy import update
 
     from hub.models import ApiKey
+
     org_id, key = await _org_with_key(session_factory, region="eu")
     async with session_scope(session_factory) as session:
         await session.execute(update(ApiKey).where(ApiKey.org_id == org_id).values(key_hmac=None))
@@ -78,6 +89,7 @@ async def test_set_region_is_audited_and_refuses_an_unknown_org(session_factory,
     from sqlalchemy import select
 
     from hub.models import AuditLogEntry as AuditLog
+
     org_id, _ = await _org_with_key(session_factory)
     await manage.set_region(org_id, "eu", session_factory=session_factory)
     async with session_scope(session_factory) as session:
@@ -93,6 +105,7 @@ async def test_the_disclosure_says_enforcement_is_on_only_when_a_region_is_decla
     from starlette.applications import Starlette
 
     from hub import disclosure
+
     for region, expected in (("eu", True), ("", False)):
         app = Starlette()
         disclosure.add_disclosure_route(app, dataclasses.replace(config, data_region=region))

@@ -1,4 +1,5 @@
 """Excluded-question confirmation keeps source identity and refuses loose caps."""
+
 from __future__ import annotations
 
 import copy
@@ -69,9 +70,16 @@ def test_excluded_longmemeval_questions_keep_seeded_type_balance(tmp_path, monke
     import argparse
     from collections import Counter
 
-    cases = [(f"{kind}-{i}", [("history", "2025-01-01", [{"text": str(i)}])], None,
-              [{"id": f"{kind}-{i}", "type": kind + ("-abstain" if i == 1 else "")}])
-             for kind in ("a", "b", "c", "d", "e", "f") for i in range(10)]
+    cases = [
+        (
+            f"{kind}-{i}",
+            [("history", "2025-01-01", [{"text": str(i)}])],
+            None,
+            [{"id": f"{kind}-{i}", "type": kind + ("-abstain" if i == 1 else "")}],
+        )
+        for kind in ("a", "b", "c", "d", "e", "f")
+        for i in range(10)
+    ]
     monkeypatch.setattr(bench, "longmemeval_cases", lambda *args: cases)
     path = tmp_path / "exclusions.json"
     path.write_text(json.dumps([f"{kind}-0" for kind in ("a", "b", "c", "d", "e", "f")]))
@@ -86,16 +94,30 @@ def test_excluded_longmemeval_questions_keep_seeded_type_balance(tmp_path, monke
     assert all(c in cases for c in selected)
 
 
-@pytest.mark.parametrize("fault", ["estimated", "counter", "attempts", "exclusions", "reference", "excess", "boolean", "disagreement"])
+@pytest.mark.parametrize(
+    "fault", ["estimated", "counter", "attempts", "exclusions", "reference", "excess", "boolean", "disagreement"]
+)
 def test_completed_confirmation_requires_actual_fitting_text_count(fault):
-    payload = {"1000": {"budget": 1000,
-        "overall": {"n": 1, "accuracy": None}, "by_type": {}, "bootstrap_95ci": {}, "retrieval_profile": {},
-        "provenance": {"evaluation": {"context_budget": {"unit": "selected-tokenizer-context-text"}}},
-        "rows": [{"context_text_tokens": 900, "context_budget": {"text_tokens": 900}}]}}
+    payload = {
+        "1000": {
+            "budget": 1000,
+            "overall": {"n": 1, "accuracy": None},
+            "by_type": {},
+            "bootstrap_95ci": {},
+            "retrieval_profile": {},
+            "provenance": {"evaluation": {"context_budget": {"unit": "selected-tokenizer-context-text"}}},
+            "rows": [{"context_text_tokens": 900, "context_budget": {"text_tokens": 900}}],
+        }
+    }
     contract = payload["1000"]["provenance"]["evaluation"]["context_budget"]
-    payload["1000"]["provenance"]["evaluation"].update(context_text_tokenizer="tiktoken:cl100k_base", answer_enabled=False)
+    payload["1000"]["provenance"]["evaluation"].update(
+        context_text_tokenizer="tiktoken:cl100k_base", answer_enabled=False
+    )
     payload["1000"]["provenance"]["sampling"] = {"question_exclusions_sha256": "bound"}
-    payload["1000"]["modes_detail"] = {"memory": copy.deepcopy(payload["1000"]), "full-context": copy.deepcopy(payload["1000"])}
+    payload["1000"]["modes_detail"] = {
+        "memory": copy.deepcopy(payload["1000"]),
+        "full-context": copy.deepcopy(payload["1000"]),
+    }
     confirmation.validate_strict(payload, contract, "bound")
     broken = copy.deepcopy(payload)
     if fault == "estimated":

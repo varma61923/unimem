@@ -19,6 +19,7 @@ Signatures are Ed25519, so a listing verifies with public keys alone. Nothing in
 this module sends anything over a network; listings are plain JSON files that a
 gateway catalog, the Hub or any file share can carry.
 """
+
 from __future__ import annotations
 
 import base64
@@ -52,6 +53,7 @@ TRUST_ROLES = {"publisher": "publishers", "referee": "referees", "fleet": "fleet
 
 # ---------------------------------------------------------------- identities
 
+
 def _market_dir(root: str) -> str:
     return os.path.join(paths.memory_dir(root), "market")
 
@@ -64,8 +66,9 @@ def _card_path(root: str, role: str) -> str:
     return os.path.join(_market_dir(root), f"identity-{role}.json")
 
 
-def identity(root: str, role: str, *, principal_id: str = "", organization: str = "",
-             create: bool = False) -> origin.Principal:
+def identity(
+    root: str, role: str, *, principal_id: str = "", organization: str = "", create: bool = False
+) -> origin.Principal:
     """This store's signing identity for one role, created on first use when asked."""
     if role not in ROLES:
         raise MarketError(f"role must be one of {', '.join(ROLES)}")
@@ -75,27 +78,35 @@ def identity(root: str, role: str, *, principal_id: str = "", organization: str 
             card = json.load(fh)
         with open(key_path, "rb") as fh:
             private = fh.read()
-        return origin.Principal(card["id"], card["organization"], ROLES[role], private, "ed25519",
-                                base64.b64decode(card["public_key"]))
+        return origin.Principal(
+            card["id"], card["organization"], ROLES[role], private, "ed25519", base64.b64decode(card["public_key"])
+        )
     if not create:
-        raise MarketError(f"no {role} identity yet: run `unimem market identity --role {role} "
-                          "--id <id> --organization <org>`")
+        raise MarketError(
+            f"no {role} identity yet: run `unimem market identity --role {role} --id <id> --organization <org>`"
+        )
     if not _ID.match(principal_id or "") or not _ID.match(organization or ""):
         raise MarketError("an identity needs an --id and --organization of 1-128 letters, digits, . _ : -")
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
     key = Ed25519PrivateKey.generate()
-    private = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
-                                serialization.NoEncryption())
+    private = key.private_bytes(
+        serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption()
+    )
     public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     os.makedirs(_market_dir(root), exist_ok=True)
     fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "wb") as fh:
         fh.write(private)
-    card = {"id": principal_id, "organization": organization, "role": role,
-            "authority": ROLES[role], "algorithm": "ed25519",
-            "public_key": base64.b64encode(public).decode("ascii")}
+    card = {
+        "id": principal_id,
+        "organization": organization,
+        "role": role,
+        "authority": ROLES[role],
+        "algorithm": "ed25519",
+        "public_key": base64.b64encode(public).decode("ascii"),
+    }
     with open(card_path, "w", encoding="utf-8") as fh:
         json.dump(card, fh, indent=2, sort_keys=True)
     return origin.Principal(principal_id, organization, ROLES[role], private, "ed25519", public)
@@ -104,12 +115,18 @@ def identity(root: str, role: str, *, principal_id: str = "", organization: str 
 def card(principal: origin.Principal) -> dict:
     """The shareable public half of an identity."""
     role = next(r for r, a in ROLES.items() if a == principal.authority)
-    return {"id": principal.id, "organization": principal.organization, "role": role,
-            "authority": principal.authority, "algorithm": "ed25519",
-            "public_key": base64.b64encode(principal.public_key).decode("ascii")}
+    return {
+        "id": principal.id,
+        "organization": principal.organization,
+        "role": role,
+        "authority": principal.authority,
+        "algorithm": "ed25519",
+        "public_key": base64.b64encode(principal.public_key).decode("ascii"),
+    }
 
 
 # --------------------------------------------------------------------- trust
+
 
 def _trust_path(root: str) -> str:
     return os.path.join(_market_dir(root), "trust.json")
@@ -120,8 +137,12 @@ def _principal_from_card(entry: dict, role: str) -> origin.Principal:
         public = base64.b64decode(entry["public_key"], validate=True)
     except (KeyError, TypeError, ValueError):
         raise MarketError("a trusted card needs a base64 Ed25519 public_key") from None
-    if (len(public) != 32 or entry.get("algorithm", "ed25519") != "ed25519"
-            or not _ID.match(str(entry.get("id", ""))) or not _ID.match(str(entry.get("organization", "")))):
+    if (
+        len(public) != 32
+        or entry.get("algorithm", "ed25519") != "ed25519"
+        or not _ID.match(str(entry.get("id", "")))
+        or not _ID.match(str(entry.get("organization", "")))
+    ):
         raise MarketError("a trusted card needs an id, an organization and a 32-byte Ed25519 key")
     return origin.Principal(entry["id"], entry["organization"], ROLES[role], b"", "ed25519", public)
 
@@ -133,8 +154,7 @@ def load_trust(root: str) -> dict[str, dict[str, origin.Principal]]:
             raw = json.load(fh)
     except FileNotFoundError:
         raw = {}
-    return {role: {e["id"]: _principal_from_card(e, role) for e in raw.get(TRUST_ROLES[role], [])}
-            for role in ROLES}
+    return {role: {e["id"]: _principal_from_card(e, role) for e in raw.get(TRUST_ROLES[role], [])} for role in ROLES}
 
 
 def trust(root: str, entry: dict, *, role: str) -> dict:
@@ -162,6 +182,7 @@ def trust(root: str, entry: dict, *, role: str) -> dict:
 
 # ------------------------------------------------------------------- lessons
 
+
 def portable_lesson(root: str, slug: str) -> dict:
     """The shareable part of an active lesson: its text, never its local history."""
     from unimem import sentinel_io
@@ -182,6 +203,7 @@ def portable_lesson(root: str, slug: str) -> dict:
 
 # --------------------------------------------------------------- the chain
 
+
 def measured_effect(root: str, slug: str, *, min_arm: int = 20) -> dict:
     """This store's randomized holdout estimate for one lesson, as attest needs it."""
     from unimem.commands import experiment_cmd
@@ -198,8 +220,10 @@ def measured_effect(root: str, slug: str, *, min_arm: int = 20) -> dict:
     injected = [o.succeeded for o in obs if o.injected]
     withheld = [o.succeeded for o in obs if not o.injected]
     if len(injected) < min_arm or len(withheld) < min_arm:
-        raise MarketError(f"each arm needs at least {min_arm} resolved occasions "
-                          f"(have {len(injected)} injected, {len(withheld)} withheld)")
+        raise MarketError(
+            f"each arm needs at least {min_arm} resolved occasions "
+            f"(have {len(injected)} injected, {len(withheld)} withheld)"
+        )
     p1, p0 = sum(injected) / len(injected), sum(withheld) / len(withheld)
     # Agresti-Caffo style smoothing keeps the standard error positive at 0% or 100%.
     q1, q0 = (sum(injected) + 1) / (len(injected) + 2), (sum(withheld) + 1) / (len(withheld) + 2)
@@ -207,15 +231,21 @@ def measured_effect(root: str, slug: str, *, min_arm: int = 20) -> dict:
     return {"effect": p1 - p0, "standard_error": se, "n_injected": len(injected), "n_withheld": len(withheld)}
 
 
-def attest(root: str, slug: str, *, effect: dict | None = None, metric: str = "resolved",
-           simulated: bool = False) -> dict:
+def attest(
+    root: str, slug: str, *, effect: dict | None = None, metric: str = "resolved", simulated: bool = False
+) -> dict:
     """A fleet's signed receipt of the lift it measured for this exact lesson text."""
     principal = identity(root, "fleet")
     portable = portable_lesson(root, slug)
     measured = effect or measured_effect(root, slug)
-    record = {"artifact_sha256": lesson_digest(portable), "comparison": "randomized-holdout",
-              "metric": metric, "effect": float(measured["effect"]),
-              "standard_error": float(measured["standard_error"]), "simulated": bool(simulated)}
+    record = {
+        "artifact_sha256": lesson_digest(portable),
+        "comparison": "randomized-holdout",
+        "metric": metric,
+        "effect": float(measured["effect"]),
+        "standard_error": float(measured["standard_error"]),
+        "simulated": bool(simulated),
+    }
     return origin.bind(record, principal)
 
 
@@ -242,9 +272,15 @@ def publish(root: str, slug: str, certificate: dict, licence: dict, *, now: str 
     problems = _lift_problems(certificate, digest)
     if problems:
         raise MarketError("cannot list: " + "; ".join(problems))
-    record = {"kind": LISTING_KIND, "schema_version": SCHEMA_VERSION, "lesson": portable,
-              "lesson_sha256": digest, "certificate": certificate, "licence": _licence(licence),
-              "listed_at": now or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    record = {
+        "kind": LISTING_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "lesson": portable,
+        "lesson_sha256": digest,
+        "certificate": certificate,
+        "licence": _licence(licence),
+        "listed_at": now or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
     listing = origin.bind(record, principal)
     if len(json.dumps(listing).encode("utf-8")) > MAX_LISTING_BYTES:
         raise MarketError("the listing exceeds 256 KiB")
@@ -253,6 +289,7 @@ def publish(root: str, slug: str, certificate: dict, licence: dict, *, now: str 
 
 
 # ------------------------------------------------------------- catalog/install
+
 
 def _catalog_dir(root: str) -> str:
     return os.path.join(_market_dir(root), "listings")
@@ -286,8 +323,9 @@ def catalog(root: str, query: str = "") -> list[dict]:
             fm.get("name")
         except (OSError, ValueError, AttributeError):
             continue  # a damaged catalog file is skipped, never a failed listing request
-        haystack = " ".join([str(fm.get("name", "")), str(fm.get("description", "")),
-                             " ".join(map(str, fm.get("tags") or []))]).lower()
+        haystack = " ".join(
+            [str(fm.get("name", "")), str(fm.get("description", "")), " ".join(map(str, fm.get("tags") or []))]
+        ).lower()
         if all(w in haystack for w in words):
             out.append(listing)
     return out
@@ -304,8 +342,10 @@ def install(root: str, listing: dict, *, accept_licence: str, actor: str = "") -
         raise MarketError("refused: " + "; ".join(report["problems"]))
     licence = listing["record"]["licence"]
     if accept_licence != licence["id"]:
-        raise MarketError(f"installing means accepting licence {licence['id']!r}: pass --accept-licence "
-                          f"{licence['id']} after reading its terms")
+        raise MarketError(
+            f"installing means accepting licence {licence['id']!r}: pass --accept-licence "
+            f"{licence['id']} after reading its terms"
+        )
     lid = listing_id(listing)
     ledger = _installed_path(root)
     os.makedirs(_market_dir(root), exist_ok=True)
@@ -323,14 +363,25 @@ def install(root: str, listing: dict, *, accept_licence: str, actor: str = "") -
         fm.update({"name": slug, "status": "review", "uses": 0, "last_hit": "NEVER"})
         path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
         os.makedirs(paths.lessons_dir(root), exist_ok=True)
-        lesson_io.write_lesson(path, fm, portable["body"], root=root,
-                               actor=actor or f"market:{listing['organization']}",
-                               reason=f"installed from marketplace listing {lid[:12]} under licence {licence['id']}")
-        row = {"listing": lid, "slug": slug, "lesson_sha256": report["lesson_sha256"],
-               "publisher": listing["organization"], "licence": licence,
-               "certified_lift": report["lift"], "installed_at":
-               datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-               "status": "review", "local_proof_required": True}
+        lesson_io.write_lesson(
+            path,
+            fm,
+            portable["body"],
+            root=root,
+            actor=actor or f"market:{listing['organization']}",
+            reason=f"installed from marketplace listing {lid[:12]} under licence {licence['id']}",
+        )
+        row = {
+            "listing": lid,
+            "slug": slug,
+            "lesson_sha256": report["lesson_sha256"],
+            "publisher": listing["organization"],
+            "licence": licence,
+            "certified_lift": report["lift"],
+            "installed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "status": "review",
+            "local_proof_required": True,
+        }
         _jsonl.append_row(ledger, row)
     return row
 

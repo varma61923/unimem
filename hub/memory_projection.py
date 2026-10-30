@@ -4,6 +4,7 @@ Canonical writes and this bounded worker share one tenant advisory lock. The
 external publication precedes the transactional watermark; a deterministic
 generation makes an interrupted acknowledgement recoverable without embedding.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -54,9 +55,7 @@ class HostedProjection:
             raise ValueError("embedder must expose a projection identity")
         if not org_id or index.tenant != org_id:
             raise ValueError("projection owner must match authenticated organization")
-        if (index.namespace, index.model, index.dimension) != (
-            identity.namespace, identity.model, identity.dimension
-        ):
+        if (index.namespace, index.model, index.dimension) != (identity.namespace, identity.model, identity.dimension):
             raise ValueError("vector and embedder projection identity must match")
         self.factory, self.org_id, self.index, self.embedder = factory, org_id, index, embedder
         self.identity = identity
@@ -76,12 +75,19 @@ class HostedProjection:
         state = await session.get(MemoryProjectionState, key)
         if state is None:
             state = MemoryProjectionState(
-                org_id=self.org_id, projection=self.identity.key, namespace=self.identity.namespace,
-                model=self.identity.model, dimension=self.identity.dimension, cursor=0, generation=None,
+                org_id=self.org_id,
+                projection=self.identity.key,
+                namespace=self.identity.namespace,
+                model=self.identity.model,
+                dimension=self.identity.dimension,
+                cursor=0,
+                generation=None,
             )
             session.add(state)
         elif (state.namespace, state.model, state.dimension) != (
-            self.identity.namespace, self.identity.model, self.identity.dimension
+            self.identity.namespace,
+            self.identity.model,
+            self.identity.dimension,
         ):
             raise ValueError("stored projection identity mismatch")
         return state
@@ -98,8 +104,9 @@ class HostedProjection:
             state = await self._state(session)
             head = await self.index.snapshots.head()
             if head.generation is not None:
-                if (head.revision > clock.sequence
-                        or head.generation != self._generation(clock.source_id, head.revision)):
+                if head.revision > clock.sequence or head.generation != self._generation(
+                    clock.source_id, head.revision
+                ):
                     raise SnapshotConflict("external snapshot does not match canonical change stream")
                 # Both recovery after publication/acknowledgement failure and a
                 # restored older external index resume at its validated revision.
@@ -107,11 +114,21 @@ class HostedProjection:
             else:
                 # Never trust a durable DB cursor when the external index is lost.
                 state.cursor, state.generation = 0, None
-            events = (await session.execute(
-                select(MemoryChangeEvent).where(
-                    MemoryChangeEvent.org_id == self.org_id, MemoryChangeEvent.sequence > state.cursor,
-                ).order_by(MemoryChangeEvent.sequence).limit(limit)
-            )).scalars().all()
+            events = (
+                (
+                    await session.execute(
+                        select(MemoryChangeEvent)
+                        .where(
+                            MemoryChangeEvent.org_id == self.org_id,
+                            MemoryChangeEvent.sequence > state.cursor,
+                        )
+                        .order_by(MemoryChangeEvent.sequence)
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
             if not events:
                 return {"processed": 0, "through": state.cursor}
             through = events[-1].sequence
@@ -122,8 +139,14 @@ class HostedProjection:
                 body = event.record
                 payload = body.get("payload", {}) if body else {}
                 content = payload.get("text")
-                if (event.operation != "upsert" or not body or body.get("status") != "active"
-                        or body.get("is_latest") is not True or not isinstance(content, str) or not content.strip()):
+                if (
+                    event.operation != "upsert"
+                    or not body
+                    or body.get("status") != "active"
+                    or body.get("is_latest") is not True
+                    or not isinstance(content, str)
+                    or not content.strip()
+                ):
                     deleted.append(event.record_id)
                     continue
                 checksum = hashlib.sha256(content.encode()).hexdigest()
@@ -133,18 +156,26 @@ class HostedProjection:
                 if cached is None:
                     misses.append((event.record_id, checksum, content))
                 else:
-                    records.append(VectorRecord(event.record_id, _vector(cached.vector, self.identity.dimension),
-                                                checksum=checksum))
+                    records.append(
+                        VectorRecord(
+                            event.record_id, _vector(cached.vector, self.identity.dimension), checksum=checksum
+                        )
+                    )
             if misses:
                 vectors = await self.embedder.encode_documents([content for _, _, content in misses])
                 if len(vectors) != len(misses):
                     raise ValueError("embedding batch cardinality mismatch")
                 for (record_id, checksum, _), vector in zip(misses, vectors):
                     vector = list(_vector(vector, self.identity.dimension))
-                    session.add(MemoryEmbeddingCache(
-                        org_id=self.org_id, projection=self.identity.key, record_id=record_id,
-                        checksum=checksum, vector=vector,
-                    ))
+                    session.add(
+                        MemoryEmbeddingCache(
+                            org_id=self.org_id,
+                            projection=self.identity.key,
+                            record_id=record_id,
+                            checksum=checksum,
+                            vector=vector,
+                        )
+                    )
                     records.append(VectorRecord(record_id, vector, checksum=checksum))
             # Erase even if a later event in this batch legitimately reuses an
             # identity: its new vector must not preserve erased old intervals.
@@ -154,8 +185,9 @@ class HostedProjection:
                 # Erasure must remove those copies before acknowledgement.
                 await self.index.snapshots.erase(hard_deleted)
                 await self.index.delete(hard_deleted)
-            lease = await self.index.snapshots.begin(through, generation, full=head.generation is None,
-                                                     lease_seconds=300)
+            lease = await self.index.snapshots.begin(
+                through, generation, full=head.generation is None, lease_seconds=300
+            )
             if lease is None:
                 raise SnapshotConflict("external snapshot advanced outside the canonical owner lock")
             try:
@@ -187,8 +219,9 @@ class HostedProjection:
             legacy = await self.index.delete(keys)
             return versions + legacy
 
-    async def candidates(self, query: str, *, top_k: int = 100,
-                         allowed_ids: set[str] | None = None) -> tuple[int, list[VectorHit]]:
+    async def candidates(
+        self, query: str, *, top_k: int = 100, allowed_ids: set[str] | None = None
+    ) -> tuple[int, list[VectorHit]]:
         _limit(top_k)
         lease = None
         try:

@@ -96,8 +96,12 @@ def providers_run_list(args):
     from unimem import embeddings, providers
 
     providers.register_local_backends()
-    result = {"llm": list(providers.LLMFactory.names()), "embedding": embeddings.known(),
-              "vector": list(providers.VECTORS.names()), "reranker": list(providers.reranker_names())}
+    result = {
+        "llm": list(providers.LLMFactory.names()),
+        "embedding": embeddings.known(),
+        "vector": list(providers.VECTORS.names()),
+        "reranker": list(providers.reranker_names()),
+    }
     if args.json:
         print(json.dumps(result, indent=2))
     else:
@@ -381,6 +385,7 @@ def gateway_run(args: argparse.Namespace) -> int:
 
     root = paths.resolve_root(args.dest)
     try:
+        token: str | None
         if args.token and (args.rotate_token or args.revoke_token or args.token_ttl is not None):
             raise ValueError("token rotation, revocation and ttl apply to file-backed tokens, not --token")
         if args.rotate_token:
@@ -486,8 +491,9 @@ def jobs_add_parser(subparsers: argparse._SubParsersAction) -> None:
     q.add_argument("--limit", type=int, default=20)
     q.add_argument("--kind", action="append", default=[], choices=sorted(jobs.HANDLERS))
     q.add_argument("--watch", action="store_true", help="Keep polling for new jobs.")
-    q.add_argument("--lease-seconds", type=float, default=600,
-                   help="Renewable worker claim duration (default: 600 seconds).")
+    q.add_argument(
+        "--lease-seconds", type=float, default=600, help="Renewable worker claim duration (default: 600 seconds)."
+    )
     q.add_argument("--interval", type=float, default=5.0)
     q.set_defaults(func=jobs_run_run)
 
@@ -601,8 +607,9 @@ def jobs_run_run(args, root) -> int:
             previous[sig] = signal.signal(sig, _stop)
     try:
         while not stopping.is_set():
-            out = jobs.run_pending(root, limit=1 if args.watch else args.limit, kinds=args.kind or None,
-                                   lease=args.lease_seconds)
+            out = jobs.run_pending(
+                root, limit=1 if args.watch else args.limit, kinds=args.kind or None, lease=args.lease_seconds
+            )
             total["done"] += out["done"]
             total["failed"] += out["failed"]
             if not args.watch:
@@ -644,11 +651,19 @@ def demo_add_parser(subparsers):
         "demo",
         help="A 30-second offline tour of the memory loop: remember, measure, govern.",
     )
-    p.add_argument("--occasions", type=int, default=1000,
-                   help="Simulated tasks to run through the holdout (default 1000, minimum 100).")
+    p.add_argument(
+        "--occasions",
+        type=int,
+        default=1000,
+        help="Simulated tasks to run through the holdout (default 1000, minimum 100).",
+    )
     p.add_argument("--seed", type=int, default=7, help="Seed for the simulated agent's outcomes.")
-    p.add_argument("--keep", metavar="DIR", default=None,
-                   help="Write the demo store to DIR (must not exist) and keep it for inspection.")
+    p.add_argument(
+        "--keep",
+        metavar="DIR",
+        default=None,
+        help="Write the demo store to DIR (must not exist) and keep it for inspection.",
+    )
     p.add_argument("--json", action="store_true", help="Print the result as JSON.")
     p.set_defaults(func=demo_run)
 

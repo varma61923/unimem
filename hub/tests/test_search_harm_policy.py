@@ -92,8 +92,14 @@ async def test_its_near_duplicates_go_with_it(session_factory, harmed):
     org_id, bad, good = harmed
     async with session_scope(session_factory) as session:
         original = await session.get(Trace, bad)
-        copy = Trace(org_id=org_id, title=original.title, context_text=original.context_text,
-                     solution_text=original.solution_text, tags=[TAG], agent_type="code")
+        copy = Trace(
+            org_id=org_id,
+            title=original.title,
+            context_text=original.context_text,
+            solution_text=original.solution_text,
+            tags=[TAG],
+            agent_type="code",
+        )
         session.add(copy)
         await session.flush()
         copy_id = copy.id
@@ -112,9 +118,15 @@ async def test_an_amendment_is_not_withdrawn_with_the_text_it_replaced(session_f
     async with session_scope(session_factory) as session:
         original = await session.get(Trace, bad)
         original.superseded_at = datetime.now(timezone.utc)
-        fixed = Trace(org_id=org_id, title=original.title, context_text=original.context_text,
-                      solution_text=original.solution_text + " Only after verifying the owner.",
-                      tags=[TAG], agent_type="code", supersedes_trace_id=bad)
+        fixed = Trace(
+            org_id=org_id,
+            title=original.title,
+            context_text=original.context_text,
+            solution_text=original.solution_text + " Only after verifying the owner.",
+            tags=[TAG],
+            agent_type="code",
+            supersedes_trace_id=bad,
+        )
         session.add(fixed)
         await session.flush()
         fixed_id = fixed.id
@@ -141,12 +153,18 @@ async def test_a_withdrawn_trace_is_never_assigned_an_arm(session_factory, harme
         result = await crud.search_traces(session, org_id, tags=[TAG])
         await crud.holdout_for_results(session, org_id, result["traces"], "after-withdraw")
     async with session_scope(session_factory) as session:
-        assigned = set((await session.execute(
-            select(HoldoutObservation.trace_id).where(
-                HoldoutObservation.org_id == org_id,
-                HoldoutObservation.occasion_id == "after-withdraw",
+        assigned = set(
+            (
+                await session.execute(
+                    select(HoldoutObservation.trace_id).where(
+                        HoldoutObservation.org_id == org_id,
+                        HoldoutObservation.occasion_id == "after-withdraw",
+                    )
+                )
             )
-        )).scalars().all())
+            .scalars()
+            .all()
+        )
     assert assigned == {good}
 
 
@@ -187,8 +205,7 @@ async def test_it_never_reaches_another_org(session_factory, harmed):
     org_id, bad, _good = harmed
     await _set_policy(session_factory, org_id, "withdraw")
     async with session_scope(session_factory) as session:
-        other = Organization(name="other", holdout_rate=0.5, holdout_salt="other-salt",
-                             harm_policy="withdraw")
+        other = Organization(name="other", holdout_rate=0.5, holdout_salt="other-salt", harm_policy="withdraw")
         session.add(other)
         await session.flush()
         other_id = other.id
@@ -199,9 +216,7 @@ async def test_it_never_reaches_another_org(session_factory, harmed):
 
 
 class TestTheOperatorCommand:
-    async def test_it_shows_and_sets_the_policy_and_audits_the_change(
-        self, session_factory, harmed, capsys
-    ):
+    async def test_it_shows_and_sets_the_policy_and_audits_the_change(self, session_factory, harmed, capsys):
         org_id, _bad, _good = harmed
         assert await manage.harm_policy(org_id, session_factory=session_factory)
         assert "harm policy: inform" in capsys.readouterr().out
@@ -209,9 +224,11 @@ class TestTheOperatorCommand:
         assert await manage.harm_policy(org_id, "withdraw", session_factory=session_factory)
         async with session_scope(session_factory) as session:
             assert (await session.get(Organization, org_id)).harm_policy == "withdraw"
-            events = (await session.execute(
-                select(AuditLogEntry).where(AuditLogEntry.action == "set_harm_policy")
-            )).scalars().all()
+            events = (
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "set_harm_policy")))
+                .scalars()
+                .all()
+            )
         assert [e.summary for e in events] == ["inform -> withdraw"]
 
     async def test_an_unknown_policy_is_refused(self, session_factory, harmed):

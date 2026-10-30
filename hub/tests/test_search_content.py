@@ -33,8 +33,12 @@ async def other_org(session_factory) -> str:
 async def _trace(session_factory, org_id, *, title="t", context="c", solution="s", quarantined=False):
     async with session_scope(session_factory) as session:
         trace = Trace(
-            org_id=org_id, title=title, context_text=context, solution_text=solution,
-            agent_type="support", quarantined=quarantined,
+            org_id=org_id,
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            agent_type="support",
+            quarantined=quarantined,
         )
         session.add(trace)
         await session.flush()
@@ -57,14 +61,21 @@ class TestLiteralMatch:
         assert len(results) == 1
         assert results[0]["matched_field"] == "solution_text"
 
-    @pytest.mark.parametrize("pattern,lookalike", [
-        ("a_b@example.com", "aXb@example.com"),
-        ("100%", "1000 requests"),
-        ("_", "no underscore anywhere"),
-        ("C:\\temp", "C:temp"),
-    ])
+    @pytest.mark.parametrize(
+        "pattern,lookalike",
+        [
+            ("a_b@example.com", "aXb@example.com"),
+            ("100%", "1000 requests"),
+            ("_", "no underscore anywhere"),
+            ("C:\\temp", "C:temp"),
+        ],
+    )
     async def test_like_wildcards_in_the_pattern_match_only_themselves(
-        self, session_factory, org, pattern, lookalike,
+        self,
+        session_factory,
+        org,
+        pattern,
+        lookalike,
     ):
         await _trace(session_factory, org, context=f"seen in {lookalike}")
         exact = await _trace(session_factory, org, context=f"seen in {pattern}")
@@ -133,9 +144,7 @@ class TestRegexMatch:
             results = await crud.search_trace_content(session, org, "jane smith", regex=True)
         assert len(results) == 1
 
-    async def test_a_syntactically_valid_but_non_matching_pattern_finds_nothing(
-        self, session_factory, org
-    ):
+    async def test_a_syntactically_valid_but_non_matching_pattern_finds_nothing(self, session_factory, org):
         await _trace(session_factory, org, context="no numbers here")
         async with session_scope(session_factory) as session:
             results = await crud.search_trace_content(session, org, r"\d{5}", regex=True)
@@ -145,7 +154,8 @@ class TestRegexMatch:
 class TestMatchedFieldPrecedence:
     async def test_title_wins_when_multiple_fields_match(self, session_factory, org):
         await _trace(
-            session_factory, org,
+            session_factory,
+            org,
             title="jane.smith@example.com escalation",
             context="also mentions jane.smith@example.com",
             solution="s",
@@ -165,6 +175,7 @@ def _payload(result) -> dict:
         sc = result.structured_content
         return sc.get("result", sc)
     import json
+
     return json.loads(result.content[0].text)
 
 
@@ -192,18 +203,22 @@ class TestToolEndToEnd:
 
         await _trace(session_factory, org, context="jane.smith@example.com")
         with _Scoped(org, (scopes_module.SCOPE_READ,)):
-            result = _payload(await mcp.call_tool(
-                "search_trace_content", {"pattern": "jane.smith@example.com"},
-            ))
+            result = _payload(
+                await mcp.call_tool(
+                    "search_trace_content",
+                    {"pattern": "jane.smith@example.com"},
+                )
+            )
         assert len(result["results"]) == 1
 
-    async def test_an_invalid_regex_reports_invalid_request_not_a_crash(
-        self, mcp, session_factory, org
-    ):
+    async def test_an_invalid_regex_reports_invalid_request_not_a_crash(self, mcp, session_factory, org):
         from hub import scopes as scopes_module
 
         with _Scoped(org, (scopes_module.SCOPE_READ,)):
-            result = _payload(await mcp.call_tool(
-                "search_trace_content", {"pattern": "(unbalanced(", "regex": True},
-            ))
+            result = _payload(
+                await mcp.call_tool(
+                    "search_trace_content",
+                    {"pattern": "(unbalanced(", "regex": True},
+                )
+            )
         assert result["error"] == "invalid_request"

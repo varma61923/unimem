@@ -1,4 +1,5 @@
 """`unimem fact`: manage atomic facts lifecycle."""
+
 from __future__ import annotations
 
 import argparse
@@ -36,14 +37,19 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_list.add_argument("--category", default="", choices=("", *hierarchical.CATEGORIES))
     p_list.add_argument("--scope", default="", help="Filter by routing scope.")
     p_list.add_argument("--as-of", default="", help="Point-in-time temporal evaluation date.")
-    p_list.add_argument("--known-at", default="",
-                        help="Record time: the facts the store believed at this moment, whatever happened later.")
     p_list.add_argument(
-        "--include-forgotten", action="store_true",
+        "--known-at",
+        default="",
+        help="Record time: the facts the store believed at this moment, whatever happened later.",
+    )
+    p_list.add_argument(
+        "--include-forgotten",
+        action="store_true",
         help="Include forgotten facts (hidden by default); shown with a [forgotten] marker.",
     )
     p_list.add_argument(
-        "--show-expired", action="store_true",
+        "--show-expired",
+        action="store_true",
         help="Include TTL-expired facts (hidden by default).",
     )
     p_list.add_argument("--dest", default=None)
@@ -58,12 +64,23 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_add.add_argument("--valid-until", default=None, help="End date (YYYY-MM-DD or ISO 8601).")
     p_add.add_argument("--expires-at", default=None, help="TTL expiry instant (YYYY-MM-DD or ISO 8601).")
     p_add.add_argument("--source-trace", default="", help="Trace ID where this was observed.")
-    p_add.add_argument("--evidence", action="append", default=[], metavar="KIND:ID",
-                       help="Bind supporting fact:ID or lesson:SLUG evidence (repeatable).")
-    p_add.add_argument("--refuting-evidence", action="append", default=[], metavar="KIND:ID",
-                       help="Bind refuting evidence; unresolved conflicts are withheld from recall.")
-    p_add.add_argument("--min-support", type=int, default=1,
-                       help="Required distinct supporting sources for bound facts (default 1).")
+    p_add.add_argument(
+        "--evidence",
+        action="append",
+        default=[],
+        metavar="KIND:ID",
+        help="Bind supporting fact:ID or lesson:SLUG evidence (repeatable).",
+    )
+    p_add.add_argument(
+        "--refuting-evidence",
+        action="append",
+        default=[],
+        metavar="KIND:ID",
+        help="Bind refuting evidence; unresolved conflicts are withheld from recall.",
+    )
+    p_add.add_argument(
+        "--min-support", type=int, default=1, help="Required distinct supporting sources for bound facts (default 1)."
+    )
     p_add.add_argument("--dest", default=None)
     p_add.set_defaults(func=run_add)
 
@@ -72,13 +89,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_srch.add_argument("--scope", default="", help="Filter by scope.")
     p_srch.add_argument("--category", default="", choices=("", *hierarchical.CATEGORIES))
     p_srch.add_argument("--limit", type=int, default=10)
-    p_srch.add_argument("--scorer", default="overlap-v1", choices=("overlap-v1", "bm25-v1"),
-                        help="Fact ranking: compatible overlap or stemmed multilingual BM25.")
-    p_srch.add_argument("--as-of", default="", help="Point-in-time date.")
-    p_srch.add_argument("--known-at", default="",
-                        help="Record time: search what the store believed at this moment, whatever happened later.")
     p_srch.add_argument(
-        "--show-expired", action="store_true",
+        "--scorer",
+        default="overlap-v1",
+        choices=("overlap-v1", "bm25-v1"),
+        help="Fact ranking: compatible overlap or stemmed multilingual BM25.",
+    )
+    p_srch.add_argument("--as-of", default="", help="Point-in-time date.")
+    p_srch.add_argument(
+        "--known-at",
+        default="",
+        help="Record time: search what the store believed at this moment, whatever happened later.",
+    )
+    p_srch.add_argument(
+        "--show-expired",
+        action="store_true",
         help="Include TTL-expired facts (hidden by default).",
     )
     p_srch.add_argument("--dest", default=None)
@@ -102,14 +127,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p_sup.set_defaults(func=run_supersede)
 
     p_res = sub.add_parser(
-        "resolve", help="Resolve a contradiction: invalidate an older fact in favor of newer evidence.")
+        "resolve", help="Resolve a contradiction: invalidate an older fact in favor of newer evidence."
+    )
     p_res.add_argument("old_id", help="ID of the contradicted (older) fact.")
     p_res.add_argument("new_statement", help="Newer replacement fact statement or fact ID.")
     p_res.add_argument("--dest", default=None)
     p_res.set_defaults(func=run_resolve)
 
     p_inv = sub.add_parser(
-        "invalidate", help="End a fact's validity without a replacement; it stays queryable with --as-of.")
+        "invalidate", help="End a fact's validity without a replacement; it stays queryable with --as-of."
+    )
     p_inv.add_argument("fact_id", help="ID of the fact that stopped being true.")
     p_inv.add_argument("--at", default=None, help="When it stopped being true (ISO date or time; default now).")
     p_inv.add_argument("--dest", default=None)
@@ -126,7 +153,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p_forget.add_argument("fact_id", help="ID of the fact to forget.")
     p_forget.add_argument(
-        "--undo", action="store_true",
+        "--undo",
+        action="store_true",
         help="Restore a forgotten fact to default listings.",
     )
     p_forget.add_argument("--dest", default=None)
@@ -168,7 +196,8 @@ def run_add(args: argparse.Namespace) -> int:
         if args.evidence or args.refuting_evidence:
             receipts = []
             polarized: tuple[tuple[list[str], EvidencePolarity], ...] = (
-                (args.evidence, "support"), (args.refuting_evidence, "refute"),
+                (args.evidence, "support"),
+                (args.refuting_evidence, "refute"),
             )
             for values, polarity in polarized:
                 for value in values:
@@ -211,8 +240,15 @@ def run_explain(args: argparse.Namespace) -> int:
     from unimem.evidence_context import explain_fact
 
     try:
-        proof = explain_fact(paths.resolve_root(args.dest), args.fact_id, scope=args.scope, as_of=args.as_of,
-                             budget=args.budget, max_sources=args.max_sources, max_depth=args.max_depth)
+        proof = explain_fact(
+            paths.resolve_root(args.dest),
+            args.fact_id,
+            scope=args.scope,
+            as_of=args.as_of,
+            budget=args.budget,
+            max_sources=args.max_sources,
+            max_depth=args.max_depth,
+        )
     except ValueError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 2
@@ -308,7 +344,9 @@ def run_forget(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
         fact = hierarchical.forget_fact(
-            root, args.fact_id, undo=bool(getattr(args, "undo", False)),
+            root,
+            args.fact_id,
+            undo=bool(getattr(args, "undo", False)),
         )
     except KeyError:
         print(f"Fact '{args.fact_id}' not found.", file=sys.stderr)
@@ -365,6 +403,7 @@ def run_rebuild(args: argparse.Namespace) -> int:
 
 def run_purge(args):
     from unimem.privacy_erasure import purge_fact
+
     result = purge_fact(paths.resolve_root(args.dest), args.fact_id, reason=args.reason)
     print(json.dumps(result, indent=2))
     return 0

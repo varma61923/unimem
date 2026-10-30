@@ -18,8 +18,14 @@ def _within_budget(lines: list[str], limit: int = MAX_EVIDENCE_CHARS) -> list[st
     return kept
 
 
-def prompt(instruction: str, slug: str, current_rule_text: str, applies_when: str,
-           do_not_apply_when: str, evidence_lines: list[str]) -> str:
+def prompt(
+    instruction: str,
+    slug: str,
+    current_rule_text: str,
+    applies_when: str,
+    do_not_apply_when: str,
+    evidence_lines: list[str],
+) -> str:
     return (
         f"{instruction}\n\n"
         f"Lesson slug: {slug}\n"
@@ -27,8 +33,8 @@ def prompt(instruction: str, slug: str, current_rule_text: str, applies_when: st
         f"Current applies_when: {applies_when}\n"
         f"Current do_not_apply_when: {do_not_apply_when}\n\n"
         "Evidence (the ONLY occasions/traces you may cite -- do not invent others):\n"
-        + "\n".join(_within_budget(evidence_lines)) +
-        "\n\nRespond with ONLY a JSON object, no other text, with exactly these keys:\n"
+        + "\n".join(_within_budget(evidence_lines))
+        + "\n\nRespond with ONLY a JSON object, no other text, with exactly these keys:\n"
         '  "rule": string,\n'
         '  "applies_when": string,\n'
         '  "do_not_apply_when": string,\n'
@@ -37,8 +43,14 @@ def prompt(instruction: str, slug: str, current_rule_text: str, applies_when: st
 
 
 def try_draft(
-    *, instruction: str, slug: str, current_rule_text: str, applies_when: str,
-    do_not_apply_when: str, evidence_lines: list[str], allowed_evidence_ids: set[str],
+    *,
+    instruction: str,
+    slug: str,
+    current_rule_text: str,
+    applies_when: str,
+    do_not_apply_when: str,
+    evidence_lines: list[str],
+    allowed_evidence_ids: set[str],
 ) -> llm.Draft | None:
     built = prompt(instruction, slug, current_rule_text, applies_when, do_not_apply_when, evidence_lines)
     try:

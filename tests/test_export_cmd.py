@@ -21,21 +21,37 @@ def _lesson(root: str, slug: str, **fm_extra) -> None:
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     fm = {
-        "name": slug, "description": "A test lesson", "status": "active",
-        "importance": 3, "tags": ["t"], "agent_type": "code", "domain": "net",
-        "applies_when": "when X", "do_not_apply_when": "never",
+        "name": slug,
+        "description": "A test lesson",
+        "status": "active",
+        "importance": 3,
+        "tags": ["t"],
+        "agent_type": "code",
+        "domain": "net",
+        "applies_when": "when X",
+        "do_not_apply_when": "never",
     }
     fm.update(fm_extra)
-    lesson_io.write_lesson(path, fm, "## Rule\nDo the thing.\n", root=root,
-                           actor="test", reason="fixture")
+    lesson_io.write_lesson(path, fm, "## Rule\nDo the thing.\n", root=root, actor="test", reason="fixture")
 
 
 _BOOL_FLAGS = {"resolved", "escalated", "repeated_error", "frustration", "baseline"}
 
 
 def _capture(store: str, title: str, **extra) -> None:
-    argv = ["capture", "--title", title, "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--dest", str(store)]
+    argv = [
+        "capture",
+        "--title",
+        title,
+        "--context",
+        "c",
+        "--solution",
+        "s",
+        "--agent-type",
+        "code",
+        "--dest",
+        str(store),
+    ]
     for k, v in extra.items():
         flag = k.replace("_", "-")
         if k in _BOOL_FLAGS:
@@ -88,8 +104,7 @@ class TestExportBasics:
         _lesson(str(store), "review_one", status="review")
         out_path = str(tmp_path / "out.jsonl")
 
-        main(["export", "--kind", "lessons", "--status", "active", "--out", out_path,
-              "--dest", str(store)])
+        main(["export", "--kind", "lessons", "--status", "active", "--out", out_path, "--dest", str(store)])
         rows = _read_jsonl(out_path)
         assert [r["name"] for r in rows] == ["active_one"]
 
@@ -98,8 +113,7 @@ class TestExportBasics:
         _lesson(str(store), "support_one", agent_type="support")
         out_path = str(tmp_path / "out.jsonl")
 
-        main(["export", "--kind", "lessons", "--agent-type", "support",
-              "--out", out_path, "--dest", str(store)])
+        main(["export", "--kind", "lessons", "--agent-type", "support", "--out", out_path, "--dest", str(store)])
         rows = _read_jsonl(out_path)
         assert [r["name"] for r in rows] == ["support_one"]
 
@@ -138,15 +152,20 @@ class TestExportBasics:
 
 class TestTraceRoundTrip:
     def test_an_exported_trace_reimports_cleanly_into_a_second_store(
-        self, store, tmp_path,
+        self,
+        store,
+        tmp_path,
     ):
-        _capture(store, "Password reset email never arrived",
-                 context="Customer reported a missing reset email.",
-                 solution="Removed the address from the suppression list.",
-                 tags="email,password-reset", resolved="true")
+        _capture(
+            store,
+            "Password reset email never arrived",
+            context="Customer reported a missing reset email.",
+            solution="Removed the address from the suppression list.",
+            tags="email,password-reset",
+            resolved="true",
+        )
         out_path = str(tmp_path / "out.jsonl")
-        assert main(["export", "--kind", "traces", "--out", out_path,
-                     "--dest", str(store)]) == 0
+        assert main(["export", "--kind", "traces", "--out", out_path, "--dest", str(store)]) == 0
 
         second_store = str(tmp_path / "second")
         assert main(["init", "--agent-type", "code", "--dest", second_store]) == 0
@@ -154,7 +173,8 @@ class TestTraceRoundTrip:
         assert rc == 0
 
         imported = sorted(
-            p for p in glob.glob(os.path.join(paths.traces_dir(second_store), "*.md"))
+            p
+            for p in glob.glob(os.path.join(paths.traces_dir(second_store), "*.md"))
             if os.path.basename(p) != "README.md"
         )
         assert len(imported) == 1
@@ -167,7 +187,10 @@ class TestTraceRoundTrip:
         assert inst["outcome"]["resolved"] is True
 
     def test_a_lesson_row_in_a_mixed_export_is_skipped_not_crashed_on_reimport(
-        self, store, tmp_path, capsys,
+        self,
+        store,
+        tmp_path,
+        capsys,
     ):
         _lesson(str(store), "a")
         _capture(store, "a real trace")
@@ -180,7 +203,8 @@ class TestTraceRoundTrip:
         rc = main(["import", out_path, "--agent-type", "code", "--dest", second_store])
         assert rc == 0
         imported = [
-            p for p in glob.glob(os.path.join(paths.traces_dir(second_store), "*.md"))
+            p
+            for p in glob.glob(os.path.join(paths.traces_dir(second_store), "*.md"))
             if os.path.basename(p) != "README.md"
         ]
         assert len(imported) == 1

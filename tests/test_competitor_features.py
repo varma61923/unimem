@@ -11,6 +11,7 @@ Covers, in one place:
    archival_memory_insert, archival_memory_search, conversation_search.
 6. block CLI: insert / render / --read-only wiring.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +33,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -45,6 +49,7 @@ def store(tmp_path):
 
 
 # --- 1. memory_blocks -------------------------------------------------------
+
 
 class TestReadOnly:
     def test_set_read_only_then_mutations_refuse(self, store):
@@ -84,12 +89,9 @@ class TestLineOccurrenceFeedback:
 class TestLineInsertion:
     def test_insert_positions(self, store):
         memory_blocks.set_block(store, "b", "one\ntwo\nthree")
-        assert memory_blocks.insert_block(
-            store, "b", "zero", line_number=0).content == "zero\none\ntwo\nthree"
-        assert memory_blocks.insert_block(
-            store, "b", "after-one", line_number=2).content.split("\n")[2] == "after-one"
-        assert memory_blocks.insert_block(
-            store, "b", "last", line_number=-1).content.endswith("last")
+        assert memory_blocks.insert_block(store, "b", "zero", line_number=0).content == "zero\none\ntwo\nthree"
+        assert memory_blocks.insert_block(store, "b", "after-one", line_number=2).content.split("\n")[2] == "after-one"
+        assert memory_blocks.insert_block(store, "b", "last", line_number=-1).content.endswith("last")
 
     def test_insert_out_of_range(self, store):
         memory_blocks.set_block(store, "b", "one")
@@ -130,10 +132,10 @@ class TestRenderXML:
 
 # --- 2. redact_pii ------------------------------------------------------------
 
+
 class TestRedactPII:
     def test_email_phone_ssn_masked(self):
-        masked, found = memory_guard.redact_pii(
-            "mail bob@example.com, call 415-555-1234, ssn 123-45-6789")
+        masked, found = memory_guard.redact_pii("mail bob@example.com, call 415-555-1234, ssn 123-45-6789")
         assert "bob@example.com" not in masked
         assert "415-555-1234" not in masked
         assert "123-45-6789" not in masked
@@ -152,11 +154,11 @@ class TestRedactPII:
 
 # --- 3. conversation store: PII + MD5 dedup ------------------------------------
 
+
 class TestStorePIIAndDedup:
     def test_pii_masked_on_write(self, tmp_path):
         st = Store(str(tmp_path), "p")
-        out = st.add("s", [{"role": "user",
-                            "text": "reach me at ana@example.com"}])
+        out = st.add("s", [{"role": "user", "text": "reach me at ana@example.com"}])
         assert out["secrets_redacted"] >= 1
         (turn,) = st.turns([1]).values()
         assert "ana@example.com" not in turn.text
@@ -169,16 +171,14 @@ class TestStorePIIAndDedup:
     def test_add_memories_md5_dedup(self, tmp_path):
         st = Store(str(tmp_path), "m")
         st.add("s", [{"role": "user", "text": "hi"}])
-        assert st.add_memories("s", [{"text": "User likes coffee",
-                                      "kind": "preference"}], source="t") == 1
+        assert st.add_memories("s", [{"text": "User likes coffee", "kind": "preference"}], source="t") == 1
         # same fact, different casing/spacing -> deduped
-        assert st.add_memories("s", [{"text": "user likes COFFEE ",
-                                      "kind": "preference"}], source="t") == 0
-        assert st.add_memories("s", [{"text": "User likes tea",
-                                      "kind": "preference"}], source="t") == 1
+        assert st.add_memories("s", [{"text": "user likes COFFEE ", "kind": "preference"}], source="t") == 0
+        assert st.add_memories("s", [{"text": "User likes tea", "kind": "preference"}], source="t") == 1
 
 
 # --- 4. conversation search -----------------------------------------------------
+
 
 class TestSigmoidBM25:
     def test_range_and_monotonic(self):
@@ -208,8 +208,9 @@ class TestAntiRecursion:
         st = Store(str(tmp_path), "r")
         st.add("s", [{"role": "user", "text": "Biscuit loves peanut butter"}])
         st.add("s", [{"role": "user", "text": "What does Biscuit love?"}])
-        rec = csearch.recall(st, "What does Biscuit love?",
-                             options=csearch.Options(budget=500, embedder=None, rerank=None))
+        rec = csearch.recall(
+            st, "What does Biscuit love?", options=csearch.Options(budget=500, embedder=None, rerank=None)
+        )
         assert rec.explain.get("self_filtered") == 1
         assert "What does Biscuit love?" not in rec.context
 
@@ -218,24 +219,29 @@ class TestRelativeDeltas:
     def test_buckets(self):
         base = dt.datetime(2023, 5, 13, 12, 0, 0)
         assert csearch.relative_time_delta(base, base) == "0s ago"
-        assert csearch.relative_time_delta(
-            base - dt.timedelta(minutes=4), base) == "4m ago"
-        assert csearch.relative_time_delta(
-            base - dt.timedelta(hours=3), base) == "3h ago"
-        assert csearch.relative_time_delta(
-            base - dt.timedelta(days=5), base) == "5d ago"
+        assert csearch.relative_time_delta(base - dt.timedelta(minutes=4), base) == "4m ago"
+        assert csearch.relative_time_delta(base - dt.timedelta(hours=3), base) == "3h ago"
+        assert csearch.relative_time_delta(base - dt.timedelta(days=5), base) == "5d ago"
 
     def test_header_carries_delta(self, tmp_path):
         st = Store(str(tmp_path), "h")
-        st.add("s", [{"role": "user", "text": "Biscuit loves peanut butter",
-                      "at": "2023-05-08 10:00"}], session_at="2023-05-08")
-        rec = csearch.recall(st, "What does Biscuit love?", now="2023-05-13 10:00",
-                             options=csearch.Options(budget=500, embedder=None, rerank=None))
+        st.add(
+            "s",
+            [{"role": "user", "text": "Biscuit loves peanut butter", "at": "2023-05-08 10:00"}],
+            session_at="2023-05-08",
+        )
+        rec = csearch.recall(
+            st,
+            "What does Biscuit love?",
+            now="2023-05-13 10:00",
+            options=csearch.Options(budget=500, embedder=None, rerank=None),
+        )
         assert "(5d ago)" in rec.context
         assert "[s · Monday 8 May 2023, 10:00 (" in rec.context
 
 
 # --- 5. MCP agent tools ----------------------------------------------------------
+
 
 def _mcp_call(server, tool, **kw):
     res = asyncio.run(server.call_tool(tool, kw))
@@ -247,48 +253,45 @@ def _mcp_call(server, tool, **kw):
 def mcp_server(store):
     pytest.importorskip("mcp")
     from unimem import mcp_server as mcp_mod
+
     return mcp_mod.build_server(store)
 
 
 class TestCoreMemoryTools:
     def test_append_and_replace(self, mcp_server):
-        out = _mcp_call(mcp_server, "core_memory_append", name="persona",
-                        content="You are concise.")
+        out = _mcp_call(mcp_server, "core_memory_append", name="persona", content="You are concise.")
         assert out["ok"] and out["block"]["content"] == "You are concise."
-        out = _mcp_call(mcp_server, "core_memory_replace", name="persona",
-                        old_content="concise", new_content="brief")
+        out = _mcp_call(mcp_server, "core_memory_replace", name="persona", old_content="concise", new_content="brief")
         assert out["ok"] and out["block"]["content"] == "You are brief."
 
     def test_replace_ambiguous_errors(self, mcp_server):
         _mcp_call(mcp_server, "core_memory_append", name="p", content="x")
         _mcp_call(mcp_server, "core_memory_append", name="p", content="x")
-        out = _mcp_call(mcp_server, "core_memory_replace", name="p",
-                        old_content="x", new_content="y")
+        out = _mcp_call(mcp_server, "core_memory_replace", name="p", old_content="x", new_content="y")
         assert out["ok"] is False
 
     def test_insert_mode_on_update(self, mcp_server):
-        out = _mcp_call(mcp_server, "memory_block_update", name="n",
-                        content="top", mode="insert", line_number=0)
+        out = _mcp_call(mcp_server, "memory_block_update", name="n", content="top", mode="insert", line_number=0)
         assert out["ok"] and out["block"]["content"] == "top"
 
 
 class TestArchivalMemoryTools:
     def test_insert_search_roundtrip(self, mcp_server):
-        ins = _mcp_call(mcp_server, "archival_memory_insert",
-                        content="Refunds over 50 need approval", category="constraint")
+        ins = _mcp_call(
+            mcp_server, "archival_memory_insert", content="Refunds over 50 need approval", category="constraint"
+        )
         assert ins["ok"] and ins["action"] == "ADD"
         # reinforcing insert is a NOOP, not a duplicate
-        again = _mcp_call(mcp_server, "archival_memory_insert",
-                          content="Refunds over 50 need approval", category="constraint")
+        again = _mcp_call(
+            mcp_server, "archival_memory_insert", content="Refunds over 50 need approval", category="constraint"
+        )
         assert again["ok"] and again["action"] != "ADD"
         got = _mcp_call(mcp_server, "archival_memory_search", query="refund approval")
         assert got["ok"] and got["count"] == 1
 
     def test_search_limit_clamped(self, mcp_server):
-        assert _mcp_call(mcp_server, "archival_memory_search",
-                         query="x", limit=500)["ok"] is True
-        assert _mcp_call(mcp_server, "archival_memory_search",
-                         query="x", limit="bad")["ok"] is False
+        assert _mcp_call(mcp_server, "archival_memory_search", query="x", limit=500)["ok"] is True
+        assert _mcp_call(mcp_server, "archival_memory_search", query="x", limit="bad")["ok"] is False
 
 
 class TestConversationSearchTool:
@@ -297,20 +300,19 @@ class TestConversationSearchTool:
             st.add("s1", [{"role": "user", "text": "Biscuit loves peanut butter"}])
         with Store(store, "u2") as st:
             st.add("s1", [{"role": "user", "text": "Whiskers naps at noon"}])
-        out = _mcp_call(mcp_server, "conversation_search",
-                        question="What does Biscuit love?")
+        out = _mcp_call(mcp_server, "conversation_search", question="What does Biscuit love?")
         assert out["ok"] and "u1" in out["spaces"]
         assert "peanut butter" in out["context"]
 
     def test_search_single_space(self, mcp_server, store):
         with Store(store, "solo") as st:
             st.add("s1", [{"role": "user", "text": "Biscuit loves peanut butter"}])
-        out = _mcp_call(mcp_server, "conversation_search",
-                        question="Biscuit", space="solo")
+        out = _mcp_call(mcp_server, "conversation_search", question="Biscuit", space="solo")
         assert out["ok"] and out["spaces"] == ["solo"]
 
 
 # --- 6. block CLI wiring -----------------------------------------------------------
+
 
 class TestBlockCLI:
     def test_insert_render_readonly(self, store):
@@ -319,13 +321,13 @@ class TestBlockCLI:
         assert res.returncode == 0 and "Inserted into block" in res.stdout
         res = cli("block", "render", "--dest", store)
         assert res.returncode == 0 and "<memory_blocks>" in res.stdout
-        assert cli("block", "set", "locked", "x", "--dest", store,
-                   "--read-only").returncode == 0
+        assert cli("block", "set", "locked", "x", "--dest", store, "--read-only").returncode == 0
         res = cli("block", "append", "locked", "y", "--dest", store)
         assert res.returncode == 1 and "read-only" in res.stderr
 
 
 # --- 7. retry helper (zep call_with_retries port) --------------------------------
+
 
 class TestRetry:
     def test_success_no_sleep(self):
@@ -370,10 +372,8 @@ class TestRetry:
         def always_500():
             raise urllib.error.HTTPError("http://x", 503, "down", {}, None)
 
-        _, err_idem = call_with_retries(always_500, max_retries=3,
-                                        idempotent=True, sleep=lambda s: None)
-        _, err_once = call_with_retries(always_500, max_retries=3,
-                                        idempotent=False, sleep=lambda s: None)
+        _, err_idem = call_with_retries(always_500, max_retries=3, idempotent=True, sleep=lambda s: None)
+        _, err_once = call_with_retries(always_500, max_retries=3, idempotent=False, sleep=lambda s: None)
         assert getattr(err_idem, "code", None) == 503
         assert getattr(err_once, "code", None) == 503
 
@@ -395,9 +395,14 @@ class TestRetry:
         attempts = {"n": 0}
 
         class FakeResp:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self, _limit=-1): return json_mod.dumps({"content": []}).encode()
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self, _limit=-1):
+                return json_mod.dumps({"content": []}).encode()
 
         def fake_urlopen(request, timeout=None):
             attempts["n"] += 1
@@ -405,8 +410,9 @@ class TestRetry:
                 raise urllib.error.HTTPError(request.full_url, 503, "down", {}, io.BytesIO(b"busy"))
             return FakeResp()
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type(
-            "Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         monkeypatch.setattr("time.sleep", lambda s: None)
         out = llm._post_json("https://api.example.com/v1/x", {}, {"a": 1})
         assert out == {"content": []} and attempts["n"] == 3
@@ -424,8 +430,9 @@ class TestRetry:
             attempts["n"] += 1
             raise urllib.error.HTTPError(request.full_url, 400, "bad", {}, io.BytesIO(b"nope"))
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type(
-            "Opener", (), {"open": staticmethod(fake_urlopen)})())
+        monkeypatch.setattr(
+            urllib.request, "build_opener", lambda *_args: type("Opener", (), {"open": staticmethod(fake_urlopen)})()
+        )
         with pytest.raises(llm.LLMUnavailable, match="HTTP 400"):
             llm._post_json("https://api.example.com/v1/x", {}, {"a": 1})
         assert attempts["n"] == 1
@@ -438,17 +445,26 @@ class TestRetry:
         from unimem import llm
 
         class FakeResp:
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
-            def read(self, _limit=-1): return json_mod.dumps(reply).encode()
+            def __enter__(self):
+                return self
 
-        monkeypatch.setattr(urllib.request, "build_opener", lambda *_args: type(
-            "Opener", (), {"open": staticmethod(lambda request, timeout=None: FakeResp())})())
+            def __exit__(self, *a):
+                return False
+
+            def read(self, _limit=-1):
+                return json_mod.dumps(reply).encode()
+
+        monkeypatch.setattr(
+            urllib.request,
+            "build_opener",
+            lambda *_args: type("Opener", (), {"open": staticmethod(lambda request, timeout=None: FakeResp())})(),
+        )
         with pytest.raises(llm.LLMUnavailable, match="not an object"):
             llm._post_json("https://api.example.com/v1/x", {}, {"a": 1})
 
 
 # --- 8. batched entity lookup / dedup snapshot / gates ----------------------------
+
 
 class TestBatchedEntityTurns:
     def test_speaker_and_mention_and_unknown(self, tmp_path):
@@ -466,15 +482,18 @@ class TestAddMemoriesSnapshot:
     def test_intra_batch_dupes_and_case_variants(self, tmp_path):
         st = Store(str(tmp_path), "d")
         st.add("s", [{"role": "user", "text": "hi"}])
-        added = st.add_memories("s", [
-            {"text": "User likes coffee", "kind": "preference"},
-            {"text": "user likes COFFEE", "kind": "preference"},
-            {"text": "User likes coffee!", "kind": "preference"},
-            {"text": "User likes tea", "kind": "preference"},
-        ], source="t")
+        added = st.add_memories(
+            "s",
+            [
+                {"text": "User likes coffee", "kind": "preference"},
+                {"text": "user likes COFFEE", "kind": "preference"},
+                {"text": "User likes coffee!", "kind": "preference"},
+                {"text": "User likes tea", "kind": "preference"},
+            ],
+            source="t",
+        )
         assert added == 2
-        assert st.add_memories("s", [{"text": "USER LIKES TEA", "kind": "preference"}],
-                               source="t") == 0
+        assert st.add_memories("s", [{"text": "USER LIKES TEA", "kind": "preference"}], source="t") == 0
 
 
 class TestApprovalGate:
@@ -529,14 +548,14 @@ class TestCallToolCompat:
 
 # --- 13. TTL expiry enforcement ------------------------------------------------------
 
+
 class TestExpiryEnforcement:
     def test_expired_hidden_by_default(self, store):
         from unimem import hierarchical
 
         hierarchical.add_fact(store, "Old API key works", expires_at="2020-01-01")
         hierarchical.add_fact(store, "New API key works")
-        assert [f.statement for f, _ in hierarchical.search_facts(store, "API key works")] == [
-            "New API key works"]
+        assert [f.statement for f, _ in hierarchical.search_facts(store, "API key works")] == ["New API key works"]
         assert len(hierarchical.search_facts(store, "API key works", show_expired=True)) == 2
         assert len(hierarchical.list_facts(store)) == 1
         assert len(hierarchical.list_facts(store, show_expired=True)) == 2
@@ -553,6 +572,7 @@ class TestExpiryEnforcement:
 
 # --- 14. contradiction resolution ------------------------------------------------------
 
+
 class TestFactCompatibilityAndHistory:
     def test_legacy_rows_are_backfilled_instead_of_dropped(self, store):
         from unimem import hierarchical
@@ -560,11 +580,19 @@ class TestFactCompatibilityAndHistory:
         path = os.path.join(store, "memory", "facts", "facts.jsonl")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "id": "legacy-1", "statement": "Legacy deployment rule",
-                "category": "general", "scopes": [], "confidence": 0.8,
-                "confirmations": 1,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "id": "legacy-1",
+                        "statement": "Legacy deployment rule",
+                        "category": "general",
+                        "scopes": [],
+                        "confidence": 0.8,
+                        "confirmations": 1,
+                    }
+                )
+                + "\n"
+            )
         facts = hierarchical.load_facts(store)
         assert facts["legacy-1"].valid_from
         assert hierarchical.search_facts(store, "legacy deployment")
@@ -607,8 +635,7 @@ class TestResolveContradiction:
     def test_disjoint_windows_refused(self, store):
         from unimem import hierarchical
 
-        a, _ = hierarchical.add_fact(store, "X is red", valid_from="2020-01-01",
-                                     valid_until="2020-06-01")
+        a, _ = hierarchical.add_fact(store, "X is red", valid_from="2020-01-01", valid_until="2020-06-01")
         b, _ = hierarchical.add_fact(store, "X is blue", valid_from="2021-01-01")
         with pytest.raises(ValueError, match="different windows"):
             hierarchical.resolve_contradiction(store, a.id, b.id)
@@ -624,6 +651,7 @@ class TestResolveContradiction:
 
 # --- 15. scope immutability --------------------------------------------------------------
 
+
 class TestScopeImmutability:
     def test_update_scopes_refused(self, store):
         from unimem import hierarchical
@@ -638,6 +666,7 @@ class TestScopeImmutability:
 
 # --- 16. interop fidelity ------------------------------------------------------------------
 
+
 class TestInteropFidelity:
     def test_mem0_expiration_survives(self, store):
         from unimem import hierarchical, interop
@@ -650,9 +679,14 @@ class TestInteropFidelity:
     def test_mem0_recorded_timestamp_survives_fact_import(self, store):
         from unimem import hierarchical, interop
 
-        recs = interop.import_mem0_dump([{
-            "memory": "A dated fact", "created_at": "2022-02-03T04:05:06Z",
-        }])
+        recs = interop.import_mem0_dump(
+            [
+                {
+                    "memory": "A dated fact",
+                    "created_at": "2022-02-03T04:05:06Z",
+                }
+            ]
+        )
         assert interop.apply_store(store, recs)["fact"] == 1
         fact = next(iter(hierarchical.load_facts(store).values()))
         assert fact.created_at.startswith("2022-02-03T04:05:06")
@@ -661,7 +695,8 @@ class TestInteropFidelity:
         from unimem import interop
 
         recs = interop.import_zep_episodes(
-            [{"content": "Friday rule", "valid_at": "2024-01-01", "invalid_at": "2024-06-01"}])
+            [{"content": "Friday rule", "valid_at": "2024-01-01", "invalid_at": "2024-06-01"}]
+        )
         fm = recs[0]["data"]["frontmatter"]
         assert fm["valid_from"] == "2024-01-01" and fm["valid_until"] == "2024-06-01"
 
@@ -669,14 +704,18 @@ class TestInteropFidelity:
         from unimem import interop
 
         recs = interop.import_letta_blocks(
-            {"blocks": [{"label": "persona", "value": "Be brief"}],
-             "passages": [{"text": "User likes tea", "id": "p1"}]})
+            {
+                "blocks": [{"label": "persona", "value": "Be brief"}],
+                "passages": [{"text": "User likes tea", "id": "p1"}],
+            }
+        )
         assert sorted(r["kind"] for r in recs) == ["block", "fact"]
         counts = interop.apply_store(store, recs)
         assert counts == {**counts, "block": 1, "fact": 1}
 
 
 # --- 17. ontology CLI --------------------------------------------------------------------------
+
 
 class TestOntologyCLI:
     def test_show_and_set_starter(self, store):
@@ -699,6 +738,7 @@ class TestSigmoidHome:
 
 
 # --- 9. bounded fan-out (graphiti semaphore_gather port) --------------------------
+
 
 class TestBoundedMap:
     def test_order_empty_single(self):
@@ -728,6 +768,7 @@ class TestBoundedMap:
 
 
 # --- 10. SQLite LLM cache (graphiti LLMCache port) ---------------------------------
+
 
 class TestLLMCache:
     def test_roundtrip_miss_and_corrupt(self, tmp_path):
@@ -771,14 +812,14 @@ class TestLLMCache:
 
 # --- 11. top-1 floor / pragmas / recall cache ---------------------------------------
 
+
 class TestTopOneFloor:
     def test_tiny_budget_still_returns_hit(self, tmp_path):
         from unimem.conversation.search import Options, recall
 
         st = Store(str(tmp_path), "f")
         st.add("s", [{"role": "user", "text": "Biscuit the beagle loves peanut butter"}])
-        rec = recall(st, "Biscuit peanut butter",
-                     options=Options(budget=10, embedder=None, rerank=None))
+        rec = recall(st, "Biscuit peanut butter", options=Options(budget=10, embedder=None, rerank=None))
         assert rec.turns and "peanut butter" in rec.context
 
 
@@ -814,12 +855,12 @@ class TestRecallCache:
 
 # --- 12. fact token memo + retrieval hoist ------------------------------------------
 
+
 class TestFactTokenMemo:
     def test_memo_consistent_and_keyed_by_revision(self, store):
         from unimem import hierarchical
 
-        fact, action = hierarchical.add_fact(store, statement="Refunds over 50 need approval",
-                                             category="constraint")
+        fact, action = hierarchical.add_fact(store, statement="Refunds over 50 need approval", category="constraint")
         assert action == "ADD"
         first = hierarchical.search_facts(store, query="refund approval")
         second = hierarchical.search_facts(store, query="refund approval")
@@ -835,6 +876,7 @@ class TestFactTokenMemo:
 
 
 # --- 13. Ingest Lifecycle & Document Catalog -----------------------------------------
+
 
 class TestIngestLifecycleAndCatalog:
     def test_job_lifecycle_transitions(self, store):
@@ -909,6 +951,7 @@ class TestIngestLifecycleAndCatalog:
 
 # --- 14. Sagas: Ordered Incident / Migration Narratives ------------------------------
 
+
 class TestSagasNarratives:
     def test_saga_lifecycle_and_events(self, store):
         from unimem import sagas
@@ -956,7 +999,8 @@ class TestSagasNarratives:
 
         sagas.create_saga(store, "migration-pg", "Postgres 16 Migration")
         sagas.update_running_brief(
-            store, "migration-pg",
+            store,
+            "migration-pg",
             brief="Schemas migrated, replication lagging by 4s",
             watermark="step-3-schema-done",
         )
@@ -983,22 +1027,30 @@ class TestSagasNarratives:
 
 # --- 15. Knowledge Pages with Dry-Run Diffs -----------------------------------------
 
+
 class TestKnowledgePagesCurated:
     def test_create_and_dry_run_diff(self, store):
         from unimem import knowledge_pages
 
         content_v1 = "# Auth Flow\n\n1. User enters credentials\n2. Gateway issues JWT"
         res_v1 = knowledge_pages.update_page(
-            store, "architecture/auth", content_v1,
-            title="Authentication Architecture", tags=["auth", "security"],
+            store,
+            "architecture/auth",
+            content_v1,
+            title="Authentication Architecture",
+            tags=["auth", "security"],
         )
         assert res_v1["version"] == 1
         assert res_v1["dry_run"] is False
 
         # Dry run diff
-        content_v2 = "# Auth Flow\n\n1. User enters credentials\n2. Gateway issues OAuth token\n3. Refresh token rotated"
+        content_v2 = (
+            "# Auth Flow\n\n1. User enters credentials\n2. Gateway issues OAuth token\n3. Refresh token rotated"
+        )
         preview = knowledge_pages.update_page(
-            store, "architecture/auth", content_v2,
+            store,
+            "architecture/auth",
+            content_v2,
             dry_run=True,
         )
         assert preview["dry_run"] is True
@@ -1020,12 +1072,19 @@ class TestKnowledgePagesCurated:
         # Conflicting version must fail
         with pytest.raises(knowledge_pages.VersionConflictError):
             knowledge_pages.update_page(
-                store, "runbook/restart", "Conflicting edit", expected_version=99,
+                store,
+                "runbook/restart",
+                "Conflicting edit",
+                expected_version=99,
             )
 
         # Successful update
         knowledge_pages.update_page(
-            store, "runbook/restart", "Updated step 1", expected_version=1, comment="Add step 1 details",
+            store,
+            "runbook/restart",
+            "Updated step 1",
+            expected_version=1,
+            comment="Add step 1 details",
         )
         page = knowledge_pages.get_page(store, "runbook/restart")
         assert page.version == 2
@@ -1038,13 +1097,18 @@ class TestKnowledgePagesCurated:
 
 # --- 16. Session Ledger: Per-Session Cost & Model Attribution ------------------------
 
+
 class TestSessionLedgerAttribution:
     def test_record_usage_and_cost_estimation(self, store):
         from unimem import session_ledger
 
         entry1 = session_ledger.record_usage(
-            store, session_id="sess_123", model="gpt-4o",
-            prompt_tokens=1000, completion_tokens=200, occasion="answer",
+            store,
+            session_id="sess_123",
+            model="gpt-4o",
+            prompt_tokens=1000,
+            completion_tokens=200,
+            occasion="answer",
         )
         assert entry1.prompt_tokens == 1000
         assert entry1.completion_tokens == 200
@@ -1053,8 +1117,12 @@ class TestSessionLedgerAttribution:
         assert round(entry1.cost_usd, 4) == 0.0045
 
         entry2 = session_ledger.record_usage(
-            store, session_id="sess_123", model="claude-sonnet-5",
-            prompt_tokens=2000, completion_tokens=500, occasion="recall",
+            store,
+            session_id="sess_123",
+            model="claude-sonnet-5",
+            prompt_tokens=2000,
+            completion_tokens=500,
+            occasion="recall",
         )
         assert entry2.cost_usd > 0
 
@@ -1091,12 +1159,15 @@ class TestSessionLedgerAttribution:
 
 # --- 17. MCP Competitor Tools Integration --------------------------------------------
 
+
 class TestMCPCompetitorTools:
     def test_mcp_sagas_pages_ledger_and_catalog(self, mcp_server, store):
         server = mcp_server
 
         # 1. Saga tools
-        res_saga = _mcp_call(server, "saga_create",
+        res_saga = _mcp_call(
+            server,
+            "saga_create",
             saga_id="mcp-test-saga",
             title="MCP Test Incident",
             tags=["test", "mcp"],
@@ -1105,7 +1176,9 @@ class TestMCPCompetitorTools:
         assert res_saga["ok"] is True
         assert res_saga["saga"]["id"] == "mcp-test-saga"
 
-        res_ev = _mcp_call(server, "saga_append_event",
+        res_ev = _mcp_call(
+            server,
+            "saga_append_event",
             saga_id="mcp-test-saga",
             title="Mitigation applied",
             description="Restarted service",
@@ -1114,7 +1187,9 @@ class TestMCPCompetitorTools:
         assert len(res_ev["saga"]["events"]) == 1
 
         # 2. Knowledge Page tools with dry-run
-        res_page = _mcp_call(server, "knowledge_page_update",
+        res_page = _mcp_call(
+            server,
+            "knowledge_page_update",
             slug="mcp/runbook",
             content="# Runbook\n\nStep 1: Check logs",
             title="MCP Runbook",
@@ -1122,7 +1197,9 @@ class TestMCPCompetitorTools:
         assert res_page["ok"] is True
         assert res_page["version"] == 1
 
-        res_diff = _mcp_call(server, "knowledge_page_update",
+        res_diff = _mcp_call(
+            server,
+            "knowledge_page_update",
             slug="mcp/runbook",
             content="# Runbook\n\nStep 1: Check logs\nStep 2: Restart pod",
             dry_run=True,
@@ -1132,7 +1209,9 @@ class TestMCPCompetitorTools:
         assert "+Step 2: Restart pod" in res_diff["diff"]
 
         # 3. Session Ledger tools
-        res_ledg = _mcp_call(server, "session_ledger_record",
+        res_ledg = _mcp_call(
+            server,
+            "session_ledger_record",
             session_id="mcp_session_1",
             model="gpt-4o",
             prompt_tokens=1500,
@@ -1142,7 +1221,9 @@ class TestMCPCompetitorTools:
         assert res_ledg["ok"] is True
         assert res_ledg["entry"]["total_tokens"] == 1800
 
-        res_sum = _mcp_call(server, "session_ledger_get",
+        res_sum = _mcp_call(
+            server,
+            "session_ledger_get",
             session_id="mcp_session_1",
         )
         assert res_sum["ok"] is True
@@ -1150,8 +1231,11 @@ class TestMCPCompetitorTools:
 
         # 4. Ingest Document Catalog tools
         from unimem.ingest import catalog
+
         catalog.record_document(
-            store, "/test/doc.md", "# Test Title\n\nDocument body for catalog test",
+            store,
+            "/test/doc.md",
+            "# Test Title\n\nDocument body for catalog test",
         )
 
         res_docs = _mcp_call(server, "ingest_documents_list")
@@ -1159,7 +1243,9 @@ class TestMCPCompetitorTools:
         assert res_docs["count"] >= 1
         assert "content" not in res_docs["documents"][0]  # Verify lightweight summary
 
-        res_get = _mcp_call(server, "ingest_document_get",
+        res_get = _mcp_call(
+            server,
+            "ingest_document_get",
             doc_id_or_path=res_docs["documents"][0]["id"],
         )
         assert res_get["ok"] is True
@@ -1167,6 +1253,7 @@ class TestMCPCompetitorTools:
 
 
 # --- 27. pluggable memory defense --------------------------------------------------------
+
 
 class TestMemoryDefense:
     def test_catalog_redaction(self):
@@ -1203,6 +1290,7 @@ class TestMemoryDefense:
 
 
 # --- 28. gateway hardening & transient auth ---------------------------------------------
+
 
 class TestGatewayHardening:
     def test_transient_classifier(self):
@@ -1250,6 +1338,7 @@ class TestGatewayHardening:
 
 # --- 29. procedural memory -------------------------------------------------------------
 
+
 class TestProceduralMemory:
     def test_create_and_budget_replay(self, store):
         from unimem import procedural
@@ -1277,6 +1366,7 @@ class TestProceduralMemory:
 
 
 # --- 30. guarded text-to-sql -----------------------------------------------------------
+
 
 class TestGuardedSql:
     def test_select_validation_and_clamp(self):
@@ -1310,6 +1400,7 @@ class TestGuardedSql:
 
 # --- 31. litellm wrapper ---------------------------------------------------------------
 
+
 class TestLiteLLMWrapper:
     def test_message_augmentation(self, store):
         from unimem import litellm_wrapper
@@ -1335,6 +1426,7 @@ class TestLiteLLMWrapper:
 
 
 # --- 32. benchmark adapters & dolphin judge --------------------------------------------
+
 
 class TestBenchmarkAdaptersAndJudges:
     def test_seeded_adapter_reproducibility(self):
@@ -1367,6 +1459,7 @@ class TestBenchmarkAdaptersAndJudges:
 
 # --- 33. typed hub session methods -----------------------------------------------------
 
+
 class TestTypedHubMethods:
     def test_typed_methods_exist_on_hub_session(self):
         from unimem.hub_client import HubSession
@@ -1392,20 +1485,20 @@ class TestTypedHubMethods:
 
 # --- 34. CLI subcommands with hyphens and aliases --------------------------------------
 
+
 class TestCliSubcommands:
     def test_cli_help_hyphen_and_underscore(self):
         from unimem import cli
 
         for cmd in [
-            "sql-query", "sql_query",
-            "session-ledger", "session_ledger",
-            "procedural", "defense",
+            "sql-query",
+            "sql_query",
+            "session-ledger",
+            "session_ledger",
+            "procedural",
+            "defense",
         ]:
             parser = cli.build_parser(cmd)
             assert parser is not None
             actions = [a.dest for a in parser._actions if hasattr(a, "dest")]
             assert "command" in actions
-
-
-
-

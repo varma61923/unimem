@@ -28,15 +28,18 @@ def test_ranking_permutation_preserves_scores_and_top_k_prefix(seeded_random, sc
     rng = seeded_random
     vocabulary = [f"term{i:03d}" for i in range(110)]
     corpus = [
-        (f"lesson_{i:03d}.md", {
-            "name": f"lesson_{i:03d}",
-            "description": " ".join(rng.sample(vocabulary, rng.randrange(8, 45))),
-            "tags": rng.sample(vocabulary, 3),
-            # Unique secondary keys make permutation invariance meaningful;
-            # exact ranking ties intentionally preserve source-corpus order.
-            "importance": i + 1,
-            "uses": i,
-        })
+        (
+            f"lesson_{i:03d}.md",
+            {
+                "name": f"lesson_{i:03d}",
+                "description": " ".join(rng.sample(vocabulary, rng.randrange(8, 45))),
+                "tags": rng.sample(vocabulary, 3),
+                # Unique secondary keys make permutation invariance meaningful;
+                # exact ranking ties intentionally preserve source-corpus order.
+                "importance": i + 1,
+                "uses": i,
+            },
+        )
         for i in range(50)
     ]
     for query_size in (1, 12, 90):
@@ -60,7 +63,7 @@ def test_ranking_permutation_preserves_scores_and_top_k_prefix(seeded_random, sc
 def test_holdout_nested_rates_order_independence_and_distribution(seeded_random):
     rng = seeded_random
     occasions = [f"occasion-{i}" for i in range(4000)]
-    rates = (.05, .1, .3, .5, .8, .95)
+    rates = (0.05, 0.1, 0.3, 0.5, 0.8, 0.95)
     previous = set()
     for rate in rates:
         assigned = {occasion for occasion in occasions if experiment.is_held_out("lesson", occasion, rate, "seeded")}
@@ -69,10 +72,12 @@ def test_holdout_nested_rates_order_independence_and_distribution(seeded_random)
         # a brittle requirement for exactly the expected binomial arm count.
         assert abs(len(assigned) - len(occasions) * rate) < 6 * math.sqrt(len(occasions) * rate * (1 - rate))
         rng.shuffle(occasions)
-        assert assigned == {occasion for occasion in occasions if experiment.is_held_out("lesson", occasion, rate, "seeded")}
+        assert assigned == {
+            occasion for occasion in occasions if experiment.is_held_out("lesson", occasion, rate, "seeded")
+        }
         previous = assigned
-    one = {o for o in occasions if experiment.is_held_out("lesson", o, .5, "one")}
-    two = {o for o in occasions if experiment.is_held_out("lesson", o, .5, "two")}
+    one = {o for o in occasions if experiment.is_held_out("lesson", o, 0.5, "one")}
+    two = {o for o in occasions if experiment.is_held_out("lesson", o, 0.5, "two")}
     assert 1700 < len(one ^ two) < 2300
 
 
@@ -90,24 +95,28 @@ def test_two_arm_statistics_obey_swap_and_complement_symmetries(seeded_random):
         assert low <= s1 / n1 - s2 / n2 <= high
         assert experiment.diff_confidence_interval(s2, n2, s1, n1) == pytest.approx((-high, -low))
         assert experiment.diff_confidence_interval(n1 - s1, n1, n2 - s2, n2) == pytest.approx((-high, -low))
-        narrow = experiment.anytime_confidence_interval(s1, n1, s2, n2, alpha=.1)
-        wide = experiment.anytime_confidence_interval(s1, n1, s2, n2, alpha=.01)
+        narrow = experiment.anytime_confidence_interval(s1, n1, s2, n2, alpha=0.1)
+        wide = experiment.anytime_confidence_interval(s1, n1, s2, n2, alpha=0.01)
         assert -1 <= wide[0] <= narrow[0] <= narrow[1] <= wide[1] <= 1
-        assert experiment.anytime_confidence_interval(s2, n2, s1, n1, alpha=.1) == pytest.approx((-narrow[1], -narrow[0]))
+        assert experiment.anytime_confidence_interval(s2, n2, s1, n1, alpha=0.1) == pytest.approx(
+            (-narrow[1], -narrow[0])
+        )
 
 
 def test_fdr_matches_adjusted_p_value_oracle_and_is_permutation_equivariant(seeded_random):
     rng = seeded_random
     for _ in range(30):
-        values = [rng.choice([rng.random(), rng.random() / 100, .05]) for _ in range(rng.randrange(1, 35))]
+        values = [rng.choice([rng.random(), rng.random() / 100, 0.05]) for _ in range(rng.randrange(1, 35))]
         # Independent O(n^2) adjusted-p oracle instead of the production
         # step-up implementation. It also exercises equal p-value groups.
         sorted_values = sorted(values)
         adjusted = []
         for p in values:
             rank = max(i + 1 for i, value in enumerate(sorted_values) if value == p)
-            adjusted.append(min(1.0, min(len(values) * Fraction(sorted_values[j - 1]) / j for j in range(rank, len(values) + 1))))
-        for alpha in (.01, .05, .1):
+            adjusted.append(
+                min(1.0, min(len(values) * Fraction(sorted_values[j - 1]) / j for j in range(rank, len(values) + 1)))
+            )
+        for alpha in (0.01, 0.05, 0.1):
             expected = [p <= alpha for p in adjusted]
             assert experiment.benjamini_hochberg(values, alpha) == expected
             order = list(range(len(values)))
@@ -145,7 +154,11 @@ def test_graph_cycles_and_multisource_hops_match_shortest_path_oracle(tmp_path, 
         assert result["hop_distances"] == {f"concept:{i}": distance for i, distance in distances.items()}
         assert {node["id"] for node in result["nodes"]} == set(result["hop_distances"])
         actual = [(edge["source"], edge["target"]) for edge in result["edges"]]
-        expected = {(f"concept:{a}", f"concept:{b}") for a, b in pairs if min(distances.get(a, math.inf), distances.get(b, math.inf)) < hops}
+        expected = {
+            (f"concept:{a}", f"concept:{b}")
+            for a, b in pairs
+            if min(distances.get(a, math.inf), distances.get(b, math.inf)) < hops
+        }
         assert set(actual) == expected
         assert len(actual) == len(set(actual))
 

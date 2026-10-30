@@ -220,14 +220,15 @@ class TestSearchTracesTenantIsolation:
 
             session.execute.return_value = result_mock
 
-            with patch("hub.crud._hydrate", new_callable=AsyncMock) as mock_hydrate, \
-                    patch("hub.crud._attach_evidence", new_callable=AsyncMock):
+            with (
+                patch("hub.crud._hydrate", new_callable=AsyncMock) as mock_hydrate,
+                patch("hub.crud._attach_evidence", new_callable=AsyncMock),
+            ):
                 mock_hydrate.return_value = []
                 await crud.search_traces(session, org_id=org_id)
 
             update_calls = [
-                call for call in session.execute.call_args_list
-                if len(call[0]) > 0 and isinstance(call[0][0], Update)
+                call for call in session.execute.call_args_list if len(call[0]) > 0 and isinstance(call[0][0], Update)
             ]
             assert len(update_calls) == 1, "Expected exactly one UPDATE statement execution"
             update_stmt = update_calls[0][0][0]
@@ -284,9 +285,11 @@ class TestAmendTraceProfileRetention:
             config = HubConfig("postgresql+asyncpg://localhost/test")
             limiter = make_rate_limiter(config)
 
-            with patch("hub.crud._plan_for", new_callable=AsyncMock) as mock_plan, \
-                 patch("hub.crud.validate_trace") as mock_validate_trace, \
-                 patch("hub.crud._hydrate_one", new_callable=AsyncMock) as mock_hydrate_one:
+            with (
+                patch("hub.crud._plan_for", new_callable=AsyncMock) as mock_plan,
+                patch("hub.crud.validate_trace") as mock_validate_trace,
+                patch("hub.crud._hydrate_one", new_callable=AsyncMock) as mock_hydrate_one,
+            ):
                 mock_plan.return_value = get(DEFAULT_PLAN)
                 mock_hydrate_one.return_value = {"id": str(uuid.uuid4())}
 
@@ -350,12 +353,14 @@ class TestHubAuthArgon2Remediation:
 
     def test_hub_auth_imports_without_crashing_when_argon2_missing(self):
         from hub import auth, crud, db
+
         assert auth is not None
         assert db is not None
         assert crud is not None
 
     def test_argon2_stubs_and_dummy_hash_presence(self):
         from hub import auth
+
         assert hasattr(auth, "InvalidHashError")
         assert issubclass(auth.InvalidHashError, ValueError)
         assert hasattr(auth, "VerifyMismatchError")
@@ -377,12 +382,14 @@ class TestHubAuthArgon2Remediation:
 
     def test_hash_argon2_raises_runtime_error_without_argon2(self):
         from hub import auth
+
         if not auth._has_argon2:
             with pytest.raises(RuntimeError, match="argon2-cffi is required"):
                 auth._hash_argon2("some-secret")
 
     def test_issue_api_key_raises_runtime_error_without_argon2(self):
         from hub import auth
+
         if not auth._has_argon2:
             session = AsyncMock()
             with pytest.raises(RuntimeError, match="argon2-cffi is required"):

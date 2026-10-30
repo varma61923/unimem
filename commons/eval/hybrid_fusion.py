@@ -1,4 +1,5 @@
 """Would fusing the two retrievers beat either one? Measured: no, not here."""
+
 from __future__ import annotations
 
 import json
@@ -19,11 +20,7 @@ PROBE_SETS = {  # bring your own probes
 
 MODEL_NAME = "multi-qa-mpnet-base-dot-v1"
 
-GRID = [
-    (k, w_lex, w_sem)
-    for k in (1, 2, 5, 10, 20, 60)
-    for w_lex, w_sem in ((1, 1), (1, 2), (1, 3), (2, 1), (1, 5))
-]
+GRID = [(k, w_lex, w_sem) for k in (1, 2, 5, 10, 20, 60) for w_lex, w_sem in ((1, 1), (1, 2), (1, 3), (2, 1), (1, 5))]
 
 
 def _load(p: Path) -> list[dict]:
@@ -32,13 +29,16 @@ def _load(p: Path) -> list[dict]:
 
 def as_lessons(corpus: list[dict]) -> list[tuple[str, dict]]:
     return [
-        (r["title"], {
-            "name": r["title"],
-            "description": r["title"],
-            "applies_when": r.get("context_text", ""),
-            "tags": r.get("tags") or [],
-            "domain": "",
-        })
+        (
+            r["title"],
+            {
+                "name": r["title"],
+                "description": r["title"],
+                "applies_when": r.get("context_text", ""),
+                "tags": r.get("tags") or [],
+                "domain": "",
+            },
+        )
         for r in corpus
     ]
 
@@ -67,21 +67,22 @@ def _rankings(model, corpus, probes, lessons):
 
     n = len(lessons)
     titles = [r["title"] for r in corpus]
-    doc_vecs = np.asarray(model.encode(
-        [f"{r['title']}. {r.get('context_text', '')}" for r in corpus],
-        normalize_embeddings=True, show_progress_bar=False,
-    ))
-    query_vecs = np.asarray(model.encode(
-        [_query(p) for p in probes], normalize_embeddings=True, show_progress_bar=False,
-    ))
-    lexical = [
-        [r.slug for r in retrieval.rank_lessons(_query(p), lessons, top_k=n)]
-        for p in probes
-    ]
-    semantic = [
-        [titles[j] for j in np.argsort(-(doc_vecs @ query_vecs[i]))]
-        for i in range(len(probes))
-    ]
+    doc_vecs = np.asarray(
+        model.encode(
+            [f"{r['title']}. {r.get('context_text', '')}" for r in corpus],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    )
+    query_vecs = np.asarray(
+        model.encode(
+            [_query(p) for p in probes],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    )
+    lexical = [[r.slug for r in retrieval.rank_lessons(_query(p), lessons, top_k=n)] for p in probes]
+    semantic = [[titles[j] for j in np.argsort(-(doc_vecs @ query_vecs[i]))] for i in range(len(probes))]
     return lexical, semantic
 
 
@@ -96,7 +97,9 @@ def _fused_recall_at_1(probes, lexical, semantic, config) -> tuple[float, int]:
     for i, p in enumerate(probes):
         fused = retrieval.reciprocal_rank_fusion(
             {"lexical": lexical[i], "semantic": semantic[i]},
-            k=k, top_k=1, weights={"lexical": w_lex, "semantic": w_sem},
+            k=k,
+            top_k=1,
+            weights={"lexical": w_lex, "semantic": w_sem},
         )
         if [doc for doc, _ in fused] == [p["target"]]:
             hits += 1
@@ -114,14 +117,10 @@ def main() -> int:
 
     folds = {}
     for name in PROBE_SETS:
-        probes = [
-            p for p in _load(PROBE_SETS[name])
-            if p["expect"] == "covered" and p["target"] in in_corpus
-        ]
+        probes = [p for p in _load(PROBE_SETS[name]) if p["expect"] == "covered" and p["target"] in in_corpus]
         folds[name] = (probes,) + _rankings(model, corpus, probes, lessons)
 
-    print(f"corpus {len(corpus)} records | "
-          + " | ".join(f"{n} {len(f[0])} positives" for n, f in folds.items()))
+    print(f"corpus {len(corpus)} records | " + " | ".join(f"{n} {len(f[0])} positives" for n, f in folds.items()))
     print()
     print("Rank-1 recall is the only discriminating measure here: @3 and @5 are")
     print("saturated at 98.9% (one missed probe) for every method tried.")
@@ -140,13 +139,14 @@ def main() -> int:
         best_single = max(lex_hits, sem_hits)
         net += fused_hits - best_single
 
-        print(f"tuned on {tune} -> k={best[0]} weights lex:sem = {best[1]}:{best[2]} "
-              f"({tuned_rate:.1%} there)")
+        print(f"tuned on {tune} -> k={best[0]} weights lex:sem = {best[1]}:{best[2]} ({tuned_rate:.1%} there)")
         print(f"  scored on HELD-OUT {test} (n={len(h_probes)}):")
         print(f"    lexical only    {lex_rate:>6.1%} ({lex_hits})")
         print(f"    semantic only   {sem_rate:>6.1%} ({sem_hits})")
-        print(f"    fusion          {fused_rate:>6.1%} ({fused_hits})   "
-              f"vs best single arm: {fused_hits - best_single:+d} probes")
+        print(
+            f"    fusion          {fused_rate:>6.1%} ({fused_hits})   "
+            f"vs best single arm: {fused_hits - best_single:+d} probes"
+        )
         print()
 
     print(f"NET across both folds: {net:+d} probes.")

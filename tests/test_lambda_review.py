@@ -8,10 +8,12 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def test_verdicts_are_counted_across_episodes():
-    review = bm.compute_lambda_review([
-        {"lambda_decisions": {"a": "ACCEPTED", "b": "REJECTED"}},
-        {"lambda_decisions": {"c": "needs refinement", "d": "Accepted"}},
-    ])
+    review = bm.compute_lambda_review(
+        [
+            {"lambda_decisions": {"a": "ACCEPTED", "b": "REJECTED"}},
+            {"lambda_decisions": {"c": "needs refinement", "d": "Accepted"}},
+        ]
+    )
     assert review["n_episodes"] == 2 and review["n_proposals"] == 4
     assert review["counts"] == {"ACCEPTED": 2, "REJECTED": 1, "NEEDS_REFINEMENT": 1, "OTHER": 0}
     assert review["acceptance_rate"] == 0.5
@@ -19,11 +21,13 @@ def test_verdicts_are_counted_across_episodes():
 
 
 def test_episodes_that_predate_the_field_are_skipped_not_counted_as_empty():
-    review = bm.compute_lambda_review([
-        {"lessons_validated_by_lambda": ["a"]},
-        {"lambda_decisions": {}},
-        {"lambda_decisions": {"x": "REJECTED"}},
-    ])
+    review = bm.compute_lambda_review(
+        [
+            {"lessons_validated_by_lambda": ["a"]},
+            {"lambda_decisions": {}},
+            {"lambda_decisions": {"x": "REJECTED"}},
+        ]
+    )
     assert review["n_episodes"] == 1 and review["acceptance_rate"] == 0.0
     assert bm.compute_lambda_review([{"lessons_validated_by_lambda": ["a"]}]) is None
 
@@ -37,23 +41,23 @@ def test_an_unrecognised_verdict_is_visible_not_dropped():
 
 def test_the_field_survives_the_fallback_parser():
     text = "lambda_decisions: {lesson_a: ACCEPTED, lesson_b: NEEDS_REFINEMENT}\n"
-    assert bm.parse_yaml_minimal(text)["lambda_decisions"] == {
-        "lesson_a": "ACCEPTED", "lesson_b": "NEEDS_REFINEMENT"}
+    assert bm.parse_yaml_minimal(text)["lambda_decisions"] == {"lesson_a": "ACCEPTED", "lesson_b": "NEEDS_REFINEMENT"}
     block = "lambda_decisions:\n  lesson_a: ACCEPTED\n  lesson_b: REJECTED\n"
-    assert bm.parse_yaml_minimal(block)["lambda_decisions"] == {
-        "lesson_a": "ACCEPTED", "lesson_b": "REJECTED"}
+    assert bm.parse_yaml_minimal(block)["lambda_decisions"] == {"lesson_a": "ACCEPTED", "lesson_b": "REJECTED"}
 
 
 def _minimal_report():
-    episodes = [{"name": "e", "lessons_proposed_by_omega": ["a", "b"],
-                 "lessons_validated_by_lambda": ["a"]}]
+    episodes = [{"name": "e", "lessons_proposed_by_omega": ["a", "b"], "lessons_validated_by_lambda": ["a"]}]
     return {
-        "schema_version": bm.SCHEMA_VERSION, "timestamp": "2026-01-01T00:00:00",
-        "n_episodes": 1, "n_lessons": 0,
+        "schema_version": bm.SCHEMA_VERSION,
+        "timestamp": "2026-01-01T00:00:00",
+        "n_episodes": 1,
+        "n_lessons": 0,
         "lesson_quality": {"value": 0.5, "n": 1},
         "implicit_retrieval": {"strict": None, "permissive": None, "n": 0},
         "transfer_gap": {"value": None, "n": 0, "untraceable": 0},
-        "episodes": episodes, "extras": bm.compute_extras(episodes, {}),
+        "episodes": episodes,
+        "extras": bm.compute_extras(episodes, {}),
         "operational_cost": bm.compute_operational_cost(),
         "semantic_duplicates": bm.compute_semantic_duplicates(),
         "freshness": {"value": None, "n": 0, "window_days": bm.FRESHNESS_WINDOW_DAYS},

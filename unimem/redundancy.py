@@ -42,10 +42,7 @@ def comparable_text(fm: dict, body: str = "") -> str:
 
 def token_set(text: str) -> frozenset[str]:
     """Content tokens of `text`, stopwords and one-character words removed."""
-    return frozenset(
-        w for w in _WORD_RE.findall((text or "").lower())
-        if w not in _STOPWORDS and len(w) > 1
-    )
+    return frozenset(w for w in _WORD_RE.findall((text or "").lower()) if w not in _STOPWORDS and len(w) > 1)
 
 
 def jaccard(a: Iterable[str], b: Iterable[str]) -> float:
@@ -147,21 +144,22 @@ def find_near_duplicates(
         bands, rows = _bands_for(threshold, num_perm)
         sigs = (
             [list(s) for s in signatures]
-            if signatures is not None and len(signatures) == len(labelled)
+            if signatures is not None
+            and len(signatures) == len(labelled)
             and all(len(s) == num_perm for s in signatures)
             else [minhash(text, num_perm=num_perm) for _, text in labelled]
         )
         buckets: dict[tuple[int, tuple[int, ...]], list[int]] = defaultdict(list)
         for index, signature in enumerate(sigs):
             for band in range(bands):
-                key = (band, tuple(signature[band * rows:(band + 1) * rows]))
+                key = (band, tuple(signature[band * rows : (band + 1) * rows]))
                 buckets[key].append(index)
         seen: set[tuple[int, int]] = set()
         for members in buckets.values():
             if len(members) < 2:
                 continue
             for pos, i in enumerate(members):
-                for j in members[pos + 1:]:
+                for j in members[pos + 1 :]:
                     seen.add((i, j) if i < j else (j, i))
         candidates = sorted(seen)
 

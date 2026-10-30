@@ -294,9 +294,11 @@ def test_fork_resets_locked_cache_and_abandoned_builds():
     try:
         # A bounded read prevents a regression from hanging the test worker.
         import select
+
         ready, _, _ = select.select([read_fd], [], [], 5)
         if not ready:
             import signal
+
             os.kill(pid, signal.SIGKILL)
         assert ready, "forked child inherited a cache lock"
         assert os.read(read_fd, 5) == b"ok"

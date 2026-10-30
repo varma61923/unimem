@@ -56,13 +56,19 @@ def test_boundary_similarity_threshold_epsilon(cli_runner: Callable[..., CLIResu
 
 
 def test_boundary_empty_fields_capture(cli_runner: Callable[..., CLIResult], isolated_store: Path) -> None:
-    res_title = cli_runner([
-        "capture",
-        "--title", "",
-        "--context", "context",
-        "--solution", "solution",
-        "--dest", str(isolated_store),
-    ])
+    res_title = cli_runner(
+        [
+            "capture",
+            "--title",
+            "",
+            "--context",
+            "context",
+            "--solution",
+            "solution",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res_title.exit_code == 1
     assert "refusing to write an invalid trace" in res_title.stderr
 
@@ -73,6 +79,7 @@ def test_boundary_sigint_simulation() -> None:
             raise KeyboardInterrupt()
 
     import argparse
+
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
     p = subparsers.add_parser("test_sigint")
@@ -123,15 +130,23 @@ def test_boundary_metrics_zero_accepted(
     cli_runner: Callable[..., CLIResult],
     isolated_store: Path,
 ) -> None:
-    res = cli_runner([
-        "capture",
-        "--title", "Zero Metric Trace",
-        "--context", "Problem context",
-        "--solution", "Solution context",
-        "--tokens-used", "0",
-        "--llm-calls", "0",
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Zero Metric Trace",
+            "--context",
+            "Problem context",
+            "--solution",
+            "Solution context",
+            "--tokens-used",
+            "0",
+            "--llm-calls",
+            "0",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code == 0
 
 
@@ -139,14 +154,21 @@ def test_boundary_negative_tokens_rejected(
     cli_runner: Callable[..., CLIResult],
     isolated_store: Path,
 ) -> None:
-    res = cli_runner([
-        "capture",
-        "--title", "Negative Tokens Trace",
-        "--context", "Problem",
-        "--solution", "Solution",
-        "--tokens-used", "-1",
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Negative Tokens Trace",
+            "--context",
+            "Problem",
+            "--solution",
+            "Solution",
+            "--tokens-used",
+            "-1",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code == 1
     assert "refusing to write an invalid trace" in res.stderr
 
@@ -217,12 +239,16 @@ def test_boundary_task_containing_flag_syntax_internally(
     cli_runner: Callable[..., CLIResult],
     isolated_store: Path,
 ) -> None:
-    res = cli_runner([
-        "query", "--lexical",
-        "--dest", str(isolated_store),
-        "--",
-        "find rules with --format=json and --dest=/tmp",
-    ])
+    res = cli_runner(
+        [
+            "query",
+            "--lexical",
+            "--dest",
+            str(isolated_store),
+            "--",
+            "find rules with --format=json and --dest=/tmp",
+        ]
+    )
     assert res.exit_code == 0
 
 

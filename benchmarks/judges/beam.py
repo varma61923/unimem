@@ -226,16 +226,19 @@ def _norm(s: str) -> str:
 
 
 # Upstream llm_equivalence system and user messages, byte for byte, joined into one prompt.
-_EQUIVALENCE_SYSTEM = ("\n            You are a binary classifier.\n"
-                       "            If the TWO snippets describe the SAME event/fact, reply **YES**\n"
-                       "            Otherwise reply **NO**. No extra words.\n"
-                       "            DO NOT provide any exaplanation.\n        ")
+_EQUIVALENCE_SYSTEM = (
+    "\n            You are a binary classifier.\n"
+    "            If the TWO snippets describe the SAME event/fact, reply **YES**\n"
+    "            Otherwise reply **NO**. No extra words.\n"
+    "            DO NOT provide any exaplanation.\n        "
+)
 _EQUIVALENCE_USER = "First snippet: {first} \n\n                       Second snippet: {second}\n                    "
 EQUIVALENCE_PROMPT = _EQUIVALENCE_SYSTEM + "\n\n" + _EQUIVALENCE_USER
 
 
-def llm_alignment(reference_list: list[str], system_list: list[str],
-                  equivalent: Callable[[str, str], bool]) -> dict[int, int]:
+def llm_alignment(
+    reference_list: list[str], system_list: list[str], equivalent: Callable[[str, str], bool]
+) -> dict[int, int]:
     """Upstream align_with_llm: each system item takes the first unused equivalent reference."""
     used: set[int] = set()
     alignment: dict[int, int] = {}
@@ -252,6 +255,7 @@ def llm_equivalence(complete_fn: Callable[[str], tuple[str, dict]]) -> Callable[
     def equivalent(first: str, second: str) -> bool:
         raw, _ = complete_fn(EQUIVALENCE_PROMPT.format(first=first, second=second))
         return "yes" in (raw or "").lower()
+
     return equivalent
 
 
@@ -266,7 +270,15 @@ def event_ordering_score(
     tau_norm, the value upstream's report aggregates for this ability.
     """
     if not reference_list:
-        return {"precision": 0.0, "recall": 0.0, "f1": 0.0, "tau_b": 0.0, "tau_norm": 0.0, "final_score": 0.0, "score": 0.0}
+        return {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tau_b": 0.0,
+            "tau_norm": 0.0,
+            "final_score": 0.0,
+            "score": 0.0,
+        }
 
     # Derive system_canon by aligning system items to reference items
     if alignment is not None:
@@ -363,11 +375,15 @@ def evaluate_rubric(
         else:
             from unimem import llm
 
-            cfg = llm.Config(
-                provider="openai-compatible",
-                model=model or DEFAULT_MODEL,
-                api_key=llm.load_config().api_key if hasattr(llm, "load_config") else "",
-            ) if model else None
+            cfg = (
+                llm.Config(
+                    provider="openai-compatible",
+                    model=model or DEFAULT_MODEL,
+                    api_key=llm.load_config().api_key if hasattr(llm, "load_config") else "",
+                )
+                if model
+                else None
+            )
             raw, _ = llm.complete(prompt, config=cfg)
 
         verdict = parse_verdict(raw)
@@ -460,15 +476,18 @@ def evaluate_ability(
     if ability_clean == "event_ordering":
         items = [rubric] if isinstance(rubric, str) else list(rubric)
         sys_items = _extract_ordered_items(response)
-        alignment = (llm_alignment(items, sys_items, llm_equivalence(complete_fn))
-                     if complete_fn is not None else None)
+        alignment = llm_alignment(items, sys_items, llm_equivalence(complete_fn)) if complete_fn is not None else None
         result = event_ordering_score(reference_list=items, system_list=sys_items, alignment=alignment)
         result["alignment"] = "llm" if complete_fn is not None else "string"
         return result
     elif ability_clean == "abstention":
-        return evaluate_abstention(rubric=rubric, response=response, question=question, complete_fn=complete_fn, model=model)
+        return evaluate_abstention(
+            rubric=rubric, response=response, question=question, complete_fn=complete_fn, model=model
+        )
     else:
-        return evaluate_rubric(rubric=rubric, response=response, question=question, complete_fn=complete_fn, model=model)
+        return evaluate_rubric(
+            rubric=rubric, response=response, question=question, complete_fn=complete_fn, model=model
+        )
 
 
 class BEAMJudge:
@@ -551,9 +570,7 @@ class BEAMJudge:
                 rubric_data = question["rubric"]
             else:
                 rubric_data = (
-                    question.get("ideal_response")
-                    or question.get("ideal_answer")
-                    or question.get("answer", "")
+                    question.get("ideal_response") or question.get("ideal_answer") or question.get("answer", "")
                 )
         else:
             q_text = str(question)

@@ -13,6 +13,7 @@ Small CPU models are slow and much weaker than hosted ones. Use this for
 air-gapped deployments and for reproducible local measurement, not as a
 stand-in for a frontier model's answer quality.
 """
+
 from __future__ import annotations
 
 import threading
@@ -39,13 +40,16 @@ def _load(model: str):
             import torch
             from transformers import AutoModelForCausalLM, AutoTokenizer
         except ImportError:
-            raise LLMUnavailable("UNIMEM_LLM_PROVIDER=local needs the optional transformers and torch "
-                                 "packages: pip install transformers torch") from None
+            raise LLMUnavailable(
+                "UNIMEM_LLM_PROVIDER=local needs the optional transformers and torch "
+                "packages: pip install transformers torch"
+            ) from None
         cached_only = offline.enabled()
         try:
             tokenizer = AutoTokenizer.from_pretrained(model, local_files_only=cached_only, revision=revision)
-            network = AutoModelForCausalLM.from_pretrained(model, local_files_only=cached_only, revision=revision,
-                                                           dtype=torch.float32)
+            network = AutoModelForCausalLM.from_pretrained(
+                model, local_files_only=cached_only, revision=revision, dtype=torch.float32
+            )
         except (OSError, ValueError) as exc:
             hint = " (offline mode loads only cached weights)" if cached_only else ""
             raise LLMUnavailable(f"local model {model!r} could not be loaded{hint}: {exc}") from None
@@ -56,8 +60,11 @@ def _load(model: str):
 
 def complete(config, prompt: str, *, max_new_tokens: int | None = None) -> tuple[str, dict]:
     """Greedy completion: (text, usage with exact input/output token counts)."""
-    limit = (int(_configuration_getenv("UNIMEM_LLM_MAX_TOKENS", str(DEFAULT_MAX_NEW_TOKENS)))
-             if max_new_tokens is None else max_new_tokens)
+    limit = (
+        int(_configuration_getenv("UNIMEM_LLM_MAX_TOKENS", str(DEFAULT_MAX_NEW_TOKENS)))
+        if max_new_tokens is None
+        else max_new_tokens
+    )
     if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
         raise ValueError("max_new_tokens must be positive")
     tokenizer, network, torch = _load(config.model)
@@ -69,9 +76,12 @@ def complete(config, prompt: str, *, max_new_tokens: int | None = None) -> tuple
     encoded = tokenizer(text, return_tensors="pt")
     input_tokens = int(encoded["input_ids"].shape[-1])
     with torch.inference_mode():
-        output = network.generate(**encoded, max_new_tokens=limit, do_sample=False,
-                                  pad_token_id=(tokenizer.pad_token_id if tokenizer.pad_token_id is not None
-                                                else tokenizer.eos_token_id))
+        output = network.generate(
+            **encoded,
+            max_new_tokens=limit,
+            do_sample=False,
+            pad_token_id=(tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id),
+        )
     generated = output[0][input_tokens:]
     answer = tokenizer.decode(generated, skip_special_tokens=True)
     return answer.strip(), {"input_tokens": input_tokens, "output_tokens": int(generated.shape[-1])}

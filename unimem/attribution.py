@@ -5,6 +5,7 @@ causal effects of a live robot action. Replay may use a digital twin. The caller
 must supply an isolated runner and explicitly attest the execution environment.
 Only the canonical holdout analysis may issue a causal release verdict.
 """
+
 from __future__ import annotations
 
 import math
@@ -15,7 +16,7 @@ from unimem import frontier_protocol as fp
 from unimem import transparency_log as log
 
 
-def sparse_fit(masks: Sequence[Sequence[bool]], outcomes: Sequence[float], *, penalty: float = .01) -> list[float]:
+def sparse_fit(masks: Sequence[Sequence[bool]], outcomes: Sequence[float], *, penalty: float = 0.01) -> list[float]:
     n = fp.count(len(masks), 4, 64)
     d = fp.count(len(masks[0]), 1, 32)
     fp.number(penalty, 0, 1)
@@ -29,7 +30,7 @@ def sparse_fit(masks: Sequence[Sequence[bool]], outcomes: Sequence[float], *, pe
     for _ in range(100):
         for j in range(d):
             column = xs[j]
-            variance = sum(x*x for x in column)
+            variance = sum(x * x for x in column)
             if variance == 0:
                 continue
             for i in range(n):
@@ -41,9 +42,19 @@ def sparse_fit(masks: Sequence[Sequence[bool]], outcomes: Sequence[float], *, pe
     return weights
 
 
-def diagnose(root: str, episode: str, memories: Sequence[str], runner: Callable[[tuple[str, ...]], float], *,
-             seed: int, budget_cents: int, cost_per_run_cents: int, ablations: int = 32,
-             sample_probability: float = .1, environment: str = "digital-twin") -> dict[str, Any]:
+def diagnose(
+    root: str,
+    episode: str,
+    memories: Sequence[str],
+    runner: Callable[[tuple[str, ...]], float],
+    *,
+    seed: int,
+    budget_cents: int,
+    cost_per_run_cents: int,
+    ablations: int = 32,
+    sample_probability: float = 0.1,
+    environment: str = "digital-twin",
+) -> dict[str, Any]:
     ids = tuple(dict.fromkeys(fp.text(x) for x in memories))
     fp.count(len(ids), 1, 32)
     fp.text(episode)
@@ -60,38 +71,56 @@ def diagnose(root: str, episode: str, memories: Sequence[str], runner: Callable[
     total = (ablations + 1) * cost_per_run_cents
     if total > budget_cents:
         raise ValueError("attribution replay exceeds the configured cost cap")
-    fp.append(root, "attribution-costs.jsonl", {"episode": episode, "reserved_cents": total,
-                                               "seed": seed, "environment": environment})
-    masks = [tuple(rng.random() < .5 for _ in ids) for _ in range(ablations)]
-    outcomes = [fp.number(runner(tuple(x for x, included in zip(ids, mask) if included)), 0, 1)
-                for mask in masks]
+    fp.append(
+        root,
+        "attribution-costs.jsonl",
+        {"episode": episode, "reserved_cents": total, "seed": seed, "environment": environment},
+    )
+    masks = [tuple(rng.random() < 0.5 for _ in ids) for _ in range(ablations)]
+    outcomes = [fp.number(runner(tuple(x for x, included in zip(ids, mask) if included)), 0, 1) for mask in masks]
     baseline = fp.number(runner(ids), 0, 1)
     coefficients = sparse_fit(masks, outcomes)
     regret = max(0, max(outcomes) - baseline)
-    body = {"episode": episode, "memories": list(ids), "attribution": dict(zip(ids, coefficients)),
-            "counterfactual_regret": regret, "poisoning_severity": regret,
-            "n": ablations, "cost_cents": total, "sampled": True,
-            "environment": environment, "seed": seed, "mask_digest": fp.digest(masks),
-            "step_scope": "episode summary; use separate step runners for step attribution",
-            "kind": "sparse counterfactual diagnostic; not a release certificate"}
+    body = {
+        "episode": episode,
+        "memories": list(ids),
+        "attribution": dict(zip(ids, coefficients)),
+        "counterfactual_regret": regret,
+        "poisoning_severity": regret,
+        "n": ablations,
+        "cost_cents": total,
+        "sampled": True,
+        "environment": environment,
+        "seed": seed,
+        "mask_digest": fp.digest(masks),
+        "step_scope": "episode summary; use separate step runners for step attribution",
+        "kind": "sparse counterfactual diagnostic; not a release certificate",
+    }
     signed = fp.append(root, "attribution-signals.jsonl", body)
     return {**body, "anchor": log.append(root, "counterfactual-attribution", signed)}
 
 
-def restore_audit(root: str, eviction: str, memories: Sequence[str], runner: Callable[[tuple[str, ...]], float],
-                  **options: Any) -> dict[str, Any]:
+def restore_audit(
+    root: str, eviction: str, memories: Sequence[str], runner: Callable[[tuple[str, ...]], float], **options: Any
+) -> dict[str, Any]:
     """Restore the evicted item only inside an isolated ablation replay."""
     result = diagnose(root, "restore:" + fp.text(eviction), [*memories, eviction], runner, **options)
-    return {**result, "restore_recommended": result.get("attribution", {}).get(eviction, 0) > .05}
+    return {**result, "restore_recommended": result.get("attribution", {}).get(eviction, 0) > 0.05}
 
 
 def gate_adjustment(root: str, memory: str) -> dict[str, Any]:
     """Bounded diagnostic input for operator review; cannot manufacture HELPS/HURTS."""
-    signals = [r["attribution"][memory] for r in fp.journal(root, "attribution-signals.jsonl")
-               if memory in r["attribution"]]
+    signals = [
+        r["attribution"][memory] for r in fp.journal(root, "attribution-signals.jsonl") if memory in r["attribution"]
+    ]
     estimate = sum(signals) / len(signals) if signals else 0
-    return {"memory": memory, "diagnostic_score": estimate, "n": len(signals),
-            "review_suggested": estimate < -.05, "automatic_causal_verdict": False}
+    return {
+        "memory": memory,
+        "diagnostic_score": estimate,
+        "n": len(signals),
+        "review_suggested": estimate < -0.05,
+        "automatic_causal_verdict": False,
+    }
 
 
 def writer_contributions(root: str, writers: Sequence[str]) -> dict[str, Any]:
@@ -101,5 +130,7 @@ def writer_contributions(root: str, writers: Sequence[str]) -> dict[str, Any]:
 
     store.operator()
     fp.count(len(writers), 1, 128)
-    return {"writers": [writer_holdout.reliability(root, fp.text(w)) for w in writers],
-            "classification": "randomized downstream contribution estimates; no semantic-truth guarantee"}
+    return {
+        "writers": [writer_holdout.reliability(root, fp.text(w)) for w in writers],
+        "classification": "randomized downstream contribution estimates; no semantic-truth guarantee",
+    }

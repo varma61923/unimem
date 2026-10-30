@@ -36,9 +36,7 @@ def test_without_a_config_the_limiter_is_in_memory():
 
 
 @pytest.mark.asyncio
-async def test_build_app_puts_every_named_limiter_on_the_configured_backend(
-    config, session_factory, monkeypatch
-):
+async def test_build_app_puts_every_named_limiter_on_the_configured_backend(config, session_factory, monkeypatch):
     from hub import admin, connector_routes, console, otlp, rest, server, signup
 
     made: dict[str, object] = {}
@@ -64,9 +62,18 @@ async def test_build_app_puts_every_named_limiter_on_the_configured_backend(
     server.build_app(cfg, session_factory)
 
     expected = {
-        "write", "read", "auth", "scim_auth", "admin_auth", "console_signin",
-        "console_share_view", "signup", "rest_auth", "otlp_auth",
-        "connector_auth", "readyz",
+        "write",
+        "read",
+        "auth",
+        "scim_auth",
+        "admin_auth",
+        "console_signin",
+        "console_share_view",
+        "signup",
+        "rest_auth",
+        "otlp_auth",
+        "connector_auth",
+        "readyz",
     }
     assert expected <= set(made), f"missing: {sorted(expected - set(made))}"
     assert {made[name] for name in expected} == {"postgres"}
@@ -75,9 +82,7 @@ async def test_build_app_puts_every_named_limiter_on_the_configured_backend(
 @pytest.mark.asyncio
 async def test_two_replicas_with_one_name_share_one_sign_in_budget():
     _skip_if_no_pg()
-    cfg = dataclasses.replace(
-        _pg_config(), rate_limit_backend="postgres"
-    )
+    cfg = dataclasses.replace(_pg_config(), rate_limit_backend="postgres")
     name = f"console_signin-{uuid.uuid4().hex[:8]}"
     replica_a = make_named_limiter(cfg, 10, 5, name)
     replica_b = make_named_limiter(cfg, 10, 5, name)

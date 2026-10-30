@@ -16,12 +16,24 @@ class TestAnyFieldCanBeDeclared:
     def test_the_declared_type_survives_the_round_trip_into_a_trace(self, tmp_path):
         dest = str(tmp_path)
         assert main(["init", "--agent-type", "robotics", "--dest", dest]) == 0
-        assert main([
-            "capture", "--title", "Arm drift after long runtime",
-            "--context", "End-effector drifts a few mm after hours of operation.",
-            "--solution", "Scheduled fiducial re-zero every 90 minutes.",
-            "--occasion-id", "RB-1", "--dest", dest,
-        ]) == 0
+        assert (
+            main(
+                [
+                    "capture",
+                    "--title",
+                    "Arm drift after long runtime",
+                    "--context",
+                    "End-effector drifts a few mm after hours of operation.",
+                    "--solution",
+                    "Scheduled fiducial re-zero every 90 minutes.",
+                    "--occasion-id",
+                    "RB-1",
+                    "--dest",
+                    dest,
+                ]
+            )
+            == 0
+        )
 
         traces = paths.traces_dir(dest)
         captured = [f for f in os.listdir(traces) if f.endswith(".md") and f != "README.md"]
@@ -48,9 +60,7 @@ class TestShapeIsStillValidated:
     def test_an_unusable_declared_type_falls_back_loudly(self, tmp_path, capsys):
         mem = tmp_path / "memory"
         mem.mkdir()
-        (mem / "INDEX.md").write_text(
-            "# Memory Index — agent_type: not a valid slug!\n", encoding="utf-8"
-        )
+        (mem / "INDEX.md").write_text("# Memory Index — agent_type: not a valid slug!\n", encoding="utf-8")
         assert paths.store_agent_type(str(tmp_path)) == "general"
         assert "not a valid slug" in capsys.readouterr().err
 
@@ -69,9 +79,20 @@ class TestEpisodesFollowTheProfileNotTheAgentType:
         assert not os.path.isdir(paths.episodes_dir(str(tmp_path)))
 
     def test_any_fleet_may_opt_into_the_episode_profile(self, tmp_path):
-        assert main([
-            "init", "--agent-type", "legal", "--profile", "code-review", "--dest", str(tmp_path),
-        ]) == 0
+        assert (
+            main(
+                [
+                    "init",
+                    "--agent-type",
+                    "legal",
+                    "--profile",
+                    "code-review",
+                    "--dest",
+                    str(tmp_path),
+                ]
+            )
+            == 0
+        )
         assert os.path.isdir(paths.episodes_dir(str(tmp_path)))
 
     def test_a_code_fleet_may_opt_out(self, tmp_path):
@@ -89,11 +110,13 @@ class TestDistilledDomainsAreNotAllOther:
     def _cluster(self, tags, agent_type="robotics"):
         traces = [
             distill.TraceCandidate(
-                id=f"t{i}", path=f"/tmp/t{i}.md",
+                id=f"t{i}",
+                path=f"/tmp/t{i}.md",
                 title="Sensor jitter after firmware update",
                 context_text="Fused pose estimate is noisy since flashing new firmware.",
                 solution_text="Re-synced the timestamp offset against a hardware trigger.",
-                tags=list(tags), agent_type=agent_type,
+                tags=list(tags),
+                agent_type=agent_type,
             )
             for i in range(2)
         ]

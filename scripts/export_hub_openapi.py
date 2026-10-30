@@ -3,6 +3,7 @@
 Needs the Hub's dependencies (`pip install -r hub/requirements.txt`) but no
 database: the Hub is built with every optional surface on and never started.
 """
+
 from __future__ import annotations
 
 import argparse

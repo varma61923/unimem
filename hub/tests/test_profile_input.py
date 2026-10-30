@@ -26,9 +26,17 @@ class TestContributeTraceProfile:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", profile="code-review",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                profile="code-review",
             )
         async with session_scope(session_factory) as session:
             fetched = await crud.get_trace(session, org, result["id"])
@@ -38,9 +46,16 @@ class TestContributeTraceProfile:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             fetched = await crud.get_trace(session, org, result["id"])
@@ -53,46 +68,81 @@ class TestContributeTraceProfile:
         async with session_scope(session_factory) as session:
             with pytest.raises(TraceRejected, match="profile"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test", profile="x" * 129,
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
+                    profile="x" * 129,
                 )
 
-    async def test_amend_trace_carries_the_profile_forward_unchanged(
-        self, session_factory, org, config
-    ):
+    async def test_amend_trace_carries_the_profile_forward_unchanged(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             original = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", profile="code-review",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                profile="code-review",
             )
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, original["id"], config, rate_limiter,
-                title="t2", actor="test",
+                session,
+                org,
+                original["id"],
+                config,
+                rate_limiter,
+                title="t2",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             fetched = await crud.get_trace(session, org, amended["id"])
         assert fetched["profile"] == "code-review"
 
-    async def test_idempotent_retry_with_the_same_profile_returns_the_original(
-        self, session_factory, org, config
-    ):
+    async def test_idempotent_retry_with_the_same_profile_returns_the_original(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         key = "profile-retry-key-1"
         async with session_scope(session_factory) as session:
             first = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key, profile="code-review",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
+                profile="code-review",
             )
         async with session_scope(session_factory) as session:
             retry = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key, profile="code-review",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
+                profile="code-review",
             )
         assert retry["id"] == first["id"]
 
@@ -101,33 +151,65 @@ class TestContributeTraceProfile:
         key = "profile-retry-key-2"
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key, profile="code-review",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
+                profile="code-review",
             )
         async with session_scope(session_factory) as session:
             with pytest.raises(IdempotencyKeyConflict):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", tags=[],
-                    agent_type="code", actor="test", idempotency_key=key, profile="other-profile",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
+                    idempotency_key=key,
+                    profile="other-profile",
                 )
 
-    async def test_a_key_first_used_with_no_profile_still_replays_cleanly(
-        self, session_factory, org, config
-    ):
+    async def test_a_key_first_used_with_no_profile_still_replays_cleanly(self, session_factory, org, config):
         rate_limiter = make_rate_limiter(config)
         key = "profile-retry-key-3"
         async with session_scope(session_factory) as session:
             first = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key,
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
             )
         async with session_scope(session_factory) as session:
             retry = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[],
-                agent_type="code", actor="test", idempotency_key=key,
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
+                idempotency_key=key,
             )
         assert retry["id"] == first["id"]

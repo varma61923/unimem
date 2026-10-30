@@ -1,4 +1,5 @@
 """Reporting proven value to Stripe as metered usage."""
+
 from __future__ import annotations
 
 import hashlib
@@ -20,8 +21,9 @@ def identifier_for(line: dict, org_id: str) -> str:
 def check(settings: billing.StripeSettings, plan: str, line: dict, *, allow_live: bool = False) -> int:
     """Validate and return the amount in minor units, or raise ValueBillingRefused."""
     if plan not in plans.BILLABLE_PLANS:
-        raise ValueBillingRefused(f"plan {plan!r} is not billable: proven value is reported only for "
-                                  f"{', '.join(plans.BILLABLE_PLANS)}")
+        raise ValueBillingRefused(
+            f"plan {plan!r} is not billable: proven value is reported only for {', '.join(plans.BILLABLE_PLANS)}"
+        )
     if line.get("kind") != "value":
         raise ValueBillingRefused("only a value line is reported as usage")
     amount = line.get("amount")
@@ -37,21 +39,37 @@ def check(settings: billing.StripeSettings, plan: str, line: dict, *, allow_live
     return int(round(amount * 100))
 
 
-async def report_value_line(settings: billing.StripeSettings, *, org_id: str, plan: str, customer_id: str,
-                            line: dict, event_name: str, allow_live: bool = False) -> dict:
+async def report_value_line(
+    settings: billing.StripeSettings,
+    *,
+    org_id: str,
+    plan: str,
+    customer_id: str,
+    line: dict,
+    event_name: str,
+    allow_live: bool = False,
+) -> dict:
     """Send one value line as a meter event. Returns Stripe's response."""
     if not customer_id.startswith("cus_"):
         raise ValueBillingRefused("customer_id must be a Stripe customer id (cus_...)")
     if not event_name.strip():
         raise ValueBillingRefused("event_name is the meter's event name and is required")
     minor = check(settings, plan, line, allow_live=allow_live)
-    return await billing._post("billing/meter_events", settings.secret_key, {
-        "event_name": event_name, "identifier": identifier_for(line, org_id),
-        "payload[stripe_customer_id]": customer_id, "payload[value]": str(minor)})
+    return await billing._post(
+        "billing/meter_events",
+        settings.secret_key,
+        {
+            "event_name": event_name,
+            "identifier": identifier_for(line, org_id),
+            "payload[stripe_customer_id]": customer_id,
+            "payload[value]": str(minor),
+        },
+    )
 
 
-def warranty_line(root: str, certificate: dict, *, contract: str, memory: str,
-                  minimum_lift: float, paid_cents: int) -> dict:
+def warranty_line(
+    root: str, certificate: dict, *, contract: str, memory: str, minimum_lift: float, paid_cents: int
+) -> dict:
     """Prepare a verified, capped credit line; sending a refund remains explicit.
 
     Existing positive usage meter events and their canonical hashes stay intact.
@@ -59,7 +77,13 @@ def warranty_line(root: str, certificate: dict, *, contract: str, memory: str,
     """
     from unimem import valuation
 
-    credit = valuation.warranty_credit(root, certificate, contract=contract, memory=memory,
-                                      minimum_lift=minimum_lift, paid_cents=paid_cents)
-    return {"kind": "warranty-credit", "amount": -credit["credit_cents"] / 100,
-            "currency": "USD", "idempotency_key": credit["id"], "evidence": credit}
+    credit = valuation.warranty_credit(
+        root, certificate, contract=contract, memory=memory, minimum_lift=minimum_lift, paid_cents=paid_cents
+    )
+    return {
+        "kind": "warranty-credit",
+        "amount": -credit["credit_cents"] / 100,
+        "currency": "USD",
+        "idempotency_key": credit["id"],
+        "evidence": credit,
+    }

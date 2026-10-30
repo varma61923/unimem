@@ -71,9 +71,5 @@ def run_list(args: argparse.Namespace) -> int:
         instance, _ = result
         if args.agent_type and instance.get("agent_type") != args.agent_type:
             continue
-        print(
-            f"{cell(instance.get('id')):36s} "
-            f"[{cell(instance.get('agent_type')):9s}] "
-            f"{instance.get('title') or ''}"
-        )
+        print(f"{cell(instance.get('id')):36s} [{cell(instance.get('agent_type')):9s}] {instance.get('title') or ''}")
     return 0

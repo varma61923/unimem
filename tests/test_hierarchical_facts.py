@@ -14,7 +14,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -27,8 +30,11 @@ def store(tmp_path):
 
 def test_fact_add_and_reinforce(store):
     f1, act1 = hierarchical.add_fact(
-        store, "Database connection timeout should be 5 seconds.",
-        category="constraint", scopes=["backend", "db"], confidence=0.8,
+        store,
+        "Database connection timeout should be 5 seconds.",
+        category="constraint",
+        scopes=["backend", "db"],
+        confidence=0.8,
     )
     assert act1 == "ADD"
     assert f1.confirmations == 1
@@ -36,7 +42,8 @@ def test_fact_add_and_reinforce(store):
     assert "backend" in f1.scopes
 
     f2, act2 = hierarchical.add_fact(
-        store, "Database connection timeout should be 5 seconds.",
+        store,
+        "Database connection timeout should be 5 seconds.",
         scopes=["db"],
     )
     assert act2 == "NOOP"
@@ -46,11 +53,14 @@ def test_fact_add_and_reinforce(store):
 
 def test_fact_supersede_and_temporal(store):
     f1, _ = hierarchical.add_fact(
-        store, "Use Python 3.10 for microservices.",
+        store,
+        "Use Python 3.10 for microservices.",
         category="architecture",
     )
     old, new = hierarchical.supersede_fact(
-        store, f1.id, "Use Python 3.12 for microservices.",
+        store,
+        f1.id,
+        "Use Python 3.12 for microservices.",
     )
     assert old.status == "superseded"
     assert old.valid_until is not None
@@ -74,7 +84,9 @@ def test_fact_search(store):
 
 
 def test_fact_cli(store):
-    res = cli("fact", "add", "Postgres max connections is 100", "--category", "constraint", "--scope", "db", "--dest", store)
+    res = cli(
+        "fact", "add", "Postgres max connections is 100", "--category", "constraint", "--scope", "db", "--dest", store
+    )
     assert res.returncode == 0
     assert "Added fact" in res.stdout
 
@@ -245,10 +257,7 @@ def test_entity_extraction_basic(store):
 
 
 def test_entity_extraction_fallback_without_spacy():
-    text = (
-        'The "PaymentProcessor" uses api_key and auth.tokens.validate_session '
-        'to communicate with Stripe API.'
-    )
+    text = 'The "PaymentProcessor" uses api_key and auth.tokens.validate_session to communicate with Stripe API.'
     entities = hierarchical.extract_entities(text)
     assert isinstance(entities, list)
     assert len(entities) > 0
@@ -258,4 +267,3 @@ def test_entity_extraction_fallback_without_spacy():
 
     assert "PaymentProcessor" in texts or "QUOTED" in types
     assert any("api_key" in t or "auth.tokens" in t for t in texts)
-

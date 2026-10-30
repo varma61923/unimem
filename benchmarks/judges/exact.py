@@ -39,9 +39,15 @@ class ExactJudge:
     def __init__(self, model: str | None = None):
         self.model = "none"
 
-    def grade(self, question: dict[str, Any] | str, answer: str, *,
-              complete_fn: Callable[[str], tuple[str, dict]] | None = None,
-              model: str | None = None, **kwargs: Any) -> dict[str, Any]:
+    def grade(
+        self,
+        question: dict[str, Any] | str,
+        answer: str,
+        *,
+        complete_fn: Callable[[str], tuple[str, dict]] | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         if isinstance(question, dict):
             golds = [str(g) for g in (question.get("answers") or [question.get("answer", "")])]
         else:
@@ -50,5 +56,11 @@ class ExactJudge:
         best = max((token_f1(answer, gold) for gold in golds), default=0.0)
         contained = any(normalize(gold) and f" {normalize(gold)} " in f" {said} " for gold in golds)
         correct = contained or best >= F1_THRESHOLD
-        return {"answer": answer.strip(), "correct": correct, "score": 1.0 if correct else 0.0,
-                "raw_response": f"contained={contained} f1={best:.3f}", "model": "none", "usage": {}}
+        return {
+            "answer": answer.strip(),
+            "correct": correct,
+            "score": 1.0 if correct else 0.0,
+            "raw_response": f"contained={contained} f1={best:.3f}",
+            "model": "none",
+            "usage": {},
+        }

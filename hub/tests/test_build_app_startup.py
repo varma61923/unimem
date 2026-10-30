@@ -55,29 +55,21 @@ class TestTheProductionAppBoots:
         app = build_app(config, session_factory)
         messages = await _run_lifespan(app)
         types = [m["type"] for m in messages]
-        assert "lifespan.startup.complete" in types, (
-            f"startup did not complete: {messages}"
-        )
+        assert "lifespan.startup.complete" in types, f"startup did not complete: {messages}"
         assert "lifespan.startup.failed" not in types
 
-    async def test_the_mcp_session_manager_lifespan_is_not_replaced(
-        self, config, session_factory
-    ):
+    async def test_the_mcp_session_manager_lifespan_is_not_replaced(self, config, session_factory):
         app = build_app(config, session_factory)
         assert app.router.lifespan_context is not None
         messages = await _run_lifespan(app)
         assert "lifespan.shutdown.complete" in [m["type"] for m in messages]
 
-    async def test_it_boots_with_the_commons_surface_disabled(
-        self, config, session_factory
-    ):
+    async def test_it_boots_with_the_commons_surface_disabled(self, config, session_factory):
         cfg = dataclasses.replace(config, commons_enabled=False)
         messages = await _run_lifespan(build_app(cfg, session_factory))
         assert "lifespan.startup.complete" in [m["type"] for m in messages]
 
-    async def test_it_boots_and_shuts_down_with_the_verified_key_cache_on(
-        self, config, session_factory
-    ):
+    async def test_it_boots_and_shuts_down_with_the_verified_key_cache_on(self, config, session_factory):
         from hub import auth
 
         cfg = dataclasses.replace(config, auth_cache_seconds=10)
@@ -90,18 +82,16 @@ class TestTheProductionAppBoots:
         finally:
             auth.configure_auth_cache(0)
 
-    async def test_it_boots_with_the_postgres_rate_limiter_backend(
-        self, config, session_factory
-    ):
+    async def test_it_boots_with_the_postgres_rate_limiter_backend(self, config, session_factory):
         cfg = dataclasses.replace(config, rate_limit_backend="postgres")
         messages = await _run_lifespan(build_app(cfg, session_factory))
         assert "lifespan.startup.complete" in [m["type"] for m in messages]
 
-    async def test_it_boots_and_shuts_down_cleanly_with_the_alert_scheduler_enabled(
-        self, config, session_factory
-    ):
+    async def test_it_boots_and_shuts_down_cleanly_with_the_alert_scheduler_enabled(self, config, session_factory):
         cfg = dataclasses.replace(
-            config, alert_scheduler_enabled=True, alert_scheduler_interval_seconds=10,
+            config,
+            alert_scheduler_enabled=True,
+            alert_scheduler_interval_seconds=10,
         )
         messages = await _run_lifespan(build_app(cfg, session_factory))
         types = [m["type"] for m in messages]
@@ -109,11 +99,11 @@ class TestTheProductionAppBoots:
         assert "lifespan.shutdown.complete" in types
         assert "lifespan.startup.failed" not in types
 
-    async def test_it_boots_and_shuts_down_cleanly_with_the_webhook_scheduler_enabled(
-        self, config, session_factory
-    ):
+    async def test_it_boots_and_shuts_down_cleanly_with_the_webhook_scheduler_enabled(self, config, session_factory):
         cfg = dataclasses.replace(
-            config, webhook_scheduler_enabled=True, webhook_scheduler_interval_seconds=5,
+            config,
+            webhook_scheduler_enabled=True,
+            webhook_scheduler_interval_seconds=5,
         )
         messages = await _run_lifespan(build_app(cfg, session_factory))
         types = [m["type"] for m in messages]
@@ -124,8 +114,10 @@ class TestTheProductionAppBoots:
     async def test_it_boots_with_both_schedulers_enabled(self, config, session_factory):
         cfg = dataclasses.replace(
             config,
-            alert_scheduler_enabled=True, alert_scheduler_interval_seconds=5,
-            webhook_scheduler_enabled=True, webhook_scheduler_interval_seconds=5,
+            alert_scheduler_enabled=True,
+            alert_scheduler_interval_seconds=5,
+            webhook_scheduler_enabled=True,
+            webhook_scheduler_interval_seconds=5,
         )
         messages = await _run_lifespan(build_app(cfg, session_factory))
         types = [m["type"] for m in messages]
@@ -138,9 +130,7 @@ class TestTheProductionAppBoots:
         messages = await _run_lifespan(build_app(cfg, session_factory))
         assert "lifespan.startup.complete" in [m["type"] for m in messages]
 
-    async def test_it_boots_with_the_rest_api_enabled_but_signup_off(
-        self, config, session_factory
-    ):
+    async def test_it_boots_with_the_rest_api_enabled_but_signup_off(self, config, session_factory):
         cfg = dataclasses.replace(config, rest_api_enabled=True, signup_enabled=False)
         messages = await _run_lifespan(build_app(cfg, session_factory))
         assert "lifespan.startup.complete" in [m["type"] for m in messages]
@@ -168,9 +158,7 @@ class TestTheProductionAppBoots:
 
 
 class TestStartupToleratesADeadDatabase:
-    async def test_the_app_still_boots_when_the_database_is_unreachable(
-        self, config
-    ):
+    async def test_the_app_still_boots_when_the_database_is_unreachable(self, config):
         from hub.db import make_engine, make_session_factory
 
         dead = dataclasses.replace(
@@ -194,7 +182,8 @@ class TestEveryRouteBoundsItsRequestBody:
         app = build_app(config, session_factory)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
             response = await client.post(
-                "/api/v1/traces/search", content=b"x" * (config.max_request_body_bytes + 1),
+                "/api/v1/traces/search",
+                content=b"x" * (config.max_request_body_bytes + 1),
                 headers={"content-type": "application/json"},
             )
         assert response.status_code == 413

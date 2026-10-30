@@ -1,4 +1,5 @@
 """Persistent capability boundaries exercise real canonical writes and erasure."""
+
 from __future__ import annotations
 
 import os
@@ -30,20 +31,31 @@ def prepare(tmp_path):
 
 
 def proof(root, token, nonce="fresh", key=A_KEY):
-    return cap.prove(token, key=key, algorithm="hmac-sha256", audience=token["links"][-1]["record"]["caveats"]["audience"],
-                     tenant=io.tenant(root), request_digest="f"*64, nonce=nonce, now=fp.now())
+    return cap.prove(
+        token,
+        key=key,
+        algorithm="hmac-sha256",
+        audience=token["links"][-1]["record"]["caveats"]["audience"],
+        tenant=io.tenant(root),
+        request_digest="f" * 64,
+        nonce=nonce,
+        now=fp.now(),
+    )
 
 
 def authenticate(root, token, signed, **updates):
-    return io.authenticate(root, token, signed, request_digest="f"*64, operation="write", purpose="support",
-                           principal="a", **updates)
+    return io.authenticate(
+        root, token, signed, request_digest="f" * 64, operation="write", purpose="support", principal="a", **updates
+    )
 
 
 def test_primary_identity_replay_cross_root_and_actual_writer_authority(tmp_path):
     root, token = prepare(tmp_path)
     signed = proof(root, token)
     with pytest.raises(PermissionError, match="principal"):
-        io.authenticate(root, token, signed, request_digest="f"*64, operation="write", purpose="support", principal="b")
+        io.authenticate(
+            root, token, signed, request_digest="f" * 64, operation="write", purpose="support", principal="b"
+        )
     authorization = authenticate(root, token, signed)
     with pytest.raises(PermissionError, match="consumed"):
         authenticate(root, token, signed)
@@ -63,12 +75,14 @@ def test_primary_identity_replay_cross_root_and_actual_writer_authority(tmp_path
 def test_durable_nonce_race_has_one_winner(tmp_path):
     root, token = prepare(tmp_path)
     signed = proof(root, token)
+
     def attempt(_):
         try:
             authenticate(root, token, signed)
             return True
         except PermissionError:
             return False
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         assert sum(pool.map(attempt, range(2))) == 1
 
@@ -80,10 +94,12 @@ def test_canonical_write_class_scope_stamp_and_exact_revocation(tmp_path, sqlite
     root, token = prepare(tmp_path)
     if sqlite:
         fact_store.migrate(root)
-    hidden = hierarchical.append_facts(root, [{"statement": "Private wrist preference.", "scopes": ["project:a"],
-                                              "memory_type": "preference"}])[0][0]
-    unrelated = hierarchical.append_facts(root, [{"statement": "Separate gripper calibration.",
-                                                 "scopes": ["project:a"]}])[0][0]
+    hidden = hierarchical.append_facts(
+        root, [{"statement": "Private wrist preference.", "scopes": ["project:a"], "memory_type": "preference"}]
+    )[0][0]
+    unrelated = hierarchical.append_facts(
+        root, [{"statement": "Separate gripper calibration.", "scopes": ["project:a"]}]
+    )[0][0]
     change_stream.subscribe(root, "reader", context=["project:a"])
     with io.activate(authenticate(root, token, proof(root, token))):
         assert hidden.id not in nextwave_store.admit(root, [hidden.id], context=["project:a"])
@@ -92,8 +108,9 @@ def test_canonical_write_class_scope_stamp_and_exact_revocation(tmp_path, sqlite
             hierarchical.append_facts(root, [{"statement": "Unauthorized other scope.", "scopes": ["project:b"]}])
         with pytest.raises(KeyError):
             hierarchical.update_fact(root, hidden.id, statement="Unapproved private replacement.")
-        memory = hierarchical.append_facts(root, [{"statement": "Inspect wrist before startup.",
-                                                  "scopes": ["project:a"]}])[0][0]
+        memory = hierarchical.append_facts(
+            root, [{"statement": "Inspect wrist before startup.", "scopes": ["project:a"]}]
+        )[0][0]
         attestation = lineage.record(root, memory.id)
         assert attestation["actor"] == "a" and attestation["integrity"] == "agent"
         assert attestation["delegation"]["chain_digest"] == io.check(root, token)["chain_digest"]
@@ -117,8 +134,15 @@ def test_handoff_is_recipient_bound_one_use_and_sticky(tmp_path):
     fact = hierarchical.append_facts(root, [{"statement": "Inspect wrist at startup.", "scopes": ["project:a"]}])[0][0]
     claim = io.handoff(root, [fact.id], "agent-b", context=["project:a"])["claim"]
     token = io.grant(root, policy(audience="agent-b", classes=["general"]))["token"]
-    authorization = io.authenticate(root, token, proof(root, token, key=B_KEY), request_digest="f"*64,
-                                   operation="read", purpose="support", principal="b")
+    authorization = io.authenticate(
+        root,
+        token,
+        proof(root, token, key=B_KEY),
+        request_digest="f" * 64,
+        operation="read",
+        purpose="support",
+        principal="b",
+    )
     with io.activate(authorization):
         bundle = io.receive(root, claim, context=["project:a"])
         assert [memory["id"] for memory in bundle["memories"]] == [fact.id]
@@ -126,8 +150,15 @@ def test_handoff_is_recipient_bound_one_use_and_sticky(tmp_path):
             io.receive(root, claim, context=["project:a"])
     assert io.sticky_labels(root, "b") == ["project:a"]
     wrong = io.grant(root, policy())["token"]
-    authorization = io.authenticate(root, wrong, proof(root, wrong, nonce="wrong"), request_digest="f"*64,
-                                   operation="read", purpose="support", principal="a")
+    authorization = io.authenticate(
+        root,
+        wrong,
+        proof(root, wrong, nonce="wrong"),
+        request_digest="f" * 64,
+        operation="read",
+        purpose="support",
+        principal="a",
+    )
     with io.activate(authorization):
         with pytest.raises(PermissionError, match="recipient"):
             io.receive(root, claim, context=["project:a"])
@@ -139,17 +170,33 @@ def test_gateway_narrows_primary_auth_and_cannot_drop_purpose_or_replay(tmp_path
     from unimem import gateway
 
     root, token = prepare(tmp_path)
-    visible = hierarchical.append_facts(root, [{"statement": "Visible wrist calibration.",
-                                                "scopes": ["project:a"]}])[0][0]
-    hidden = hierarchical.append_facts(root, [{"statement": "Private wrist preference.",
-                                               "scopes": ["project:a"], "memory_type": "preference"}])[0][0]
+    visible = hierarchical.append_facts(root, [{"statement": "Visible wrist calibration.", "scopes": ["project:a"]}])[
+        0
+    ][0]
+    hidden = hierarchical.append_facts(
+        root, [{"statement": "Private wrist preference.", "scopes": ["project:a"], "memory_type": "preference"}]
+    )[0][0]
     app = gateway.Gateway(root, token="owner", durable=False)
     target = "/v1/memory/search"
     raw = json.dumps({"query": "wrist", "context": ["project:a"]}).encode()
+
     def headers(nonce):
-        return {"Authorization": "Bearer owner", "Host": "localhost", **cap.headers(
-            token, key=A_KEY, holder_algorithm="hmac-sha256", method="POST", target=target, raw=raw,
-            purpose="support", nonce=nonce, now=fp.now())}
+        return {
+            "Authorization": "Bearer owner",
+            "Host": "localhost",
+            **cap.headers(
+                token,
+                key=A_KEY,
+                holder_algorithm="hmac-sha256",
+                method="POST",
+                target=target,
+                raw=raw,
+                purpose="support",
+                nonce=nonce,
+                now=fp.now(),
+            ),
+        }
+
     supplied = headers("request")
     assert app.handle("POST", target, {**supplied, "Authorization": "Bearer invalid"}, raw).status == 401
     response = app.handle("POST", target, supplied, raw)
@@ -168,8 +215,9 @@ def test_revocation_tracks_instrumented_outputs_without_colliding_with_canonical
     from unimem import contagion
 
     root, token = prepare(tmp_path)
-    unrelated = hierarchical.append_facts(root, [{"statement": "Independent elbow calibration.",
-                                                 "scopes": ["project:a"]}])[0][0]
+    unrelated = hierarchical.append_facts(
+        root, [{"statement": "Independent elbow calibration.", "scopes": ["project:a"]}]
+    )[0][0]
     with io.activate(authenticate(root, token, proof(root, token))):
         parent = hierarchical.append_facts(root, [{"statement": "Inspect wrist mount.", "scopes": ["project:a"]}])[0][0]
     contagion.record_read(root, [parent.id], "a", "episode", unrelated.id, context=["project:a"])
@@ -191,7 +239,8 @@ def test_release_requires_valid_independent_authorization_of_current_content(tmp
     assert not io.quarantined(root, first.id)
     assert io.quarantined(root, second.id)
     assert lineage.record(root, first.id)["content_hash"] == fp.digest(
-        {key: value for key, value in memory_authority.fact_record(first).items() if key != "id"})
+        {key: value for key, value in memory_authority.fact_record(first).items() if key != "id"}
+    )
 
 
 def test_request_cache_rechecks_changed_holder_key_before_egress(tmp_path):
@@ -241,15 +290,30 @@ def test_delegated_update_rebinds_origin_and_revision_together(tmp_path, sqlite)
 def test_high_integrity_ceiling_does_not_grant_unscoped_administration(tmp_path):
     root, _ = prepare(tmp_path)
     filename = tmp_path / "operator.key"
-    filename.write_bytes(b"o"*32)
+    filename.write_bytes(b"o" * 32)
     filename.chmod(0o600)
-    io.register_agent(root, "operator-delegate", "administrator", secret_file=str(filename),
-                      clearance=["project:a"], authority="operator")
+    io.register_agent(
+        root,
+        "operator-delegate",
+        "administrator",
+        secret_file=str(filename),
+        clearance=["project:a"],
+        authority="operator",
+    )
     token = io.grant(root, policy(audience="operator-delegate", delegates=[], labels=["project:a"], ceiling=3))["token"]
-    signed = cap.prove(token, key=b"o"*32, algorithm="hmac-sha256", audience="operator-delegate", tenant=io.tenant(root),
-                       request_digest="f"*64, nonce="admin", now=fp.now())
-    authorization = io.authenticate(root, token, signed, request_digest="f"*64, operation="write", purpose="support",
-                                   principal="administrator")
+    signed = cap.prove(
+        token,
+        key=b"o" * 32,
+        algorithm="hmac-sha256",
+        audience="operator-delegate",
+        tenant=io.tenant(root),
+        request_digest="f" * 64,
+        nonce="admin",
+        now=fp.now(),
+    )
+    authorization = io.authenticate(
+        root, token, signed, request_digest="f" * 64, operation="write", purpose="support", principal="administrator"
+    )
     with io.activate(authorization):
         assert memory_authority.bound_writer()[1] == "operator"
         with pytest.raises(PermissionError, match="undelegated"):
@@ -262,8 +326,15 @@ def test_handoff_cannot_redeem_sources_forgotten_after_creation(tmp_path):
     claim = io.handoff(root, [memory.id], "agent-b", context=["project:a"])["claim"]
     hierarchical.forget_fact(root, memory.id)
     token = io.grant(root, policy(audience="agent-b"))["token"]
-    authorization = io.authenticate(root, token, proof(root, token, key=B_KEY), request_digest="f"*64,
-                                   operation="read", purpose="support", principal="b")
+    authorization = io.authenticate(
+        root,
+        token,
+        proof(root, token, key=B_KEY),
+        request_digest="f" * 64,
+        operation="read",
+        purpose="support",
+        principal="b",
+    )
     with io.activate(authorization):
         with pytest.raises(PermissionError, match="unavailable"):
             io.receive(root, claim, context=["project:a"])
@@ -276,24 +347,55 @@ def test_external_ed25519_issuer_requires_pin_and_respects_local_maximum_policy(
     root, _ = prepare(tmp_path)
     public = ed.Ed25519PrivateKey.from_private_bytes(A_KEY).public_key().public_bytes_raw().hex()
     issuer_public = ed.Ed25519PrivateKey.from_private_bytes(ROOT_KEY).public_key().public_bytes_raw().hex()
-    io.register_agent(root, "external-agent", "partner-principal", algorithm="ed25519", public_key=public,
-                      clearance=["project:a"])
+    io.register_agent(
+        root, "external-agent", "partner-principal", algorithm="ed25519", public_key=public, clearance=["project:a"]
+    )
     rules = policy(audience="external-agent", namespaces=["facts"], delegates=[], labels=["project:a"])
-    token = cap.grant(rules, issuer="partner", tenant=io.tenant(root), nonce="external-root", now=fp.now(),
-                      algorithm="ed25519", key=ROOT_KEY)
+    token = cap.grant(
+        rules,
+        issuer="partner",
+        tenant=io.tenant(root),
+        nonce="external-root",
+        now=fp.now(),
+        algorithm="ed25519",
+        key=ROOT_KEY,
+    )
     with pytest.raises(PermissionError, match="trusted pin"):
         io.check(root, token)
     io.pin_issuer(root, "partner", issuer_public, rules)
     assert io.check(root, token)["caveats"]["namespaces"] == ["facts"]
-    signed = cap.prove(token, key=A_KEY, algorithm="ed25519", audience="external-agent", tenant=io.tenant(root),
-                       request_digest="f"*64, nonce="external-request", now=fp.now())
-    authorization = io.authenticate(root, token, signed, request_digest="f"*64, operation="write", purpose="support",
-                                   principal="partner-principal")
+    signed = cap.prove(
+        token,
+        key=A_KEY,
+        algorithm="ed25519",
+        audience="external-agent",
+        tenant=io.tenant(root),
+        request_digest="f" * 64,
+        nonce="external-request",
+        now=fp.now(),
+    )
+    authorization = io.authenticate(
+        root,
+        token,
+        signed,
+        request_digest="f" * 64,
+        operation="write",
+        purpose="support",
+        principal="partner-principal",
+    )
     with io.activate(authorization):
-        memory = hierarchical.append_facts(root, [{"statement": "Inspect wrist calibration.",
-                                                  "scopes": ["project:a"]}])[0][0]
+        memory = hierarchical.append_facts(
+            root, [{"statement": "Inspect wrist calibration.", "scopes": ["project:a"]}]
+        )[0][0]
         assert lineage.record(root, memory.id)["actor"] == "partner-principal"
-    widened = cap.grant({**rules, "namespaces": ["facts", "private"]}, issuer="partner", tenant=io.tenant(root),
-                        nonce="widened", now=fp.now(), algorithm="ed25519", key=ROOT_KEY)
+    widened = cap.grant(
+        {**rules, "namespaces": ["facts", "private"]},
+        issuer="partner",
+        tenant=io.tenant(root),
+        nonce="widened",
+        now=fp.now(),
+        algorithm="ed25519",
+        key=ROOT_KEY,
+    )
     with pytest.raises(PermissionError, match="widen"):
         io.check(root, widened)

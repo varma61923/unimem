@@ -8,8 +8,15 @@ from dataclasses import dataclass
 DEFAULT_HORIZON_DAYS = 180
 
 # Explicit type-conditioned half-lives; identity does not decay by default.
-HALF_LIVES_DAYS = {"identity": None, "preference": 365.0, "environment": 30.0,
-                   "temporary": 1.0, "procedure": 180.0, "general": 90.0, "personal-opinion": 180.0}
+HALF_LIVES_DAYS = {
+    "identity": None,
+    "preference": 365.0,
+    "environment": 30.0,
+    "temporary": 1.0,
+    "procedure": 180.0,
+    "general": 90.0,
+    "personal-opinion": 180.0,
+}
 
 
 def perishability(memory_type: str, age_days: float, *, half_life_days: float | None = None) -> float:
@@ -24,6 +31,7 @@ def perishability(memory_type: str, age_days: float, *, half_life_days: float | 
     if not math.isfinite(half_life) or half_life <= 0:
         raise ValueError("half-life must be positive and finite")
     return math.exp(-math.log(2) * age_days / half_life)
+
 
 FRESH = "fresh"
 STALE = "stale"
@@ -47,10 +55,7 @@ class Freshness:
             return f"measured {self.age_days:.0f} days ago"
         if self.state == UNDATED:
             return "carries no measurement date"
-        return (
-            f"last measured {self.age_days:.0f} days ago, past the "
-            f"{self.horizon_days}-day evidence horizon"
-        )
+        return f"last measured {self.age_days:.0f} days ago, past the {self.horizon_days}-day evidence horizon"
 
 
 def _parse(value: object) -> datetime.datetime | None:
@@ -105,6 +110,7 @@ def still_counts(verdict: str, fresh: Freshness, *, helps: str, hurts: str) -> t
 @dataclass(frozen=True)
 class DecayItem:
     """One measured lesson and whether stale benefit was withheld from billing."""
+
     slug: str
     verdict: str
     freshness: Freshness
@@ -130,7 +136,8 @@ class DecayReport:
     def due_for_remeasurement(self) -> tuple[str, ...]:
         """Slugs an operator should re-run the holdout for, worst first."""
         return tuple(
-            item.slug for item in sorted(
+            item.slug
+            for item in sorted(
                 self.stale,
                 key=lambda i: (i.freshness.age_days is None, -(i.freshness.age_days or 0.0)),
             )
@@ -146,10 +153,7 @@ class DecayReport:
         for item in sorted(self.items, key=lambda i: i.slug):
             mark = "STALE" if not item.freshness.is_current else "fresh"
             note = " (withheld from the invoice)" if item.withheld else ""
-            lines.append(
-                f"  [{mark:5s}] {item.slug}  {item.verdict}  "
-                f"{item.freshness.describe()}{note}"
-            )
+            lines.append(f"  [{mark:5s}] {item.slug}  {item.verdict}  {item.freshness.describe()}{note}")
         lines.append("")
         if self.withheld:
             lines.append(

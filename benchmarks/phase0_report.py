@@ -1,4 +1,5 @@
 """Build a local, unjudged retrieval report without mixing experiment contracts."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,17 +23,21 @@ def reviewed_experiment(directory: Path, *, development=None) -> dict:
     report, source_sha = read_bound(path)
     manifest, manifest_sha = read_bound(directory / "manifest.json")
     strict = development is not None
-    scope = ("unjudged excluded-question strict-budget confirmation" if strict
-             else "unjudged development retrieval evidence")
+    scope = (
+        "unjudged excluded-question strict-budget confirmation" if strict else "unjudged development retrieval evidence"
+    )
     budget_field = "budgets_text_tokens" if strict else "budgets_estimated"
     if manifest.get("scope") != scope or manifest.get(budget_field) != [1000, 2000]:
         raise ValueError("report directory has a different experiment contract")
     if strict:
         contract = manifest["context_budget"]
-        if (manifest.get("development_manifest_sha256") != development["source_manifest_sha256"]
-                or contract["unit"] != "selected-tokenizer-context-text"
-                or contract["counter"]["name"] != "tiktoken:cl100k_base"
-                or contract["max_attempts"] != 16 or contract["full_context"] != "uncapped"):
+        if (
+            manifest.get("development_manifest_sha256") != development["source_manifest_sha256"]
+            or contract["unit"] != "selected-tokenizer-context-text"
+            or contract["counter"]["name"] != "tiktoken:cl100k_base"
+            or contract["max_attempts"] != 16
+            or contract["full_context"] != "uncapped"
+        ):
             raise ValueError("confirmation uses a different development or enforcement contract")
     elif manifest.get("exact_text_counter") != "tiktoken:cl100k_base":
         raise ValueError("development text counter is not cl100k")
@@ -67,8 +72,9 @@ def reviewed_experiment(directory: Path, *, development=None) -> dict:
             raise ValueError("raw artifact does not match a completed manifest attempt")
         if set(budgets) != {"1000", "2000"}:
             raise ValueError("report lacks the requested budgets")
-        if set(raw) != set(budgets) or any(raw[b]["provenance"]["evaluation"]["answer_enabled"] is not False
-                                         for b in budgets):
+        if set(raw) != set(budgets) or any(
+            raw[b]["provenance"]["evaluation"]["answer_enabled"] is not False for b in budgets
+        ):
             raise ValueError("raw artifacts do not establish disabled reader inference")
         for budget, summary in budgets.items():
             source = raw[budget]
@@ -82,30 +88,39 @@ def reviewed_experiment(directory: Path, *, development=None) -> dict:
             if evaluation["context_text_tokenizer"] != "tiktoken:cl100k_base":
                 raise ValueError("raw text counter is not cl100k")
             if strict:
-                if (evaluation.get("context_budget") != contract
-                        or source["provenance"]["sampling"].get("question_exclusions_sha256")
-                        != manifest["selection"][dataset]["question_exclusions_sha256"]):
+                if (
+                    evaluation.get("context_budget") != contract
+                    or source["provenance"]["sampling"].get("question_exclusions_sha256")
+                    != manifest["selection"][dataset]["question_exclusions_sha256"]
+                ):
                     raise ValueError("raw strict budget/exclusion contract differs")
-                if any(isinstance(r["context_text_tokens"], bool)
-                       or not isinstance(r["context_text_tokens"], int)
-                       or not 0 <= r["context_text_tokens"] <= int(budget) for r in source["rows"]):
+                if any(
+                    isinstance(r["context_text_tokens"], bool)
+                    or not isinstance(r["context_text_tokens"], int)
+                    or not 0 <= r["context_text_tokens"] <= int(budget)
+                    for r in source["rows"]
+                ):
                     raise ValueError("raw context text exceeds strict cap")
             elif "context_budget" in evaluation:
                 raise ValueError("development artifact uses an unexpected strict contract")
             ids = [r["id"] for r in source["rows"]]
-            if (len(ids) != len(set(ids))
-                    or set(ids) != set(manifest["selection"][dataset]["question_ids"])):
+            if len(ids) != len(set(ids)) or set(ids) != set(manifest["selection"][dataset]["question_ids"]):
                 raise ValueError("raw question selection disagrees with manifest")
         raw_bindings[label] = raw_sha
-        if any(s["profile"].get("profile") == "graphiti-episodic"
-               and s["profile"].get("group_namespace") != "sha256-canonical-space-utf8"
-               for s in budgets.values()):
-            excluded[label] = {"reason": "case namespace lacks the binding validated for punctuation-bearing IDs",
-                               "raw_result_sha256": raw_sha}
+        if any(
+            s["profile"].get("profile") == "graphiti-episodic"
+            and s["profile"].get("group_namespace") != "sha256-canonical-space-utf8"
+            for s in budgets.values()
+        ):
+            excluded[label] = {
+                "reason": "case namespace lacks the binding validated for punctuation-bearing IDs",
+                "raw_result_sha256": raw_sha,
+            }
             del reviewed["conditions"][label]
     if excluded:
-        reviewed["comparisons"] = {label: value for label, value in reviewed["comparisons"].items()
-                                   if "graphiti-episodic" not in label}
+        reviewed["comparisons"] = {
+            label: value for label, value in reviewed["comparisons"].items() if "graphiti-episodic" not in label
+        }
     reviewed["excluded_artifacts"] = excluded
     reviewed["raw_source_sha256"] = raw_bindings
     reviewed["source_scorecard_sha256"] = source_sha
@@ -115,10 +130,16 @@ def reviewed_experiment(directory: Path, *, development=None) -> dict:
 
 def write_report(development: Path, confirmation: Path, output: Path) -> None:
     dev = reviewed_experiment(development)
-    experiments = {"Estimated-budget development": dev,
-                   "Strict-cap excluded-question confirmation": reviewed_experiment(confirmation, development=dev)}
-    report = {"scope": "offline retrieval diagnostics", "answer_accuracy": None,
-              "renderer_sha256": dataset_digest(__file__), "experiments": experiments}
+    experiments = {
+        "Estimated-budget development": dev,
+        "Strict-cap excluded-question confirmation": reviewed_experiment(confirmation, development=dev),
+    }
+    report = {
+        "scope": "offline retrieval diagnostics",
+        "answer_accuracy": None,
+        "renderer_sha256": dataset_digest(__file__),
+        "experiments": experiments,
+    }
     sections = []
     for title, experiment in experiments.items():
         rows = []
@@ -126,20 +147,32 @@ def write_report(development: Path, confirmation: Path, output: Path) -> None:
             for budget, summary in budgets.items():
                 overall = summary["overall"]
                 evidence = overall["evidence"]
-                values = [label, budget, str(overall["n"]),
-                          "unknown" if evidence is None else f"{evidence:.1%}",
-                          str(overall["context_text_tokens"]), str(overall["exact_budget_exceedances"]),
-                          "Not run"]
+                values = [
+                    label,
+                    budget,
+                    str(overall["n"]),
+                    "unknown" if evidence is None else f"{evidence:.1%}",
+                    str(overall["context_text_tokens"]),
+                    str(overall["exact_budget_exceedances"]),
+                    "Not run",
+                ]
                 rows.append("<tr>" + "".join("<td>" + html.escape(v) + "</td>" for v in values) + "</tr>")
-        exclusions = "".join("<li>" + html.escape(label + ": " + reason["reason"]) + "</li>"
-                             for label, reason in experiment["excluded_artifacts"].items())
-        sections.append("<section><h2>" + html.escape(title) + "</h2><table><thead><tr>"
-                        "<th>Condition</th><th>Budget</th><th>Questions</th><th>Source coverage</th>"
-                        "<th>Mean cl100k text tokens</th><th>Cap exceedances</th><th>Reader accuracy</th>"
-                        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
-                        + ("<h3>Excluded configuration artifacts</h3><ul>" + exclusions + "</ul>" if exclusions else "")
-                        + "</section>")
-    markup = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+        exclusions = "".join(
+            "<li>" + html.escape(label + ": " + reason["reason"]) + "</li>"
+            for label, reason in experiment["excluded_artifacts"].items()
+        )
+        sections.append(
+            "<section><h2>" + html.escape(title) + "</h2><table><thead><tr>"
+            "<th>Condition</th><th>Budget</th><th>Questions</th><th>Source coverage</th>"
+            "<th>Mean cl100k text tokens</th><th>Cap exceedances</th><th>Reader accuracy</th>"
+            "</tr></thead><tbody>"
+            + "".join(rows)
+            + "</tbody></table>"
+            + ("<h3>Excluded configuration artifacts</h3><ul>" + exclusions + "</ul>" if exclusions else "")
+            + "</section>"
+        )
+    markup = (
+        """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>UniMem local retrieval diagnostics</title><style>
 body{font:16px system-ui;margin:4vw;color:#17232a;background:#fafbf7}p{max-width:90ch;line-height:1.6}
@@ -156,9 +189,14 @@ Indexing follows native lifecycles, so ingestion and recall timing must be read 
 <p>Inspect <a href="reviewed-scorecard.json">the source-bound reviewed scorecard</a>.
 Reproduce with <code>python -m benchmarks.phase0</code> then <code>python -m benchmarks.confirmation</code>,
 using their documented input/output arguments. Public performance and scale targets remain unestablished.</p>
-""" + "".join(sections) + "</body></html>"
+"""
+        + "".join(sections)
+        + "</body></html>"
+    )
     output.mkdir(parents=True, exist_ok=False)
-    (output / "reviewed-scorecard.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+    (output / "reviewed-scorecard.json").write_text(
+        json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+    )
     (output / "index.html").write_text(markup, encoding="utf-8")
 
 

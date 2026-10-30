@@ -3,6 +3,7 @@
 This measures a high-degree local graph workload, not overall agent latency or
 competitor performance. Cold index construction is reported separately.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,9 +28,16 @@ def scan_oracle(index: graph._GraphFullIndex) -> list[dict]:
             continue
         neighbor = edge.target if edge.source == "hub" else edge.source
         node = index.nodes[neighbor]
-        rows.append({"neighbor_id": neighbor, "neighbor_name": node.name, "neighbor_type": node.entity_type,
-                     "direction": "out" if edge.source == "hub" else "in",
-                     "relation": edge.relation, "weight": edge.weight})
+        rows.append(
+            {
+                "neighbor_id": neighbor,
+                "neighbor_name": node.name,
+                "neighbor_type": node.entity_type,
+                "direction": "out" if edge.source == "hub" else "in",
+                "relation": edge.relation,
+                "weight": edge.weight,
+            }
+        )
     return rows
 
 
@@ -39,11 +47,23 @@ def measure(*, edges: int = 20_000, trials: int = 5) -> dict:
     if isinstance(trials, bool) or not isinstance(trials, int) or not 1 <= trials <= 100:
         raise ValueError("trials must be an integer in 1..100")
     with tempfile.TemporaryDirectory(prefix="unimem-typed-graph-") as root:
-        nodes = {identity: graph.GraphNode(identity, "concept", identity, {}, BASE, BASE)
-                 for identity in ("hub", *(f"peer-{i}" for i in range(edges)))}
-        records = [graph.GraphEdge("hub", f"peer-{i}", "resolves" if i < 5 else "uses", 1,
-                                  BASE, "2024-06-01T00:00:00Z" if i == 0 else None,
-                                  None, created_at=BASE) for i in range(edges)]
+        nodes = {
+            identity: graph.GraphNode(identity, "concept", identity, {}, BASE, BASE)
+            for identity in ("hub", *(f"peer-{i}" for i in range(edges)))
+        }
+        records = [
+            graph.GraphEdge(
+                "hub",
+                f"peer-{i}",
+                "resolves" if i < 5 else "uses",
+                1,
+                BASE,
+                "2024-06-01T00:00:00Z" if i == 0 else None,
+                None,
+                created_at=BASE,
+            )
+            for i in range(edges)
+        ]
         graph.save_nodes(root, nodes)
         graph.save_edges(root, records)
         start = time.perf_counter()
@@ -57,23 +77,34 @@ def measure(*, edges: int = 20_000, trials: int = 5) -> dict:
         index = graph._full_index(root)
         scan_times, indexed_times = [], []
         for trial in range(trials):
-            operations = [(scan_times, lambda: scan_oracle(index)),
-                          (indexed_times, lambda: graph.get_neighbors(root, "hub", relation="resolves", as_of=AS_OF))]
+            operations = [
+                (scan_times, lambda: scan_oracle(index)),
+                (indexed_times, lambda: graph.get_neighbors(root, "hub", relation="resolves", as_of=AS_OF)),
+            ]
             # Alternate order to reduce systematic cache/CPU timing bias.
-            for samples, operation in operations[::1 if trial % 2 == 0 else -1]:
+            for samples, operation in operations[:: 1 if trial % 2 == 0 else -1]:
                 start = time.perf_counter()
                 result = operation()
                 samples.append((time.perf_counter() - start) * 1000)
                 if result != expected:
                     raise AssertionError("warm lookup differs from the exact scan oracle")
         scan_ms, indexed_ms = statistics.median(scan_times), statistics.median(indexed_times)
-        return {"workload": "warm-high-degree-rare-relation", "edges": edges, "trials": trials,
-                "distinct_neighbors": edges,
-                "unique_edge_keys": len({(edge.source, edge.target, edge.relation) for edge in records}),
-                "matching_edges": len(expected), "equivalent": True, "oracle_cold_ms": oracle_cold_ms,
-                "typed_index_build_ms": typed_index_ms, "scan_median_ms": scan_ms,
-                "indexed_median_ms": indexed_ms, "speedup": scan_ms / max(indexed_ms, 1e-9),
-                "scan_samples_ms": scan_times, "indexed_samples_ms": indexed_times}
+        return {
+            "workload": "warm-high-degree-rare-relation",
+            "edges": edges,
+            "trials": trials,
+            "distinct_neighbors": edges,
+            "unique_edge_keys": len({(edge.source, edge.target, edge.relation) for edge in records}),
+            "matching_edges": len(expected),
+            "equivalent": True,
+            "oracle_cold_ms": oracle_cold_ms,
+            "typed_index_build_ms": typed_index_ms,
+            "scan_median_ms": scan_ms,
+            "indexed_median_ms": indexed_ms,
+            "speedup": scan_ms / max(indexed_ms, 1e-9),
+            "scan_samples_ms": scan_times,
+            "indexed_samples_ms": indexed_times,
+        }
 
 
 def main() -> int:

@@ -80,10 +80,8 @@ def test_consolidate_groups_reinforced_facts_only(store):
 
 
 def test_trend_strengthening_weakening_stable_stale(store):
-    _seed(store, "Strengthening claim here.", [("s1", "2026-10-01"), ("s2", "2026-09-30"),
-                                               ("s3", "2026-08-10")])
-    _seed(store, "Weakening claim here xyz.", [("w1", "2026-08-10"), ("w2", "2026-08-05"),
-                                               ("w3", "2026-10-01")])
+    _seed(store, "Strengthening claim here.", [("s1", "2026-10-01"), ("s2", "2026-09-30"), ("s3", "2026-08-10")])
+    _seed(store, "Weakening claim here xyz.", [("w1", "2026-08-10"), ("w2", "2026-08-05"), ("w3", "2026-10-01")])
     _seed(store, "Stable claim here abc.", [("p1", "2026-10-01"), ("p2", "2026-08-20")])
     _seed(store, "Stale claim here def.", [("o1", "2026-06-01"), ("o2", "2026-05-20")])
     trends = {o.statement: o.trend for o in observations.consolidate_facts(store, now=NOW)}
@@ -117,8 +115,7 @@ def test_consolidate_preserves_created_at_across_reruns(store):
 
 
 def test_observations_file_atomic_and_bounded(store):
-    _seed(store, "Boosted by proofs.", [("b1", "2026-10-01"), ("b2", "2026-10-02"),
-                                       ("b3", "2026-10-03")])
+    _seed(store, "Boosted by proofs.", [("b1", "2026-10-01"), ("b2", "2026-10-02"), ("b3", "2026-10-03")])
     out = observations.consolidate_facts(store, now=NOW)
     assert out[0].proof_count == 3
     boost = observations.observation_boost(out[0].proof_count)
@@ -134,14 +131,20 @@ def test_mcp_observation_evidence_round_trip(store):
     observation = observations.consolidate_facts(store, now=NOW)[0]
     server = mcp_server.build_server(store)
     out = asyncio.run(server.call_tool("observation_evidence", {"id": observation.id}))
-    payload = out.structured_content.get("result", out.structured_content) if getattr(
-        out, "structured_content", None) else json.loads(out.content[0].text)
+    payload = (
+        out.structured_content.get("result", out.structured_content)
+        if getattr(out, "structured_content", None)
+        else json.loads(out.content[0].text)
+    )
     assert payload["ok"] is True
     assert payload["observation"]["id"] == observation.id
     assert payload["observation"]["evidence"] == observation.evidence
     missing = asyncio.run(server.call_tool("observation_evidence", {"id": "obs-nope"}))
-    m_payload = missing.structured_content.get("result", missing.structured_content) if getattr(
-        missing, "structured_content", None) else json.loads(missing.content[0].text)
+    m_payload = (
+        missing.structured_content.get("result", missing.structured_content)
+        if getattr(missing, "structured_content", None)
+        else json.loads(missing.content[0].text)
+    )
     assert m_payload["ok"] is False
 
 

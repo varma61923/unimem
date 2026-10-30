@@ -4,15 +4,18 @@ from unimem import retrieval
 
 
 def _lesson(name, description="", applies_when="", tags=(), domain="", importance=3, uses=0):
-    return (f"/x/{name}.md", {
-        "name": name,
-        "description": description,
-        "applies_when": applies_when,
-        "tags": list(tags),
-        "domain": domain,
-        "importance": importance,
-        "uses": uses,
-    })
+    return (
+        f"/x/{name}.md",
+        {
+            "name": name,
+            "description": description,
+            "applies_when": applies_when,
+            "tags": list(tags),
+            "domain": domain,
+            "importance": importance,
+            "uses": uses,
+        },
+    )
 
 
 class TestRelevanceIsComparable:
@@ -35,11 +38,23 @@ class TestRelevanceIsComparable:
                 "Whereas the counterparty has heretofore asserted that the provisions "
                 "referenced hereinabove govern the subject matter contemplated herein"
             ),
-            tags=["contract", "provisions", "covenants", "obligations", "counterparty",
-                  "notwithstanding", "foregoing", "aforementioned", "heretofore", "hereto"],
+            tags=[
+                "contract",
+                "provisions",
+                "covenants",
+                "obligations",
+                "counterparty",
+                "notwithstanding",
+                "foregoing",
+                "aforementioned",
+                "heretofore",
+                "hereto",
+            ],
         )
         ranked = retrieval.rank_lessons(
-            "timeout on export", [terse, verbose], floor=0.0,
+            "timeout on export",
+            [terse, verbose],
+            floor=0.0,
             scorer=retrieval.SCORER_IDF_V3,
         )
         by_slug = {r.slug: r.relevance for r in ranked}
@@ -114,31 +129,39 @@ class TestAdaptiveRetrieval:
 class TestTheFloorRejectsMarginalMatches:
     def _store(self):
         return [
-            _lesson("nda", description="Counterparty requests a mutual NDA instead of one-way",
-                    applies_when="A counterparty asks to convert a one-way NDA to mutual.",
-                    tags=["nda", "confidentiality"]),
-            _lesson("liability", description="Limitation of liability cap negotiation instead "
-                    "of a full waiver",
-                    applies_when="A counterparty asks to raise the standard liability cap.",
-                    tags=["liability-cap", "msa"]),
+            _lesson(
+                "nda",
+                description="Counterparty requests a mutual NDA instead of one-way",
+                applies_when="A counterparty asks to convert a one-way NDA to mutual.",
+                tags=["nda", "confidentiality"],
+            ),
+            _lesson(
+                "liability",
+                description="Limitation of liability cap negotiation instead of a full waiver",
+                applies_when="A counterparty asks to raise the standard liability cap.",
+                tags=["liability-cap", "msa"],
+            ),
         ]
 
     def test_an_on_topic_query_clears_the_floor(self):
         ranked = retrieval.rank_lessons(
-            "counterparty wants a mutual NDA instead of our one-way form", self._store(),
+            "counterparty wants a mutual NDA instead of our one-way form",
+            self._store(),
         )
         assert [r.slug for r in ranked][:1] == ["nda"]
 
     def test_a_single_incidental_word_does_not(self):
         ranked = retrieval.rank_lessons(
-            "the vendor onboarding form was rejected instead of approved", self._store(),
+            "the vendor onboarding form was rejected instead of approved",
+            self._store(),
         )
         assert ranked == []
 
     def test_scoring_it_anyway_shows_how_far_below_the_bar_it_is(self):
         ranked = retrieval.rank_lessons(
             "the vendor onboarding form was rejected instead of approved",
-            self._store(), floor=0.0,
+            self._store(),
+            floor=0.0,
         )
         assert ranked
         assert ranked[0].relevance < retrieval.DEFAULT_FLOOR
@@ -148,7 +171,8 @@ class TestTheFloorRejectsMarginalMatches:
         narrow = retrieval.rank_lessons("mutual NDA", one_lesson, floor=0.0)[0].relevance
         padded = retrieval.rank_lessons(
             "mutual NDA alongside procurement onboarding invoicing payroll logistics",
-            one_lesson, floor=0.0,
+            one_lesson,
+            floor=0.0,
         )[0].relevance
         assert padded < narrow
 
@@ -157,7 +181,9 @@ class TestBackwardCompatibility:
     def test_the_historical_scorer_is_still_available_verbatim(self):
         lessons = [_lesson("a", description="alpha beta", tags=["gamma"])]
         ranked = retrieval.rank_lessons(
-            "alpha", lessons, scorer=retrieval.SCORER_COUNT,
+            "alpha",
+            lessons,
+            scorer=retrieval.SCORER_COUNT,
         )
         assert ranked
         assert ranked[0].score == pytest.approx(1.0)
@@ -187,8 +213,7 @@ class TestConfigIsSharedByEverySurface:
         assert main(["init", "--dest", str(tmp_path)]) == 0
         log = holdout_io.holdout_log_path(str(tmp_path))
         with open(log, "w", encoding="utf-8") as fh:
-            fh.write('{"occasion_id": "o1", "lesson": "a", "injected": true, '
-                     '"rate": 0.5, "salt": "s"}\n')
+            fh.write('{"occasion_id": "o1", "lesson": "a", "injected": true, "rate": 0.5, "salt": "s"}\n')
 
         config = retrieval_io.load_config(str(tmp_path))
         assert config.scorer == retrieval.SCORER_COUNT
@@ -201,8 +226,13 @@ class TestConfigIsSharedByEverySurface:
 
         assert main(["init", "--dest", str(tmp_path)]) == 0
         holdout_io.assign_and_log(
-            str(tmp_path), ["a"], occasion_id="o1", rate=0.5, salt="s",
-            relevance={"a": 0.62}, scorer=retrieval.SCORER_IDF,
+            str(tmp_path),
+            ["a"],
+            occasion_id="o1",
+            rate=0.5,
+            salt="s",
+            relevance={"a": 0.62},
+            scorer=retrieval.SCORER_IDF,
             floor=retrieval.DEFAULT_FLOOR,
         )
 
@@ -220,8 +250,14 @@ class TestConfigIsSharedByEverySurface:
         for i in range(3):
             config = retrieval_io.load_config(str(tmp_path))
             holdout_io.assign_and_log(
-                str(tmp_path), ["a"], occasion_id=f"o{i}", rate=0.5, salt="s",
-                relevance={"a": 0.62}, scorer=config.scorer, floor=config.floor,
+                str(tmp_path),
+                ["a"],
+                occasion_id=f"o{i}",
+                rate=0.5,
+                salt="s",
+                relevance={"a": 0.62},
+                scorer=config.scorer,
+                floor=config.floor,
             )
         scorers = set()
         with open(holdout_io.holdout_log_path(str(tmp_path)), encoding="utf-8") as fh:
@@ -235,8 +271,10 @@ class TestConfigIsSharedByEverySurface:
 
         assert main(["init", "--dest", str(tmp_path)]) == 0
         with open(holdout_io.holdout_log_path(str(tmp_path)), "w", encoding="utf-8") as fh:
-            fh.write('{"occasion_id": "o1", "lesson": "a", "injected": true, '
-                     '"rate": 0.5, "salt": "s", "scorer": "idf-v2", "floor": 0.1}\n')
+            fh.write(
+                '{"occasion_id": "o1", "lesson": "a", "injected": true, '
+                '"rate": 0.5, "salt": "s", "scorer": "idf-v2", "floor": 0.1}\n'
+            )
             fh.write('{"occasion_id": "o2", "lesson": "a", "inject')
         config = retrieval_io.load_config(str(tmp_path))
         assert config.scorer == retrieval.SCORER_IDF_V2
@@ -247,8 +285,7 @@ class TestConfigIsSharedByEverySurface:
 
         assert main(["init", "--dest", str(tmp_path)]) == 0
         with open(holdout_io.holdout_log_path(str(tmp_path)), "w", encoding="utf-8") as fh:
-            fh.write('{"occasion_id": "o1", "lesson": "a", "injected": true, '
-                     '"rate": 0.5, "salt": "s"}\n')
+            fh.write('{"occasion_id": "o1", "lesson": "a", "injected": true, "rate": 0.5, "salt": "s"}\n')
 
         assert main(["retrieval", "--scorer", retrieval.SCORER_IDF, "--dest", str(tmp_path)]) == 0
         config = retrieval_io.load_config(str(tmp_path))
@@ -294,7 +331,9 @@ class TestConfigIsSharedByEverySurface:
         from unimem import retrieval_io
 
         retrieval_io.configure(
-            str(tmp_path), reliability_weight=0.3, recency_weight=0.15,
+            str(tmp_path),
+            reliability_weight=0.3,
+            recency_weight=0.15,
         )
         reloaded = retrieval_io.load_config(str(tmp_path))
         assert reloaded.reliability_weight == 0.3
@@ -304,7 +343,9 @@ class TestConfigIsSharedByEverySurface:
         from unimem import retrieval_io
 
         retrieval_io.configure(
-            str(tmp_path), reliability_weight=0.2, recency_weight=0.4,
+            str(tmp_path),
+            reliability_weight=0.2,
+            recency_weight=0.4,
             redundancy_threshold=0.3,
         )
         retrieval_io.configure(str(tmp_path), reliability_weight=0.5)

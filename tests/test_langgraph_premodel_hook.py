@@ -98,8 +98,13 @@ def test_pre_model_hook_reuses_context_during_tool_loop_and_separates_turns():
     first = {"role": "user", "id": "turn-1", "content": "hello"}
     state = {"messages": [first]}
     initial = hook(state, config)
-    loop_state = {"messages": [first, {"role": "assistant", "content": "calling a tool"},
-                               {"role": "tool", "content": "tool output"}]}
+    loop_state = {
+        "messages": [
+            first,
+            {"role": "assistant", "content": "calling a tool"},
+            {"role": "tool", "content": "tool output"},
+        ]
+    }
     repeated = hook(loop_state, config)
     assert len(calls) == 1
     assert _message_content(initial["llm_input_messages"][0]) == _message_content(repeated["llm_input_messages"][0])
@@ -119,7 +124,9 @@ def test_pre_model_hook_scope_partitions_turn_cache_and_causal_identity():
             calls.append((occasion_id, kwargs))
             return [{"memory": kwargs["tenant"]}]
 
-    hook = create_pre_model_hook(RecordingMemory(), recall_kwargs=lambda config: {"tenant": config["configurable"]["tenant"]})
+    hook = create_pre_model_hook(
+        RecordingMemory(), recall_kwargs=lambda config: {"tenant": config["configurable"]["tenant"]}
+    )
     state = {"messages": [{"role": "user", "id": "same-turn", "content": "hello"}]}
     for tenant in ("alice", "bob", "alice"):
         result = hook(state, {"configurable": {"thread_id": "same-thread", "tenant": tenant}})

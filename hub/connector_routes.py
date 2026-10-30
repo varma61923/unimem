@@ -15,9 +15,7 @@ CONNECTOR_EVENTS_PATH = "/connectors/{connector_id}/events"
 
 
 def add_connector_routes(app, session_factory, *, config: HubConfig, trusted_proxy_hops: int = 0) -> None:
-    limiter = make_named_limiter(
-        config, config.auth_attempts_per_minute, config.auth_attempts_burst, "connector_auth"
-    )
+    limiter = make_named_limiter(config, config.auth_attempts_per_minute, config.auth_attempts_burst, "connector_auth")
     cipher = config.cipher()
 
     async def events(request: Request) -> Response:
@@ -25,12 +23,16 @@ def add_connector_routes(app, session_factory, *, config: HubConfig, trusted_pro
         allowed, retry_after = await limiter.check(client_key)
         if not allowed:
             return JSONResponse(
-                {"error": "rate_limited"}, status_code=429,
+                {"error": "rate_limited"},
+                status_code=429,
                 headers={"Retry-After": str(max(1, int(retry_after) + 1))},
             )
         body = await request.body()
         result = await service.ingest(
-            session_factory, request.path_params["connector_id"], request.headers, body,
+            session_factory,
+            request.path_params["connector_id"],
+            request.headers,
+            body,
             cipher=cipher,
         )
         if result.status != 401:

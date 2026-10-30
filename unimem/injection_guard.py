@@ -1,4 +1,5 @@
 """Injection-time screen for lesson text handed to an agent."""
+
 from __future__ import annotations
 
 import hashlib
@@ -58,10 +59,12 @@ def screen(items: Iterable[dict]) -> tuple[list[dict], list[dict]]:
     for item in items:
         labels = injection_labels({f: item.get(f) for f in TEXT_FIELDS})
         if labels:
-            quarantined.append({
-                "slug": item.get("slug") or "",
-                "reason": "injection screen: " + ", ".join(labels),
-            })
+            quarantined.append(
+                {
+                    "slug": item.get("slug") or "",
+                    "reason": "injection screen: " + ", ".join(labels),
+                }
+            )
         else:
             clean.append(item)
     return clean, quarantined

@@ -612,10 +612,7 @@ def page_run_set(args: argparse.Namespace) -> int:
             comment=args.comment,
         )
         if args.dry_run:
-            print(
-                f"[unimem] Dry-run diff for '{args.slug}' "
-                f"(v{res['current_version']} -> v{res['proposed_version']}):"
-            )
+            print(f"[unimem] Dry-run diff for '{args.slug}' (v{res['current_version']} -> v{res['proposed_version']}):")
 
             if res.get("diff"):
                 print(res["diff"])

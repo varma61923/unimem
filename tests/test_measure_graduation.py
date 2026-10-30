@@ -1,4 +1,5 @@
 """Graduation: a memory proven to help stops being randomized and is always delivered."""
+
 from __future__ import annotations
 
 import json
@@ -17,8 +18,9 @@ def _seed(root, n=300):
     config = holdout_io.configure(str(root), rate=0.5, salt="graduation-tests")
     rng = random.Random(5)
     for i in range(n):
-        withheld = holdout_io.assign_and_log(str(root), ["good", "plain"], occasion_id=f"seed-{i}",
-                                             rate=0.5, salt=config.salt)
+        withheld = holdout_io.assign_and_log(
+            str(root), ["good", "plain"], occasion_id=f"seed-{i}", rate=0.5, salt=config.salt
+        )
         p = 0.35 + (0.4 if "good" not in withheld else 0.0)
         holdout_io.record_outcome(str(root), f"seed-{i}", rng.random() < p)
 
@@ -54,10 +56,12 @@ def test_a_shared_watch_must_agree_on_graduation(tmp_path):
 
 
 def test_causalmembench_is_reproducible_and_scores_the_oracle_perfectly():
-    a = causalmembench.run(["correlational", "oracle", "unimem@0.5+graduate"], seeds=1, occasions=600,
-                           lag=10, missing=0.0)
-    b = causalmembench.run(["correlational", "oracle", "unimem@0.5+graduate"], seeds=1, occasions=600,
-                           lag=10, missing=0.0)
+    a = causalmembench.run(
+        ["correlational", "oracle", "unimem@0.5+graduate"], seeds=1, occasions=600, lag=10, missing=0.0
+    )
+    b = causalmembench.run(
+        ["correlational", "oracle", "unimem@0.5+graduate"], seeds=1, occasions=600, lag=10, missing=0.0
+    )
     assert a["results"] == b["results"]
     oracle = a["results"]["oracle"]
     assert oracle["harmful_deliveries"]["mean"] == 0 and oracle["regret_vs_oracle"]["mean"] == 0
@@ -84,6 +88,7 @@ def test_causalmembench_accepts_an_external_policy_factory():
         def withdrawn(self):
             return set()
 
-    one = causalmembench.run_one(AlwaysAll, causalmembench.default_memories(), seed=0, occasions=200, lag=0,
-                                 missing=0.0)
+    one = causalmembench.run_one(
+        AlwaysAll, causalmembench.default_memories(), seed=0, occasions=200, lag=0, missing=0.0
+    )
     assert one["false_withdrawals"] == [] and one["harmful_deliveries"] > 0

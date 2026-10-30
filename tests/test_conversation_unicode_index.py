@@ -1,4 +1,5 @@
 """Canonical-store Unicode retrieval, frozen compatibility and mutation fencing."""
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -12,16 +13,19 @@ from unimem.conversation.search import subqueries
 from unimem.conversation.store import write_txn
 
 
-@pytest.mark.parametrize("body,query", [
-    ("北辰缓存容量是五百条记录。", "北辰缓存"),
-    ("オーロラキャッシュ容量は五百件です。", "キャッシュ容量"),
-    ("북극캐시용량은오백개입니다.", "캐시용량"),
-    ("Le café préféré est près du marché.", "café marché"),
-    ("Проект хранит память пользователя.", "память"),
-    ("ذاكرة المشروع تحتفظ بالمعلومات.", "ذاكرة"),
-    ("北辰缓存", "北"),
-    ("La caféothèque conserve les dossiers.", "cafe\u0301othe\u0300que"),
-])
+@pytest.mark.parametrize(
+    "body,query",
+    [
+        ("北辰缓存容量是五百条记录。", "北辰缓存"),
+        ("オーロラキャッシュ容量は五百件です。", "キャッシュ容量"),
+        ("북극캐시용량은오백개입니다.", "캐시용량"),
+        ("Le café préféré est près du marché.", "café marché"),
+        ("Проект хранит память пользователя.", "память"),
+        ("ذاكرة المشروع تحتفظ بالمعلومات.", "ذاكرة"),
+        ("北辰缓存", "北"),
+        ("La caféothèque conserve les dossiers.", "cafe\u0301othe\u0300que"),
+    ],
+)
 def test_unicode_substrings_and_words_reach_real_source_units(tmp_path, body, query):
     with Store(str(tmp_path), "global") as store:
         store.add("source", [{"speaker": "Agent", "text": body}], extract_profile=False)
@@ -35,8 +39,11 @@ def test_unicode_substrings_and_words_reach_real_source_units(tmp_path, body, qu
 
 def test_ascii_queries_do_not_install_or_mutate_unicode_index(tmp_path):
     with Store(str(tmp_path), "global") as store:
-        store.add("source", [{"text": "cache capacity", "speaker": "Agent"},
-                             {"text": "capacity cache duration"}, {"text": "北辰缓存"}], extract_profile=False)
+        store.add(
+            "source",
+            [{"text": "cache capacity", "speaker": "Agent"}, {"text": "capacity cache duration"}, {"text": "北辰缓存"}],
+            extract_profile=False,
+        )
         for query in ("cache", "capacity duration", '" OR cache NOT * --'):
             assert store.lexical(query, 10) == store._ascii_lexical(query, 10)
         assert store.get_meta("unicode_postings") is None
@@ -51,13 +58,28 @@ def test_ascii_queries_do_not_install_or_mutate_unicode_index(tmp_path):
 
 def test_accented_query_cannot_fuse_unrelated_ascii_fragments(tmp_path):
     with Store(str(tmp_path), "global") as store:
-        store.add("source", [{"text": "The Moire display pattern is unrelated."},
-                             {"text": "Les détails sont dans la mémoire."}], extract_profile=False)
+        store.add(
+            "source",
+            [{"text": "The Moire display pattern is unrelated."}, {"text": "Les détails sont dans la mémoire."}],
+            extract_profile=False,
+        )
         assert [uid for uid, _score in store._ascii_lexical("mémoire", 1)] == [1]
         assert [uid for uid, _score in store.lexical("mémoire", 1)] == [2]
-        result = recall(store, "mémoire", options=Options(
-            pool=1, budget=100, embedder=None, rerank=None, profile_facts=0, instructions=0,
-            summaries=False, neighbours_before=0, neighbours_after=0))
+        result = recall(
+            store,
+            "mémoire",
+            options=Options(
+                pool=1,
+                budget=100,
+                embedder=None,
+                rerank=None,
+                profile_facts=0,
+                instructions=0,
+                summaries=False,
+                neighbours_before=0,
+                neighbours_after=0,
+            ),
+        )
         assert result.ranked == result.turns == [2]
         assert "mémoire" in result.context and "Moire" not in result.context
         assert unicode_index.ascii_query("mémoire CT-492 cache_size 北辰512") == "CT 492 cache_size"
@@ -84,9 +106,22 @@ def test_unicode_aspect_expansion_preserves_actual_words(tmp_path, query):
     with Store(str(tmp_path), "global") as store:
         store.add("noise", [{"text": "The Moire tails pattern is unrelated."}], extract_profile=False)
         store.add("source", [{"text": "Les détails sont dans la mémoire."}], extract_profile=False)
-        result = recall(store, query, options=Options(
-            pool=1, budget=20, primary_hits=1, embedder=None, rerank=None, profile_facts=0,
-            instructions=0, summaries=False, neighbours_before=0, neighbours_after=0))
+        result = recall(
+            store,
+            query,
+            options=Options(
+                pool=1,
+                budget=20,
+                primary_hits=1,
+                embedder=None,
+                rerank=None,
+                profile_facts=0,
+                instructions=0,
+                summaries=False,
+                neighbours_before=0,
+                neighbours_after=0,
+            ),
+        )
         assert result.ranked == result.turns == [2]
         assert "mémoire" in result.context and "Moire" not in result.context
 
@@ -153,16 +188,27 @@ def test_dirty_read_transaction_falls_back_without_upgrade(tmp_path):
 
 def test_index_and_streaming_bm25_are_exactly_equivalent(tmp_path):
     with Store(str(tmp_path), "global") as store:
-        store.add("source", [{"text": text} for text in [
-            "北辰缓存容量信息", "新月索引容量信息", "北辰缓存北辰缓存", "English only",
-            "café déjà marché", "café marché marché", "北辰キャッシュ用량"
-        ]], extract_profile=False)
+        store.add(
+            "source",
+            [
+                {"text": text}
+                for text in [
+                    "北辰缓存容量信息",
+                    "新月索引容量信息",
+                    "北辰缓存北辰缓存",
+                    "English only",
+                    "café déjà marché",
+                    "café marché marché",
+                    "北辰キャッシュ用량",
+                ]
+            ],
+            extract_profile=False,
+        )
         store.prepare_lexical("北辰")
         for query in ("北辰缓存", "容量", "café marché", "キャッシュ", "不存在", "北"):
             for allowed in (None, {1, 3, 5}, set()):
                 units = (u for batch in store.unit_batches(allowed=allowed) for u in batch)
-                assert unicode_index.rank(store.db, query, 3, allowed) == \
-                    unicode_index.stream_rank(units, query, 3)
+                assert unicode_index.rank(store.db, query, 3, allowed) == unicode_index.stream_rank(units, query, 3)
 
 
 def test_deletion_rollback_and_erasure_are_transactional(tmp_path):
@@ -219,18 +265,30 @@ def test_query_term_bound_and_streamed_backfill(tmp_path):
 
 
 @pytest.mark.parametrize("strategy", ["legacy", "coverage-v1"])
-@pytest.mark.parametrize("filler,answer,question", [
-    ("日常维护记录", "北辰缓存容量是512条记录。", "北辰缓存容量"),
-    ("運用情報", "アカツキキャッシュ容量は512件です。", "アカツキキャッシュ容量"),
-    ("일반운영기록", "북극캐시용량은512개입니다.", "북극캐시용량"),
-    ("Cafe storage notes. ", "La caféothèque contient 512 dossiers.", "cafe\u0301othe\u0300que"),
-])
+@pytest.mark.parametrize(
+    "filler,answer,question",
+    [
+        ("日常维护记录", "北辰缓存容量是512条记录。", "北辰缓存容量"),
+        ("運用情報", "アカツキキャッシュ容量は512件です。", "アカツキキャッシュ容量"),
+        ("일반운영기록", "북극캐시용량은512개입니다.", "북극캐시용량"),
+        ("Cafe storage notes. ", "La caféothèque contient 512 dossiers.", "cafe\u0301othe\u0300que"),
+    ],
+)
 def test_end_to_end_recall_returns_grounded_multilingual_tail(tmp_path, strategy, filler, answer, question):
     with Store(str(tmp_path), "global") as store:
         store.add("source", [{"speaker": "Ada", "text": filler * 100 + answer}], extract_profile=False)
-        options = Options(budget=100, excerpt_tokens=40, embedder=None, rerank=None,
-                          profile_facts=0, instructions=0, summaries=False,
-                          neighbours_before=0, neighbours_after=0, context_strategy=strategy)
+        options = Options(
+            budget=100,
+            excerpt_tokens=40,
+            embedder=None,
+            rerank=None,
+            profile_facts=0,
+            instructions=0,
+            summaries=False,
+            neighbours_before=0,
+            neighbours_after=0,
+            context_strategy=strategy,
+        )
         result = recall(store, question, options=options)
         assert result.ranked == result.turns == [1]
         assert answer in result.context and result.tokens <= 100

@@ -19,12 +19,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument("--agent-type", default=None, help="Only consider traces of this agent_type.")
     p.add_argument(
-        "--cost-per-1k-tokens", type=float, default=None,
+        "--cost-per-1k-tokens",
+        type=float,
+        default=None,
         help="Your own $/1k-tokens rate, to estimate a dollar value from measured token savings. "
         "Omit to see the measured token counts with no dollar figure attached.",
     )
     p.add_argument(
-        "--value-per-error-avoided", type=float, default=None,
+        "--value-per-error-avoided",
+        type=float,
+        default=None,
         help="Your own $ estimate of one avoided error, to estimate a dollar value from the "
         "measured errors-avoided count. Omit to see the count with no dollar figure attached.",
     )
@@ -54,7 +58,8 @@ def run(args: argparse.Namespace) -> int:
         return 0
 
     report = impact.compute_impact(
-        evidence, traces,
+        evidence,
+        traces,
         cost_per_1k_tokens=args.cost_per_1k_tokens,
         value_per_error_avoided=args.value_per_error_avoided,
     )

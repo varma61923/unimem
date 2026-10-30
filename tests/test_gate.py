@@ -16,12 +16,29 @@ def root(tmp_path, monkeypatch):
     return str(tmp_path)
 
 
-def _lesson(root, slug, *, status="active", rule="Send an idempotency key on every payment request.",
-            description=None, applies="Payments are retried after a timeout.", core=False):
+def _lesson(
+    root,
+    slug,
+    *,
+    status="active",
+    rule="Send an idempotency key on every payment request.",
+    description=None,
+    applies="Payments are retried after a timeout.",
+    core=False,
+):
     fm = templates.lesson_frontmatter(
-        slug=slug, description=description or f"{slug} description", agent_type="support", domain="payments",
-        tags=["pay"], applies_when=applies, do_not_apply_when="The call is naturally idempotent.",
-        importance=3, importance_rationale="r", source_traces=["t1"], status=status)
+        slug=slug,
+        description=description or f"{slug} description",
+        agent_type="support",
+        domain="payments",
+        tags=["pay"],
+        applies_when=applies,
+        do_not_apply_when="The call is naturally idempotent.",
+        importance=3,
+        importance_rationale="r",
+        source_traces=["t1"],
+        status=status,
+    )
     fm["name"] = slug
     if core:
         fm["core"] = True
@@ -80,9 +97,13 @@ def test_a_hurting_lesson_already_withdrawn_by_policy_only_warns(root, monkeypat
 def test_harm_on_an_archived_or_core_lesson_does_not_fail(root, monkeypatch):
     _lesson(root, "retired", status="archived")
     _lesson(root, "pinned", core=True)
-    _fake_experiment(monkeypatch, effects=[
-        _effect("retired", experiment.VERDICT_HURTS), _effect("pinned", experiment.VERDICT_HURTS),
-    ])
+    _fake_experiment(
+        monkeypatch,
+        effects=[
+            _effect("retired", experiment.VERDICT_HURTS),
+            _effect("pinned", experiment.VERDICT_HURTS),
+        ],
+    )
     assert gate.run(root).passed
 
 

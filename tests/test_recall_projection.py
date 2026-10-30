@@ -51,9 +51,7 @@ def test_dense_recall_keeps_exact_path_for_historical_queries(tmp_path, monkeypa
     configured_model = "recall-projection-history-test"
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", configured_model)
     fact_store.migrate(root)
-    older, _ = hierarchical.add_fact(
-        root, "earlier parser boundary guidance", valid_from="2026-01-01T00:00:00Z"
-    )
+    older, _ = hierarchical.add_fact(root, "earlier parser boundary guidance", valid_from="2026-01-01T00:00:00Z")
     with hierarchical.mutate_facts(root) as facts:
         facts[older.id].status = "superseded"
         facts[older.id].valid_until = "2026-06-01T00:00:00Z"

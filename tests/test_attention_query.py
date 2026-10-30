@@ -7,8 +7,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("sentence_transformers")
 
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "unimem", "reference"))
 import query as attn_query  # noqa: E402 -- must follow importorskip + sys.path.insert above
 
 
@@ -40,9 +39,7 @@ class TestTamperedModelName:
         monkeypatch.setattr(attn_query, "TELEMETRY_PATH", str(tmp_path / "alpha_telemetry.jsonl"))
 
         called = []
-        monkeypatch.setattr(
-            attn_query, "SentenceTransformer", lambda name: called.append(name) or object()
-        )
+        monkeypatch.setattr(attn_query, "SentenceTransformer", lambda name: called.append(name) or object())
         monkeypatch.setattr(sys, "argv", ["query.py", "some task"])
 
         rc = attn_query.main()
@@ -63,9 +60,7 @@ class TestTamperedModelName:
                 return np.zeros(3, dtype=np.float32)
 
         called = []
-        monkeypatch.setattr(
-            attn_query, "SentenceTransformer", lambda name: called.append(name) or FakeModel()
-        )
+        monkeypatch.setattr(attn_query, "SentenceTransformer", lambda name: called.append(name) or FakeModel())
         monkeypatch.setattr(sys, "argv", ["query.py", "some task"])
 
         rc = attn_query.main()
@@ -119,8 +114,11 @@ class TestAlphaTelemetry:
         assert len(lines) == 1
         rec = json.loads(lines[0])
         assert set(rec) >= {
-            "timestamp", "latency_ms", "n_frontmatters_parsed",
-            "n_candidates_surfaced", "estimated_tokens",
+            "timestamp",
+            "latency_ms",
+            "n_frontmatters_parsed",
+            "n_candidates_surfaced",
+            "estimated_tokens",
         }
         assert isinstance(rec["latency_ms"], (int, float)) and rec["latency_ms"] >= 0
         assert rec["n_candidates_surfaced"] == 3
@@ -182,9 +180,7 @@ class TestLoadImportancesParsedCount:
         (tmp_path / "lesson_b.md").write_text(
             "---\nname: lesson_b\nimportance: 4\nstatus: archived\n---\nbody\n", encoding="utf-8"
         )
-        (tmp_path / "lesson_template.md").write_text(
-            "---\nname: lesson_template\n---\nbody\n", encoding="utf-8"
-        )
+        (tmp_path / "lesson_template.md").write_text("---\nname: lesson_template\n---\nbody\n", encoding="utf-8")
         old_dir = attn_query.LESSONS_DIR
         attn_query.LESSONS_DIR = str(tmp_path)
         try:
@@ -225,9 +221,7 @@ class TestLoadImportancesSurvivesUnreadableFile:
 
 
 class TestArchivedLessonsExcludedFromTopK:
-    def test_an_archived_lesson_in_the_index_never_appears_in_the_brief(
-        self, tmp_path, monkeypatch
-    ):
+    def test_an_archived_lesson_in_the_index_never_appears_in_the_brief(self, tmp_path, monkeypatch):
         index_path = tmp_path / "index.npz"
         np.savez(
             str(index_path),
@@ -260,9 +254,7 @@ class TestArchivedLessonsExcludedFromTopK:
             rc = attn_query.main()
         out = buf.getvalue()
         assert rc == 0
-        result_lines = [
-            line for line in out.splitlines() if line and not line.startswith("#")
-        ]
+        result_lines = [line for line in out.splitlines() if line and not line.startswith("#")]
         assert not any(line.startswith("archived_one ") for line in result_lines)
         assert any(line.startswith("active_one ") for line in result_lines)
 
@@ -282,9 +274,7 @@ class TestImportanceFloorZeroDisablesOverride:
                 return np.zeros(3, dtype=np.float32)
 
         monkeypatch.setattr(attn_query, "SentenceTransformer", lambda name: FakeModel())
-        monkeypatch.setattr(
-            sys, "argv", ["query.py", "query text", "--top-k=2", "--include-importance-floor=0"]
-        )
+        monkeypatch.setattr(sys, "argv", ["query.py", "query text", "--top-k=2", "--include-importance-floor=0"])
 
         import contextlib
         import io
@@ -307,13 +297,9 @@ class TestCheckStaleness:
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir()
         lesson = lessons_dir / "lesson_a.md"
-        lesson.write_text(
-            "---\nname: lesson_a\nstatus: active\n---\nbody\n", encoding="utf-8"
-        )
+        lesson.write_text("---\nname: lesson_a\nstatus: active\n---\nbody\n", encoding="utf-8")
         os.utime(lesson, (1_000_000_000, 1_000_000_000))
-        reasons = attn_query.check_staleness(
-            str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"}
-        )
+        reasons = attn_query.check_staleness(str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"})
         assert reasons == []
 
     def test_active_lesson_missing_from_index_is_stale(self, tmp_path):
@@ -321,9 +307,7 @@ class TestCheckStaleness:
         index_path.write_bytes(b"x")
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir()
-        reasons = attn_query.check_staleness(
-            str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a", "lesson_b"}
-        )
+        reasons = attn_query.check_staleness(str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a", "lesson_b"})
         assert any("lesson_b" in r for r in reasons)
 
     def test_indexed_slug_no_longer_active_is_stale(self, tmp_path):
@@ -331,9 +315,7 @@ class TestCheckStaleness:
         index_path.write_bytes(b"x")
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir()
-        reasons = attn_query.check_staleness(
-            str(index_path), str(lessons_dir), {"lesson_a", "lesson_b"}, {"lesson_a"}
-        )
+        reasons = attn_query.check_staleness(str(index_path), str(lessons_dir), {"lesson_a", "lesson_b"}, {"lesson_a"})
         assert any("lesson_b" in r for r in reasons)
 
     def test_edited_lesson_same_slug_detected_via_mtime(self, tmp_path):
@@ -343,13 +325,9 @@ class TestCheckStaleness:
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir()
         lesson = lessons_dir / "lesson_a.md"
-        lesson.write_text(
-            "---\nname: lesson_a\nstatus: active\n---\nbody\n", encoding="utf-8"
-        )
+        lesson.write_text("---\nname: lesson_a\nstatus: active\n---\nbody\n", encoding="utf-8")
         os.utime(lesson, (2_000_000_000, 2_000_000_000))
-        reasons = attn_query.check_staleness(
-            str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"}
-        )
+        reasons = attn_query.check_staleness(str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"})
         assert any("modified after" in r for r in reasons)
 
     def test_archived_lesson_edit_does_not_count_towards_mtime_signal(self, tmp_path):
@@ -359,13 +337,9 @@ class TestCheckStaleness:
         lessons_dir = tmp_path / "lessons"
         lessons_dir.mkdir()
         archived = lessons_dir / "lesson_archived.md"
-        archived.write_text(
-            "---\nname: lesson_archived\nstatus: archived\n---\nbody\n", encoding="utf-8"
-        )
+        archived.write_text("---\nname: lesson_archived\nstatus: archived\n---\nbody\n", encoding="utf-8")
         os.utime(archived, (2_000_000_000, 2_000_000_000))
-        reasons = attn_query.check_staleness(
-            str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"}
-        )
+        reasons = attn_query.check_staleness(str(index_path), str(lessons_dir), {"lesson_a"}, {"lesson_a"})
         assert reasons == []
 
     def test_missing_lessons_dir_is_best_effort_not_a_crash(self, tmp_path):
@@ -437,6 +411,7 @@ class TestQueryMainSurfacesStaleness:
         telemetry_path = tmp_path / "alpha_telemetry.jsonl"
         rec = json.loads(telemetry_path.read_text(encoding="utf-8").strip().splitlines()[-1])
         assert rec["index_stale"] is True
+
 
 class TestStrictBoolLoaderParity:
     def test_a_yaml_1_1_bool_like_lesson_name_stays_a_string(self, tmp_path):

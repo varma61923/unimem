@@ -17,8 +17,7 @@ COMMONS_NUM_PERM = overlap.DEFAULT_NUM_PERM
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "commons",
-        help="Consult the UniMem Knowledge Base (operator-maintained, optional) -- "
-        "not another fleet's data.",
+        help="Consult the UniMem Knowledge Base (operator-maintained, optional) -- not another fleet's data.",
     )
     sub = p.add_subparsers(dest="commons_cmd", required=True)
 
@@ -28,14 +27,20 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     sign.add_argument("--out", required=True, help="Where to write the signature JSON.")
     sign.add_argument(
-        "--from", dest="from_file", default=None, metavar="FILE",
+        "--from",
+        dest="from_file",
+        default=None,
+        metavar="FILE",
         help="Sign failures from a file you ALREADY have -- an incident export, a "
         "postmortem index, a pasted column of alert titles. JSONL, JSON, CSV/TSV "
         "or one failure per line. Use this to get a coverage number without "
         "adopting UniMem first.",
     )
     sign.add_argument(
-        "--format", dest="from_format", choices=["jsonl", "json", "csv", "lines"], default=None,
+        "--format",
+        dest="from_format",
+        choices=["jsonl", "json", "csv", "lines"],
+        default=None,
         help="Force how --from is parsed instead of guessing from its extension/content. "
         "Use this if a file is misdetected (e.g. a .txt log whose lines start with '[').",
     )
@@ -47,21 +52,30 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Ask the Knowledge Base how much of your failure set it already covers.",
     )
     rep.add_argument(
-        "--signatures", default=None,
+        "--signatures",
+        default=None,
         help="A file from `commons sign`. Omit to sign this store on the fly.",
     )
     rep.add_argument(
-        "--from", dest="from_file", default=None, metavar="FILE",
+        "--from",
+        dest="from_file",
+        default=None,
+        metavar="FILE",
         help="Failures you already have, in any of the formats `commons sign --from` "
         "accepts. Signed locally; no failure text is sent.",
     )
     rep.add_argument(
-        "--format", dest="from_format", choices=["jsonl", "json", "csv", "lines"], default=None,
+        "--format",
+        dest="from_format",
+        choices=["jsonl", "json", "csv", "lines"],
+        default=None,
         help="Force how --from is parsed instead of guessing from its extension/content.",
     )
     rep.add_argument("--threshold", type=float, default=None)
     rep.add_argument(
-        "--corpus", default=None, metavar="FILE",
+        "--corpus",
+        default=None,
+        metavar="FILE",
         help="Measure against a Knowledge Base corpus file ON THIS MACHINE instead "
         "of asking a Hub. Nothing is sent anywhere -- not your failure text, not a "
         "signature, not even the fact that you asked. The corpus is operator-curated "
@@ -69,7 +83,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "trusting anyone with your incidents.",
     )
     rep.add_argument(
-        "--semantic", action="store_true",
+        "--semantic",
+        action="store_true",
         help="With --corpus, match by sentence-embedding similarity instead of word "
         "overlap. Measured on the held-out probe set: 32.6%% recall at a 0%% "
         "false-positive bar, against the lexical matcher's 8.7%% "
@@ -77,11 +92,13 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "pip install 'unimem[attention]'.",
     )
     rep.add_argument(
-        "--counts-only", action="store_true",
+        "--counts-only",
+        action="store_true",
         help="Ask for the headline number without pulling any matched content.",
     )
     rep.add_argument(
-        "--candidates", action="store_true",
+        "--candidates",
+        action="store_true",
         help="For each failure the coverage bar did NOT clear, also look it up by "
         "ranked search and show the best candidate answers. Measured recall is 89%% "
         "at rank 1 against the coverage bar's 10.9%%, so this is usually the "
@@ -90,7 +107,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "Costs one consultation per uncovered failure looked up.",
     )
     rep.add_argument(
-        "--candidate-limit", type=int, default=DEFAULT_CANDIDATE_LOOKUPS, metavar="N",
+        "--candidate-limit",
+        type=int,
+        default=DEFAULT_CANDIDATE_LOOKUPS,
+        metavar="N",
         help=f"With --candidates, look up at most N uncovered failures "
         f"(default {DEFAULT_CANDIDATE_LOOKUPS}). Each one costs a consultation, so "
         "this bounds what a single report can spend.",
@@ -123,12 +143,15 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "Signed locally: the text never leaves this machine.",
     )
     ask.add_argument(
-        "--limit", type=int, default=None,
+        "--limit",
+        type=int,
+        default=None,
         help="How many candidates to return (default 5). Measured recall is 89.1%% at "
         "rank 1 and 100%% within the top 10.",
     )
     ask.add_argument(
-        "--agent-type", default="",
+        "--agent-type",
+        default="",
         help="Narrow the corpus to one kind of agent (a support fleet's failures "
         "should not be scored against CUDA substrate).",
     )
@@ -147,20 +170,21 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
 
     submit = sub.add_parser(
         "submit",
-        help="Propose an entry for the Knowledge Base (operator-reviewed; publishes "
-        "nothing by itself).",
+        help="Propose an entry for the Knowledge Base (operator-reviewed; publishes nothing by itself).",
     )
     submit.add_argument("--title", required=True, help="Short, symptom-first summary.")
     submit.add_argument(
-        "--context", dest="context_text", required=True,
-        help="When/how this happens -- the situation, written as substrate knowledge, "
-        "not as your incident.",
+        "--context",
+        dest="context_text",
+        required=True,
+        help="When/how this happens -- the situation, written as substrate knowledge, not as your incident.",
     )
     submit.add_argument("--solution", dest="solution_text", required=True, help="The fix.")
     submit.add_argument("--tags", default="", help="Comma-separated tags, e.g. stripe,webhooks.")
     submit.add_argument("--agent-type", default="", help="Kind of agent this applies to.")
     submit.add_argument(
-        "--rationale", required=True,
+        "--rationale",
+        required=True,
         help="Why this is substrate knowledge and not your business logic -- required, "
         "and it is the first thing an operator reads.",
     )
@@ -204,13 +228,19 @@ def build_signatures(root: str) -> list[dict]:
     failures = []
     for tr in _recurring_failures(root):
         tags = _safe_tags(tr.get("tags"))
-        text = " ".join([
-            str(tr.get("title") or ""), str(tr.get("context_text") or ""), " ".join(tags),
-        ])
-        failures.append({
-            "label": str(tr.get("id") or "")[:12] or "failure",
-            "signature": overlap.minhash(text, COMMONS_NUM_PERM),
-        })
+        text = " ".join(
+            [
+                str(tr.get("title") or ""),
+                str(tr.get("context_text") or ""),
+                " ".join(tags),
+            ]
+        )
+        failures.append(
+            {
+                "label": str(tr.get("id") or "")[:12] or "failure",
+                "signature": overlap.minhash(text, COMMONS_NUM_PERM),
+            }
+        )
     return failures
 
 
@@ -220,22 +250,27 @@ def signatures_from_file(path: str, fmt_override: str | None = None) -> tuple[li
     signed = []
     for f in failures:
         text = " ".join([f["label"], f["text"], " ".join(f["tags"])])
-        signed.append({
-            "label": f["label"],
-            "signature": overlap.minhash(text, COMMONS_NUM_PERM),
-        })
+        signed.append(
+            {
+                "label": f["label"],
+                "signature": overlap.minhash(text, COMMONS_NUM_PERM),
+            }
+        )
     return signed, stats
 
 
 def _describe_import(stats: dict) -> None:
-    print(f"  read {stats['rows']} row(s) as {stats['format']}; "
-          f"{stats['unique']} distinct failure(s).")
+    print(f"  read {stats['rows']} row(s) as {stats['format']}; {stats['unique']} distinct failure(s).")
     if stats["deduplicated"]:
-        print(f"  collapsed {stats['deduplicated']} exact duplicate(s) -- otherwise one "
-              "noisy alert would dominate the number.")
+        print(
+            f"  collapsed {stats['deduplicated']} exact duplicate(s) -- otherwise one "
+            "noisy alert would dominate the number."
+        )
     if stats["truncated"]:
-        print(f"  NOTE: capped at {failure_import.MAX_FAILURES}; "
-              f"{stats['truncated']} failure(s) not measured.", file=sys.stderr)
+        print(
+            f"  NOTE: capped at {failure_import.MAX_FAILURES}; {stats['truncated']} failure(s) not measured.",
+            file=sys.stderr,
+        )
 
 
 _resolve_hub = _format.resolve_hub
@@ -267,8 +302,7 @@ def run_sign(args: argparse.Namespace) -> int:
     print(f"  {len(failures)} recurring failure(s), as MinHash signatures only.")
     print("  Failure text is NOT in this file and cannot be reconstructed from it.")
     if stats:
-        print("  Labels (your incident titles) ARE in this file and are echoed back "
-              "in the report.")
+        print("  Labels (your incident titles) ARE in this file and are echoed back in the report.")
         print("  Review it before sending if those titles are themselves sensitive.")
         return 0
     if not failures:
@@ -326,8 +360,7 @@ def _render_report_candidates(found: list[dict], skipped: int) -> str:
             if votes:
                 bits.append(f"{votes} fleet(s) voted")
             lines += [
-                f"- **{trace.get('title', '(untitled)')}**"
-                + (f" — *{' · '.join(bits)}*" if bits else ""),
+                f"- **{trace.get('title', '(untitled)')}**" + (f" — *{' · '.join(bits)}*" if bits else ""),
             ]
             solution = (trace.get("solution_text") or "").strip()
             if solution:
@@ -343,28 +376,30 @@ def _render_report_candidates(found: list[dict], skipped: int) -> str:
 
 
 def _render_candidates_offer(n_uncovered: int) -> str:
-    return "\n".join([
-        "## Before you read the number above as 'it knows nothing'",
-        "",
-        f"{n_uncovered} of your failures did not clear the coverage bar. That bar is "
-        "strict on purpose — it buys a 0% false-positive rate so the percentage is "
-        "safe to quote — and the price, measured against labelled pairs, is that it "
-        "discards roughly nine of every ten answers the Knowledge Base actually has "
-        ".",
-        "",
-        "**A low number here is not the same as an empty Knowledge Base.** Ranked "
-        "lookup, with identical privacy properties, finds the right entry 89% of the "
-        "time at rank 1. To see what it has for the failures above:",
-        "",
-        "```",
-        "unimem commons report --from <your file> --candidates",
-        "```",
-        "",
-        f"That costs one consultation per failure looked up (at most "
-        f"{DEFAULT_CANDIDATE_LOOKUPS} unless you raise `--candidate-limit`), and what "
-        "comes back are candidates to judge rather than coverage.",
-        "",
-    ])
+    return "\n".join(
+        [
+            "## Before you read the number above as 'it knows nothing'",
+            "",
+            f"{n_uncovered} of your failures did not clear the coverage bar. That bar is "
+            "strict on purpose — it buys a 0% false-positive rate so the percentage is "
+            "safe to quote — and the price, measured against labelled pairs, is that it "
+            "discards roughly nine of every ten answers the Knowledge Base actually has "
+            ".",
+            "",
+            "**A low number here is not the same as an empty Knowledge Base.** Ranked "
+            "lookup, with identical privacy properties, finds the right entry 89% of the "
+            "time at rank 1. To see what it has for the failures above:",
+            "",
+            "```",
+            "unimem commons report --from <your file> --candidates",
+            "```",
+            "",
+            f"That costs one consultation per failure looked up (at most "
+            f"{DEFAULT_CANDIDATE_LOOKUPS} unless you raise `--candidate-limit`), and what "
+            "comes back are candidates to judge rather than coverage.",
+            "",
+        ]
+    )
 
 
 def _render(report: dict) -> str:
@@ -424,11 +459,9 @@ def _render(report: dict) -> str:
                 f"### {trace.get('title', '(untitled)')}",
                 "",
                 f"- Matches your `{m['failure_label']}` at similarity **{m['similarity']}**",
-                f"- Reported as not working by a majority of "
-                f"{trace.get('vote_count', 0)} fleet(s)",
+                f"- Reported as not working by a majority of {trace.get('vote_count', 0)} fleet(s)",
                 "",
-                f"**Proposed solution (verify before applying):** "
-                f"{trace.get('solution_text', '')}",
+                f"**Proposed solution (verify before applying):** {trace.get('solution_text', '')}",
                 "",
             ]
     return "\n".join(lines)
@@ -465,13 +498,14 @@ def run_local_report(args: argparse.Namespace) -> int:
         return 1
 
     if not getattr(args, "from_file", None):
-        print("[unimem] --corpus needs --from: a local run has no Hub to ask "
-              "about this store, so point it at the failures to measure.",
-              file=sys.stderr)
+        print(
+            "[unimem] --corpus needs --from: a local run has no Hub to ask "
+            "about this store, so point it at the failures to measure.",
+            file=sys.stderr,
+        )
         return 1
     try:
-        raw, stats = failure_import.read_failures(
-            args.from_file, fmt_override=getattr(args, "from_format", None))
+        raw, stats = failure_import.read_failures(args.from_file, fmt_override=getattr(args, "from_format", None))
     except failure_import.FailureImportError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -479,38 +513,40 @@ def run_local_report(args: argparse.Namespace) -> int:
     texts = [" ".join([f["label"], f["text"], " ".join(f["tags"])]) for f in raw]
 
     corpus_text = [
-        " ".join([
-            str(r.get("title") or ""), str(r.get("context_text") or ""),
-            " ".join(_safe_tags(r.get("tags"))),
-        ])
+        " ".join(
+            [
+                str(r.get("title") or ""),
+                str(r.get("context_text") or ""),
+                " ".join(_safe_tags(r.get("tags"))),
+            ]
+        )
         for r in corpus
     ]
 
     if args.semantic:
         try:
-            threshold = (args.threshold if args.threshold is not None
-                         else semantic.DEFAULT_SEMANTIC_THRESHOLD)
+            threshold = args.threshold if args.threshold is not None else semantic.DEFAULT_SEMANTIC_THRESHOLD
             results = semantic.best_matches(texts, corpus_text, threshold=threshold)
         except semantic.SemanticUnavailable as exc:
             print(f"[unimem] {exc}", file=sys.stderr)
             return 1
         matcher = f"semantic (cosine >= {threshold}, {semantic.MODEL_NAME})"
     else:
-        threshold = (args.threshold if args.threshold is not None
-                     else overlap.DEFAULT_MATCH_THRESHOLD)
+        threshold = args.threshold if args.threshold is not None else overlap.DEFAULT_MATCH_THRESHOLD
         corpus_sigs = [overlap.minhash(t, COMMONS_NUM_PERM) for t in corpus_text]
         results = []
         for text in texts:
             sig = overlap.minhash(text, COMMONS_NUM_PERM)
             scored = sorted(
-                ((i, overlap.estimate_jaccard(sig, cs))
-                 for i, cs in enumerate(corpus_sigs)),
+                ((i, overlap.estimate_jaccard(sig, cs)) for i, cs in enumerate(corpus_sigs)),
                 key=lambda pair: -pair[1],
             )
-            results.append({
-                "best": scored[0] if scored else None,
-                "matches": [(i, sc) for i, sc in scored[:5] if sc >= threshold],
-            })
+            results.append(
+                {
+                    "best": scored[0] if scored else None,
+                    "matches": [(i, sc) for i, sc in scored[:5] if sc >= threshold],
+                }
+            )
         matcher = f"lexical (jaccard >= {threshold})"
 
     covered = [r for r in results if r["matches"]]
@@ -525,14 +561,17 @@ def run_local_report(args: argparse.Namespace) -> int:
             {
                 "failure_label": labels[i],
                 "matches": [
-                    {"title": corpus[j].get("title"), "similarity": round(sc, 3),
-                     "solution_text": corpus[j].get("solution_text", "")}
+                    {
+                        "title": corpus[j].get("title"),
+                        "similarity": round(sc, 3),
+                        "solution_text": corpus[j].get("solution_text", ""),
+                    }
                     for j, sc in r["matches"]
                 ],
                 "best_unmatched": (
-                    {"title": corpus[r["best"][0]].get("title"),
-                     "similarity": round(r["best"][1], 3)}
-                    if r["best"] and not r["matches"] else None
+                    {"title": corpus[r["best"][0]].get("title"), "similarity": round(r["best"][1], 3)}
+                    if r["best"] and not r["matches"]
+                    else None
                 ),
             }
             for i, r in enumerate(results)
@@ -594,13 +633,18 @@ def run_report(args: argparse.Namespace) -> int:
     if getattr(args, "corpus", None):
         return run_local_report(args)
     if getattr(args, "semantic", False):
-        print("[unimem] --semantic needs --corpus: the Hub serves MinHash "
-              "signatures, not embeddings, so semantic matching runs locally "
-              "against a corpus file.", file=sys.stderr)
+        print(
+            "[unimem] --semantic needs --corpus: the Hub serves MinHash "
+            "signatures, not embeddings, so semantic matching runs locally "
+            "against a corpus file.",
+            file=sys.stderr,
+        )
         return 1
     if args.signatures and getattr(args, "from_file", None):
-        print("[unimem] pass --signatures or --from, not both: they are two ways "
-              "of supplying the same input.", file=sys.stderr)
+        print(
+            "[unimem] pass --signatures or --from, not both: they are two ways of supplying the same input.",
+            file=sys.stderr,
+        )
         return 1
 
     resolved = _resolve_hub(args)
@@ -615,8 +659,7 @@ def run_report(args: argparse.Namespace) -> int:
             print(f"[unimem] {exc}", file=sys.stderr)
             return 1
         if not args.json:
-            print(f"[unimem] signing {args.from_file} locally -- "
-                  "no failure text leaves this machine.")
+            print(f"[unimem] signing {args.from_file} locally -- no failure text leaves this machine.")
             _describe_import(stats)
             print()
     elif args.signatures:
@@ -626,22 +669,25 @@ def run_report(args: argparse.Namespace) -> int:
         except (OSError, ValueError) as exc:
             print(f"[unimem] cannot read {args.signatures}: {exc}", file=sys.stderr)
             return 1
-        failures = payload.get("failures") if isinstance(payload, dict) else None
-        if not isinstance(failures, list):
+        parsed_failures = payload.get("failures") if isinstance(payload, dict) else None
+        if not isinstance(parsed_failures, list):
             print(
-                f"[unimem] {args.signatures} is not a `commons sign` file "
-                "(expected a 'failures' list).",
+                f"[unimem] {args.signatures} is not a `commons sign` file (expected a 'failures' list).",
                 file=sys.stderr,
             )
             return 1
+        failures = parsed_failures
     else:
         failures = build_signatures(paths.resolve_root(args.dest))
 
     try:
         report = asyncio.run(
             hub_client.commons_overlap(
-                hub_url, api_key, failures,
-                threshold=args.threshold, include_matches=not args.counts_only,
+                hub_url,
+                api_key,
+                failures,
+                threshold=args.threshold,
+                include_matches=not args.counts_only,
             )
         )
     except (hub_client.HubClientUnavailable, hub_client.HubConnectionError) as exc:
@@ -663,7 +709,9 @@ def run_report(args: argparse.Namespace) -> int:
             try:
                 found = asyncio.run(
                     hub_client.commons_search(
-                        hub_url, api_key, failure.get("signature") or [],
+                        hub_url,
+                        api_key,
+                        failure.get("signature") or [],
                     )
                 )
                 entry["candidates"] = found.get("candidates") or []
@@ -716,12 +764,10 @@ def run_fetch(args: argparse.Namespace) -> int:
 
     print(f"[unimem] wrote {len(entries)} entry(ies) to {args.out}")
     if result.get("truncated"):
-        print("[unimem] the corpus was truncated at the server's limit; "
-              "pass --limit to ask for more.", file=sys.stderr)
+        print("[unimem] the corpus was truncated at the server's limit; pass --limit to ask for more.", file=sys.stderr)
     print("[unimem] from here nothing needs to leave this machine:")
     print(f"    unimem commons report --from <your failures> --corpus {args.out}")
-    print("    ... add --semantic for the higher-recall matcher "
-          "(pip install 'unimem[attention]').")
+    print("    ... add --semantic for the higher-recall matcher (pip install 'unimem[attention]').")
     return 0
 
 
@@ -820,14 +866,16 @@ def run_ask(args: argparse.Namespace) -> int:
     hub_url, api_key = resolved
 
     if not args.json:
-        print("[unimem] signing your question locally -- the text does not leave "
-              "this machine.\n")
+        print("[unimem] signing your question locally -- the text does not leave this machine.\n")
 
     try:
         result = asyncio.run(
             hub_client.commons_search(
-                hub_url, api_key, sign_question(question),
-                limit=args.limit, agent_type=args.agent_type,
+                hub_url,
+                api_key,
+                sign_question(question),
+                limit=args.limit,
+                agent_type=args.agent_type,
             )
         )
     except (hub_client.HubClientUnavailable, hub_client.HubConnectionError) as exc:
@@ -857,8 +905,7 @@ def run_usage(args: argparse.Namespace) -> int:
 
     print(f"[unimem] plan: {r['plan']}   billing period {r['period']} (UTC)")
     print(f"  traces stored:      {r['traces']['used']:,} of {fmt(r['traces']['limit'])}")
-    print(f"  knowledge base queries: {q['used']:,} of {fmt(q['allowance'])}"
-          f"   ({fmt(q['remaining'])} remaining)")
+    print(f"  knowledge base queries: {q['used']:,} of {fmt(q['allowance'])}   ({fmt(q['remaining'])} remaining)")
     bonus = q.get("bonus_from_accepted_submissions", 0)
     if bonus:
         print(f"    of which {bonus:,} earned via accepted `commons submit` proposals")
@@ -876,9 +923,14 @@ def run_submit(args: argparse.Namespace) -> int:
     try:
         result = asyncio.run(
             hub_client.submit_kb_entry(
-                hub_url, api_key,
-                title=args.title, context_text=args.context_text, solution_text=args.solution_text,
-                tags=tags, agent_type=args.agent_type, rationale=args.rationale,
+                hub_url,
+                api_key,
+                title=args.title,
+                context_text=args.context_text,
+                solution_text=args.solution_text,
+                tags=tags,
+                agent_type=args.agent_type,
+                rationale=args.rationale,
             )
         )
     except (hub_client.HubClientUnavailable, hub_client.HubConnectionError) as exc:

@@ -1,4 +1,5 @@
 """Actual authenticated tenant routes and transactional widening activation."""
+
 from __future__ import annotations
 
 import asyncio
@@ -21,17 +22,23 @@ pytestmark = pytest.mark.asyncio
 async def policy_for(factory, org, key):
     async with session_scope(factory) as session:
         principal = await auth.verify_api_key(session, key)
-    return {"version": 1, "domain": {
-        "principals": [{"id": "key:"+principal.key_id, "class": "admin", "attributes": {}}],
-        "actions": ["read", "write", "recall", "export"],
-        "memory_classes": ["trace", "fact", "episode"],
-        "label_sets": [[], ["tenant:"+org]], "purposes": ["default"]},
-        "rules": [{"id": "read", "effect": "allow", "actions": ["read", "recall"],
-                   "memory_classes": ["trace", "fact"]}]}
+    return {
+        "version": 1,
+        "domain": {
+            "principals": [{"id": "key:" + principal.key_id, "class": "admin", "attributes": {}}],
+            "actions": ["read", "write", "recall", "export"],
+            "memory_classes": ["trace", "fact", "episode"],
+            "label_sets": [[], ["tenant:" + org]],
+            "purposes": ["default"],
+        },
+        "rules": [
+            {"id": "read", "effect": "allow", "actions": ["read", "recall"], "memory_classes": ["trace", "fact"]}
+        ],
+    }
 
 
 async def post(client, key, operation, body):
-    return await client.post("/v1/policy/"+operation, headers=_key(key), json=body)
+    return await client.post("/v1/policy/" + operation, headers=_key(key), json=body)
 
 
 async def candidate(client, key, policy):
@@ -41,8 +48,9 @@ async def candidate(client, key, policy):
 
 
 async def reviewed(client, key, certificate):
-    response = await post(client, key, "review",
-                          {"certificate": certificate, "reason": "Reviewed exact finite policy."})
+    response = await post(
+        client, key, "review", {"certificate": certificate, "reason": "Reviewed exact finite policy."}
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -61,13 +69,15 @@ async def test_widening_review_race_and_cross_tenant_signature(session_factory, 
         assert (await post(client, key, "activate", {"certificate": certificate})).status_code == 403
         review = await reviewed(client, key, certificate)
         assert review["receipt"]["record"]["reviewer"].startswith("key:")
-        assert (await post(client, other_key, "activate", {
-            "certificate": certificate, "review_receipt": review})).status_code == 403
+        assert (
+            await post(client, other_key, "activate", {"certificate": certificate, "review_receipt": review})
+        ).status_code == 403
         forged = deepcopy(certificate)
         forged["certificate"]["record"]["difference"]["no_widening"] = True
         assert (await post(client, key, "activate", {"certificate": forged})).status_code == 403
-        statuses = await asyncio.gather(*(post(client, key, "activate", {
-            "certificate": certificate, "review_receipt": review}) for _ in range(2)))
+        statuses = await asyncio.gather(
+            *(post(client, key, "activate", {"certificate": certificate, "review_receipt": review}) for _ in range(2))
+        )
         assert sorted(response.status_code for response in statuses) == [200, 409]
         state = (await post(client, key, "current", {})).json()
         assert state["generation"] == 1
@@ -81,8 +91,9 @@ async def test_widening_review_race_and_cross_tenant_signature(session_factory, 
         assert (await post(client, key, "certify", {"policy": policy, "org_id": other})).status_code == 400
     async with session_scope(session_factory, org_id=org) as session:
         assert (await session.get(MemoryPolicyState, org)).generation == 2
-        assert (await session.execute(select(MemoryPolicyState).where(
-            MemoryPolicyState.org_id == org))).scalar_one().activation["record"]["generation"] == 2
+        assert (
+            await session.execute(select(MemoryPolicyState).where(MemoryPolicyState.org_id == org))
+        ).scalar_one().activation["record"]["generation"] == 2
 
 
 async def test_active_policy_governs_actual_native_prefilter_and_trace_write(session_factory, config):
@@ -95,16 +106,23 @@ async def test_active_policy_governs_actual_native_prefilter_and_trace_write(ses
     async with _client(_app(session_factory, cfg)) as client:
         certificate = await candidate(client, key, policy)
         review = await reviewed(client, key, certificate)
-        assert (await post(client, key, "activate", {
-            "certificate": certificate, "review_receipt": review})).status_code == 200
+        assert (
+            await post(client, key, "activate", {"certificate": certificate, "review_receipt": review})
+        ).status_code == 200
         result = await client.post("/v1/memory/record-search", headers=_key(key), json={"query": "wrist", "limit": 1})
         assert result.status_code == 200, result.text
         assert [row["id"] for row in result.json()["results"]] == ["z-visible"]
-        result = await client.post("/v1/memory/record-put", headers=_key(key), json={
-            "record": MemoryRecord("new", "episode", 1, {"text": "Disallowed."}).to_dict()})
+        result = await client.post(
+            "/v1/memory/record-put",
+            headers=_key(key),
+            json={"record": MemoryRecord("new", "episode", 1, {"text": "Disallowed."}).to_dict()},
+        )
         assert result.status_code == 403, result.text
-        result = await client.post("/api/v1/traces", headers=_key(key), json={
-            "title": "Denied", "context_text": "Wrist condition", "solution_text": "Unreviewed write"})
+        result = await client.post(
+            "/api/v1/traces",
+            headers=_key(key),
+            json={"title": "Denied", "context_text": "Wrist condition", "solution_text": "Unreviewed write"},
+        )
         assert result.status_code == 403, result.text
 
 
@@ -126,22 +144,27 @@ async def test_turn_buffer_cannot_bypass_episode_read_policy(session_factory, co
     await journal.capture_turn("private-session", "", text_value="Private historical evidence.", scope={})
     policy = await policy_for(session_factory, org, key)
     # A capture permission does not grant permission to read prior captures.
-    policy["rules"].append({"id": "capture", "effect": "allow", "actions": ["write"],
-                            "memory_classes": ["episode"]})
+    policy["rules"].append({"id": "capture", "effect": "allow", "actions": ["write"], "memory_classes": ["episode"]})
     if allow_read:
         policy["rules"][0]["memory_classes"].append("episode")
     cfg = replace(config, ledger_signing_key="test-policy-key-at-least-thirty-two-bytes-long")
     async with _client(_app(session_factory, cfg)) as client:
         certificate = await candidate(client, key, policy)
         review = await reviewed(client, key, certificate)
-        assert (await post(client, key, "activate", {
-            "certificate": certificate, "review_receipt": review})).status_code == 200
-        response = await client.post("/v1/memory/turn", headers=_key(key), json={
-            "session_id": "private-session", "query": "evidence", "text": "New capture."})
+        assert (
+            await post(client, key, "activate", {"certificate": certificate, "review_receipt": review})
+        ).status_code == 200
+        response = await client.post(
+            "/v1/memory/turn",
+            headers=_key(key),
+            json={"session_id": "private-session", "query": "evidence", "text": "New capture."},
+        )
         assert response.status_code == 200, response.text
         if allow_read:
             assert {row["payload"]["text"] for row in response.json()["buffer"]} == {
-                "Private historical evidence.", "New capture."}
+                "Private historical evidence.",
+                "New capture.",
+            }
         else:
             assert response.json()["buffer"] == []
 
@@ -178,9 +201,7 @@ async def test_policy_migration_forces_tenant_rls_as_non_bypass_reader(session_f
             for table in ("memory_policy_states",):
                 await connection.execute(text(f'GRANT SELECT,INSERT,DELETE ON {table} TO "{reader}"'))
             await connection.execute(
-                text(
-                    "INSERT INTO memory_policy_states(org_id) VALUES (:org),(:other)"
-                ),
+                text("INSERT INTO memory_policy_states(org_id) VALUES (:org),(:other)"),
                 {"org": org, "other": other},
             )
             forced = await connection.scalar(

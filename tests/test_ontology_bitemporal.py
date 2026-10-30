@@ -1,5 +1,6 @@
 """Declarative ontology and the bi-temporal knowledge graph: exclusive relations,
 inverses, aliases, valid-time and record-time queries, intervals and timelines."""
+
 import json
 import os
 
@@ -58,7 +59,9 @@ def test_bad_ontology_is_refused(root):
 
 def test_rdf_ontology_when_rdflib_is_installed(root):
     pytest.importorskip("rdflib")
-    _write_ontology(root, """
+    _write_ontology(
+        root,
+        """
 @prefix : <http://example.org/o#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -67,7 +70,9 @@ def test_rdf_ontology_when_rdflib_is_installed(root):
 :Service a owl:Class .
 :hostedOn a owl:ObjectProperty, owl:FunctionalProperty ; rdfs:domain :Service ; rdfs:range :Service .
 :postgres a :Database ; skos:altLabel "pg" .
-""", "ontology.ttl")
+""",
+        "ontology.ttl",
+    )
     onto = ontology.load(root)
     assert onto.relation("hostedon").exclusive
     assert onto.ancestors("database") == ["database", "service"]
@@ -119,8 +124,7 @@ def test_known_at_reads_what_the_store_knew(root, monkeypatch):
     graph.add_edge(root, "person:ana", "organization:acme", "works_at", valid_at="2024-01-01")
     monkeypatch.setattr(graph, "_now", lambda: "2025-06-01T00:00:00+00:00")
     graph.add_edge(root, "person:ana", "organization:globex", "works_at", valid_at="2025-03-01")
-    believed = graph.get_neighbors(root, "person:ana", direction="out", as_of="2025-04-01",
-                                   known_at="2025-02-01")
+    believed = graph.get_neighbors(root, "person:ana", direction="out", as_of="2025-04-01", known_at="2025-02-01")
     assert [n["neighbor_id"] for n in believed] == ["organization:acme"]
     actual = graph.get_neighbors(root, "person:ana", direction="out", as_of="2025-04-01")
     assert [n["neighbor_id"] for n in actual] == ["organization:globex"]
@@ -138,6 +142,8 @@ def test_interval_query_and_timeline(root):
         graph.edges_between(root, "2025-01-01", "2024-01-01")
     events = graph.timeline(root, "person:ana")
     assert [(e["event"], e["target"]) for e in events] == [
-        ("began", "organization:acme"), ("began", "place:paris"),
-        ("ended", "organization:acme"), ("began", "organization:globex"),
+        ("began", "organization:acme"),
+        ("began", "place:paris"),
+        ("ended", "organization:acme"),
+        ("began", "organization:globex"),
     ]

@@ -16,11 +16,23 @@ def store(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _capture(store, title, context, solution, *, resolved=None, repeated_error=None,
-             agent_id=None, created_at=None, tags="t1"):
+def _capture(
+    store, title, context, solution, *, resolved=None, repeated_error=None, agent_id=None, created_at=None, tags="t1"
+):
     argv = [
-        "capture", "--title", title, "--context", context, "--solution", solution,
-        "--tags", tags, "--agent-type", "support", "--dest", str(store),
+        "capture",
+        "--title",
+        title,
+        "--context",
+        context,
+        "--solution",
+        solution,
+        "--tags",
+        tags,
+        "--agent-type",
+        "support",
+        "--dest",
+        str(store),
     ]
     if resolved is True:
         argv.append("--resolved")
@@ -36,6 +48,7 @@ def _capture(store, title, context, solution, *, resolved=None, repeated_error=N
 
     if created_at is not None:
         from unimem import frontmatter
+
         tdir = paths.traces_dir(str(store))
         newest = max(
             (os.path.join(tdir, f) for f in os.listdir(tdir) if f != "README.md"),
@@ -75,7 +88,8 @@ class TestBuildSignals:
     def test_repeated_failures_cluster_into_one_signal(self, store):
         for i in range(3):
             _capture(
-                store, f"Export timeout {i}",
+                store,
+                f"Export timeout {i}",
                 "customer export job timed out waiting on the worker queue",
                 "increase the worker timeout and retry",
                 resolved=False,
@@ -94,12 +108,20 @@ class TestBuildSignals:
     def test_affected_agents_are_collected_and_deduplicated(self, store):
         for i in range(2):
             _capture(
-                store, f"Export timeout {i}", "export job timed out waiting on queue",
-                "retry", resolved=False, agent_id="agent-1",
+                store,
+                f"Export timeout {i}",
+                "export job timed out waiting on queue",
+                "retry",
+                resolved=False,
+                agent_id="agent-1",
             )
         _capture(
-            store, "Export timeout 2", "export job timed out waiting on queue",
-            "retry", resolved=False, agent_id="agent-2",
+            store,
+            "Export timeout 2",
+            "export job timed out waiting on queue",
+            "retry",
+            resolved=False,
+            agent_id="agent-2",
         )
         signals, _by_id = failure_signals.build_signals(str(store))
         assert signals[0].affected_agents == ["agent-1", "agent-2"]
@@ -133,8 +155,12 @@ class TestExportFormats:
     def _signal_and_by_id(self, store):
         for i in range(2):
             _capture(
-                store, f"Export timeout {i}", "export job timed out waiting on queue",
-                "increase the worker timeout", resolved=False, tags="timeout,queue",
+                store,
+                f"Export timeout {i}",
+                "export job timed out waiting on queue",
+                "increase the worker timeout",
+                resolved=False,
+                tags="timeout,queue",
             )
         signals, by_id = failure_signals.build_signals(str(store))
         return signals[0], by_id
@@ -166,22 +192,31 @@ class TestSignalsCli:
 
     def test_list_reports_a_clustered_signal(self, store, capsys):
         for i in range(2):
-            _capture(store, f"Export timeout {i}", "export job timed out waiting on queue",
-                     "retry", resolved=False)
+            _capture(store, f"Export timeout {i}", "export job timed out waiting on queue", "retry", resolved=False)
         assert main(["signals", "list", "--dest", str(store)]) == 0
         out = capsys.readouterr().out
         assert "size=2" in out
 
     def test_export_to_stdout(self, store, capsys):
         for i in range(2):
-            _capture(store, f"Export timeout {i}", "export job timed out waiting on queue",
-                     "retry", resolved=False)
+            _capture(store, f"Export timeout {i}", "export job timed out waiting on queue", "retry", resolved=False)
         signals, _ = failure_signals.build_signals(str(store))
         name = signals[0].name
         capsys.readouterr()
-        assert main([
-            "signals", "export", name, "--format", "langsmith", "--dest", str(store),
-        ]) == 0
+        assert (
+            main(
+                [
+                    "signals",
+                    "export",
+                    name,
+                    "--format",
+                    "langsmith",
+                    "--dest",
+                    str(store),
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert out.strip().count("\n") == 1
 

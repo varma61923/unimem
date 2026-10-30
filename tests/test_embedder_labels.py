@@ -10,11 +10,14 @@ MPNET = "multi-qa-mpnet-base-dot-v1"
 
 
 def test_labels_name_the_embedder_except_the_original():
-    assert retrieval_io.eligibility_label("idf-v2", "gated", "cross-encoder-fast") == \
-        "ce:tinybert2(gated(idf-v2+semantic))"
-    assert retrieval_io.eligibility_label("idf-v2", "gated", "cross-encoder-fast",
-                                          embedder="arctic-m") == \
-        "ce:tinybert2(gated(idf-v2+semantic@arctic-m))"
+    assert (
+        retrieval_io.eligibility_label("idf-v2", "gated", "cross-encoder-fast")
+        == "ce:tinybert2(gated(idf-v2+semantic))"
+    )
+    assert (
+        retrieval_io.eligibility_label("idf-v2", "gated", "cross-encoder-fast", embedder="arctic-m")
+        == "ce:tinybert2(gated(idf-v2+semantic@arctic-m))"
+    )
     assert retrieval_io.eligibility_label("idf-v2", "none", embedder="arctic-m") == "idf-v2"
     assert retrieval_io.embedder_tag(MPNET) == ""
     assert retrieval_io.embedder_tag(ARCTIC) == "arctic-m"
@@ -36,8 +39,7 @@ def test_labels_parse_back():
 
 def test_config_label_carries_the_embedder_only_when_fused():
     config = retrieval_io.RetrievalConfig(fusion="gated", rerank="cross-encoder")
-    assert config.eligibility_label_for(fused=True, embedder="arctic-m") == \
-        "gated(adaptive-v1+semantic@arctic-m)"
+    assert config.eligibility_label_for(fused=True, embedder="arctic-m") == "gated(adaptive-v1+semantic@arctic-m)"
     assert config.eligibility_label_for(fused=False, embedder="arctic-m") == "adaptive-v1"
 
 
@@ -56,8 +58,9 @@ def _log(root, scorer):
     path = holdout_io.holdout_log_path(root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o1", "lesson": "x", "arm": "treatment",
-                             "scorer": scorer, "floor": 0.04}) + "\n")
+        fh.write(
+            json.dumps({"occasion_id": "o1", "lesson": "x", "arm": "treatment", "scorer": scorer, "floor": 0.04}) + "\n"
+        )
 
 
 def test_a_rebuilt_index_keeps_the_logged_model(tmp_path):
@@ -91,7 +94,8 @@ def test_the_reference_scripts_trust_the_same_models():
 
     def load(name):
         spec = importlib.util.spec_from_file_location(
-            f"ref_{name}", os.path.join(packaged_reference_dir(), f"{name}.py"))
+            f"ref_{name}", os.path.join(packaged_reference_dir(), f"{name}.py")
+        )
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module

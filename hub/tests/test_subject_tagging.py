@@ -78,14 +78,22 @@ class TestTagging:
         trace_id = await _trace(session_factory, org)
         async with session_scope(session_factory) as session:
             result = await crud.tag_trace_subjects(
-                session, org, trace_id, ["user-1", "user-1", "user-2"], actor="t",
+                session,
+                org,
+                trace_id,
+                ["user-1", "user-1", "user-2"],
+                actor="t",
             )
         assert result["subject_ids"] == ["user-1", "user-2"]
 
     async def test_tagging_a_nonexistent_trace_returns_none(self, session_factory, org):
         async with session_scope(session_factory) as session:
             result = await crud.tag_trace_subjects(
-                session, org, "00000000-0000-0000-0000-000000000000", ["x"], actor="t",
+                session,
+                org,
+                "00000000-0000-0000-0000-000000000000",
+                ["x"],
+                actor="t",
             )
         assert result is None
 
@@ -106,7 +114,11 @@ class TestTagging:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="exceeds"):
                 await crud.tag_trace_subjects(
-                    session, org, trace_id, ["x" * (crud.MAX_SUBJECT_ID_CHARS + 1)], actor="t",
+                    session,
+                    org,
+                    trace_id,
+                    ["x" * (crud.MAX_SUBJECT_ID_CHARS + 1)],
+                    actor="t",
                 )
 
 
@@ -170,7 +182,13 @@ class TestPurge:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, original_id, config, rate_limiter, title="amended", actor="t",
+                session,
+                org,
+                original_id,
+                config,
+                rate_limiter,
+                title="amended",
+                actor="t",
             )
         amended_id = amended["id"]
         async with session_scope(session_factory) as session:
@@ -187,8 +205,14 @@ class TestPurge:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             contributed = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s", actor="t",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                actor="t",
             )
         trace_id = contributed["id"]
         async with session_scope(session_factory) as session:
@@ -232,29 +256,41 @@ class TestToolsEndToEnd:
         trace_id = await _trace(session_factory, org)
 
         with _Scoped(org, (scopes_module.SCOPE_WRITE,)):
-            tagged = _payload(await mcp.call_tool(
-                "tag_trace_subjects", {"id": trace_id, "subject_ids": ["user-42"]},
-            ))
+            tagged = _payload(
+                await mcp.call_tool(
+                    "tag_trace_subjects",
+                    {"id": trace_id, "subject_ids": ["user-42"]},
+                )
+            )
         assert tagged["subject_ids"] == ["user-42"]
 
         with _Scoped(org, (scopes_module.SCOPE_READ,)):
-            found = _payload(await mcp.call_tool(
-                "find_traces_by_subject", {"subject_id": "user-42"},
-            ))
+            found = _payload(
+                await mcp.call_tool(
+                    "find_traces_by_subject",
+                    {"subject_id": "user-42"},
+                )
+            )
         assert [r["id"] for r in found["results"]] == [trace_id]
 
         with _Scoped(org, (scopes_module.SCOPE_ADMIN,)):
-            purged = _payload(await mcp.call_tool(
-                "purge_traces_by_subject", {"subject_id": "user-42"},
-            ))
+            purged = _payload(
+                await mcp.call_tool(
+                    "purge_traces_by_subject",
+                    {"subject_id": "user-42"},
+                )
+            )
         assert purged == {"purged": 1, "ids": [trace_id]}
 
     async def test_tag_trace_subjects_requires_write_not_read(self, mcp, session_factory, org):
         trace_id = await _trace(session_factory, org)
         with _Scoped(org, (scopes_module.SCOPE_READ,)):
-            result = _payload(await mcp.call_tool(
-                "tag_trace_subjects", {"id": trace_id, "subject_ids": ["user-42"]},
-            ))
+            result = _payload(
+                await mcp.call_tool(
+                    "tag_trace_subjects",
+                    {"id": trace_id, "subject_ids": ["user-42"]},
+                )
+            )
         assert result["error"] == "forbidden"
 
     async def test_purge_traces_by_subject_requires_admin_not_write(self, mcp, session_factory, org):
@@ -262,7 +298,10 @@ class TestToolsEndToEnd:
         with _Scoped(org, (scopes_module.SCOPE_WRITE,)):
             await mcp.call_tool("tag_trace_subjects", {"id": trace_id, "subject_ids": ["user-42"]})
         with _Scoped(org, (scopes_module.SCOPE_WRITE,)):
-            result = _payload(await mcp.call_tool(
-                "purge_traces_by_subject", {"subject_id": "user-42"},
-            ))
+            result = _payload(
+                await mcp.call_tool(
+                    "purge_traces_by_subject",
+                    {"subject_id": "user-42"},
+                )
+            )
         assert result["error"] == "forbidden"

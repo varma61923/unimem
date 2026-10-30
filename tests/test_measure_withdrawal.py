@@ -28,7 +28,8 @@ def _seed_harm(root, n=300, harm_effect=-0.35, rates=None):
     for i in range(n):
         rate = (rates or {}).get(i, config.rate)
         withheld = holdout_io.assign_and_log(
-            str(root), ["harm", "ok"], occasion_id=f"seed-{i}", rate=rate, salt=config.salt)
+            str(root), ["harm", "ok"], occasion_id=f"seed-{i}", rate=rate, salt=config.salt
+        )
         p = 0.65 + (harm_effect if "harm" not in withheld else 0.0)
         holdout_io.record_outcome(str(root), f"seed-{i}", rng.random() < p)
 
@@ -87,9 +88,7 @@ def test_the_control_arm_is_identical_when_nothing_is_harmful(tmp_path):
         root = tmp_path / policy
         _store(root, policy=policy, salt="same-salt")
         memory = CausalMemory(lambda q, **kw: ITEMS, root=str(root))
-        delivered[policy] = [
-            sorted(i["id"] for i in memory.recall("q", occasion_id=f"o{n}")) for n in range(200)
-        ]
+        delivered[policy] = [sorted(i["id"] for i in memory.recall("q", occasion_id=f"o{n}")) for n in range(200)]
     assert delivered["inform"] == delivered["withdraw"]
     assert {tuple(d) for d in delivered["inform"]} >= {("harm", "ok"), ("ok",), ("harm",)}
 
@@ -206,9 +205,7 @@ def test_a_source_that_cannot_delete_is_only_blocked_from_delivery(tmp_path):
     assert not ms.blocked_ids_for_key(str(tmp_path), memory.source_key)
 
 
-def test_a_file_source_reports_a_harmfully_withdrawn_section_apart_from_the_random_holdout(
-    tmp_path, monkeypatch
-):
+def test_a_file_source_reports_a_harmfully_withdrawn_section_apart_from_the_random_holdout(tmp_path, monkeypatch):
     _store(tmp_path)
     source = tmp_path / "AGENTS.md"
     source.write_text("intro\n## Retries\nretry 3 times\n## Keys\nuse idempotency keys\n", encoding="utf-8")
@@ -220,4 +217,3 @@ def test_a_file_source_reports_a_harmfully_withdrawn_section_apart_from_the_rand
     assert "retry 3 times" not in rendered.text
     assert rendered.blocked == []
     assert "idempotency" in rendered.text or "keys" in rendered.withheld
-

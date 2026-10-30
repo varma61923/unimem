@@ -75,8 +75,11 @@ class MemoryRecord:
             raise ValueError("unsupported memory status")
         if type(self.is_latest) is not bool or not isinstance(self.payload, dict):
             raise ValueError("latest flag and payload have invalid types")
-        if (not isinstance(self.provenance, dict) or not isinstance(self.evidence, list)
-                or any(not isinstance(item, dict) for item in self.evidence)):
+        if (
+            not isinstance(self.provenance, dict)
+            or not isinstance(self.evidence, list)
+            or any(not isinstance(item, dict) for item in self.evidence)
+        ):
             raise ValueError("provenance and evidence have invalid types")
         revisions = self.provenance.get("source_versions")
         if revisions is not None and (
@@ -244,8 +247,19 @@ def _atomic_fact_payload(payload: dict[str, Any]) -> AtomicFact:
     fields = set(AtomicFact.__dataclass_fields__)
     if set(payload) != fields | {"text"}:
         raise ValueError("AtomicFact envelope must preserve exactly every fact field and text")
-    for name in ("id", "statement", "category", "valid_from", "status", "revision", "created_at",
-                 "updated_at", "stability", "evidence_revision", "memory_type"):
+    for name in (
+        "id",
+        "statement",
+        "category",
+        "valid_from",
+        "status",
+        "revision",
+        "created_at",
+        "updated_at",
+        "stability",
+        "evidence_revision",
+        "memory_type",
+    ):
         if not isinstance(payload[name], str):
             raise ValueError(f"AtomicFact {name} must be a string")
     if not payload["id"] or len(payload["id"]) > 256 or not payload["statement"].strip():
@@ -322,6 +336,7 @@ def atomic_fact_record(fact: AtomicFact, version: int, *, tenant: str | None = N
     checked = _atomic_fact_payload(payload)
     effective_end = checked.valid_until
     if checked.expires_at:
+
         def instant(value: str) -> datetime:
             parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
             return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
@@ -329,26 +344,50 @@ def atomic_fact_record(fact: AtomicFact, version: int, *, tenant: str | None = N
         if not effective_end or instant(checked.expires_at) < instant(effective_end):
             effective_end = checked.expires_at
     return MemoryRecord(
-        checked.id, "fact", version, payload,
-        status=("active" if checked.status == "active" and not checked.forgotten else
-                "retired" if checked.status == "retired" else "deprecated"),
+        checked.id,
+        "fact",
+        version,
+        payload,
+        status=(
+            "active"
+            if checked.status == "active" and not checked.forgotten
+            else "retired"
+            if checked.status == "retired"
+            else "deprecated"
+        ),
         relations={"updates": [checked.id]} if version > 1 else {},
         provenance={"atomic_fact_format": _ATOMIC_FACT_FORMAT, "source_traces": checked.source_traces.copy()},
-        scope=_atomic_fact_scope(checked.scopes, tenant), valid_from=checked.valid_from,
-        valid_until=effective_end, created_at=checked.created_at, retracted_at=checked.retracted_at,
-        confidence=checked.confidence, evidence=[receipt.to_dict() for receipt in checked.evidence],
+        scope=_atomic_fact_scope(checked.scopes, tenant),
+        valid_from=checked.valid_from,
+        valid_until=effective_end,
+        created_at=checked.created_at,
+        retracted_at=checked.retracted_at,
+        confidence=checked.confidence,
+        evidence=[receipt.to_dict() for receipt in checked.evidence],
     )
 
 
 def atomic_fact_from_record(record: MemoryRecord) -> AtomicFact:
     """Decode only the marked bridge, rejecting inconsistent envelope mirrors."""
-    if not isinstance(record, MemoryRecord) or record.kind != "fact" or \
-            record.provenance.get("atomic_fact_format") != _ATOMIC_FACT_FORMAT:
+    if (
+        not isinstance(record, MemoryRecord)
+        or record.kind != "fact"
+        or record.provenance.get("atomic_fact_format") != _ATOMIC_FACT_FORMAT
+    ):
         raise ValueError("record is not a supported AtomicFact envelope")
     fact = _atomic_fact_payload(record.payload)
     expected = atomic_fact_record(fact, record.version, tenant=record.scope.get("tenant"))
-    for name in ("id", "status", "scope", "valid_from", "valid_until", "created_at", "retracted_at",
-                 "confidence", "evidence"):
+    for name in (
+        "id",
+        "status",
+        "scope",
+        "valid_from",
+        "valid_until",
+        "created_at",
+        "retracted_at",
+        "confidence",
+        "evidence",
+    ):
         if getattr(record, name) != getattr(expected, name):
             raise ValueError(f"AtomicFact envelope {name} does not mirror payload")
     if record.provenance.get("source_traces") != fact.source_traces:
@@ -423,8 +462,7 @@ def preference_statistics(prior: dict[str, Any], *, at: str | None = None) -> di
     observations = prior.get("observations", 0)
     if type(observations) is not int or not 0 <= observations <= 1000000:
         observations = 0
-    return {"weight": min(10, weight + 1), "half_life_days": 90,
-            "observations": min(1000000, observations + 1)}
+    return {"weight": min(10, weight + 1), "half_life_days": 90, "observations": min(1000000, observations + 1)}
 
 
 def preference_candidates(text: str, scope: dict) -> list[tuple[str, dict]]:
@@ -448,9 +486,7 @@ def preference_candidates(text: str, scope: dict) -> list[tuple[str, dict]]:
 
 
 _PREFERENCE_PREFIX = re.compile(r"^\s*I\s+(?:prefer|like|want|always\s+use)\s+", re.I)
-_PREFERENCE_STOP_WORDS = frozenset(
-    "a an and are as at be by for from i in is it of on or the to use with".split()
-)
+_PREFERENCE_STOP_WORDS = frozenset("a an and are as at be by for from i in is it of on or the to use with".split())
 _PREFERENCE_NEGATION = re.compile(r"\b(?:no|not|never|avoid|without|against)\b", re.I)
 
 
@@ -504,10 +540,7 @@ def rerank_profile_results(results: list[dict], preferences: list[dict]) -> list
         candidate_terms = set(terms(candidate_text)) if isinstance(candidate_text, str) else set()
 
         support = max(
-            (
-                len(candidate_terms & pref_terms) / len(pref_terms) * strength
-                for pref_terms, strength in weighted_terms
-            ),
+            (len(candidate_terms & pref_terms) / len(pref_terms) * strength for pref_terms, strength in weighted_terms),
             default=0.0,
         )
         base_score = row.get("score")

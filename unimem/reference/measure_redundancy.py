@@ -38,6 +38,7 @@ Usage:
     python -m unimem.reference.measure_redundancy --json
     python -m unimem.reference.measure_redundancy --min-margin 1.5
 """
+
 import argparse
 import glob
 import json
@@ -89,10 +90,12 @@ def load_seed_entries(seed_path):
                 "applies_when": row.get("context_text", ""),
                 "do_not_apply_when": "",
             }
-            items.append((
-                f"seed/{line_no}",
-                redundancy.comparable_text(fm, row.get("solution_text", "")),
-            ))
+            items.append(
+                (
+                    f"seed/{line_no}",
+                    redundancy.comparable_text(fm, row.get("solution_text", "")),
+                )
+            )
     return items
 
 
@@ -124,10 +127,7 @@ def distribution(items):
         "max": round(max(scores), 3),
         "p99": round(statistics.quantiles(scores, n=100)[98], 3) if len(scores) >= 100 else round(max(scores), 3),
         "mean": round(statistics.mean(scores), 3),
-        "loudest": [
-            {"a": a, "b": b, "similarity": round(score, 3)}
-            for score, a, b in loudest[:5]
-        ],
+        "loudest": [{"a": a, "b": b, "similarity": round(score, 3)} for score, a, b in loudest[:5]],
     }
 
 
@@ -136,11 +136,7 @@ def by_field(items):
     grouped = {}
     for label, text in items:
         grouped.setdefault(label.split("/", 1)[0], []).append((label, text))
-    return {
-        field: distribution(group)
-        for field, group in sorted(grouped.items())
-        if len(group) > 1
-    }
+    return {field: distribution(group) for field, group in sorted(grouped.items()) if len(group) > 1}
 
 
 def measure(items, thresholds):
@@ -150,10 +146,7 @@ def measure(items, thresholds):
         pairs = redundancy.find_near_duplicates(items, threshold=threshold)
         out[f"{threshold:.2f}"] = {
             "pairs": len(pairs),
-            "examples": [
-                {"a": p.a, "b": p.b, "similarity": round(p.similarity, 3)}
-                for p in pairs[:5]
-            ],
+            "examples": [{"a": p.a, "b": p.b, "similarity": round(p.similarity, 3)} for p in pairs[:5]],
         }
     return out
 
@@ -180,7 +173,9 @@ def measure_recall(items, thresholds, *, seed=0xC0FFEE):
 def render(report):
     dist = report["distribution"]
     worst_field, worst = max(
-        dist["by_field"].items(), key=lambda kv: kv[1]["max"], default=("n/a", {"max": 0.0}),
+        dist["by_field"].items(),
+        key=lambda kv: kv[1]["max"],
+        default=("n/a", {"max": 0.0}),
     )
     observed = max(
         dist["fixtures"]["max"],
@@ -214,37 +209,42 @@ def render(report):
         f"{worst.get('max', 0.0):.3f} | {worst.get('p99', 0.0):.3f} | "
         f"{worst.get('mean', 0.0):.3f} |"
     )
-    lines.extend([
-        "",
-        "Loudest distinct pairs:",
-        "",
-    ])
+    lines.extend(
+        [
+            "",
+            "Loudest distinct pairs:",
+            "",
+        ]
+    )
     for example in dist["fixtures"]["loudest"][:3]:
         lines.append(f"- `{example['a']}` ~ `{example['b']}` ({example['similarity']})")
-    lines.extend([
-        "",
-        "## Threshold sweep",
-        "",
-        "| threshold | field fixtures | commons seed | restatement recall (fixtures) |",
-        "|---|---|---|---|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Threshold sweep",
+            "",
+            "| threshold | field fixtures | commons seed | restatement recall (fixtures) |",
+            "|---|---|---|---|",
+        ]
+    )
     for threshold in report["thresholds"]:
         key = f"{threshold:.2f}"
         fixtures = report["fixtures"][key]["pairs"]
         seed = report["seed"][key]["pairs"] if report["seed"] else "n/a"
         recall = report["recall"][key]["rate"]
         lines.append(f"| {key} | {fixtures} | {seed} | {recall:.0%} |")
-    lines.extend([
-        "",
-        f"Corpus sizes: {report['n_fixtures']} fixture lessons, "
-        f"{report['n_seed']} commons seed entries.",
-        "",
-        "A pair reported on either corpus is a false positive by construction:",
-        "neither contains a lesson written to restate another. Restatement recall",
-        "is measured against synthetic perturbations of the fixture lessons, where",
-        "the true answer is known -- see this script's docstring for what that",
-        "does and does not bound.",
-    ])
+    lines.extend(
+        [
+            "",
+            f"Corpus sizes: {report['n_fixtures']} fixture lessons, {report['n_seed']} commons seed entries.",
+            "",
+            "A pair reported on either corpus is a false positive by construction:",
+            "neither contains a lesson written to restate another. Restatement recall",
+            "is measured against synthetic perturbations of the fixture lessons, where",
+            "the true answer is known -- see this script's docstring for what that",
+            "does and does not bound.",
+        ]
+    )
     top = report["fixtures"][f"{redundancy.DEFAULT_THRESHOLD:.2f}"]["examples"]
     if top:
         lines.extend(["", "## Flagged at the default threshold", ""])
@@ -259,16 +259,20 @@ def main(argv=None):
     parser.add_argument("--seed-corpus", default=DEFAULT_SEED)
     parser.add_argument("--json", action="store_true", help="raw JSON instead of markdown")
     parser.add_argument(
-        "--max-false-positives", type=int, default=None,
+        "--max-false-positives",
+        type=int,
+        default=None,
         help="non-zero exit if the default threshold flags more than this many "
-             "pairs on either corpus -- the CI gate on the default staying honest.",
+        "pairs on either corpus -- the CI gate on the default staying honest.",
     )
     parser.add_argument(
-        "--min-margin", type=float, default=None,
+        "--min-margin",
+        type=float,
+        default=None,
         help="non-zero exit unless the default threshold is at least this "
-             "multiple of the loudest genuinely distinct pair in either "
-             "corpus. This is the gate that matters: the pair COUNT is zero "
-             "at every threshold in the sweep and so cannot bound anything.",
+        "multiple of the loudest genuinely distinct pair in either "
+        "corpus. This is the gate that matters: the pair COUNT is zero "
+        "at every threshold in the sweep and so cannot bound anything.",
     )
     args = parser.parse_args(argv)
 
@@ -309,8 +313,7 @@ def main(argv=None):
     if args.min_margin is not None:
         observed = max(
             report["distribution"]["fixtures"]["max"],
-            report["distribution"]["seed"].get("max", 0.0)
-            if report["distribution"]["seed"] else 0.0,
+            report["distribution"]["seed"].get("max", 0.0) if report["distribution"]["seed"] else 0.0,
         )
         margin = (redundancy.DEFAULT_THRESHOLD / observed) if observed else float("inf")
         if margin < args.min_margin:

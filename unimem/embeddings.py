@@ -25,6 +25,7 @@ Hosted calls go through ``llm._post_json``: HTTPS (or loopback HTTP), no
 redirects, bounded responses, retries on 429 and 5xx, and refused entirely in
 offline mode. Texts are truncated to ``MAX_CHARS`` before they leave the host.
 """
+
 from __future__ import annotations
 
 import json
@@ -55,8 +56,13 @@ FASTEMBED_MODELS = {
     "baai/bge-small-en-v1.5": ("BAAI/bge-small-en-v1.5", 384),
     "baai/bge-base-en-v1.5": ("BAAI/bge-base-en-v1.5", 768),
 }
-DEFAULT_MODELS = {"openai": "text-embedding-3-small", "gemini": "gemini-embedding-001", "voyage": "voyage-3.5",
-                  "cohere": "embed-v4.0", "ollama": "nomic-embed-text"}
+DEFAULT_MODELS = {
+    "openai": "text-embedding-3-small",
+    "gemini": "gemini-embedding-001",
+    "voyage": "voyage-3.5",
+    "cohere": "embed-v4.0",
+    "ollama": "nomic-embed-text",
+}
 BATCH = {
     "openai": 128,
     "gemini": 100,
@@ -69,8 +75,10 @@ BATCH = {
 }
 _CUSTOM: dict[str, object] = {}
 _CUSTOM_LOCK = threading.RLock()
-_TAG = re.compile(r"^(?:(?P<provider>[a-z][a-z0-9]{1,31}):)?(?P<model>[A-Za-z0-9._/\-]{1,128})"
-                  r"(?:@(?P<dims>[0-9]{1,5}))?$")
+_TAG = re.compile(
+    r"^(?:(?P<provider>[a-z][a-z0-9]{1,31}):)?(?P<model>[A-Za-z0-9._/\-]{1,128})"
+    r"(?:@(?P<dims>[0-9]{1,5}))?$"
+)
 
 
 class EmbeddingError(RuntimeError):
@@ -103,9 +111,11 @@ def parse(tag: str) -> Spec:
     """Parse an embedder tag; raises EmbeddingError with the accepted forms."""
     match = _TAG.match((tag or "").strip())
     if not match:
-        raise EmbeddingError(f"embedder {tag!r} is not a tag: use a local name ({', '.join(sorted(LOCAL_MODELS))}), "
-                             "local:<model>, fastembed:<supported-model>, or "
-                             "<provider>:<model>[@dims] with provider in " + ", ".join(HOSTED))
+        raise EmbeddingError(
+            f"embedder {tag!r} is not a tag: use a local name ({', '.join(sorted(LOCAL_MODELS))}), "
+            "local:<model>, fastembed:<supported-model>, or "
+            "<provider>:<model>[@dims] with provider in " + ", ".join(HOSTED)
+        )
     provider, model, dims = match.group("provider"), match.group("model"), match.group("dims")
     dimensions = int(dims) if dims else None
     if dimensions is not None and not 32 <= dimensions <= 8192:
@@ -131,9 +141,7 @@ def parse(tag: str) -> Spec:
     if provider in _CUSTOM:
         return Spec(provider, model, dimensions)
     if provider not in HOSTED:
-        raise EmbeddingError(
-            f"unknown embedding provider {provider!r}; known: local, fastembed, {', '.join(HOSTED)}"
-        )
+        raise EmbeddingError(f"unknown embedding provider {provider!r}; known: local, fastembed, {', '.join(HOSTED)}")
     return Spec(provider, model, dimensions)
 
 
@@ -205,17 +213,20 @@ class _Local:
                         raise EmbeddingError(
                             f"local embedding model {self._name!r} is not available in the cache"
                         ) from exc
-                    model = SentenceTransformer(
-                        self._name, device="cpu", trust_remote_code=self.spec.model == "nomic"
-                    )
+                    model = SentenceTransformer(self._name, device="cpu", trust_remote_code=self.spec.model == "nomic")
             model.max_seq_length = 256
             self._model = model
         return self._model
 
     def embed(self, texts: list[str], *, query: bool) -> list[list[float]]:
         prefix = self._query_prefix if query else self._doc_prefix
-        vectors = self._load().encode([prefix + t for t in _clip(texts)], batch_size=BATCH["local"],
-                                      normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)
+        vectors = self._load().encode(
+            [prefix + t for t in _clip(texts)],
+            batch_size=BATCH["local"],
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )
         return [_normalize(v) for v in vectors]
 
 
@@ -223,14 +234,23 @@ class _Local:
 # Pin snapshots so cache-only servers never need a mutable branch lookup.
 _ONNX_MODELS = {
     "BAAI/bge-small-en-v1.5": (
-        "qdrant/bge-small-en-v1.5-onnx-q", "aa8f8b060edb00e03bfdd08813a2949946c8ba55", 384,
+        "qdrant/bge-small-en-v1.5-onnx-q",
+        "aa8f8b060edb00e03bfdd08813a2949946c8ba55",
+        384,
     ),
     "BAAI/bge-base-en-v1.5": (
-        "qdrant/bge-base-en-v1.5-onnx-q", "199291fdd1aa89faf9c20b722dc72ad5e17aa0d0", 768,
+        "qdrant/bge-base-en-v1.5-onnx-q",
+        "199291fdd1aa89faf9c20b722dc72ad5e17aa0d0",
+        768,
     ),
 }
-_ONNX_MODEL_FILES = ("model_optimized.onnx", "config.json", "tokenizer.json",
-               "tokenizer_config.json", "special_tokens_map.json")
+_ONNX_MODEL_FILES = (
+    "model_optimized.onnx",
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "special_tokens_map.json",
+)
 
 
 ONNX_DEFAULT_THREADS = 2
@@ -254,8 +274,14 @@ def onnx_threads() -> int:
 class _OnnxText:
     """BGE v1.5 CLS embeddings with bounded CPU inference and cache-only loading."""
 
-    def __init__(self, *, model_name: str, cache_dir: str | None = None,
-                 threads: int = ONNX_DEFAULT_THREADS, local_files_only: bool = False):
+    def __init__(
+        self,
+        *,
+        model_name: str,
+        cache_dir: str | None = None,
+        threads: int = ONNX_DEFAULT_THREADS,
+        local_files_only: bool = False,
+    ):
         import onnxruntime as ort
         from huggingface_hub import snapshot_download
         from tokenizers import AddedToken, Tokenizer
@@ -265,11 +291,15 @@ class _OnnxText:
         if type(threads) is not int or not 1 <= threads <= ONNX_MAX_THREADS:
             raise ValueError(f"CPU ONNX text inference requires 1 to {ONNX_MAX_THREADS} threads")
         repository, revision, self.embedding_size = _ONNX_MODELS[model_name]
-        self.artifact_directory = Path(snapshot_download(
-            repo_id=repository, revision=revision,
-            cache_dir=cache_dir or str(Path(tempfile.gettempdir()) / "fastembed_cache"),
-            allow_patterns=list(_ONNX_MODEL_FILES), local_files_only=local_files_only,
-        ))
+        self.artifact_directory = Path(
+            snapshot_download(
+                repo_id=repository,
+                revision=revision,
+                cache_dir=cache_dir or str(Path(tempfile.gettempdir()) / "fastembed_cache"),
+                allow_patterns=list(_ONNX_MODEL_FILES),
+                local_files_only=local_files_only,
+            )
+        )
         for name in _ONNX_MODEL_FILES:
             if not (self.artifact_directory / name).is_file():
                 raise FileNotFoundError(f"cached text model is missing {name}")
@@ -284,8 +314,9 @@ class _OnnxText:
                 limits.append(limit)
         self._tokenizer.enable_truncation(max_length=min(limits))
         if not self._tokenizer.padding:
-            self._tokenizer.enable_padding(pad_id=config.get("pad_token_id", 0),
-                                           pad_token=tokenizer_config.get("pad_token", "[PAD]"))
+            self._tokenizer.enable_padding(
+                pad_id=config.get("pad_token_id", 0), pad_token=tokenizer_config.get("pad_token", "[PAD]")
+            )
         for token in self._json("special_tokens_map.json").values():
             self._tokenizer.add_special_tokens([AddedToken(**token) if isinstance(token, dict) else token])
 
@@ -295,7 +326,8 @@ class _OnnxText:
         options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
         self._session = ort.InferenceSession(
             str(self.artifact_directory / "model_optimized.onnx"),
-            sess_options=options, providers=["CPUExecutionProvider"],
+            sess_options=options,
+            providers=["CPUExecutionProvider"],
         )
         self._inputs = {node.name for node in self._session.get_inputs()}
         if "input_ids" not in self._inputs or self._inputs - {"input_ids", "attention_mask", "token_type_ids"}:
@@ -311,7 +343,7 @@ class _OnnxText:
         if type(batch_size) is not int or not 1 <= batch_size <= 64 or parallel is not None:
             raise ValueError("CPU ONNX text batches must be bounded to 64 with no worker processes")
         for start in range(0, len(texts), batch_size):
-            encoded = self._tokenizer.encode_batch(texts[start:start + batch_size])
+            encoded = self._tokenizer.encode_batch(texts[start : start + batch_size])
             ids = np.asarray([row.ids for row in encoded], dtype=np.int64)
             inputs = {"input_ids": ids}
             if "attention_mask" in self._inputs:
@@ -359,8 +391,7 @@ class _FastEmbed:
                 )
             except ImportError as exc:
                 raise EmbeddingError(
-                    "FastEmbed embeddings need the optional dependency: "
-                    "pip install 'unimem[fastembed]'"
+                    "FastEmbed embeddings need the optional dependency: pip install 'unimem[fastembed]'"
                 ) from exc
             except Exception as exc:  # noqa: BLE001 - optional backend errors vary
                 if cache_only:
@@ -382,19 +413,20 @@ class _FastEmbed:
         out: list[list[float] | None] = [None] * len(clipped)
         # Keep inference batches and ONNX thread use bounded in the caller.
         for start in range(0, len(order), BATCH["fastembed"]):
-            indices = order[start:start + BATCH["fastembed"]]
+            indices = order[start : start + BATCH["fastembed"]]
             batch = [clipped[i] for i in indices]
             rows = list(method(batch, batch_size=BATCH["fastembed"], parallel=None))
             if len(rows) != len(batch):
-                raise EmbeddingError(
-                    f"fastembed returned {len(rows)} vectors for {len(batch)} texts"
-                )
+                raise EmbeddingError(f"fastembed returned {len(rows)} vectors for {len(batch)} texts")
             for i, row in zip(indices, rows):
                 out[i] = _normalize(row)
-        dimensions = {len(row) for row in out}
+        vectors = [row for row in out if row is not None]
+        if len(vectors) != len(out):
+            raise EmbeddingError("fastembed did not produce every requested vector")
+        dimensions = {len(row) for row in vectors}
         if len(dimensions) > 1:
             raise EmbeddingError("fastembed returned vectors of different dimensions")
-        return out
+        return vectors
 
     def projection_identity(self) -> tuple[str, int]:
         """Identify the exact HF snapshot or hash the cached model artifacts."""
@@ -416,17 +448,13 @@ class _FastEmbed:
             (
                 parts[index + 1]
                 for index, part in enumerate(parts[:-1])
-                if part == "snapshots"
-                and re.fullmatch(r"[0-9a-f]{40,64}", parts[index + 1])
+                if part == "snapshots" and re.fullmatch(r"[0-9a-f]{40,64}", parts[index + 1])
             ),
             None,
         )
         if revision is None:
             digest = sha256()
-            files = sorted(
-                file for file in path.rglob("*")
-                if file.is_file() and file.name != "files_metadata.json"
-            )
+            files = sorted(file for file in path.rglob("*") if file.is_file() and file.name != "files_metadata.json")
             if not files:
                 raise EmbeddingError("FastEmbed model cache contains no artifacts")
             for file in files:
@@ -470,8 +498,7 @@ class _Hosted:
         p, model = self.spec.provider, self.spec.model
         if p == "openai":
             base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
-            return self._openai_like(base + "/embeddings", _secret("OPENAI_API_KEY", "UNIMEM_OPENAI_API_KEY"),
-                                     texts)
+            return self._openai_like(base + "/embeddings", _secret("OPENAI_API_KEY", "UNIMEM_OPENAI_API_KEY"), texts)
         if p == "compat":
             base = _configuration_getenv("UNIMEM_EMBED_BASE_URL", "").rstrip("/")
             if not base:
@@ -485,7 +512,11 @@ class _Hosted:
             task = "RETRIEVAL_QUERY" if query else "RETRIEVAL_DOCUMENT"
             requests = []
             for t in texts:
-                item = {"model": name, "content": {"parts": [{"text": t}]}, "taskType": task}
+                item: dict[str, str | int | dict] = {
+                    "model": name,
+                    "content": {"parts": [{"text": t}]},
+                    "taskType": task,
+                }
                 if self.spec.dimensions:
                     item["outputDimensionality"] = self.spec.dimensions
                 requests.append(item)
@@ -493,29 +524,44 @@ class _Hosted:
             data = self._post(url, {"Content-Type": "application/json", "x-goog-api-key": key}, {"requests": requests})
             return [e.get("values") for e in data.get("embeddings") or []]
         if p == "voyage":
-            payload = {"model": model, "input": texts, "input_type": "query" if query else "document"}
+            payload: dict[str, str | int | list[str]] = {
+                "model": model,
+                "input": texts,
+                "input_type": "query" if query else "document",
+            }
             if self.spec.dimensions:
                 payload["output_dimension"] = self.spec.dimensions
-            data = self._post("https://api.voyageai.com/v1/embeddings",
-                              {"Content-Type": "application/json",
-                               "Authorization": "Bearer " + _secret("VOYAGE_API_KEY")}, payload)
+            data = self._post(
+                "https://api.voyageai.com/v1/embeddings",
+                {"Content-Type": "application/json", "Authorization": "Bearer " + _secret("VOYAGE_API_KEY")},
+                payload,
+            )
             rows = sorted(data.get("data") or [], key=lambda r: r.get("index", 0))
             return [r.get("embedding") for r in rows]
         if p == "cohere":
-            payload = {"model": model, "texts": texts, "embedding_types": ["float"],
-                       "input_type": "search_query" if query else "search_document"}
+            payload = {
+                "model": model,
+                "texts": texts,
+                "embedding_types": ["float"],
+                "input_type": "search_query" if query else "search_document",
+            }
             if self.spec.dimensions:
                 payload["output_dimension"] = self.spec.dimensions
-            data = self._post("https://api.cohere.com/v2/embed",
-                              {"Content-Type": "application/json",
-                               "Authorization": "Bearer " + _secret("COHERE_API_KEY")}, payload)
+            data = self._post(
+                "https://api.cohere.com/v2/embed",
+                {"Content-Type": "application/json", "Authorization": "Bearer " + _secret("COHERE_API_KEY")},
+                payload,
+            )
             return list((data.get("embeddings") or {}).get("float") or [])
         if p == "ollama":
             host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
             if "://" not in host:
                 host = "http://" + host
-            data = self._post(host + "/api/embed", {"Content-Type": "application/json"},
-                              {"model": model, "input": texts, "truncate": True})
+            data = self._post(
+                host + "/api/embed",
+                {"Content-Type": "application/json"},
+                {"model": model, "input": texts, "truncate": True},
+            )
             return list(data.get("embeddings") or [])
         raise EmbeddingError(f"unknown provider {p!r}")
 
@@ -524,7 +570,7 @@ class _Hosted:
         texts = _clip(texts)
         size = BATCH[self.spec.provider]
         for start in range(0, len(texts), size):
-            batch = texts[start:start + size]
+            batch = texts[start : start + size]
             rows = self._call(batch, query)
             if len(rows) != len(batch):
                 raise EmbeddingError(f"{self.spec.provider} returned {len(rows)} vectors for {len(batch)} texts")
@@ -539,8 +585,12 @@ class _Hosted:
 
 def register(name: str, factory) -> None:
     """Register trusted code: ``factory(spec) -> Provider`` for tags ``<name>:<model>``."""
-    if (not isinstance(name, str) or not re.fullmatch(r"[a-z][a-z0-9]{1,31}", name)
-            or name in (*LOCAL_PROVIDERS, *HOSTED) or not callable(factory)):
+    if (
+        not isinstance(name, str)
+        or not re.fullmatch(r"[a-z][a-z0-9]{1,31}", name)
+        or name in (*LOCAL_PROVIDERS, *HOSTED)
+        or not callable(factory)
+    ):
         raise EmbeddingError("provider names are lowercase, new and not built in")
     with _CUSTOM_LOCK:
         if name in _CUSTOM:

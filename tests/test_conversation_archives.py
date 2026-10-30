@@ -1,4 +1,5 @@
 """Backups preserve historical beliefs and evidence, and failed restores leave no partial state."""
+
 import copy
 import json
 
@@ -10,26 +11,44 @@ from unimem.conversation.store import ConversationError, write_txn
 
 
 def seed(store):
-    store.add("early", [{"speaker": "Ana", "text": "I live in London."},
-                        {"speaker": "Ana", "text": "Project budget approved."}], session_at="2023-01-01")
+    store.add(
+        "early",
+        [{"speaker": "Ana", "text": "I live in London."}, {"speaker": "Ana", "text": "Project budget approved."}],
+        session_at="2023-01-01",
+    )
     store.add("late", [{"speaker": "Ben", "text": "No personal changes."}], session_at="2024-01-01")
     ids = [t.id for t in store.session_turns("early")]
-    store.add_memories("early", [{"text": "The budget for Zephyr is 120 units.", "owner": "Project Zephyr",
-                                  "source_turn_ids": ids}], source="model", extracted_through=1)
+    store.add_memories(
+        "early",
+        [{"text": "The budget for Zephyr is 120 units.", "owner": "Project Zephyr", "source_turn_ids": ids}],
+        source="model",
+        extracted_through=1,
+    )
     # All three assertions share a timestamp and anchor; their insertion order
     # still distinguishes a genuine reversion from a duplicate observation.
-    store.add_memories("late", [{"text": "Ben prefers tea.", "slot": "drink"},
-                                 {"text": "Ben prefers coffee.", "slot": "drink"},
-                                 {"text": "Ben prefers tea.", "slot": "drink"}], source="manual")
+    store.add_memories(
+        "late",
+        [
+            {"text": "Ben prefers tea.", "slot": "drink"},
+            {"text": "Ben prefers coffee.", "slot": "drink"},
+            {"text": "Ben prefers tea.", "slot": "drink"},
+        ],
+        source="manual",
+    )
     # Extraction from the earlier session happens after the later-session facts.
-    store.add_memories("early", [{"text": "Ben prefers water.", "owner": "Ben", "slot": "drink",
-                                  "at": "2024-01-01", "source_turn_ids": ids}], source="manual")
+    store.add_memories(
+        "early",
+        [{"text": "Ben prefers water.", "owner": "Ben", "slot": "drink", "at": "2024-01-01", "source_turn_ids": ids}],
+        source="manual",
+    )
     store.set_summary("early", "Budget approved; Ana lives in London.", "extractive")
 
 
 def beliefs(store):
-    return [(f["owner"], f["kind"], f["statement"], f["at"], f["slot"], f["source"], f["valid_until"])
-            for f in store.facts(history=True)]
+    return [
+        (f["owner"], f["kind"], f["statement"], f["at"], f["slot"], f["source"], f["valid_until"])
+        for f in store.facts(history=True)
+    ]
 
 
 def test_archive_preserves_every_belief_provenance_summary_checkpoint_and_reversion(tmp_path):
@@ -46,13 +65,17 @@ def test_archive_preserves_every_belief_provenance_summary_checkpoint_and_revers
         assert restored.summaries()["early"] == original.summaries()["early"]
         fact = next(f for f in restored.facts() if "120" in f["statement"])
         assert [e["text"] for e in restored.fact_evidence(fact["id"])] == [
-            "I live in London.", "Project budget approved."]
+            "I live in London.",
+            "Project budget approved.",
+        ]
         assert {f["statement"] for f in restored.facts() if f["owner"] == "ben"} == {"Ben prefers water."}
         again = restored.import_sessions(rows)
         assert again["added"] == again["memories"] == 0
         assert beliefs(restored) == beliefs(original)
         # The restored checkpoint avoids another extraction of processed messages.
-        assert extract(restored, sessions=["early"], complete=lambda _: pytest.fail("unexpected inference"))["calls"] == 0
+        assert (
+            extract(restored, sessions=["early"], complete=lambda _: pytest.fail("unexpected inference"))["calls"] == 0
+        )
         restored.purge(before="2023-01-01T00:01")
         assert all("120" not in f["statement"] for f in restored.facts(history=True))
 

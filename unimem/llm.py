@@ -35,10 +35,12 @@ GEMINI_TIMEOUT_SECONDS = 300
 
 REQUIRED_KEYS = ("rule", "applies_when", "do_not_apply_when", "evidence")
 
-_CIRCUITS = RuntimeCache[CircuitBreaker](max_entries=128, max_bytes=128 * 1024, ttl=3600,
-                                       weigh=lambda _key, _value: 1024)
+_CIRCUITS = RuntimeCache[CircuitBreaker](
+    max_entries=128, max_bytes=128 * 1024, ttl=3600, weigh=lambda _key, _value: 1024
+)
 _OVERLOADS: RuntimeCache[OverloadPolicy] = RuntimeCache(
-    max_entries=128, max_bytes=128 * 1024, ttl=3600, weigh=lambda _key, _value: 1024)
+    max_entries=128, max_bytes=128 * 1024, ttl=3600, weigh=lambda _key, _value: 1024
+)
 
 
 def _transient_provider_failure(error: BaseException | None) -> bool:
@@ -64,12 +66,20 @@ def _credential_hash(key: str) -> str:
 def _provider_call(cfg: Config, prompt: str, caller) -> tuple[str, dict]:
     from unimem.overload import OverloadPolicy
 
-    key = (cfg.provider, cfg.model, cfg.base_url, cfg.region, cfg.project, cfg.cache_namespace,
-           _credential_hash(cfg.api_key))
+    key = (
+        cfg.provider,
+        cfg.model,
+        cfg.base_url,
+        cfg.region,
+        cfg.project,
+        cfg.cache_namespace,
+        _credential_hash(cfg.api_key),
+    )
     overload = _OVERLOADS.get_or_load(key, OverloadPolicy)
     # A local admission refusal says nothing about provider health and must
     # neither reset a circuit nor consume its single recovery probe.
     overload.admit()
+
     def dispatch():
         try:
             value = caller(cfg, prompt)
@@ -78,6 +88,7 @@ def _provider_call(cfg: Config, prompt: str, caller) -> tuple[str, dict]:
             raise
         overload.on_success()
         return value
+
     if _configuration_getenv("UNIMEM_LLM_CIRCUIT_BREAKER", "1").strip().lower() in ("0", "false", "off", "no"):
         return dispatch()
     circuit = _CIRCUITS.get_or_load(key, CircuitBreaker)
@@ -87,12 +98,10 @@ def _provider_call(cfg: Config, prompt: str, caller) -> tuple[str, dict]:
         raise LLMUnavailable(f"provider temporarily unavailable; retry in {exc.retry_after:.1f}s") from None
 
 
-class LLMUnavailable(InfrastructureError):
-    ...
+class LLMUnavailable(InfrastructureError): ...
 
 
-class LLMDraftRejected(ValueError):
-    ...
+class LLMDraftRejected(ValueError): ...
 
 
 @dataclass(frozen=True)
@@ -113,8 +122,7 @@ def load_config() -> Config:
 
     if provider not in LLMFactory.names():
         raise LLMUnavailable(
-            f"UNIMEM_LLM_PROVIDER={provider!r} is not supported "
-            f"(use one of: {', '.join(_SUPPORTED_PROVIDERS)})."
+            f"UNIMEM_LLM_PROVIDER={provider!r} is not supported (use one of: {', '.join(_SUPPORTED_PROVIDERS)})."
         )
     ollama_alias = provider == "ollama"
     openai_alias = provider == "openai"
@@ -130,15 +138,15 @@ def load_config() -> Config:
         from unimem import local_llm
 
         model = _configuration_getenv("UNIMEM_LLM_MODEL", "").strip() or local_llm.DEFAULT_MODEL
-        return Config(provider="local", model=model, api_key="",
-                      cache_namespace=_configuration_getenv("UNIMEM_LLM_CACHE_NAMESPACE", "").strip() or None)
-    if not api_key and provider not in _CLOUD_PROVIDERS and not ollama_alias and LLM_CREDENTIALS.get(provider, True):
-        raise LLMUnavailable(
-            "UNIMEM_LLM_API_KEY is not set -- no LLM-assisted draft is possible."
+        return Config(
+            provider="local",
+            model=model,
+            api_key="",
+            cache_namespace=_configuration_getenv("UNIMEM_LLM_CACHE_NAMESPACE", "").strip() or None,
         )
-    model = _configuration_getenv("UNIMEM_LLM_MODEL", "").strip() or (
-        "gpt-4.1-mini" if openai_alias else DEFAULT_MODEL
-    )
+    if not api_key and provider not in _CLOUD_PROVIDERS and not ollama_alias and LLM_CREDENTIALS.get(provider, True):
+        raise LLMUnavailable("UNIMEM_LLM_API_KEY is not set -- no LLM-assisted draft is possible.")
+    model = _configuration_getenv("UNIMEM_LLM_MODEL", "").strip() or ("gpt-4.1-mini" if openai_alias else DEFAULT_MODEL)
     cache_namespace = _configuration_getenv("UNIMEM_LLM_CACHE_NAMESPACE", "").strip() or None
     if provider in _CLOUD_PROVIDERS:
         model = _configuration_getenv("UNIMEM_LLM_MODEL", "").strip()
@@ -146,13 +154,20 @@ def load_config() -> Config:
         if not region and provider == "bedrock":
             region = os.environ.get("AWS_REGION", "").strip()
         project = _configuration_getenv("UNIMEM_LLM_PROJECT", "").strip() or None
-        missing = [name for name, value in (
-            ("UNIMEM_LLM_MODEL", model), ("UNIMEM_LLM_REGION", region),
-            *((("UNIMEM_LLM_PROJECT", project),) if provider == "vertex" else ())) if not value]
+        missing = [
+            name
+            for name, value in (
+                ("UNIMEM_LLM_MODEL", model),
+                ("UNIMEM_LLM_REGION", region),
+                *((("UNIMEM_LLM_PROJECT", project),) if provider == "vertex" else ()),
+            )
+            if not value
+        ]
         if missing:
             raise LLMUnavailable(f"UNIMEM_LLM_PROVIDER={provider} also needs {', '.join(missing)}.")
-        return Config(provider=provider, model=model, api_key="", region=region,
-                      project=project, cache_namespace=cache_namespace)
+        return Config(
+            provider=provider, model=model, api_key="", region=region, project=project, cache_namespace=cache_namespace
+        )
     base_url = _configuration_getenv("UNIMEM_LLM_BASE_URL", "").strip() or None
     if provider == "openai-compatible" and not base_url:
         if ollama_alias:
@@ -165,11 +180,8 @@ def load_config() -> Config:
                 "(e.g. a local model server, or a provider's OpenAI-compatible endpoint)."
             )
     if base_url and not _is_http_url(base_url):
-        raise LLMUnavailable(
-            f"UNIMEM_LLM_BASE_URL must be an http(s) URL, got {base_url!r}."
-        )
-    return Config(provider=provider, model=model, api_key=api_key,
-                  base_url=base_url, cache_namespace=cache_namespace)
+        raise LLMUnavailable(f"UNIMEM_LLM_BASE_URL must be an http(s) URL, got {base_url!r}.")
+    return Config(provider=provider, model=model, api_key=api_key, base_url=base_url, cache_namespace=cache_namespace)
 
 
 def _is_http_url(url: str) -> bool:
@@ -200,13 +212,16 @@ def _post_json(url: str, headers: dict, payload: dict, *, timeout: float | None 
     if offline.enabled() and not offline.is_loopback(url):
         raise LLMUnavailable("offline mode: hosted model providers are disabled (UNIMEM_OFFLINE)")
     body = json.dumps(payload).encode("utf-8")
+
     class NoRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, hdrs, newurl):
             return None
+
     opener = urllib.request.build_opener(NoRedirect)
+
     def read_bounded(response) -> str:
-        raw = response.read(8*1024*1024+1)
-        if len(raw) > 8*1024*1024:
+        raw = response.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
             raise LLMUnavailable("provider response exceeds 8 MiB")
         return raw.decode("utf-8")
 
@@ -225,8 +240,7 @@ def _post_json(url: str, headers: dict, payload: dict, *, timeout: float | None 
     raw, error = call_with_retries(_once, max_retries=4, idempotent=True)
     if error is not None:
         if isinstance(error, urllib.error.HTTPError):
-            raise LLMUnavailable(
-                f"Provider returned HTTP {error.code}") from error
+            raise LLMUnavailable(f"Provider returned HTTP {error.code}") from error
         raise LLMUnavailable("Provider request failed") from error
     if raw is None:
         raise LLMUnavailable("Provider returned no response")
@@ -274,8 +288,10 @@ def _anthropic_result(data: dict) -> tuple[str, dict]:
     blocks = _response_blocks(data.get("content"), "content")
     text = "".join(_response_text(block.get("text", "")) for block in blocks)
     usage = _response_object(data.get("usage"), "usage")
-    return text, {"input_tokens": _token_count(usage, "input_tokens"),
-                  "output_tokens": _token_count(usage, "output_tokens")}
+    return text, {
+        "input_tokens": _token_count(usage, "input_tokens"),
+        "output_tokens": _token_count(usage, "output_tokens"),
+    }
 
 
 def _openai_result(data: dict) -> tuple[str, dict]:
@@ -284,8 +300,10 @@ def _openai_result(data: dict) -> tuple[str, dict]:
     text = message.get("content")
     text = "" if text is None else _response_text(text)
     usage = _response_object(data.get("usage"), "usage")
-    return text, {"input_tokens": _token_count(usage, "prompt_tokens"),
-                  "output_tokens": _token_count(usage, "completion_tokens")}
+    return text, {
+        "input_tokens": _token_count(usage, "prompt_tokens"),
+        "output_tokens": _token_count(usage, "completion_tokens"),
+    }
 
 
 def _call_anthropic(config: Config, prompt: str) -> tuple[str, dict]:
@@ -303,17 +321,23 @@ def _call_anthropic(config: Config, prompt: str) -> tuple[str, dict]:
     return _anthropic_result(data)
 
 
-def gemini_request(config: Config, prompt: str, *, max_tokens: int = GEMINI_MAX_TOKENS,
-                   temperature: float = 0.0) -> tuple[str, dict, dict]:
+def gemini_request(
+    config: Config, prompt: str, *, max_tokens: int = GEMINI_MAX_TOKENS, temperature: float = 0.0
+) -> tuple[str, dict, dict]:
     """(url, headers, payload) for Google AI's generateContent (Gemini and Gemma models)."""
     from urllib.parse import quote
 
     base = (config.base_url or _GEMINI_BASE_URL).rstrip("/")
     url = f"{base}/models/{quote(config.model, safe='-._')}:generateContent"
     headers = {"x-goog-api-key": config.api_key, "content-type": "application/json"}
-    payload = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
-               "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens,
-                                    "thinkingConfig": {"includeThoughts": False}}}
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens,
+            "thinkingConfig": {"includeThoughts": False},
+        },
+    }
     return url, headers, payload
 
 
@@ -333,8 +357,11 @@ def gemini_parse(data: dict) -> tuple[str, dict]:
     usage = _response_object(data.get("usageMetadata"), "usageMetadata")
     thoughts = _token_count(usage, "thoughtsTokenCount") or 0
     output = (_token_count(usage, "candidatesTokenCount") or 0) + thoughts
-    return text, {"input_tokens": _token_count(usage, "promptTokenCount"), "output_tokens": output,
-                  "thinking_tokens": thoughts}
+    return text, {
+        "input_tokens": _token_count(usage, "promptTokenCount"),
+        "output_tokens": output,
+        "thinking_tokens": thoughts,
+    }
 
 
 def _call_gemini(config: Config, prompt: str) -> tuple[str, dict]:
@@ -361,7 +388,10 @@ def _call_openai_compatible(config: Config, prompt: str) -> tuple[str, dict]:
 
 
 def complete_with_image(
-    config: Config, prompt: str, image_bytes: bytes, mime: str,
+    config: Config,
+    prompt: str,
+    image_bytes: bytes,
+    mime: str,
 ) -> tuple[str, dict]:
     """Ask about an image with the same account-scoped admission as text.
 
@@ -372,7 +402,10 @@ def complete_with_image(
 
 
 def _call_with_image(
-    config: Config, prompt: str, image_bytes: bytes, mime: str,
+    config: Config,
+    prompt: str,
+    image_bytes: bytes,
+    mime: str,
 ) -> tuple[str, dict]:
     import base64
 
@@ -383,15 +416,22 @@ def _call_with_image(
         payload = {
             "model": config.model,
             "max_tokens": _ANTHROPIC_MAX_TOKENS,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image", "source": {
-                        "type": "base64", "media_type": media, "data": data,
-                    }},
-                ],
-            }],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media,
+                                "data": data,
+                            },
+                        },
+                    ],
+                }
+            ],
         }
         headers = {
             "x-api-key": config.api_key,
@@ -405,15 +445,20 @@ def _call_with_image(
         url = base.rstrip("/") + "/chat/completions"
         payload = {
             "model": config.model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {
-                        "url": f"data:{media};base64,{data}",
-                    }},
-                ],
-            }],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:{media};base64,{data}",
+                            },
+                        },
+                    ],
+                }
+            ],
             "temperature": 0,
         }
         headers = {"Authorization": f"Bearer {config.api_key}", "content-type": "application/json"}
@@ -426,8 +471,7 @@ def _call_with_image(
 
 
 def _sdk_missing(provider: str, package: str) -> LLMUnavailable:
-    return LLMUnavailable(
-        f"provider {provider!r} needs the optional {package} package: pip install 'unimem[llm]'")
+    return LLMUnavailable(f"provider {provider!r} needs the optional {package} package: pip install 'unimem[llm]'")
 
 
 def _call_local(config: Config, prompt: str) -> tuple[str, dict]:
@@ -456,8 +500,10 @@ def _call_bedrock(config: Config, prompt: str) -> tuple[str, dict]:
     blocks = _response_blocks(message.get("content"), "content")
     text = "".join(_response_text(block.get("text", "")) for block in blocks)
     usage = _response_object(data.get("usage"), "usage")
-    return text, {"input_tokens": _token_count(usage, "inputTokens"),
-                  "output_tokens": _token_count(usage, "outputTokens")}
+    return text, {
+        "input_tokens": _token_count(usage, "inputTokens"),
+        "output_tokens": _token_count(usage, "outputTokens"),
+    }
 
 
 def _call_vertex(config: Config, prompt: str) -> tuple[str, dict]:
@@ -469,14 +515,17 @@ def _call_vertex(config: Config, prompt: str) -> tuple[str, dict]:
     try:
         client = genai.Client(vertexai=True, project=config.project, location=config.region)
         response = client.models.generate_content(
-            model=config.model, contents=prompt,
-            config=types.GenerateContentConfig(temperature=0, max_output_tokens=_ANTHROPIC_MAX_TOKENS))
+            model=config.model,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0, max_output_tokens=_ANTHROPIC_MAX_TOKENS),
+        )
     except Exception as exc:  # noqa: BLE001
         raise LLMUnavailable(f"vertex request failed: {type(exc).__name__}: {exc}") from exc
     usage = getattr(response, "usage_metadata", None)
     return (response.text or ""), {
         "input_tokens": getattr(usage, "prompt_token_count", None),
-        "output_tokens": getattr(usage, "candidates_token_count", None)}
+        "output_tokens": getattr(usage, "candidates_token_count", None),
+    }
 
 
 def _extract_json_object(text: str) -> dict:
@@ -519,18 +568,27 @@ def complete(prompt: str, config: Config | None = None) -> tuple[str, dict]:
     cache = llm_cache_mod.LLMCache() if llm_cache_mod.enabled() else None
     from unimem.providers import LLMFactory
 
-    caller = LLMFactory.caller(cfg, {"anthropic": _call_anthropic, "openai-compatible": _call_openai_compatible,
-              "ollama": _call_openai_compatible,
-              "bedrock": _call_bedrock, "vertex": _call_vertex, "local": _call_local,
-              "gemini": _call_gemini})
+    caller = LLMFactory.caller(
+        cfg,
+        {
+            "anthropic": _call_anthropic,
+            "openai-compatible": _call_openai_compatible,
+            "ollama": _call_openai_compatible,
+            "bedrock": _call_bedrock,
+            "vertex": _call_vertex,
+            "local": _call_local,
+            "gemini": _call_gemini,
+        },
+    )
     # IAM/ADC identity may change independently of these routing fields. Require
     # an owner-supplied tenant/account namespace before caching cloud SDK calls.
     if cache is None or (cfg.provider in _CLOUD_PROVIDERS and not cfg.cache_namespace):
         return _provider_call(cfg, prompt, caller)
     # Provider, endpoint and cloud routing prevent cross-account/provider reuse.
     # Only a digest of the credential is used; no plaintext enters disk keys.
-    namespace = json.dumps([cfg.provider, cfg.base_url, cfg.region, cfg.project, cfg.cache_namespace,
-                            _credential_hash(cfg.api_key)])
+    namespace = json.dumps(
+        [cfg.provider, cfg.base_url, cfg.region, cfg.project, cfg.cache_namespace, _credential_hash(cfg.api_key)]
+    )
     key = llm_cache_mod.cache_key(cfg.model, prompt, namespace=namespace)
 
     computed = False
@@ -607,9 +665,12 @@ def draft(
                 "output_tokens": int(output_tokens),
                 "estimated": estimated,
             },
-            **({"cost_usd": c} if (c := cost_usd(
-                {"input_tokens": int(input_tokens), "output_tokens": int(output_tokens)}, cfg.model)) is not None
-               else {}),
+            **(
+                {"cost_usd": c}
+                if (c := cost_usd({"input_tokens": int(input_tokens), "output_tokens": int(output_tokens)}, cfg.model))
+                is not None
+                else {}
+            ),
         },
     )
 
@@ -629,7 +690,13 @@ def cost_usd(usage: dict, model: str, prices: dict | None = None) -> float | Non
     if not isinstance(entry, dict):
         return None
     try:
-        return round((usage["input_tokens"] * float(entry["input_per_mtok"])
-                      + usage["output_tokens"] * float(entry["output_per_mtok"])) / 1_000_000, 6)
+        return round(
+            (
+                usage["input_tokens"] * float(entry["input_per_mtok"])
+                + usage["output_tokens"] * float(entry["output_per_mtok"])
+            )
+            / 1_000_000,
+            6,
+        )
     except (KeyError, TypeError, ValueError):
         return None

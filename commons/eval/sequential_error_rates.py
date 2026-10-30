@@ -22,15 +22,13 @@ def _run(true_effect: float, *, seed: int, sequential: bool) -> float:
         observations: list = []
         fired = False
         for i in range(PER_ARM):
-            observations.append(experiment.HoldoutObservation(
-                "L", f"{trial}-{i}-t", True, rng.random() < BASELINE + true_effect))
-            observations.append(experiment.HoldoutObservation(
-                "L", f"{trial}-{i}-c", False, rng.random() < BASELINE))
+            observations.append(
+                experiment.HoldoutObservation("L", f"{trial}-{i}-t", True, rng.random() < BASELINE + true_effect)
+            )
+            observations.append(experiment.HoldoutObservation("L", f"{trial}-{i}-c", False, rng.random() < BASELINE))
             n = i + 1
             if n >= FIRST_LOOK and n % LOOK_EVERY == 0:
-                for effect in experiment.analyze(
-                    observations, sequential=sequential
-                ):
+                for effect in experiment.analyze(observations, sequential=sequential):
                     if effect.significant and effect.effect > 0:
                         fired = True
                 if fired:

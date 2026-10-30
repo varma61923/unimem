@@ -1,4 +1,5 @@
 """`unimem block`: manage stateful agent working memory blocks."""
+
 from __future__ import annotations
 
 import argparse
@@ -58,8 +59,7 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
     p_ins = sub.add_parser("insert", help="Insert text at a line of a memory block.")
     p_ins.add_argument("name", help="Name of the memory block.")
     p_ins.add_argument("text", help="Text to insert.")
-    p_ins.add_argument("--line", type=int, default=-1,
-                       help="0=top, -1=bottom (default), N=after line N.")
+    p_ins.add_argument("--line", type=int, default=-1, help="0=top, -1=bottom (default), N=after line N.")
     p_ins.add_argument("--actor", default="cli")
     p_ins.add_argument("--reason", default="")
     p_ins.add_argument("--dest", default=None)
@@ -78,19 +78,21 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
     for mutation in (p_set, p_app, p_rep, p_ins, p_del):
         mutation.add_argument(
-            "--expected-revision", default=None,
+            "--expected-revision",
+            default=None,
             help="Only mutate this revision; an empty string requires a missing block.",
         )
     for every in (p_list, p_get, p_set, p_app, p_rep, p_ins, p_del, p_hist, p_render):
         every.add_argument(
-            "--scope", default="",
+            "--scope",
+            default="",
             help="Block scope: global (default), session:<id> or agent:<id>.",
         )
     for reader in (p_list, p_get, p_render):
-        reader.add_argument("--session", default="",
-                            help="Resolved view: this session's blocks shadow the agent's and global ones.")
-        reader.add_argument("--agent", default="",
-                            help="Resolved view: this agent's blocks shadow the global ones.")
+        reader.add_argument(
+            "--session", default="", help="Resolved view: this session's blocks shadow the agent's and global ones."
+        )
+        reader.add_argument("--agent", default="", help="Resolved view: this agent's blocks shadow the global ones.")
 
 
 def _scope(args: argparse.Namespace) -> str:
@@ -104,8 +106,11 @@ def _resolved(args: argparse.Namespace) -> bool:
 def run_list(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
-        blocks = (memory_blocks.resolved_blocks(root, session=args.session, agent=args.agent)
-                  if _resolved(args) else memory_blocks.list_blocks(root, scope=_scope(args)))
+        blocks = (
+            memory_blocks.resolved_blocks(root, session=args.session, agent=args.agent)
+            if _resolved(args)
+            else memory_blocks.list_blocks(root, scope=_scope(args))
+        )
     except memory_blocks.MemoryBlockError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -124,8 +129,11 @@ def run_list(args: argparse.Namespace) -> int:
 def run_get(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
-        b = (memory_blocks.resolve_block(root, args.name, session=args.session, agent=args.agent)
-             if _resolved(args) else memory_blocks.get_block(root, args.name, scope=_scope(args)))
+        b = (
+            memory_blocks.resolve_block(root, args.name, session=args.session, agent=args.agent)
+            if _resolved(args)
+            else memory_blocks.get_block(root, args.name, scope=_scope(args))
+        )
     except memory_blocks.MemoryBlockError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
@@ -229,7 +237,10 @@ def run_delete(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
         ok = memory_blocks.delete_block(
-            root, args.name, actor=args.actor, reason=args.reason,
+            root,
+            args.name,
+            actor=args.actor,
+            reason=args.reason,
             expected_revision=getattr(args, "expected_revision", None),
             scope=_scope(args),
         )
@@ -266,8 +277,11 @@ def run_insert(args: argparse.Namespace) -> int:
 def run_render(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
-        blocks = (memory_blocks.resolved_blocks(root, session=args.session, agent=args.agent)
-                  if _resolved(args) else memory_blocks.list_blocks(root, scope=_scope(args)))
+        blocks = (
+            memory_blocks.resolved_blocks(root, session=args.session, agent=args.agent)
+            if _resolved(args)
+            else memory_blocks.list_blocks(root, scope=_scope(args))
+        )
     except memory_blocks.MemoryBlockError as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1

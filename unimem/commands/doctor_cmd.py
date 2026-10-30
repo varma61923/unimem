@@ -24,81 +24,123 @@ def _installed(module: str) -> bool:
 def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("doctor", help="Check the environment and store health.")
     p.add_argument("--dest", default=None)
-    p.add_argument("--troubleshooting", action="store_true",
-                   help="Print what each check means and how to fix it, as Markdown, and exit.")
+    p.add_argument(
+        "--troubleshooting",
+        action="store_true",
+        help="Print what each check means and how to fix it, as Markdown, and exit.",
+    )
     p.set_defaults(func=run)
 
 
 TROUBLESHOOTING: dict[str, tuple[str, str]] = {
-    "Python >= 3.10": ("The package uses syntax and library features from Python 3.10.",
-                       "Install Python 3.10 or newer and reinstall: `python3 -m pip install unimem`."),
-    "PyYAML importable": ("Lessons and traces are Markdown with YAML frontmatter, read with PyYAML.",
-                          "`python3 -m pip install 'PyYAML>=6,<7'` in the same environment as `unimem`."),
-    "OpenTelemetry tracing": ("Tracing was turned on (UNIMEM_OTEL or OTEL_EXPORTER_OTLP_ENDPOINT) but spans "
-                              "cannot be exported.",
-                              "`python3 -m pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http`, "
-                              "or unset UNIMEM_OTEL."),
-    "OAuth resource server": ("Remote clients may authenticate with JWT access tokens from your authorization server "
-                              "(UNIMEM_OAUTH_ISSUER / _AUDIENCE / _JWKS_URL or _JWKS_FILE).",
-                              "Set both issuer and audience and exactly one JWKS source (https, or a file), and "
-                              "`python3 -m pip install 'unimem[security]'`; unset UNIMEM_OAUTH_ISSUER "
-                              "to turn OAuth off."),
-    "git on PATH": ("Some commands read the repository's history.", "Install git, or ignore this if you do not use "
-                                                                    "those commands."),
-    "memory/ store present": ("Every command reads a store: a `memory/` directory.",
-                              "Run `unimem init --function <name>` here, or pass `--dest` / set "
-                              "`UNIMEM_ROOT` to the directory that holds `memory/`."),
-    "lessons in store": ("With no lessons there is nothing to retrieve or measure.",
-                         "Capture experience (`unimem capture`), then `unimem distill`, review and "
-                         "`unimem lesson approve`; or `unimem kb install` for a curated pack."),
-    "retrieval ready (>= 1 ACTIVE lesson)": ("The store has content but nothing active, so `query` returns nothing.",
-                                             "Approve a candidate: `unimem lesson list --status review`, then "
-                                             "`unimem lesson approve <slug>`."),
-    "trace filename collisions": ("Two traces whose file names collide overwrite each other.",
-                                  "Re-capture the affected traces; recent versions suffix every name with an id."),
-    "expired lessons": ("A lesson past its `expires` date is hidden from retrieval, so its guidance silently stops.",
-                        "Renew the date if the lesson still holds, or archive it."),
-    "atomic facts": ("Facts feed agent context; forgotten and expired ones are kept for audit but not shown.",
-                     "`unimem fact list --include-forgotten` to review them."),
-    "credentials in stored traces": ("A trace holding a credential would be replayed to every later reader.",
-                                     "Run `unimem redact` on the store and rotate the credential."),
-    "store agent_type": ("The declared kind of agent decides starter domains and defaults.",
-                         "Set it with `unimem init --agent-type <type>`; any value is valid."),
-    "attention extra (numpy + sentence-transformers)": ("Semantic ranking needs numpy and sentence-transformers; "
-                                                        "without them retrieval is lexical.",
-                                                        "`python3 -m pip install 'unimem[attention]'`, then "
-                                                        "`unimem index`."),
-    "MCP SDK (agent-native access via `unimem serve`)": ("`unimem serve` needs the MCP SDK.",
-                                                              "`python3 -m pip install 'unimem[serve]'`."),
-    "reference attention/query.py": ("The semantic query script ships inside the package.",
-                                     "`python3 -m pip install --force-reinstall unimem`."),
-    "warm query worker": ("Without it every semantic query loads the embedding model again (seconds, not "
-                          "milliseconds).",
-                          "Make the runtime directory private: `chmod 700` the directory named above (or set "
-                          "XDG_RUNTIME_DIR to one that is), and make sure it is owned by you."),
-    "benchmark script found": ("`unimem bench` runs a script that ships inside the package.",
-                               "`python3 -m pip install --force-reinstall unimem`."),
-    "pilot metrics script found": ("`unimem pilot` runs a script that ships inside the package.",
-                                   "`python3 -m pip install --force-reinstall unimem`."),
-    "protocol/ spec": ("The spec is in a repository checkout; an installed client carries the schemas instead.",
-                       "Nothing to do for an installed client."),
+    "Python >= 3.10": (
+        "The package uses syntax and library features from Python 3.10.",
+        "Install Python 3.10 or newer and reinstall: `python3 -m pip install unimem`.",
+    ),
+    "PyYAML importable": (
+        "Lessons and traces are Markdown with YAML frontmatter, read with PyYAML.",
+        "`python3 -m pip install 'PyYAML>=6,<7'` in the same environment as `unimem`.",
+    ),
+    "OpenTelemetry tracing": (
+        "Tracing was turned on (UNIMEM_OTEL or OTEL_EXPORTER_OTLP_ENDPOINT) but spans cannot be exported.",
+        "`python3 -m pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http`, or unset UNIMEM_OTEL.",
+    ),
+    "OAuth resource server": (
+        "Remote clients may authenticate with JWT access tokens from your authorization server "
+        "(UNIMEM_OAUTH_ISSUER / _AUDIENCE / _JWKS_URL or _JWKS_FILE).",
+        "Set both issuer and audience and exactly one JWKS source (https, or a file), and "
+        "`python3 -m pip install 'unimem[security]'`; unset UNIMEM_OAUTH_ISSUER "
+        "to turn OAuth off.",
+    ),
+    "git on PATH": (
+        "Some commands read the repository's history.",
+        "Install git, or ignore this if you do not use those commands.",
+    ),
+    "memory/ store present": (
+        "Every command reads a store: a `memory/` directory.",
+        "Run `unimem init --function <name>` here, or pass `--dest` / set "
+        "`UNIMEM_ROOT` to the directory that holds `memory/`.",
+    ),
+    "lessons in store": (
+        "With no lessons there is nothing to retrieve or measure.",
+        "Capture experience (`unimem capture`), then `unimem distill`, review and "
+        "`unimem lesson approve`; or `unimem kb install` for a curated pack.",
+    ),
+    "retrieval ready (>= 1 ACTIVE lesson)": (
+        "The store has content but nothing active, so `query` returns nothing.",
+        "Approve a candidate: `unimem lesson list --status review`, then `unimem lesson approve <slug>`.",
+    ),
+    "trace filename collisions": (
+        "Two traces whose file names collide overwrite each other.",
+        "Re-capture the affected traces; recent versions suffix every name with an id.",
+    ),
+    "expired lessons": (
+        "A lesson past its `expires` date is hidden from retrieval, so its guidance silently stops.",
+        "Renew the date if the lesson still holds, or archive it.",
+    ),
+    "atomic facts": (
+        "Facts feed agent context; forgotten and expired ones are kept for audit but not shown.",
+        "`unimem fact list --include-forgotten` to review them.",
+    ),
+    "credentials in stored traces": (
+        "A trace holding a credential would be replayed to every later reader.",
+        "Run `unimem redact` on the store and rotate the credential.",
+    ),
+    "store agent_type": (
+        "The declared kind of agent decides starter domains and defaults.",
+        "Set it with `unimem init --agent-type <type>`; any value is valid.",
+    ),
+    "attention extra (numpy + sentence-transformers)": (
+        "Semantic ranking needs numpy and sentence-transformers; without them retrieval is lexical.",
+        "`python3 -m pip install 'unimem[attention]'`, then `unimem index`.",
+    ),
+    "MCP SDK (agent-native access via `unimem serve`)": (
+        "`unimem serve` needs the MCP SDK.",
+        "`python3 -m pip install 'unimem[serve]'`.",
+    ),
+    "reference attention/query.py": (
+        "The semantic query script ships inside the package.",
+        "`python3 -m pip install --force-reinstall unimem`.",
+    ),
+    "warm query worker": (
+        "Without it every semantic query loads the embedding model again (seconds, not milliseconds).",
+        "Make the runtime directory private: `chmod 700` the directory named above (or set "
+        "XDG_RUNTIME_DIR to one that is), and make sure it is owned by you.",
+    ),
+    "benchmark script found": (
+        "`unimem bench` runs a script that ships inside the package.",
+        "`python3 -m pip install --force-reinstall unimem`.",
+    ),
+    "pilot metrics script found": (
+        "`unimem pilot` runs a script that ships inside the package.",
+        "`python3 -m pip install --force-reinstall unimem`.",
+    ),
+    "protocol/ spec": (
+        "The spec is in a repository checkout; an installed client carries the schemas instead.",
+        "Nothing to do for an installed client.",
+    ),
     "retrieval fusion": ("Reports how lesson scores are combined.", "Change it with `unimem retrieval`."),
     "retrieval reranking": ("Reports whether a reranker is configured.", "Change it with `unimem retrieval`."),
-    "{} model cached": ("A semantic model that is not downloaded is fetched on first use, which can stall a "
-                        "first query or fail offline.",
-                        "Run `unimem index` once with network access, or point the model setting at a local "
-                        "directory."),
+    "{} model cached": (
+        "A semantic model that is not downloaded is fetched on first use, which can stall a "
+        "first query or fail offline.",
+        "Run `unimem index` once with network access, or point the model setting at a local directory.",
+    ),
     "{} model": ("Reports which embedding model a role uses.", "Change it with `unimem retrieval`."),
-    "gateway token file protected": ("The gateway's bearer token lets whoever holds it read and write this store.",
-                                     "`chmod 600 memory/gateway.token`; rotate it by deleting the file and "
-                                     "restarting the gateway."),
-    "experiment outcomes reported": ("A held-out memory without outcomes cannot be measured; a run that never "
-                                     "reports them is not an experiment.",
-                                     "Report each occasion's result under the same occasion id (`POST /v1/outcome` "
-                                     "or `CausalMemory.record_outcome`); see `unimem proof status`."),
-    "experiment integrity": ("A COMPROMISED experiment (for example, two rates under one salt) states no effect.",
-                             "Read `unimem proof status` for the named mechanism; start a fresh "
-                             "randomization (change the salt) rather than pooling."),
+    "gateway token file protected": (
+        "The gateway's bearer token lets whoever holds it read and write this store.",
+        "`chmod 600 memory/gateway.token`; rotate it by deleting the file and restarting the gateway.",
+    ),
+    "experiment outcomes reported": (
+        "A held-out memory without outcomes cannot be measured; a run that never reports them is not an experiment.",
+        "Report each occasion's result under the same occasion id (`POST /v1/outcome` "
+        "or `CausalMemory.record_outcome`); see `unimem proof status`.",
+    ),
+    "experiment integrity": (
+        "A COMPROMISED experiment (for example, two rates under one salt) states no effect.",
+        "Read `unimem proof status` for the named mechanism; start a fresh "
+        "randomization (change the salt) rather than pooling.",
+    ),
 }
 
 
@@ -213,8 +255,9 @@ def _models_in_use(root: str, config) -> list[tuple[str, str]]:
 def _default_embedder() -> str:
     from unimem.semantic_arm import _load_reference
 
-    builder = _load_reference("", os.path.join("memory", "attention", "build_index.py"),
-                              "unimem_reference_build_index_doctor")
+    builder = _load_reference(
+        "", os.path.join("memory", "attention", "build_index.py"), "unimem_reference_build_index_doctor"
+    )
     return getattr(builder, "DEFAULT_MODEL_NAME", "") if builder else ""
 
 
@@ -241,11 +284,17 @@ def _report_memory_lifecycle(root: str) -> None:
         return
     counts = ttl.summarize(lessons, facts)
     if counts["expired_lessons"]:
-        _info("expired lessons", f"{counts['expired_lessons']} active lesson(s) past `expires` are hidden "
-                                 "from retrieval; renew or archive them")
+        _info(
+            "expired lessons",
+            f"{counts['expired_lessons']} active lesson(s) past `expires` are hidden "
+            "from retrieval; renew or archive them",
+        )
     if counts["total_facts"]:
-        _info("atomic facts", f"{counts['total_facts']} stored, {counts['forgotten_facts']} forgotten, "
-                              f"{counts['expired_facts']} past `expires_at`")
+        _info(
+            "atomic facts",
+            f"{counts['total_facts']} stored, {counts['forgotten_facts']} forgotten, "
+            f"{counts['expired_facts']} past `expires_at`",
+        )
 
 
 def _check_measurement(root: str) -> None:
@@ -266,8 +315,11 @@ def _check_measurement(root: str) -> None:
     occasions = {r.occasion_id for r in rows}
     answered = set(holdout_io.read_outcomes(root))
     share = len(occasions & answered) / len(occasions)
-    _check("experiment outcomes reported", share >= 0.5 or len(occasions) < 20,
-           f"{share:.0%} of {len(occasions)} occasions have an outcome")
+    _check(
+        "experiment outcomes reported",
+        share >= 0.5 or len(occasions) < 20,
+        f"{share:.0%} of {len(occasions)} occasions have an outcome",
+    )
     from unimem import integrity
     from unimem.commands import experiment_cmd
 
@@ -296,11 +348,16 @@ def run(args: argparse.Namespace) -> int:
 
     tele = telemetry.status()
     if tele["otel_enabled"]:
-        _check("OpenTelemetry tracing", tele["tracing"] and not tele["note"],
-               tele["note"] or f"exporting to {tele['endpoint'] or 'the default OTLP endpoint'}")
+        _check(
+            "OpenTelemetry tracing",
+            tele["tracing"] and not tele["note"],
+            tele["note"] or f"exporting to {tele['endpoint'] or 'the default OTLP endpoint'}",
+        )
     else:
-        print("  [info] telemetry: metrics in-process (gateway /v1/metrics); set UNIMEM_OTEL=1 or "
-              "OTEL_EXPORTER_OTLP_ENDPOINT to export traces")
+        print(
+            "  [info] telemetry: metrics in-process (gateway /v1/metrics); set UNIMEM_OTEL=1 or "
+            "OTEL_EXPORTER_OTLP_ENDPOINT to export traces"
+        )
     from unimem import oauth, offline
 
     try:
@@ -309,29 +366,27 @@ def run(args: argparse.Namespace) -> int:
         _check("OAuth resource server", False, f"configuration error: {exc}")
     else:
         if oauth_config is not None:
-            _check("OAuth resource server", True,
-                   f"issuer {oauth_config.issuer}, audience {oauth_config.audience}, "
-                   f"metadata at {oauth.metadata_url(oauth_config)}")
+            _check(
+                "OAuth resource server",
+                True,
+                f"issuer {oauth_config.issuer}, audience {oauth_config.audience}, "
+                f"metadata at {oauth.metadata_url(oauth_config)}",
+            )
     if offline.enabled():
-        print("  [info] offline mode: non-loopback network calls are refused and models load from the "
-              "local cache only (UNIMEM_OFFLINE)")
+        print(
+            "  [info] offline mode: non-loopback network calls are refused and models load from the "
+            "local cache only (UNIMEM_OFFLINE)"
+        )
 
     has_mem = os.path.isdir(paths.memory_dir(root))
-    _check("memory/ store present", has_mem,
-           paths.memory_dir(root) if has_mem else "run `unimem init`", critical=True)
+    _check("memory/ store present", has_mem, paths.memory_dir(root) if has_mem else "run `unimem init`", critical=True)
 
     if has_mem:
         n_lessons = 0
         ldir = paths.lessons_dir(root)
         if os.path.isdir(ldir):
             try:
-                n_lessons = len(
-                    [
-                        f
-                        for f in os.listdir(ldir)
-                        if f.startswith("lesson_") and f != "lesson_template.md"
-                    ]
-                )
+                n_lessons = len([f for f in os.listdir(ldir) if f.startswith("lesson_") and f != "lesson_template.md"])
             except OSError:
                 n_lessons = 0
         _check("lessons in store", n_lessons > 0, f"{n_lessons} found")
@@ -357,7 +412,8 @@ def run(args: argparse.Namespace) -> int:
         collided = _collision_suspects(root)
         if collided:
             _check(
-                "trace filename collisions", False,
+                "trace filename collisions",
+                False,
                 f"{collided} trace file(s) hold fewer captures than were made under "
                 "them. Before this was fixed, two occasion ids sharing their first 16 "
                 "characters (e.g. TICKET-PROJECT-4711 and -4712) wrote to one filename "
@@ -371,7 +427,8 @@ def run(args: argparse.Namespace) -> int:
         leaked = _traces_with_credentials(root)
         if leaked:
             _check(
-                "credentials in stored traces", False,
+                "credentials in stored traces",
+                False,
                 f"{leaked} trace file(s) hold an API key, token or private key captured before "
                 "traces were redacted on write. `unimem redact` removes them "
                 "(`--dry-run` to preview); then rotate those keys.",
@@ -393,7 +450,8 @@ def run(args: argparse.Namespace) -> int:
             _check("store agent_type", True, f"{declared!r} (any field is valid; taxonomy is open)")
         else:
             _check(
-                "store agent_type", False,
+                "store agent_type",
+                False,
                 f"memory/INDEX.md declares {declared!r} but commands read back "
                 f"{effective!r} -- it is not a valid slug "
                 f"({paths.AGENT_TYPE_RE.pattern}). Traces are being stamped "
@@ -457,22 +515,31 @@ def run(args: argparse.Namespace) -> int:
             else:
                 _check("warm query worker", False, detail)
     else:
-        _check("reference attention/query.py", False,
-               "missing from the installed package - try `pip install --force-reinstall unimem`")
+        _check(
+            "reference attention/query.py",
+            False,
+            "missing from the installed package - try `pip install --force-reinstall unimem`",
+        )
 
     bench_script = find_reference_script(root, "benchmark/measure_performance.py")
     if bench_script is not None:
         _check("benchmark script found", True, bench_script)
     else:
-        _check("benchmark script found", False,
-               "missing from the installed package - try `pip install --force-reinstall unimem`")
+        _check(
+            "benchmark script found",
+            False,
+            "missing from the installed package - try `pip install --force-reinstall unimem`",
+        )
 
     pilot_script = find_reference_script(root, "benchmark/pilot_metrics.py")
     if pilot_script is not None:
         _check("pilot metrics script found", True, pilot_script)
     else:
-        _check("pilot metrics script found", False,
-               "missing from the installed package - try `pip install --force-reinstall unimem`")
+        _check(
+            "pilot metrics script found",
+            False,
+            "missing from the installed package - try `pip install --force-reinstall unimem`",
+        )
 
     protocol_dir = os.path.join(root, "protocol")
     if os.path.isdir(protocol_dir):
@@ -480,16 +547,14 @@ def run(args: argparse.Namespace) -> int:
     else:
         _info(
             "protocol/ spec",
-            "not present; expected for a pip-installed client -- schemas are mirrored "
-            "at unimem/schemas/",
+            "not present; expected for a pip-installed client -- schemas are mirrored at unimem/schemas/",
         )
 
     if has_mem:
         _check_measurement(root)
 
     if _FAILURES:
-        print(f"\nDone. {len(_FAILURES)} critical check(s) failed: "
-              + ", ".join(_FAILURES))
+        print(f"\nDone. {len(_FAILURES)} critical check(s) failed: " + ", ".join(_FAILURES))
         return 1
 
     print("\nDone.")

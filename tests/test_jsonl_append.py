@@ -1,4 +1,5 @@
 """Appending a JSONL row must never leave a truncated line behind."""
+
 from __future__ import annotations
 
 import os

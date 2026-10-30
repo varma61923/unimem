@@ -21,7 +21,9 @@ def test_offline_prior_is_bounded_and_cannot_replace_online_validation():
     )
     with pytest.raises(ValueError, match="finite"):
         MemoryRecord(
-            "candidate", "lesson", 1,
+            "candidate",
+            "lesson",
+            1,
             {**data, "offline_prior": {"alpha": float("nan"), "beta": 1}},
             status="shadow",
         )
@@ -53,9 +55,7 @@ def test_always_rules_survive_large_candidate_store(tmp_path):
     )
     # This checks candidate-store selection, not the production 50 ms deadline.
     # Coverage instrumentation and shared CI runners can exceed that deadline.
-    result = kit.handle(
-        "UserPromptSubmit", {"session_id": "s", "prompt": "new unrelated question"}, deadline_ms=10_000
-    )
+    result = kit.handle("UserPromptSubmit", {"session_id": "s", "prompt": "new unrelated question"}, deadline_ms=10_000)
     assert "zz-owner-rule" in result["injected"]
 
 

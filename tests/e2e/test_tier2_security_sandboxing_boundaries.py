@@ -94,7 +94,12 @@ def test_boundary_validate_symlink_to_outside_rejected(
 
     res = cli_runner(["lesson", "validate", "lesson_symlink_outside.md"], cwd=isolated_store)
     assert res.exit_code != 0
-    assert "error" in res.stderr.lower() or "traversal" in res.stderr.lower() or "invalid" in res.stderr.lower() or "outside" in res.stderr.lower()
+    assert (
+        "error" in res.stderr.lower()
+        or "traversal" in res.stderr.lower()
+        or "invalid" in res.stderr.lower()
+        or "outside" in res.stderr.lower()
+    )
 
 
 def test_boundary_validate_directory_instead_of_file(

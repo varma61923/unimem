@@ -1,4 +1,5 @@
 """Actual HTTP contracts for benchmark caps, retries and multi-call accounting."""
+
 from __future__ import annotations
 
 import json
@@ -26,10 +27,17 @@ def provider():
 
         def do_POST(self):
             calls.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
-            status, response = replies.pop(0) if replies else (200, {
-                "choices": [{"message": {"content": "answer"}}],
-                "usage": {"prompt_tokens": 2, "completion_tokens": 1},
-            })
+            status, response = (
+                replies.pop(0)
+                if replies
+                else (
+                    200,
+                    {
+                        "choices": [{"message": {"content": "answer"}}],
+                        "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+                    },
+                )
+            )
             self.send_response(status)
             self.end_headers()
             self.wfile.write(json.dumps(response).encode())
@@ -66,18 +74,23 @@ def test_output_cap_is_sent_and_remaining_budget_refuses_before_dispatch(provide
 
 def test_full_history_is_reserved_not_the_nominal_retrieval_budget(provider):
     config, calls, _ = provider
-    guard = CostGuard(.01, {"fixture": {"input_per_mtok": 1, "output_per_mtok": 1}})
+    guard = CostGuard(0.01, {"fixture": {"input_per_mtok": 1, "output_per_mtok": 1}})
     with pytest.raises(RuntimeError, match="remaining"):
         bounded_complete("long history " * 10000, config, guard)
     assert calls == []
 
 
-@pytest.mark.parametrize("reply", [
-    (429, {"error": "retry later"}),
-    (200, {"choices": [{"message": {"content": "answer"}}]}),
-    (200, {"choices": [{"message": {"content": "answer"}}],
-           "usage": {"prompt_tokens": 2, "completion_tokens": 99}}),
-])
+@pytest.mark.parametrize(
+    "reply",
+    [
+        (429, {"error": "retry later"}),
+        (200, {"choices": [{"message": {"content": "answer"}}]}),
+        (
+            200,
+            {"choices": [{"message": {"content": "answer"}}], "usage": {"prompt_tokens": 2, "completion_tokens": 99}},
+        ),
+    ],
+)
 def test_failed_or_unbounded_usage_retains_charge_and_never_retries(provider, reply):
     config, calls, replies = provider
     replies.append(reply)
@@ -99,6 +112,7 @@ def test_unknown_price_cannot_be_reported_as_free(provider):
 
 def test_redirect_cannot_forward_credentials_or_create_a_second_request(provider):
     config, calls, _ = provider
+
     class Redirect(BaseHTTPRequestHandler):
         def do_POST(self):
             self.send_response(302)
@@ -111,8 +125,9 @@ def test_redirect_cannot_forward_credentials_or_create_a_second_request(provider
     server = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    guarded = llm.Config(config.provider, config.model, "must-not-leave-origin",
-                         base_url=f"http://127.0.0.1:{server.server_port}")
+    guarded = llm.Config(
+        config.provider, config.model, "must-not-leave-origin", base_url=f"http://127.0.0.1:{server.server_port}"
+    )
     guard = CostGuard(10, PRICES)
     try:
         with pytest.raises(llm.LLMUnavailable):
@@ -141,8 +156,17 @@ def test_every_rubric_call_uses_same_live_guard(provider, monkeypatch):
 
     guard = CostGuard(4, PRICES)
     with pytest.raises(RuntimeError, match="remaining"):
-        grade_answer({"question": "q", "answer": "a"}, "context", None, "fixture", "fixture",
-                     Rubric(), None, guard, output_limit=2)
+        grade_answer(
+            {"question": "q", "answer": "a"},
+            "context",
+            None,
+            "fixture",
+            "fixture",
+            Rubric(),
+            None,
+            guard,
+            output_limit=2,
+        )
     assert len(calls) == 3 and guard.total_cost_usd == 3
 
 
@@ -160,11 +184,21 @@ def test_cache_hit_has_zero_current_spend_and_separate_historical_cost(provider,
             return {"correct": True, "score": 1}
 
     cache = BenchmarkCache(str(tmp_path))
-    first = grade_answer({"question": "q", "answer": "a"}, "context", None, "fixture", "fixture",
-                         Rubric(), cache, CostGuard(10, PRICES), output_limit=2)
+    first = grade_answer(
+        {"question": "q", "answer": "a"},
+        "context",
+        None,
+        "fixture",
+        "fixture",
+        Rubric(),
+        cache,
+        CostGuard(10, PRICES),
+        output_limit=2,
+    )
     guard = CostGuard(0, PRICES)
-    second = grade_answer({"question": "q", "answer": "a"}, "context", None, "fixture", "fixture",
-                          Rubric(), cache, guard, output_limit=2)
+    second = grade_answer(
+        {"question": "q", "answer": "a"}, "context", None, "fixture", "fixture", Rubric(), cache, guard, output_limit=2
+    )
     assert len(calls) == 2 and first["answer_cost_usd"] == first["judge_cost_usd"] == 1
     assert second["answer_cost_usd"] == second["judge_cost_usd"] == 0
     assert second["historical_cached_cost_usd"] == 2

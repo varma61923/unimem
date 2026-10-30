@@ -4,6 +4,7 @@ Legacy plaintext token files remain readable. New writes use one JSON record so
 the credential and its lifetime change atomically. File-backed authentication
 checks strong file identity on every request and fails closed on read errors.
 """
+
 from __future__ import annotations
 
 import json
@@ -49,12 +50,17 @@ def _read(path: str) -> tuple[dict, tuple]:
     else:
         record = {"version": 1, "token": raw, "expires_at": None}
     token = record.get("token")
-    if token is not None and (not isinstance(token, str) or not 24 <= len(token) <= 256
-                              or not token.isascii() or any(c.isspace() for c in token)):
+    if token is not None and (
+        not isinstance(token, str)
+        or not 24 <= len(token) <= 256
+        or not token.isascii()
+        or any(c.isspace() for c in token)
+    ):
         raise ValueError("invalid gateway bearer token")
     expiry = record.get("expires_at")
-    if expiry is not None and (isinstance(expiry, bool) or not isinstance(expiry, (int, float))
-                               or not math.isfinite(expiry)):
+    if expiry is not None and (
+        isinstance(expiry, bool) or not isinstance(expiry, (int, float)) or not math.isfinite(expiry)
+    ):
         raise ValueError("invalid gateway token expiry")
     return record, _identity(info)
 
@@ -84,8 +90,12 @@ def _new_record(ttl: float | None) -> dict:
     if ttl is not None and (not math.isfinite(ttl) or ttl <= 0):
         raise ValueError("token ttl must be positive and finite")
     now = time.time()
-    return {"version": 1, "token": secrets.token_urlsafe(32), "created_at": now,
-            "expires_at": None if ttl is None else now + ttl}
+    return {
+        "version": 1,
+        "token": secrets.token_urlsafe(32),
+        "created_at": now,
+        "expires_at": None if ttl is None else now + ttl,
+    }
 
 
 def rotate_token(root: str, *, ttl: float | None = None) -> str:

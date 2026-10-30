@@ -30,10 +30,18 @@ def _policy(store, text):
 
 def _draft(store, slug, *, body=COMPLETE_BODY, llm=True):
     fm = {
-        "name": slug, "status": "review", "description": f"draft {slug}",
-        "applies_when": "a webhook may be redelivered", "do_not_apply_when": "the handler is pure",
-        "importance": 3, "importance_rationale": "fixture", "tags": [], "agent_type": "code",
-        "domain": "webhooks", "uses": 0, "last_hit": "NEVER",
+        "name": slug,
+        "status": "review",
+        "description": f"draft {slug}",
+        "applies_when": "a webhook may be redelivered",
+        "do_not_apply_when": "the handler is pure",
+        "importance": 3,
+        "importance_rationale": "fixture",
+        "tags": [],
+        "agent_type": "code",
+        "domain": "webhooks",
+        "uses": 0,
+        "last_hit": "NEVER",
     }
     if llm:
         fm["llm_draft"] = {"provider": "anthropic", "model": "m", "prompt_sha256": "x"}
@@ -90,8 +98,11 @@ class TestAutoApprove:
     def test_the_normal_gates_still_refuse_scaffolding(self, store):
         _policy(store, "auto_approve_drafts: true\n")
         main(["experiment", "--configure", "--rate", "0.1", "--dest", str(store)])
-        path = _draft(store, "d1", body=COMPLETE_BODY.replace(
-            "Handlers with no side effects.", "TODO: cases where the rule does NOT apply."))
+        path = _draft(
+            store,
+            "d1",
+            body=COMPLETE_BODY.replace("Handlers with no side effects.", "TODO: cases where the rule does NOT apply."),
+        )
         main(["lesson", "auto-approve", "--dest", str(store)])
         assert _status(path)["status"] == "review"
 

@@ -1,4 +1,5 @@
 """The local runtime image: pinned, non-root, minimal context, and wired into compose."""
+
 import pathlib
 import re
 
@@ -19,8 +20,11 @@ def test_build_context_ships_only_the_package():
     ignore = (ROOT / "Dockerfile.local.dockerignore").read_text().splitlines()
     assert "*" in ignore  # deny by default
     allowed = {line[1:] for line in ignore if line.startswith("!")}
-    lines = [line for line in (ROOT / "Dockerfile.local").read_text().splitlines()
-             if line.startswith("COPY ") and "--from=" not in line]
+    lines = [
+        line
+        for line in (ROOT / "Dockerfile.local").read_text().splitlines()
+        if line.startswith("COPY ") and "--from=" not in line
+    ]
     assert lines
     for line in lines:
         *sources, _destination = [part for part in line.split()[1:] if not part.startswith("--")]

@@ -11,6 +11,7 @@ tampering with stored hashes is detected when evidence is exported.
 HMAC deployments need a shared verifier secret; Ed25519 supports public
 verification. Pin or witness heads to detect split views across observers.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -46,14 +47,16 @@ def signer(org_id: str, secret: str, algorithm: str = "hmac-sha256") -> origin.P
 
 
 def _signed_head(org_id: str, size: int, root_hash: str, identity: origin.Principal) -> dict:
-    return origin.bind({"log_id": org_id, "tree_size": size, "root_hash": root_hash, "created_at": fp.now()},
-                       identity)
+    return origin.bind({"log_id": org_id, "tree_size": size, "root_hash": root_hash, "created_at": fp.now()}, identity)
 
 
 def _check(clock: TransparencyHead, identity: origin.Principal) -> None:
     body = clock.signed_head.get("record", {}) if isinstance(clock.signed_head, dict) else {}
-    if (not origin.verify(clock.signed_head, {identity.id: identity}) or body.get("tree_size") != clock.tree_size
-            or body.get("root_hash") != clock.root_hash):
+    if (
+        not origin.verify(clock.signed_head, {identity.id: identity})
+        or body.get("tree_size") != clock.tree_size
+        or body.get("root_hash") != clock.root_hash
+    ):
         raise TransparencyIntegrityError("transparency checkpoint mismatch")
 
 
@@ -61,7 +64,10 @@ async def hashes(session: AsyncSession, org_id: str, *, limit: int = MAX_PROOF_L
     """Every leaf hash in order (the leaf-hash column only, never the statements)."""
     result = await session.execute(
         select(TransparencyEntry.leaf_index, TransparencyEntry.leaf_hash)
-        .where(TransparencyEntry.org_id == org_id).order_by(TransparencyEntry.leaf_index).limit(limit + 1))
+        .where(TransparencyEntry.org_id == org_id)
+        .order_by(TransparencyEntry.leaf_index)
+        .limit(limit + 1)
+    )
     rows = result.all()
     if len(rows) > limit:
         raise ValueError(f"transparency history exceeds {limit} leaves; export proofs offline")
@@ -71,13 +77,25 @@ async def hashes(session: AsyncSession, org_id: str, *, limit: int = MAX_PROOF_L
 
 
 async def _locked_head(session: AsyncSession, org_id: str, identity: origin.Principal) -> TransparencyHead:
-    await session.execute(pg_insert(TransparencyHead).values(
-        org_id=org_id, tree_size=0, root_hash=merkle.EMPTY, frontier=[],
-        signed_head=_signed_head(org_id, 0, merkle.EMPTY, identity)).on_conflict_do_nothing(
-        index_elements=[TransparencyHead.org_id]))
-    clock = (await session.execute(
-        select(TransparencyHead).where(TransparencyHead.org_id == org_id).with_for_update()
-        .execution_options(populate_existing=True))).scalar_one()
+    await session.execute(
+        pg_insert(TransparencyHead)
+        .values(
+            org_id=org_id,
+            tree_size=0,
+            root_hash=merkle.EMPTY,
+            frontier=[],
+            signed_head=_signed_head(org_id, 0, merkle.EMPTY, identity),
+        )
+        .on_conflict_do_nothing(index_elements=[TransparencyHead.org_id])
+    )
+    clock = (
+        await session.execute(
+            select(TransparencyHead)
+            .where(TransparencyHead.org_id == org_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
     _check(clock, identity)
     frontier = clock.frontier
     if frontier is None:
@@ -85,21 +103,28 @@ async def _locked_head(session: AsyncSession, org_id: str, identity: origin.Prin
         frontier = []
         for leaf in await hashes(session, org_id, limit=max(MAX_PROOF_LEAVES, clock.tree_size)):
             frontier = merkle.frontier_append(frontier, leaf)
-    if (not isinstance(frontier, list) or merkle.frontier_size(frontier) != clock.tree_size
-            or merkle.frontier_root(frontier) != clock.root_hash):
+    if (
+        not isinstance(frontier, list)
+        or merkle.frontier_size(frontier) != clock.tree_size
+        or merkle.frontier_root(frontier) != clock.root_hash
+    ):
         raise TransparencyIntegrityError("transparency frontier does not match the signed head")
     clock.frontier = frontier
     return clock
 
 
-async def append(session: AsyncSession, org_id: str, statement: dict, *, secret: str,
-                 algorithm: str = "hmac-sha256") -> dict:
+async def append(
+    session: AsyncSession, org_id: str, statement: dict, *, secret: str, algorithm: str = "hmac-sha256"
+) -> dict:
     identity = signer(org_id, secret, algorithm)
     clock = await _locked_head(session, org_id, identity)
     signed = origin.bind({"org_id": org_id, "created_at": fp.now(), "statement": statement}, identity)
     leaf = merkle.leaf_hash(signed)
     index = clock.tree_size
-    frontier, proof = merkle.frontier_append_with_proof(clock.frontier, leaf)
+    current_frontier = clock.frontier
+    if current_frontier is None:
+        raise TransparencyIntegrityError("transparency frontier was not initialized")
+    frontier, proof = merkle.frontier_append_with_proof(current_frontier, leaf)
     root_hash = merkle.frontier_root(frontier)
     session.add(TransparencyEntry(org_id=org_id, leaf_index=index, leaf_hash=leaf, statement=signed))
     checkpoint = _signed_head(org_id, index + 1, root_hash, identity)
@@ -152,16 +177,31 @@ def add_routes(app, session_factory, *, authenticate, require_scope, config):
                     leaf = fp.count(int(request.query_params.get("leaf", "-1")), 0, len(leaves) - 1, "leaf")
                     entry = await session.get(TransparencyEntry, (org_id, leaf))
                     principal = signer(org_id, **options)
-                    if (entry is None or merkle.leaf_hash(entry.statement) != leaves[leaf]
-                            or not origin.verify(entry.statement, {principal.id: principal})):
+                    if (
+                        entry is None
+                        or merkle.leaf_hash(entry.statement) != leaves[leaf]
+                        or not origin.verify(entry.statement, {principal.id: principal})
+                    ):
                         raise TransparencyIntegrityError("transparency statement does not match its leaf")
-                    return JSONResponse({"leaf": leaf, "statement": entry.statement, "head": checkpoint,
-                                         "proof": merkle.inclusion(leaves, leaf)})
+                    return JSONResponse(
+                        {
+                            "leaf": leaf,
+                            "statement": entry.statement,
+                            "head": checkpoint,
+                            "proof": merkle.inclusion(leaves, leaf),
+                        }
+                    )
                 start = fp.count(int(request.query_params.get("from", "-1")), 0, len(leaves), "from")
                 end = fp.count(int(request.query_params.get("to", str(len(leaves)))), start, len(leaves), "to")
-                return JSONResponse({"from": start, "to": end, "old_root": merkle.tree_hash(leaves[:start]),
-                                     "root_hash": merkle.tree_hash(leaves[:end]),
-                                     "proof": merkle.consistency(leaves[:end], start)})
+                return JSONResponse(
+                    {
+                        "from": start,
+                        "to": end,
+                        "old_root": merkle.tree_hash(leaves[:start]),
+                        "root_hash": merkle.tree_hash(leaves[:end]),
+                        "proof": merkle.consistency(leaves[:end], start),
+                    }
+                )
         except TransparencyIntegrityError as exc:
             return JSONResponse({"error": "transparency_history_unverifiable", "detail": str(exc)}, status_code=503)
         except (ValueError, TypeError) as exc:

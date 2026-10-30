@@ -1,4 +1,5 @@
 """Installable, offline vertical configuration bundles and seeded reference demos."""
+
 from __future__ import annotations
 
 import hashlib
@@ -77,8 +78,13 @@ def install(name: str, destination: str) -> dict[str, Any]:
         raise ValueError("vertical pack destination must be a directory")
     _atomic_write(target / "pack.json", json.dumps(manifest, sort_keys=True, indent=2).encode() + b"\n")
     _atomic_write(target / "README.md", docs.read_bytes())
-    return {"name": name, "version": manifest["version"], "sha256": digest,
-            "installed_to": str(target), "network_calls": 0}
+    return {
+        "name": name,
+        "version": manifest["version"],
+        "sha256": digest,
+        "installed_to": str(target),
+        "network_calls": 0,
+    }
 
 
 def demo(name: str, *, seed: int = 20261018) -> dict[str, Any]:
@@ -102,11 +108,30 @@ def demo(name: str, *, seed: int = 20261018) -> dict[str, Any]:
     lower, upper = effect - 1.96 * se, effect + 1.96 * se
     harm_budget = 0.05
     spent = (harms / n) / harm_budget
-    report = manifest["report_template"].format(name=name, seed=seed, n=2 * n, effect=effect,
-        lower=lower, upper=upper, harm=spent, features=", ".join(manifest["features"]))
+    report = manifest["report_template"].format(
+        name=name,
+        seed=seed,
+        n=2 * n,
+        effect=effect,
+        lower=lower,
+        upper=upper,
+        harm=spent,
+        features=", ".join(manifest["features"]),
+    )
     report += "\nOffline feature checks (local fixtures, separate from synthetic estimates):\n"
     report += "\n".join(f"- {feature}: {check['detail']}" for feature, check in checks.items())
-    return {"name": name, "seed": seed, "units_per_arm": n, "control_successes": control,
-            "treatment_successes": treatment, "harm_events": harms, "effect": effect,
-            "interval_95": [lower, upper], "harm_budget_spent": spent, "report": report,
-            "network_calls": 0, "synthetic": True, "feature_checks": checks}
+    return {
+        "name": name,
+        "seed": seed,
+        "units_per_arm": n,
+        "control_successes": control,
+        "treatment_successes": treatment,
+        "harm_events": harms,
+        "effect": effect,
+        "interval_95": [lower, upper],
+        "harm_budget_spent": spent,
+        "report": report,
+        "network_calls": 0,
+        "synthetic": True,
+        "feature_checks": checks,
+    }

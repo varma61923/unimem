@@ -1,4 +1,5 @@
 """UniMem JSON workflows, grouped under existing command themes."""
+
 from __future__ import annotations
 
 import argparse
@@ -51,8 +52,12 @@ def run_sycophancy(args: argparse.Namespace) -> int:
 
     body = request(args.request)
     action = body.pop("action", "report")
-    operations: dict[str, Callable[..., Any]] = {"register": sycophancy_io.register,
-        "expose": sycophancy_io.expose, "report": sycophancy_io.report, "benchmark": sycophancy_io.benchmark}
+    operations: dict[str, Callable[..., Any]] = {
+        "register": sycophancy_io.register,
+        "expose": sycophancy_io.expose,
+        "report": sycophancy_io.report,
+        "benchmark": sycophancy_io.benchmark,
+    }
     if action not in operations:
         raise ValueError("UniMem personalization action must be register, expose, report or benchmark")
     try:
@@ -66,9 +71,14 @@ def run_sycophancy(args: argparse.Namespace) -> int:
 def run_pool(args: argparse.Namespace) -> int:
     body = request(args.request)
     root = paths.resolve_root(args.dest)
-    operations: dict[str, Callable[..., Any]] = {"identity": pooled_io.issue_identity, "register": pooled_io.register,
-                  "privacy": pooled_io.configure_privacy, "contribute": pooled_io.contribute,
-                  "accept": pooled_io.accept, "report": pooled_io.report}
+    operations: dict[str, Callable[..., Any]] = {
+        "identity": pooled_io.issue_identity,
+        "register": pooled_io.register,
+        "privacy": pooled_io.configure_privacy,
+        "contribute": pooled_io.contribute,
+        "accept": pooled_io.accept,
+        "report": pooled_io.report,
+    }
     try:
         result = operations[args.unimem_pool](root, **body)
     except TypeError as exc:
@@ -113,8 +123,11 @@ def add_skill(subparsers: argparse._SubParsersAction[Any]) -> None:
 def run_optimizer(args: argparse.Namespace) -> int:
     from unimem import optimizer_io
 
-    operations: dict[str, Callable[..., Any]] = {"intake": optimizer_io.intake, "status": optimizer_io.status,
-                                               "frontier": optimizer_io.frontier}
+    operations: dict[str, Callable[..., Any]] = {
+        "intake": optimizer_io.intake,
+        "status": optimizer_io.status,
+        "frontier": optimizer_io.frontier,
+    }
     try:
         result = operations[args.unimem_optimize](paths.resolve_root(args.dest), **request(args.request))
     except TypeError as exc:
@@ -128,8 +141,14 @@ def run_skill(args: argparse.Namespace) -> int:
 
     body = request(args.request)
     root = paths.resolve_root(args.dest)
-    operations: dict[str, Callable[..., Any]] = {"induce": skill_io.induce, "screen": skill_io.screen,
-        "trial": skill_io.trial, "status": skill_io.status, "publish": skill_io.publish, "retire": skill_io.retire}
+    operations: dict[str, Callable[..., Any]] = {
+        "induce": skill_io.induce,
+        "screen": skill_io.screen,
+        "trial": skill_io.trial,
+        "status": skill_io.status,
+        "publish": skill_io.publish,
+        "retire": skill_io.retire,
+    }
     try:
         result = operations[args.unimem_skill](root, **body)
     except TypeError as exc:
@@ -141,8 +160,22 @@ def run_skill(args: argparse.Namespace) -> int:
 def add_team(subparsers: argparse._SubParsersAction[Any]) -> None:
     parser = subparsers.add_parser("team", help="UniMem governed team memory and writer trials.")
     operations = parser.add_subparsers(dest="unimem_team", required=True)
-    for operation in ("writers", "register-writer", "reliability", "mask", "mast", "route", "register-capability-agent",
-                      "grant", "attenuate", "revoke", "handoff", "isolation", "lease", "read"):
+    for operation in (
+        "writers",
+        "register-writer",
+        "reliability",
+        "mask",
+        "mast",
+        "route",
+        "register-capability-agent",
+        "grant",
+        "attenuate",
+        "revoke",
+        "handoff",
+        "isolation",
+        "lease",
+        "read",
+    ):
         child = operations.add_parser(operation, help="UniMem team workflow: " + operation + ".")
         child.add_argument("request", nargs="?", default="{}", help="UniMem JSON object or request file.")
         child.add_argument("--dest")
@@ -152,12 +185,22 @@ def add_team(subparsers: argparse._SubParsersAction[Any]) -> None:
 def run_team(args: argparse.Namespace) -> int:
     from unimem import capability_io, team_io, writer_holdout
 
-    operations: dict[str, Callable[..., Any]] = {"writers": writer_holdout.writers,
-        "register-writer": writer_holdout.register, "reliability": writer_holdout.reliability,
-        "mask": writer_holdout.mask, "mast": writer_holdout.tag_mast, "route": writer_holdout.route,
-        "register-capability-agent": capability_io.register_agent, "grant": capability_io.grant,
-        "attenuate": capability_io.attenuate, "revoke": capability_io.revoke, "handoff": capability_io.handoff,
-        "isolation": team_io.isolation, "lease": team_io.lease, "read": team_io.fetch}
+    operations: dict[str, Callable[..., Any]] = {
+        "writers": writer_holdout.writers,
+        "register-writer": writer_holdout.register,
+        "reliability": writer_holdout.reliability,
+        "mask": writer_holdout.mask,
+        "mast": writer_holdout.tag_mast,
+        "route": writer_holdout.route,
+        "register-capability-agent": capability_io.register_agent,
+        "grant": capability_io.grant,
+        "attenuate": capability_io.attenuate,
+        "revoke": capability_io.revoke,
+        "handoff": capability_io.handoff,
+        "isolation": team_io.isolation,
+        "lease": team_io.lease,
+        "read": team_io.fetch,
+    }
     body = request(args.request)
     try:
         result = operations[args.unimem_team](paths.resolve_root(args.dest), **body)
@@ -180,8 +223,13 @@ def add_sentinel(subparsers: argparse._SubParsersAction[Any]) -> None:
 def run_sentinel(args: argparse.Namespace) -> int:
     from unimem import sentinel_io
 
-    operations: dict[str, Callable[..., Any]] = {"configure": sentinel_io.configure, "register": sentinel_io.register,
-        "status": sentinel_io.status, "quarantine": sentinel_io.quarantine, "ledger": sentinel_io.ledger}
+    operations: dict[str, Callable[..., Any]] = {
+        "configure": sentinel_io.configure,
+        "register": sentinel_io.register,
+        "status": sentinel_io.status,
+        "quarantine": sentinel_io.quarantine,
+        "ledger": sentinel_io.ledger,
+    }
     try:
         result = operations[args.unimem_sentinel](paths.resolve_root(args.dest), **request(args.request))
     except TypeError as exc:
@@ -208,8 +256,11 @@ def run_stream(args: argparse.Namespace) -> int:
 
     body = request(args.request)
     root = paths.resolve_root(args.dest)
-    operations: dict[str, Callable[..., Any]] = {"tail": change_stream.poll, "subscribe": change_stream.subscribe,
-        "acks": change_stream.acknowledge if "receipt_digest" in body else change_stream.obligations}
+    operations: dict[str, Callable[..., Any]] = {
+        "tail": change_stream.poll,
+        "subscribe": change_stream.subscribe,
+        "acks": change_stream.acknowledge if "receipt_digest" in body else change_stream.obligations,
+    }
     try:
         result = operations[args.unimem_stream](root, **body)
     except TypeError as exc:
@@ -242,8 +293,9 @@ COMMANDS.update({"stream": add_stream, "erasure": add_erasure})
 
 
 def add_tier(subparsers: argparse._SubParsersAction[Any]) -> None:
-    parser = subparsers.add_parser("tier",
-        help="UniMem managed payload residency, hibernation and embedding generations.")
+    parser = subparsers.add_parser(
+        "tier", help="UniMem managed payload residency, hibernation and embedding generations."
+    )
     operations = parser.add_subparsers(dest="unimem_tier", required=True)
     for operation in ("status", "hibernate", "warm", "residency", "reembed", "rollback"):
         child = operations.add_parser(operation, help="UniMem namespace tier operation: " + operation + ".")
@@ -263,8 +315,14 @@ def add_tier(subparsers: argparse._SubParsersAction[Any]) -> None:
 def run_tier(args: argparse.Namespace) -> int:
     from unimem import tiering
 
-    operations: dict[str, Callable[..., Any]] = {"status": tiering.status, "hibernate": tiering.hibernate,
-        "warm": tiering.warm, "residency": tiering.configure, "reembed": tiering.reembed, "rollback": tiering.rollback}
+    operations: dict[str, Callable[..., Any]] = {
+        "status": tiering.status,
+        "hibernate": tiering.hibernate,
+        "warm": tiering.warm,
+        "residency": tiering.configure,
+        "reembed": tiering.reembed,
+        "rollback": tiering.rollback,
+    }
     try:
         result = operations[args.unimem_tier](paths.resolve_root(args.dest), **request(args.request))
     except TypeError as exc:
@@ -279,8 +337,11 @@ COMMANDS["tier"] = add_tier
 def run_capsules(args: argparse.Namespace) -> int:
     from unimem import kv_capsules
 
-    handlers: dict[str, Callable[..., Any]] = {"build": kv_capsules.build, "status": kv_capsules.status,
-                                                "evict": kv_capsules.evict}
+    handlers: dict[str, Callable[..., Any]] = {
+        "build": kv_capsules.build,
+        "status": kv_capsules.status,
+        "evict": kv_capsules.evict,
+    }
     try:
         result = handlers[args.unimem_capsule](paths.resolve_root(args.dest), **request(args.request))
     except TypeError as exc:
@@ -292,9 +353,26 @@ def run_capsules(args: argparse.Namespace) -> int:
 def add_person(subparsers: argparse._SubParsersAction[Any]) -> None:
     parser = subparsers.add_parser("person", help="Own, review, export and selectively disclose personal memory.")
     operations = parser.add_subparsers(dest="unimem_person", required=True)
-    for operation in ("identity", "trust", "export", "import", "stage", "configure-credentials",
-                      "issue", "revoke", "challenge", "present", "holder-key", "verify", "status",
-                      "purposes", "consent", "explain", "withdraw", "reap"):
+    for operation in (
+        "identity",
+        "trust",
+        "export",
+        "import",
+        "stage",
+        "configure-credentials",
+        "issue",
+        "revoke",
+        "challenge",
+        "present",
+        "holder-key",
+        "verify",
+        "status",
+        "purposes",
+        "consent",
+        "explain",
+        "withdraw",
+        "reap",
+    ):
         child = operations.add_parser(operation)
         child.add_argument("request", nargs="?", default="{}", help="JSON request object or request file.")
         child.add_argument("--dest")
@@ -325,29 +403,51 @@ def run_person(args: argparse.Namespace) -> int:
         if "text" in body:
             raise ValueError("UniMem choose either summary text or --file")
         with Path(args.file).open("rb") as stream:
-            raw = stream.read(128*1024+1)
-        if len(raw) > 128*1024:
+            raw = stream.read(128 * 1024 + 1)
+        if len(raw) > 128 * 1024:
             raise ValueError("UniMem inbound summary exceeds 128 KiB")
         body["text"] = raw.decode("utf-8")
-        body.setdefault("source", "file:"+Path(args.file).name)
-    operations: dict[str, Callable[..., Any]] = {"identity": person_io.identity, "trust": person_io.trust,
-        "export": person_io.export, "import": person_io.import_passport, "stage": person_io.stage,
-        "configure-credentials": person_io.configure_credentials, "issue": person_io.issue,
-        "revoke": person_io.revoke, "challenge": person_io.challenge, "present": person_io.present,
-        "verify": person_io.verify_credential, "status": person_io.status, "holder-key": person_io.holder_key,
-        "purposes": purpose.purposes, "consent": purpose.consent, "explain": purpose.explain,
-        "withdraw": purpose.withdraw, "reap": purpose.reap}
+        body.setdefault("source", "file:" + Path(args.file).name)
+    operations: dict[str, Callable[..., Any]] = {
+        "identity": person_io.identity,
+        "trust": person_io.trust,
+        "export": person_io.export,
+        "import": person_io.import_passport,
+        "stage": person_io.stage,
+        "configure-credentials": person_io.configure_credentials,
+        "issue": person_io.issue,
+        "revoke": person_io.revoke,
+        "challenge": person_io.challenge,
+        "present": person_io.present,
+        "verify": person_io.verify_credential,
+        "status": person_io.status,
+        "holder-key": person_io.holder_key,
+        "purposes": purpose.purposes,
+        "consent": purpose.consent,
+        "explain": purpose.explain,
+        "withdraw": purpose.withdraw,
+        "reap": purpose.reap,
+    }
     try:
         if args.unimem_person == "household":
-            handlers: dict[str, Callable[..., Any]] = {"consent": household.consent, "room": household.configure_room,
-                        "scope": lambda root, **fields: {"scope": household.scope_for(root, fields["person_id"])} }
+            handlers: dict[str, Callable[..., Any]] = {
+                "consent": household.consent,
+                "room": household.configure_room,
+                "scope": lambda root, **fields: {"scope": household.scope_for(root, fields["person_id"])},
+            }
             result = handlers[args.action](paths.resolve_root(args.dest), **body)
             print(json.dumps(result, indent=2, allow_nan=False))
             return 0
         policy_operations: dict[str, Callable[..., Any]] = {
-            "compile": subject_policy.compile, "test": subject_policy.check, "explain": subject_policy.explain}
-        handler = (policy_operations[args.unimem_subject_policy] if args.unimem_person == "policy"
-                   else operations[args.unimem_person])
+            "compile": subject_policy.compile,
+            "test": subject_policy.check,
+            "explain": subject_policy.explain,
+        }
+        handler = (
+            policy_operations[args.unimem_subject_policy]
+            if args.unimem_person == "policy"
+            else operations[args.unimem_person]
+        )
         result = handler(paths.resolve_root(args.dest), **body)
     except TypeError as exc:
         raise ValueError("UniMem personal memory request fields do not match the operation") from exc

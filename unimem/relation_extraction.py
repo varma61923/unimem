@@ -18,11 +18,13 @@ confidence, evidence_span)` records by one of two strategies:
 `write_triples` records triples through the validated graph write path
 (`graph.add_node`/`graph.add_edge`: ontology types, aliases, exclusive closure)
 with provenance pointing at the source; `ingest_text` extracts and writes."""
+
 from __future__ import annotations
 
 import math
 import re
 from dataclasses import asdict, dataclass
+from typing import TypedDict
 
 from unimem import ontology_classify
 
@@ -32,17 +34,22 @@ MAX_LLM_CHUNKS = 8
 MAX_TRIPLES = 200
 MAX_NAME = 200
 MAX_SPAN = 500
-LLM_FIELDS = frozenset({"subject", "subject_type", "relation", "object", "object_type", "valid_at", "confidence",
-                        "evidence"})
+LLM_FIELDS = frozenset(
+    {"subject", "subject_type", "relation", "object", "object_type", "valid_at", "confidence", "evidence"}
+)
 
 # (relation, verb phrase, swapped): a swapped phrase names the relation object-first.
 LEXICON: tuple[tuple[str, str, bool], ...] = (
     ("depends_on", r"(?:depends|depend|depended|relies|rely|relied) on|requires|required|needs", False),
     ("depends_on", r"(?:is|are|was|were) (?:required|needed) by", True),
-    ("uses", r"uses|used|(?:is|are|was|were) using|utili[sz]es|utili[sz]ed|calls|talks to|connects to|"
-             r"reads from|writes to|communicates with|communicated with|integrates with|integrated with|"
-             r"publishes to|published to|consumes from|subscribes to|queries|queried|invokes|invoked|"
-             r"sends (?:requests|events|messages|data) to|pushes to|pulls from|streams to", False),
+    (
+        "uses",
+        r"uses|used|(?:is|are|was|were) using|utili[sz]es|utili[sz]ed|calls|talks to|connects to|"
+        r"reads from|writes to|communicates with|communicated with|integrates with|integrated with|"
+        r"publishes to|published to|consumes from|subscribes to|queries|queried|invokes|invoked|"
+        r"sends (?:requests|events|messages|data) to|pushes to|pulls from|streams to",
+        False,
+    ),
     ("uses", r"(?:is|are|was|were) used by", True),
     ("causes", r"causes|caused|leads to|led to|triggers|triggered|results in|resulted in", False),
     ("causes", r"(?:is|are|was|were) (?:caused|triggered) by", True),
@@ -52,8 +59,7 @@ LEXICON: tuple[tuple[str, str, bool], ...] = (
     ("affects", r"(?:is|are|was|were) (?:affected|impacted|broken|degraded) by", True),
     ("raises", r"raises|raised|throws|threw|emits|emitted", False),
     ("contains", r"contains|contained|includes|included|consists of", False),
-    ("contains", r"(?:is|are|was|were) (?:part of|contained in|included in)|belongs to|belong to|belonged to",
-     True),
+    ("contains", r"(?:is|are|was|were) (?:part of|contained in|included in)|belongs to|belong to|belonged to", True),
     ("located_in", r"(?:is|are|was|were) (?:located|based|headquartered) in|lives in|lived in|resides in", False),
     ("works_at", r"works (?:at|for)|work (?:at|for)|worked (?:at|for)|(?:is|was) employed (?:at|by)|joined", False),
     ("owned_by", r"(?:is|are|was|were) (?:owned|maintained|run) by", False),
@@ -69,14 +75,36 @@ LEXICON: tuple[tuple[str, str, bool], ...] = (
 _MODIFIERS = r"(?:(?:also|now|still|directly|heavily|mainly|primarily|currently|recently|always|has|have|had)\s+){0,2}"
 _NAME_TOKEN = r"(?:[A-Z][\w.+#/-]*[\w+#]|[A-Z]|[a-z0-9][\w+#-]*[._/-][\w.+#/-]*[\w+#])"
 _LEFT_NAME = re.compile(r"(" + _NAME_TOKEN + r"(?:(?: of)? " + _NAME_TOKEN + r"){0,4})$")
-_RIGHT_NAME = re.compile(r"^(?:the |a |an |our |their )?(" + _NAME_TOKEN + r"(?:(?: of)? " + _NAME_TOKEN
-                         + r"){0,4})")
-_SENTENCE_END = re.compile(r"(?<!\b[A-Z])(?<!\b(?:Mr|Ms|Dr|St|vs))(?<!\b(?:Mrs|e\.g|i\.e))(?<!Prof)"
-                           r"[.!?](?=\s+[A-Z0-9\"'(\[])|\n\s*\n|\n(?=\s*[-*#\d])")
-_MONTHS = {m: i for i, m in enumerate(("january", "february", "march", "april", "may", "june", "july", "august",
-                                       "september", "october", "november", "december"), 1)}
-_DATE = re.compile(r"\b(?:since|as of|from|starting(?: on| in)?|effective|on|in)\s+"
-                   r"(?:(\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)|(" + "|".join(_MONTHS) + r")\s+(\d{4})|(\d{4})\b)", re.I)
+_RIGHT_NAME = re.compile(r"^(?:the |a |an |our |their )?(" + _NAME_TOKEN + r"(?:(?: of)? " + _NAME_TOKEN + r"){0,4})")
+_SENTENCE_END = re.compile(
+    r"(?<!\b[A-Z])(?<!\b(?:Mr|Ms|Dr|St|vs))(?<!\b(?:Mrs|e\.g|i\.e))(?<!Prof)"
+    r"[.!?](?=\s+[A-Z0-9\"'(\[])|\n\s*\n|\n(?=\s*[-*#\d])"
+)
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        (
+            "january",
+            "february",
+            "march",
+            "april",
+            "may",
+            "june",
+            "july",
+            "august",
+            "september",
+            "october",
+            "november",
+            "december",
+        ),
+        1,
+    )
+}
+_DATE = re.compile(
+    r"\b(?:since|as of|from|starting(?: on| in)?|effective|on|in)\s+"
+    r"(?:(\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)|(" + "|".join(_MONTHS) + r")\s+(\d{4})|(\d{4})\b)",
+    re.I,
+)
 
 PROMPT = """Extract relations between named entities that the input states explicitly.
 Use only these relations (subject -> object; types are the allowed entity types):
@@ -162,6 +190,7 @@ def _moment(value) -> str | None:
 
 # --- patterns ---------------------------------------------------------------------------
 
+
 def sentences(text: str) -> list[tuple[int, int]]:
     """(start, end) of each sentence; abbreviations such as "Dr." do not end one."""
     spans, start = [], 0
@@ -191,8 +220,7 @@ def _phrases(onto) -> list[tuple[str, re.Pattern, bool]]:
             words = [re.escape(w) for w in name.split("_") if w]
             if words:
                 entries.append((rel.name, r"(?:(?:is|are|was|were) )?" + r"\s+".join(words), swapped))
-    return [(r, re.compile(r"(?<![\w-])" + _MODIFIERS + r"(?:" + p + r")(?![\w-])", re.I), s)
-            for r, p, s in entries]
+    return [(r, re.compile(r"(?<![\w-])" + _MODIFIERS + r"(?:" + p + r")(?![\w-])", re.I), s) for r, p, s in entries]
 
 
 def _valid_at(sentence: str) -> str | None:
@@ -245,54 +273,115 @@ def _endpoint(sentence: str, mentions, at: int, side: str):
 # triggers name the relation object-first (passive voice: "is used by").
 _A = r"(?:is|are|was|were|has been|have been|had been|being|be)\s+(?:\w+ly\s+)?"
 TRIGGERS: tuple[tuple[str, str, bool], ...] = (
-    ("depends_on", r"depends? (?:up)?on|depended (?:up)?on|reli(?:es|ed) (?:up)?on|rel(?:y|ying) (?:up)?on|"
-                   r"requires?|required|needs|needed|" + _A + r"(?:contingent|dependent|reliant) (?:up)?on|"
-                   + _A + r"(?:supported|backed|powered) by|cannot (?:run|work|start) without", False),
+    (
+        "depends_on",
+        r"depends? (?:up)?on|depended (?:up)?on|reli(?:es|ed) (?:up)?on|rel(?:y|ying) (?:up)?on|"
+        r"requires?|required|needs|needed|"
+        + _A
+        + r"(?:contingent|dependent|reliant) (?:up)?on|"
+        + _A
+        + r"(?:supported|backed|powered) by|cannot (?:run|work|start) without",
+        False,
+    ),
     ("depends_on", _A + r"(?:required|needed|relied (?:up)?on) by", True),
-    ("uses", r"uses|used|utili[sz]es|utili[sz]ed|leverages|leveraged|employs|employed|calls|called|invokes|"
-             r"invoked|talks to|connects to|reads from|writes to|pushes|pushed|sends|sent|publishes to|"
-             r"published to|consumes from|subscribes to|queries|queried|communicates with|integrates with|"
-             r"streams to|relays to|forwards to|delegates to|is built on|runs on", False),
+    (
+        "uses",
+        r"uses|used|utili[sz]es|utili[sz]ed|leverages|leveraged|employs|employed|calls|called|invokes|"
+        r"invoked|talks to|connects to|reads from|writes to|pushes|pushed|sends|sent|publishes to|"
+        r"published to|consumes from|subscribes to|queries|queried|communicates with|integrates with|"
+        r"streams to|relays to|forwards to|delegates to|is built on|runs on",
+        False,
+    ),
     ("uses", _A + r"(?:used|utili[sz]ed|employed|leveraged|called|invoked|consumed|queried) by", True),
-    ("causes", r"causes|caused|triggers|triggered|induces|induced|provokes|provoked|precipitates|precipitated|"
-               r"leads to|led to|results in|resulted in|gives rise to|gave rise to|is responsible for", False),
-    ("causes", _A + r"(?:caused|triggered|induced|provoked|precipitated) by|stems from|stemmed from|"
-               r"originates from|originated from|is due to|was due to", True),
-    ("resolves", r"resolves|resolved|fixes|fixed|solves|solved|mitigates|mitigated|addresses|addressed|"
-                 r"clears up|cleared up|eliminates|eliminated|remediates|remediated|patches|patched|corrects", False),
+    (
+        "causes",
+        r"causes|caused|triggers|triggered|induces|induced|provokes|provoked|precipitates|precipitated|"
+        r"leads to|led to|results in|resulted in|gives rise to|gave rise to|is responsible for",
+        False,
+    ),
+    (
+        "causes",
+        _A + r"(?:caused|triggered|induced|provoked|precipitated) by|stems from|stemmed from|"
+        r"originates from|originated from|is due to|was due to",
+        True,
+    ),
+    (
+        "resolves",
+        r"resolves|resolved|fixes|fixed|solves|solved|mitigates|mitigated|addresses|addressed|"
+        r"clears up|cleared up|eliminates|eliminated|remediates|remediated|patches|patched|corrects",
+        False,
+    ),
     ("resolves", _A + r"(?:resolved|fixed|solved|mitigated|addressed|eliminated|remediated|patched) by", True),
-    ("affects", r"affects|affected|impacts|impacted|breaks|broke|degrades|degraded|disrupts|disrupted|"
-                r"compromises|compromised|slows down|slowed down|destabili[sz]es|corrupts|corrupted|"
-                r"(?:negatively|severely|adversely) (?:affects|impacts|impacted|affected)", False),
+    (
+        "affects",
+        r"affects|affected|impacts|impacted|breaks|broke|degrades|degraded|disrupts|disrupted|"
+        r"compromises|compromised|slows down|slowed down|destabili[sz]es|corrupts|corrupted|"
+        r"(?:negatively|severely|adversely) (?:affects|impacts|impacted|affected)",
+        False,
+    ),
     ("affects", _A + r"(?:affected|impacted|broken|degraded|disrupted|compromised|corrupted|slowed) by", True),
     ("raises", r"raises|raised|throws|threw|thrown|emits|emitted|will throw|will raise|signals", False),
     ("raises", _A + r"(?:raised|thrown|emitted) by", True),
-    ("contains", r"contains|contained|includes|included|comprises|comprised|incorporates|incorporated|"
-                 r"encapsulates|embeds|bundles|houses|integrates(?! with)|consists of|" + _A +
-                 r"(?:composed|made up) of", False),
-    ("contains", _A + r"(?:contained|included|encapsulated|embedded|bundled|housed) (?:in|within|by)|"
-                 + _A + r"part of|belongs to|belong to|belonged to", True),
-    ("located_in", r"(?:" + _A + r")?(?:located|based|hosted|deployed|running|situated|stationed|"
-                   r"headquartered|provisioned) (?:in|within)|runs in|lives in|resides in|sits in", False),
-    ("works_at", r"works (?:at|for)|worked (?:at|for)|working (?:at|for)|(?:" + _A + r")?employed (?:at|by)|"
-                 r"joined|(?:" + _A + r")?based at|representing (?:the )?(?:[\w-]+ ){0,2}at|"
-                 r"from (?:the )?(?:[\w-]+ ){0,3}at|, (?:a|an|the|our) (?:[\w-]+ ){0,4}(?:at|for) ", False),
-    ("owned_by", _A + r"(?:owned|maintained|managed|run|operated|stewarded|administered) by|resides with|"
-                 r"rests with|is the responsibility of", False),
+    (
+        "contains",
+        r"contains|contained|includes|included|comprises|comprised|incorporates|incorporated|"
+        r"encapsulates|embeds|bundles|houses|integrates(?! with)|consists of|" + _A + r"(?:composed|made up) of",
+        False,
+    ),
+    (
+        "contains",
+        _A
+        + r"(?:contained|included|encapsulated|embedded|bundled|housed) (?:in|within|by)|"
+        + _A
+        + r"part of|belongs to|belong to|belonged to",
+        True,
+    ),
+    (
+        "located_in",
+        r"(?:" + _A + r")?(?:located|based|hosted|deployed|running|situated|stationed|"
+        r"headquartered|provisioned) (?:in|within)|runs in|lives in|resides in|sits in",
+        False,
+    ),
+    (
+        "works_at",
+        r"works (?:at|for)|worked (?:at|for)|working (?:at|for)|(?:" + _A + r")?employed (?:at|by)|"
+        r"joined|(?:" + _A + r")?based at|representing (?:the )?(?:[\w-]+ ){0,2}at|"
+        r"from (?:the )?(?:[\w-]+ ){0,3}at|, (?:a|an|the|our) (?:[\w-]+ ){0,4}(?:at|for) ",
+        False,
+    ),
+    (
+        "owned_by",
+        _A + r"(?:owned|maintained|managed|run|operated|stewarded|administered) by|resides with|"
+        r"rests with|is the responsibility of",
+        False,
+    ),
     ("owned_by", r"owns|owned|maintains|manages|operates|stewards", True),
-    ("supersedes", r"supersedes|superseded|replaces|replaced|takes the place of|took the place of|displaces|"
-                   r"displaced|succeeds|deprecates|obsoletes|(?:\w+ )?to supersede|to replace", False),
+    (
+        "supersedes",
+        r"supersedes|superseded|replaces|replaced|takes the place of|took the place of|displaces|"
+        r"displaced|succeeds|deprecates|obsoletes|(?:\w+ )?to supersede|to replace",
+        False,
+    ),
     ("supersedes", _A + r"(?:superseded|replaced|displaced|succeeded|deprecated) by", True),
-    ("extends", r"extends|extended|inherits from|inherited from|derives from|" + _A +
-                r"(?:an? )?(?:extension|subclass|specialization|subtype|child|descendant) of|" + _A +
-                r"derived from|subclasses|specializes|(?:defined|declared|implemented|modell?ed) as (?:an? )?"
-                r"(?:extension|subclass|specialization|subtype|child) of", False),
+    (
+        "extends",
+        r"extends|extended|inherits from|inherited from|derives from|"
+        + _A
+        + r"(?:an? )?(?:extension|subclass|specialization|subtype|child|descendant) of|"
+        + _A
+        + r"derived from|subclasses|specializes|(?:defined|declared|implemented|modell?ed) as (?:an? )?"
+        r"(?:extension|subclass|specialization|subtype|child) of",
+        False,
+    ),
     ("extends", _A + r"(?:extended|subclassed|inherited) by", True),
 )
-_HEDGE = re.compile(r"\b(?:not|no|never|cannot|can't|don't|doesn't|didn't|won't|isn't|aren't|wasn't|weren't|"
-                    r"may|might|could|would|should|plans?|planned|planning|consider(?:s|ed|ing)?|whether|"
-                    r"hypothetical(?:ly)?|propos(?:e|es|ed|al)|intends?|wants? to|wish(?:es)?|unless|instead of|"
-                    r"rather than|potentially|possibly|perhaps|eventually|someday|proposal)\b", re.I)
+_HEDGE = re.compile(
+    r"\b(?:not|no|never|cannot|can't|don't|doesn't|didn't|won't|isn't|aren't|wasn't|weren't|"
+    r"may|might|could|would|should|plans?|planned|planning|consider(?:s|ed|ing)?|whether|"
+    r"hypothetical(?:ly)?|propos(?:e|es|ed|al)|intends?|wants? to|wish(?:es)?|unless|instead of|"
+    r"rather than|potentially|possibly|perhaps|eventually|someday|proposal)\b",
+    re.I,
+)
 _FUTURE = re.compile(r"\b(?:will|going to|shall|scheduled to|about to)\b", re.I)
 _BEHAVIOUR = frozenset({"raises", "causes", "affects", "resolves"})  # "will throw" describes behaviour
 MAX_LEFT_GAP, MAX_RIGHT_GAP = 12, 6
@@ -303,8 +392,11 @@ def _triggers(onto) -> list[tuple[str, re.Pattern, bool]]:
     key = tuple(sorted(onto.relations))
     found = _TRIGGER_CACHE.get(key)
     if found is None:
-        found = [(r, re.compile(r"(?<![\w-])(?:" + p + r")(?![\w-])", re.I), sw) for r, p, sw in TRIGGERS
-                 if r in onto.relations]
+        found = [
+            (r, re.compile(r"(?<![\w-])(?:" + p + r")(?![\w-])", re.I), sw)
+            for r, p, sw in TRIGGERS
+            if r in onto.relations
+        ]
         _TRIGGER_CACHE[key] = found
     return found
 
@@ -346,26 +438,34 @@ def _anchored(sentence: str, mentions, onto) -> list[Triple]:
         if any(a <= ts and te <= b and (b - a) > (te - ts) for a, b in spans):
             continue
         inside = [c for c in clauses if c[0] <= ts < c[1]]
-        lefts = [m for m in mentions if m.end <= ts and _words_between(sentence[m.end:ts]) <= MAX_LEFT_GAP
-                 and not any(a <= m.start < b and (a, b) not in inside for a, b in clauses)]
-        rights = [m for m in mentions if m.start >= te and _words_between(sentence[te:m.start]) <= MAX_RIGHT_GAP]
+        lefts = [
+            m
+            for m in mentions
+            if m.end <= ts
+            and _words_between(sentence[m.end : ts]) <= MAX_LEFT_GAP
+            and not any(a <= m.start < b and (a, b) not in inside for a, b in clauses)
+        ]
+        rights = [m for m in mentions if m.start >= te and _words_between(sentence[te : m.start]) <= MAX_RIGHT_GAP]
         left = _pick(lefts, key=lambda m: -m.end)
         right = _pick(rights, key=lambda m: m.start)
         if left is None or right is None or left.key == right.key:
             continue
         between = any(te <= m.start and m.end <= right.start for m in mentions)
-        if relation == "causes" and not between and re.search(
-                r"\b(?:in|on|for|across|within|to)\s+(?:the\s+|a\s+)?$", sentence[te:right.start], re.I):
+        if (
+            relation == "causes"
+            and not between
+            and re.search(r"\b(?:in|on|for|across|within|to)\s+(?:the\s+|a\s+)?$", sentence[te : right.start], re.I)
+        ):
             relation = "affects"  # "caused a latency spike in the Payments Service"
         if right.type in _CONSEQUENCE and relation in ("causes", "affects"):
-            tail = _LOCATIVE_TAIL.match(sentence[right.end:])
+            tail = _LOCATIVE_TAIL.match(sentence[right.end :])
             beyond = [m for m in mentions if tail and m.start == right.end + tail.end()]
             if beyond:
                 right = beyond[0]  # "a kernel panic in the VoidOS kernel" -> VoidOS
-        before, after = sentence[left.end:ts], sentence[te:right.start]
+        before, after = sentence[left.end : ts], sentence[te : right.start]
         if ";" in before + after or "," in after or re.search(r"[.!?]\s", before + after):
             continue
-        span = sentence[left.end:right.start]
+        span = sentence[left.end : right.start]
         if _HEDGE.search(span) or (relation not in _BEHAVIOUR and _FUTURE.search(span)):
             continue
         if re.search(r"\bbecause of\b|\bdue to\b", before, re.I) and relation != "causes":
@@ -375,13 +475,19 @@ def _anchored(sentence: str, mentions, onto) -> list[Triple]:
         otype = obj.type if obj.type != FALLBACK_TYPE else None
         if relation == "works_at" and stype not in ("person", "user"):
             continue  # employment needs a known person: "X, a library at Y" is not a job
-        if relation in ("uses", "owned_by", "contains") and stype in ("person", "user") and \
-                otype in (None, "organization"):
+        if (
+            relation in ("uses", "owned_by", "contains")
+            and stype in ("person", "user")
+            and otype in (None, "organization")
+        ):
             continue  # "Zephyr Thorne is employed by NexaCore" is employment, not use
         if type_conflicts(onto, relation, stype, otype):
             continue
-        out.append(Triple(subj.name, relation, obj.name, _valid_at(sentence), 0.55, sentence[:MAX_SPAN],
-                          stype, otype, "pattern"))
+        out.append(
+            Triple(
+                subj.name, relation, obj.name, _valid_at(sentence), 0.55, sentence[:MAX_SPAN], stype, otype, "pattern"
+            )
+        )
     return out
 
 
@@ -409,8 +515,17 @@ def extract_patterns(text: str, onto, *, exemplars=None) -> list[Triple]:
                 if type_conflicts(onto, relation, stype, otype):
                     continue
                 key = (subj.casefold(), relation, obj.casefold())
-                triple = Triple(subj, relation, obj, _valid_at(sentence), round(0.5 + 0.1 * (sg + og), 2),
-                                sentence[:MAX_SPAN], stype, otype, "pattern")
+                triple = Triple(
+                    subj,
+                    relation,
+                    obj,
+                    _valid_at(sentence),
+                    round(0.5 + 0.1 * (sg + og), 2),
+                    sentence[:MAX_SPAN],
+                    stype,
+                    otype,
+                    "pattern",
+                )
                 if key not in found or found[key].confidence < triple.confidence:
                     found[key] = triple
         for triple in _anchored(sentence, mentions, onto):
@@ -427,6 +542,7 @@ def _overlaps(a: tuple, b: tuple) -> bool:
 
 
 # --- LLM ----------------------------------------------------------------------------------
+
 
 def _prompt(onto) -> str:
     lines = []
@@ -454,11 +570,24 @@ def validate_llm_item(item, text: str, onto) -> Triple | None:
     if not isinstance(item, dict) or set(item) - LLM_FIELDS:
         return None
     subject, relation, obj, evidence = (item.get(k) for k in ("subject", "relation", "object", "evidence"))
-    if not all(isinstance(v, str) and v.strip() for v in (subject, relation, obj, evidence)):
+    if (
+        not isinstance(subject, str)
+        or not subject.strip()
+        or not isinstance(relation, str)
+        or not relation.strip()
+        or not isinstance(obj, str)
+        or not obj.strip()
+        or not isinstance(evidence, str)
+        or not evidence.strip()
+    ):
         return None
     subject, obj = _squash(subject), _squash(obj)
-    if len(subject) > MAX_NAME or len(obj) > MAX_NAME or len(evidence) > MAX_SPAN * 4 or \
-            subject.casefold() == obj.casefold():
+    if (
+        len(subject) > MAX_NAME
+        or len(obj) > MAX_NAME
+        or len(evidence) > MAX_SPAN * 4
+        or subject.casefold() == obj.casefold()
+    ):
         return None
     declared = declared_relation(onto, relation)
     span = _locate(text, evidence.strip())
@@ -478,8 +607,17 @@ def validate_llm_item(item, text: str, onto) -> Triple | None:
     confidence = item.get("confidence", 0.7)
     if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence):
         return None
-    return Triple(subject, relation, obj, _moment(item.get("valid_at")), round(max(0.0, min(1.0, confidence)), 3),
-                  span[:MAX_SPAN * 4], stype, otype, "llm")
+    return Triple(
+        subject,
+        relation,
+        obj,
+        _moment(item.get("valid_at")),
+        round(max(0.0, min(1.0, confidence)), 3),
+        span[: MAX_SPAN * 4],
+        stype,
+        otype,
+        "llm",
+    )
 
 
 def _chunks(text: str) -> list[str]:
@@ -535,6 +673,7 @@ def extract(text: str, ontology, *, llm=None, exemplars=None) -> list[Triple]:
 
 # --- writing --------------------------------------------------------------------------
 
+
 def _compatible(onto, a: str, b: str) -> bool:
     from unimem.ontology import FALLBACK_TYPE
 
@@ -555,8 +694,11 @@ def _node_index(txn) -> dict[str, list[str]]:
     for node in itertools.islice(txn.nodes.values(), seen, None):
         if node.is_forgotten or (node.properties or {}).get("merged_into"):
             continue
-        forms = {slug(node.id.split(":", 1)[-1].replace("_", " ")), slug(node.name),
-                 *(slug(a) for a in (node.properties or {}).get("aliases", [])[:20] if isinstance(a, str))}
+        forms = {
+            slug(node.id.split(":", 1)[-1].replace("_", " ")),
+            slug(node.name),
+            *(slug(a) for a in (node.properties or {}).get("aliases", [])[:20] if isinstance(a, str)),
+        }
         for form in forms - {""}:
             ids = index.setdefault(form, [])
             if node.id not in ids:
@@ -571,13 +713,23 @@ def _node_for(txn, index, onto, name: str, type_: str) -> tuple[str, bool]:
 
     for node_id in sorted(index.get(entities.slug(name), ())):
         node = txn.nodes.get(node_id)
-        if node is not None and node.entity_type not in ontology_classify.INTERNAL_TYPES and \
-                _compatible(onto, node.entity_type, type_):
+        if (
+            node is not None
+            and node.entity_type not in ontology_classify.INTERNAL_TYPES
+            and _compatible(onto, node.entity_type, type_)
+        ):
             return node_id, False
     return entities.canonical_key(name, type_, onto), True
 
 
-def write_triples(root: str, triples: list[Triple], *, source: str, run_id: str = "") -> dict:
+class _WriteReport(TypedDict):
+    triples: int
+    edges_written: int
+    nodes_created: int
+    errors: list[str]
+
+
+def write_triples(root: str, triples: list[Triple], *, source: str, run_id: str = "") -> _WriteReport:
     """Record triples as graph edges via `graph.add_edge` (ontology checks, aliases,
     exclusive closure), each with provenance naming `source`. Names and evidence are
     redacted; evidence that reads like a prompt injection is refused."""
@@ -585,7 +737,7 @@ def write_triples(root: str, triples: list[Triple], *, source: str, run_id: str 
     from unimem.ingest import contextualize_for_llm
 
     onto = ontology.load(root)
-    report = {"triples": len(triples), "edges_written": 0, "nodes_created": 0, "errors": []}
+    report: _WriteReport = {"triples": len(triples), "edges_written": 0, "nodes_created": 0, "errors": []}
     with graph.batch(root) as txn:
         index = _node_index(txn)
         for t in triples:
@@ -608,17 +760,28 @@ def write_triples(root: str, triples: list[Triple], *, source: str, run_id: str 
                 for name, type_, inferred in ((subject, stype, not t.subject_type), (obj, otype, not t.object_type)):
                     node_id, created = _node_for(txn, index, onto, name, type_)
                     if created and node_id not in txn.nodes:
-                        props = {"aliases": [name]}
+                        props: dict[str, list[str] | str] = {"aliases": [name]}
                         if inferred and type_ != ontology.FALLBACK_TYPE:
                             props["type_inferred_from"] = t.relation
                         graph.add_node(root, node_id, type_, name=name, properties=props, provenance=prov)
                         index.setdefault(node_id.split(":", 1)[-1], []).append(node_id)
                         report["nodes_created"] += 1
                     ids.append(node_id)
-                graph.add_edge(root, ids[0], ids[1], t.relation, weight=t.confidence, valid_at=t.valid_at,
-                               properties={"evidence": evidence, "confidence": t.confidence, "source": source,
-                                           "extracted_by": "relation_extraction:" + t.method},
-                               provenance=prov)
+                graph.add_edge(
+                    root,
+                    ids[0],
+                    ids[1],
+                    t.relation,
+                    weight=t.confidence,
+                    valid_at=t.valid_at,
+                    properties={
+                        "evidence": evidence,
+                        "confidence": t.confidence,
+                        "source": source,
+                        "extracted_by": "relation_extraction:" + t.method,
+                    },
+                    provenance=prov,
+                )
             except ValueError as exc:  # strict ontologies refuse what they do not declare
                 report["errors"].append(f"triple refused ({subject}/{t.relation}/{obj}): {exc}")
                 continue
@@ -631,11 +794,15 @@ def ingest_text(root: str, text: str, *, source: str, run_id: str = "", llm=None
     write them; the report lists the triples either way."""
     from unimem import ontology
 
-    triples = extract(text, ontology.load(root), llm=llm,
-                      exemplars=ontology_classify.Exemplars.from_graph(root) if llm is None else None)
-    report = {"triples": len(triples), "edges_written": 0, "nodes_created": 0, "errors": []}
+    triples = extract(
+        text,
+        ontology.load(root),
+        llm=llm,
+        exemplars=ontology_classify.Exemplars.from_graph(root) if llm is None else None,
+    )
+    report: dict = {"triples": len(triples), "edges_written": 0, "nodes_created": 0, "errors": []}
     if not dry_run and triples:
-        report = write_triples(root, triples, source=source, run_id=run_id)
+        report = dict(write_triples(root, triples, source=source, run_id=run_id))
     report["dry_run"] = dry_run
     report["extracted"] = [t.to_dict() for t in triples]
     return report

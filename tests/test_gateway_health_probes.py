@@ -1,4 +1,5 @@
 """Liveness and readiness probes for orchestrators (Kubernetes, Docker, load balancers)."""
+
 import json
 import os
 
@@ -65,20 +66,40 @@ def test_conversation_recall_accepts_an_adaptive_budget(tmp_path, monkeypatch):
     auth = {"Authorization": f"Bearer {TOKEN}", "Host": "localhost:8787"}
 
     def post(body):
-        response = g.handle("POST", "/v1/conversation/recall" if "question" in body else "/v1/conversation/add",
-                            auth, json.dumps(body).encode())
+        response = g.handle(
+            "POST",
+            "/v1/conversation/recall" if "question" in body else "/v1/conversation/add",
+            auth,
+            json.dumps(body).encode(),
+        )
         return response.status, json.loads(response.body)
 
-    assert post({"space": "ana", "session": "s1", "messages": [
-        {"speaker": "Ana", "text": "I painted a landscape and a portrait."}]})[0] == 200
-    status, got = post({"space": "ana", "question": "What paintings has Ana made?", "budget": 400,
-                        "adaptive_budget": True})
+    assert (
+        post(
+            {
+                "space": "ana",
+                "session": "s1",
+                "messages": [{"speaker": "Ana", "text": "I painted a landscape and a portrait."}],
+            }
+        )[0]
+        == 200
+    )
+    status, got = post(
+        {"space": "ana", "question": "What paintings has Ana made?", "budget": 400, "adaptive_budget": True}
+    )
     assert status == 200 and got["explain"]["budget"] == {"requested": 400, "effective": 800, "reason": "list"}
     status, fixed = post({"space": "ana", "question": "What paintings has Ana made?", "budget": 400})
     assert status == 200 and "budget" not in fixed["explain"]
     assert post({"space": "ana", "question": "x", "adaptive_budget": "yes"})[0] == 400
-    status, capped = post({"space": "ana", "question": "What paintings has Ana made?", "budget": 400,
-                           "adaptive_budget": True, "max_budget": 600})
+    status, capped = post(
+        {
+            "space": "ana",
+            "question": "What paintings has Ana made?",
+            "budget": 400,
+            "adaptive_budget": True,
+            "max_budget": 600,
+        }
+    )
     assert status == 200 and capped["explain"]["budget"] == {"requested": 400, "effective": 600, "reason": "list"}
     for bad in (300, 40_000, True, "800"):
         assert post({"space": "ana", "question": "x", "budget": 400, "max_budget": bad})[0] == 400

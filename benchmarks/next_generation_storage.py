@@ -3,6 +3,7 @@
 python -m benchmarks.next_generation_storage --sizes 1000,10000,30000,1000000 \
     --trials 20 --output benchmark-results/p0-storage.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,8 +29,9 @@ def statement(index: int) -> str:
 
 
 def items(start: int, count: int) -> list[dict]:
-    return [{"statement": statement(index), "source_trace_id": f"trace-{index}"}
-            for index in range(start, start + count)]
+    return [
+        {"statement": statement(index), "source_trace_id": f"trace-{index}"} for index in range(start, start + count)
+    ]
 
 
 def percentile(values: list[float], quantile: float) -> float:
@@ -41,8 +43,19 @@ def legacy_seed(root: str, size: int) -> None:
     facts = {}
     for index in range(size):
         text = statement(index)
-        fact = h.AtomicFact(h._fact_id(text, []), text, "general", [], 0.8, 1, now, None,
-                            source_traces=[f"trace-{index}"], created_at=now, updated_at=now)
+        fact = h.AtomicFact(
+            h._fact_id(text, []),
+            text,
+            "general",
+            [],
+            0.8,
+            1,
+            now,
+            None,
+            source_traces=[f"trace-{index}"],
+            created_at=now,
+            updated_at=now,
+        )
         fact.revision = h._compute_revision(fact.to_dict())
         facts[fact.id] = fact
     h.save_facts(root, facts)
@@ -66,12 +79,18 @@ def measure(root: str, size: int, trials: int) -> dict:
     elapsed = time.perf_counter() - start
     if len(result) != 1000 or any(action != "ADD" for _, action in result):
         raise AssertionError("batch did not durably admit every fact")
-    return {"facts_before_trials": size, "single_write_p50_ms": percentile(writes, 0.5),
-            "single_write_p95_ms": percentile(writes, 0.95), "single_write_samples_ms": writes,
-            "sparse_overlap_search_p50_ms": percentile(searches, 0.5),
-            "sparse_overlap_search_p95_ms": percentile(searches, 0.95),
-            "sparse_overlap_search_samples_ms": searches, "batch_size": 1000,
-            "batch_facts_per_second": 1000 / elapsed, "batch_elapsed_seconds": elapsed}
+    return {
+        "facts_before_trials": size,
+        "single_write_p50_ms": percentile(writes, 0.5),
+        "single_write_p95_ms": percentile(writes, 0.95),
+        "single_write_samples_ms": writes,
+        "sparse_overlap_search_p50_ms": percentile(searches, 0.5),
+        "sparse_overlap_search_p95_ms": percentile(searches, 0.95),
+        "sparse_overlap_search_samples_ms": searches,
+        "batch_size": 1000,
+        "batch_facts_per_second": 1000 / elapsed,
+        "batch_elapsed_seconds": elapsed,
+    }
 
 
 def main() -> int:
@@ -90,31 +109,49 @@ def main() -> int:
     result = {
         "workload": "synthetic independent journal facts; exact selective queries; 1000-fact batches",
         "measurement": "wall-clock, real hierarchical APIs including conflict recording and entity linking",
-        "limitations": ["No dense/hybrid quality measurement", "No server tier measurement",
-                        "Synthetic facts do not establish answer accuracy or causal lift",
-                        "Legacy one-million-fact baseline not executed", "Manifest is integrity-only, not signed"],
-        "python": sys.version, "platform": platform.platform(),
+        "limitations": [
+            "No dense/hybrid quality measurement",
+            "No server tier measurement",
+            "Synthetic facts do not establish answer accuracy or causal lift",
+            "Legacy one-million-fact baseline not executed",
+            "Manifest is integrity-only, not signed",
+        ],
+        "python": sys.version,
+        "platform": platform.platform(),
         "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
         "command": " ".join([sys.executable, "-m", "benchmarks.next_generation_storage", *sys.argv[1:]]),
-        "trials": args.trials, "legacy": [], "sqlite": [],
+        "trials": args.trials,
+        "legacy": [],
+        "sqlite": [],
     }
-    result['source_files_sha256'] = {
+    result["source_files_sha256"] = {
         name: hashlib.sha256(Path(name).read_bytes()).hexdigest()
-        for name in ('unimem/hierarchical.py', 'unimem/configuration.py', 'unimem/fact_store.py',
-                     'unimem/entity_store.py', 'unimem/sqlite_pool.py',
-                     'unimem/memory_record.py', 'unimem/fact_index.py',
-                     'unimem/fact_conflicts.py', 'benchmarks/next_generation_storage.py')
+        for name in (
+            "unimem/hierarchical.py",
+            "unimem/configuration.py",
+            "unimem/fact_store.py",
+            "unimem/entity_store.py",
+            "unimem/sqlite_pool.py",
+            "unimem/memory_record.py",
+            "unimem/fact_index.py",
+            "unimem/fact_conflicts.py",
+            "benchmarks/next_generation_storage.py",
+        )
     }
-    result['source_snapshot'] = 'file hashes identify the measured worktree; commit alone may precede these changes'
+    result["source_snapshot"] = "file hashes identify the measured worktree; commit alone may precede these changes"
+
     def persist():
         with open(output, "w", encoding="utf-8") as handle:
             json.dump(result, handle, indent=2)
             handle.write("\n")
+
     failure = None
     size, offset = 0, 0
     try:
-        with tempfile.TemporaryDirectory(prefix="unimem-p0-", dir=args.work_dir) as directory, \
-                contextlib.ExitStack() as resources:
+        with (
+            tempfile.TemporaryDirectory(prefix="unimem-p0-", dir=args.work_dir) as directory,
+            contextlib.ExitStack() as resources,
+        ):
             sqlite_root = os.path.join(directory, "sqlite")
             fact_store.migrate(sqlite_root)
             resources.callback(fact_store.close_connections, sqlite_root)
@@ -129,8 +166,12 @@ def main() -> int:
                 measured = measure(sqlite_root, size, args.trials)
                 measured["seed_elapsed_seconds"] = seeded_seconds
                 result["sqlite"].append(measured)
-                print("SQLite", size, json.dumps({key: value for key, value in measured.items() if "samples" not in key}),
-                      flush=True)
+                print(
+                    "SQLite",
+                    size,
+                    json.dumps({key: value for key, value in measured.items() if "samples" not in key}),
+                    flush=True,
+                )
                 # Timing writes and the batch are part of the same growing store.
                 cursor = size + args.trials + 1000
                 if size <= args.legacy_max:
@@ -138,14 +179,22 @@ def main() -> int:
                     legacy_seed(legacy_root, size)
                     measured = measure(legacy_root, size, args.trials)
                     result["legacy"].append(measured)
-                    print("JSONL", size, json.dumps({key: value for key, value in measured.items() if "samples" not in key}),
-                          flush=True)
+                    print(
+                        "JSONL",
+                        size,
+                        json.dumps({key: value for key, value in measured.items() if "samples" not in key}),
+                        flush=True,
+                    )
                 persist()
     except (sqlite3.Error, OSError) as exc:
         # Temporary-directory cleanup has released failed-run storage before
         # writing the report. Incomplete runs cannot silently pass the gates.
-        failure = {"type": type(exc).__name__, "message": str(exc),
-                   "target_facts": size, "last_started_batch_offset": offset}
+        failure = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "target_facts": size,
+            "last_started_batch_offset": offset,
+        }
         result["failure"] = failure
         print("Storage gate incomplete:", json.dumps(failure), flush=True)
     million = next((row for row in result["sqlite"] if row["facts_before_trials"] == 1000000), None)
@@ -164,8 +213,7 @@ def main() -> int:
     # A measured miss must stop reproduce.sh's set -e pipeline. Smaller runs
     # remain diagnostic; their missing million-fact evidence is explicit above.
     write_gate_missed = million is not None and not (
-        result["gates"]["single_write_p95_lt_20ms_at_1m"]
-        and result["gates"]["batch_gte_2000_facts_per_second_at_1m"]
+        result["gates"]["single_write_p95_lt_20ms_at_1m"] and result["gates"]["batch_gte_2000_facts_per_second_at_1m"]
     )
     if write_gate_missed:
         print("Storage write gate missed; see measured values in", output, flush=True)

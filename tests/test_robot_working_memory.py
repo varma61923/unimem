@@ -12,8 +12,8 @@ from unimem.robotics.working_memory import WorkingMemory, percentile_latency
 def test_safety_keyframes_survive_utility_eviction_pressure():
     memory = WorkingMemory(capacity_tokens=30)
     memory.add("safe", [1, 0], tokens=10, episode_id="episode-1", safety=True)
-    memory.add("useful", [0, 1], tokens=20, episode_id="episode-1", utility=.9, future_retrieval=.8)
-    added = memory.add("weak", [-1, 0], tokens=20, episode_id="episode-1", utility=.1, future_retrieval=.1)
+    memory.add("useful", [0, 1], tokens=20, episode_id="episode-1", utility=0.9, future_retrieval=0.8)
+    added = memory.add("weak", [-1, 0], tokens=20, episode_id="episode-1", utility=0.1, future_retrieval=0.1)
     status = memory.evict_to_capacity()
     assert "safe" in status["kept"]
     assert status["protected_over_budget"] is False
@@ -37,7 +37,7 @@ def test_p99_local_retrieval_budget_and_best_result_so_far():
         service_times.append((time.process_time() - started) * 1000)
         assert result["result"] is not None
     assert percentile_latency(service_times) < 50  # generous 10x the 5 ms control-loop target
-    partial = memory.retrieve([1] + [0] * 31, budget_ms=.1)
+    partial = memory.retrieve([1] + [0] * 31, budget_ms=0.1)
     assert partial["result"] is not None
     assert partial["over_budget"] is True
 
@@ -92,8 +92,14 @@ def test_concurrent_add_retrieve_and_eviction_keep_token_accounting_consistent()
 
     def update(worker):
         for index in range(50):
-            memory.add(f"worker-{worker}-{index}", [1, index + 1], tokens=1, episode_id="episode",
-                       utility=.5, future_retrieval=.5)
+            memory.add(
+                f"worker-{worker}-{index}",
+                [1, index + 1],
+                tokens=1,
+                episode_id="episode",
+                utility=0.5,
+                future_retrieval=0.5,
+            )
             memory.retrieve([1, 0])
             memory.evict_to_capacity()
 

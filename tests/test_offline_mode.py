@@ -1,4 +1,5 @@
 """Air-gapped mode refuses non-local network use before any connection is attempted."""
+
 import os
 
 import pytest
@@ -18,12 +19,19 @@ def offline_env(monkeypatch):
     yield
 
 
-@pytest.mark.parametrize("url,local", [
-    ("http://localhost:11434/api/chat", True), ("http://127.0.0.1:8787/v1", True),
-    ("http://[::1]:8000/", True), ("http://api.localhost/x", True),
-    ("https://api.openai.com/v1/chat", False), ("http://10.0.0.5/", False),
-    ("http://127.0.0.1.evil.example/", False), ("http://localhost.evil.example/", False),
-])
+@pytest.mark.parametrize(
+    "url,local",
+    [
+        ("http://localhost:11434/api/chat", True),
+        ("http://127.0.0.1:8787/v1", True),
+        ("http://[::1]:8000/", True),
+        ("http://api.localhost/x", True),
+        ("https://api.openai.com/v1/chat", False),
+        ("http://10.0.0.5/", False),
+        ("http://127.0.0.1.evil.example/", False),
+        ("http://localhost.evil.example/", False),
+    ],
+)
 def test_loopback_classification_needs_no_dns(url, local):
     assert offline.is_loopback(url) is local
 
@@ -43,6 +51,7 @@ def test_check_url_refuses_remote_hosts_with_a_capability_error(offline_env):
 def test_hosted_llm_calls_are_refused_before_connecting(offline_env, monkeypatch):
     def boom(*_a, **_k):
         raise AssertionError("no connection may be attempted")
+
     monkeypatch.setattr("urllib.request.OpenerDirector.open", boom)
     with pytest.raises(llm.LLMUnavailable, match="offline mode"):
         llm._post_json("https://api.anthropic.com/v1/messages", {}, {})

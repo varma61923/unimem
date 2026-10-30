@@ -1,4 +1,5 @@
 """Answer grading retries failed questions instead of dropping them or aborting the run."""
+
 from __future__ import annotations
 
 import pytest
@@ -29,8 +30,9 @@ def test_a_question_that_never_grades_fails_the_run_rather_than_vanishing():
 
     rows = [{}, {}]
     with pytest.raises(RuntimeError, match="1 question"):
-        bench.grade_all([(rows[0], {"question": "ok"}), (rows[1], {"question": "bad"})], 2, grade=grade,
-                        rounds=2, pause_s=0)
+        bench.grade_all(
+            [(rows[0], {"question": "ok"}), (rows[1], {"question": "bad"})], 2, grade=grade, rounds=2, pause_s=0
+        )
     assert rows[0] == {"correct": True} and rows[1] == {}
 
 

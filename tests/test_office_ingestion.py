@@ -1,4 +1,5 @@
 """Real OOXML package fixtures exercise offline extraction and retry boundaries."""
+
 import json
 import os
 import zipfile
@@ -21,19 +22,25 @@ def package(path, parts):
 
 
 def rels(*items):
-    return '<Relationships>' + ''.join(
-        f'<Relationship Id="{identity}" Target="{target}" Type="{R}/{kind}" {extra}/>'
-        for identity, target, kind, extra in items) + '</Relationships>'
+    return (
+        "<Relationships>"
+        + "".join(
+            f'<Relationship Id="{identity}" Target="{target}" Type="{R}/{kind}" {extra}/>'
+            for identity, target, kind, extra in items
+        )
+        + "</Relationships>"
+    )
 
 
 def spreadsheet(rows="", **extra):
     return {
         "xl/workbook.xml": f'<workbook xmlns="{S}" xmlns:r="{R}"><sheets>'
         '<sheet name="Revenue" sheetId="1" r:id="r1" state="hidden"/></sheets></workbook>',
-        "xl/_rels/workbook.xml.rels": rels(("r1", "worksheets/sheet9.xml", "worksheet", ""),
-                                               ("ss", "strings.xml", "sharedStrings", "")),
+        "xl/_rels/workbook.xml.rels": rels(
+            ("r1", "worksheets/sheet9.xml", "worksheet", ""), ("ss", "strings.xml", "sharedStrings", "")
+        ),
         "xl/strings.xml": f'<sst xmlns="{S}"><si><r><t>  stored </t></r><rPh><t>ignore</t></rPh>'
-        '<r><t>value  </t></r></si></sst>',
+        "<r><t>value  </t></r></si></sst>",
         "xl/worksheets/sheet9.xml": f'<worksheet xmlns="{S}"><sheetData>{rows}</sheetData></worksheet>',
         **extra,
     }
@@ -45,7 +52,10 @@ def test_stored_values_and_provenance(tmp_path, monkeypatch):
     path = package(tmp_path / "data.xlsx", spreadsheet(rows))
     chunks = office.chunk_xlsx(path)
     assert len(chunks) == 1
-    assert chunks[0].content == 'A3[s]="  stored value  " | C3[n]=2 | D3[n]=[formula has no stored cached value] | E3[b]=TRUE'
+    assert (
+        chunks[0].content
+        == 'A3[s]="  stored value  " | C3[n]=2 | D3[n]=[formula has no stored cached value] | E3[b]=TRUE'
+    )
     assert chunks[0].provenance["sheet"] == "Revenue"
     assert chunks[0].provenance["row"] == 3
     assert chunks[0].provenance["sheet_state"] == "hidden"
@@ -60,7 +70,7 @@ def test_long_cell_preserves_spaces_and_bounds(tmp_path):
     chunks = office.chunk_xlsx(path)
     assert len(chunks) > 1
     assert all(len(c.content) <= 2000 for c in chunks)
-    assert ''.join(c.content for c in chunks) == 'A1[inlineStr]=' + json.dumps(value)
+    assert "".join(c.content for c in chunks) == "A1[inlineStr]=" + json.dumps(value)
 
 
 def test_missing_cell_address_follows_previous_sparse_column(tmp_path):
@@ -70,19 +80,21 @@ def test_missing_cell_address_follows_previous_sparse_column(tmp_path):
 
 def presentation():
     slide = f'<p:sld xmlns:p="{P}" xmlns:a="{A}"><p:cSld><p:spTree><p:sp><p:txBody>'
-    slide += '<a:p><a:r><a:t>Revenue</a:t></a:r><a:br/><a:r><a:t>grew 20%</a:t></a:r></a:p>'
-    slide += '</p:txBody></p:sp></p:spTree></p:cSld></p:sld>'
+    slide += "<a:p><a:r><a:t>Revenue</a:t></a:r><a:br/><a:r><a:t>grew 20%</a:t></a:r></a:p>"
+    slide += "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>"
     notes = f'<p:notes xmlns:p="{P}" xmlns:a="{A}"><p:cSld><p:spTree>'
-    notes += '<p:sp><p:txBody><a:p><a:r><a:t>Explain growth</a:t></a:r></a:p></p:txBody></p:sp>'
+    notes += "<p:sp><p:txBody><a:p><a:r><a:t>Explain growth</a:t></a:r></a:p></p:txBody></p:sp>"
     notes += '<p:sp><p:nvSpPr><p:nvPr><p:ph type="sldNum"/></p:nvPr></p:nvSpPr>'
-    notes += '<p:txBody><a:p><a:r><a:t>99</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>'
+    notes += "<p:txBody><a:p><a:r><a:t>99</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:notes>"
     return {
         "ppt/presentation.xml": f'<p:presentation xmlns:p="{P}" xmlns:r="{R}"><p:sldIdLst>'
         '<p:sldId id="99" r:id="s"/></p:sldIdLst></p:presentation>',
         "ppt/_rels/presentation.xml.rels": rels(("s", "slides/slide9.xml", "slide", "")),
         "ppt/slides/slide9.xml": slide,
-        "ppt/slides/_rels/slide9.xml.rels": rels(("n", "../notesSlides/notes1.xml", "notesSlide", ""),
-                                                ("h", "https://example.com", "hyperlink", 'TargetMode="External"')),
+        "ppt/slides/_rels/slide9.xml.rels": rels(
+            ("n", "../notesSlides/notes1.xml", "notesSlide", ""),
+            ("h", "https://example.com", "hyperlink", 'TargetMode="External"'),
+        ),
         "ppt/notesSlides/notes1.xml": notes,
     }
 
@@ -95,12 +107,19 @@ def test_slide_notes_and_external_links(tmp_path):
     assert chunks[1].provenance["source_part"] == "ppt/notesSlides/notes1.xml"
 
 
-@pytest.mark.parametrize("rows", [
-    '<row r="0"/>', '<row r="1"/><row r="1"/>', '<row r="1"><c r="A2"/></row>',
-    '<row><c r="XFE1"/></row>', '<row><c r="A1"/><c r="A1"/></row>',
-    '<row><c t="s"><v>999</v></c></row>', '<row><c t="b"><v>yes</v></c></row>',
-    '<row><c t="unknown"><v>x</v></c></row>',
-])
+@pytest.mark.parametrize(
+    "rows",
+    [
+        '<row r="0"/>',
+        '<row r="1"/><row r="1"/>',
+        '<row r="1"><c r="A2"/></row>',
+        '<row><c r="XFE1"/></row>',
+        '<row><c r="A1"/><c r="A1"/></row>',
+        '<row><c t="s"><v>999</v></c></row>',
+        '<row><c t="b"><v>yes</v></c></row>',
+        '<row><c t="unknown"><v>x</v></c></row>',
+    ],
+)
 def test_invalid_cell_addresses_and_values(tmp_path, rows):
     with pytest.raises(ValueError):
         office.chunk_xlsx(package(tmp_path / "bad.xlsx", spreadsheet(rows)))
@@ -114,10 +133,11 @@ def test_xml_entities_rejected(tmp_path, encoding):
         office.chunk_xlsx(package(tmp_path / "bad.xlsx", parts))
 
 
-@pytest.mark.parametrize("budget,value", [("MAX_XML_BYTES", 5), ("MAX_XML_NODES", 1),
-                                          ("MAX_XML_DEPTH", 1), ("MAX_TEXT_CHARS", 5)])
+@pytest.mark.parametrize(
+    "budget,value", [("MAX_XML_BYTES", 5), ("MAX_XML_NODES", 1), ("MAX_XML_DEPTH", 1), ("MAX_TEXT_CHARS", 5)]
+)
 def test_aggregate_budgets(tmp_path, monkeypatch, budget, value):
-    path = package(tmp_path / "bounded.xlsx", spreadsheet('<row><c><v>123456</v></c></row>'))
+    path = package(tmp_path / "bounded.xlsx", spreadsheet("<row><c><v>123456</v></c></row>"))
     monkeypatch.setattr(office, budget, value)
     with pytest.raises(ValueError, match="budget"):
         office.chunk_xlsx(path)
@@ -153,13 +173,16 @@ def test_empty_documents_are_explicit(tmp_path):
 
 
 def test_sheet_order_comes_from_workbook(tmp_path):
-    parts = spreadsheet('<row><c><v>9</v></c></row>')
+    parts = spreadsheet("<row><c><v>9</v></c></row>")
     parts["xl/workbook.xml"] = parts["xl/workbook.xml"].replace(
-        '</sheets>', '<sheet name="Second" sheetId="2" r:id="r2"/></sheets>')
+        "</sheets>", '<sheet name="Second" sheetId="2" r:id="r2"/></sheets>'
+    )
     parts["xl/_rels/workbook.xml.rels"] = rels(
-        ("r2", "worksheets/sheet1.xml", "worksheet", ""),
-        ("r1", "worksheets/sheet9.xml", "worksheet", ""))
-    parts["xl/worksheets/sheet1.xml"] = f'<worksheet xmlns="{S}"><sheetData><row><c><v>1</v></c></row></sheetData></worksheet>'
+        ("r2", "worksheets/sheet1.xml", "worksheet", ""), ("r1", "worksheets/sheet9.xml", "worksheet", "")
+    )
+    parts["xl/worksheets/sheet1.xml"] = (
+        f'<worksheet xmlns="{S}"><sheetData><row><c><v>1</v></c></row></sheetData></worksheet>'
+    )
     chunks = office.chunk_xlsx(package(tmp_path / "ordered.xlsx", parts))
     assert [c.provenance["sheet"] for c in chunks] == ["Revenue", "Second"]
     assert [c.content for c in chunks] == ["A1[n]=9", "A1[n]=1"]
@@ -194,8 +217,9 @@ def test_source_change_rejected(tmp_path, monkeypatch):
 
 
 def test_shared_string_expansion_is_bounded(tmp_path, monkeypatch):
-    path = package(tmp_path / "repeat.xlsx", spreadsheet(
-        '<row>' + ''.join('<c t="s"><v>0</v></c>' for _ in range(20)) + '</row>'))
+    path = package(
+        tmp_path / "repeat.xlsx", spreadsheet("<row>" + "".join('<c t="s"><v>0</v></c>' for _ in range(20)) + "</row>")
+    )
     monkeypatch.setattr(office, "MAX_TEXT_CHARS", 100)
     with pytest.raises(ValueError, match="character budget"):
         office.chunk_xlsx(path)
@@ -243,8 +267,15 @@ def test_provenance_keeps_extraction_and_rejects_invalid_before_writes(tmp_path,
     from unimem.connectors.base import record_chunks
 
     root = str(tmp_path / "store")
-    chunk = Chunk("Revenue grew twenty percent.", "deck.pptx", "chunk1", "Revenue", "pptx_text", "pptx",
-                  provenance={"slide": 3, "source_part": "ppt/slides/slide2.xml", "api_key": "short-secret"})
+    chunk = Chunk(
+        "Revenue grew twenty percent.",
+        "deck.pptx",
+        "chunk1",
+        "Revenue",
+        "pptx_text",
+        "pptx",
+        provenance={"slide": 3, "source_part": "ppt/slides/slide2.xml", "api_key": "short-secret"},
+    )
     result = IngestionResult("deck.pptx", "pptx")
     assert record_chunks(root, [chunk], source_id="deck", scope="", run_id="r", connector="documents", result=result)
     detail = provenance.list_provenance(root, "chunk1")[0]["detail"]
@@ -255,5 +286,7 @@ def test_provenance_keeps_extraction_and_rejects_invalid_before_writes(tmp_path,
     for invalid in [float("nan"), object()]:
         chunk.provenance = {"invalid": invalid}
         result = IngestionResult("deck.pptx", "pptx")
-        assert not record_chunks(root, [chunk], source_id="deck", scope="", run_id="r", connector="documents", result=result)
+        assert not record_chunks(
+            root, [chunk], source_id="deck", scope="", run_id="r", connector="documents", result=result
+        )
         assert result.errors

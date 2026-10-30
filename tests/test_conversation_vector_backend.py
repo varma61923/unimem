@@ -1,4 +1,5 @@
 """Real vector engines feed the existing hybrid/context-security pipeline."""
+
 from __future__ import annotations
 
 import asyncio
@@ -24,11 +25,20 @@ def encoder(monkeypatch):
             vectors = []
             for text in texts:
                 words = set(re.findall(r"[a-z]+", text.lower()))
-                values = np.array([len(words & {"cat", "feline", "lynx"}),
-                                   len(words & {"rocket", "space"}),
-                                   len(words & {"sea", "waves"})], dtype=np.float32) + 0.01
+                values = (
+                    np.array(
+                        [
+                            len(words & {"cat", "feline", "lynx"}),
+                            len(words & {"rocket", "space"}),
+                            len(words & {"sea", "waves"}),
+                        ],
+                        dtype=np.float32,
+                    )
+                    + 0.01
+                )
                 vectors.append(values / np.linalg.norm(values))
             return np.asarray(vectors, dtype=np.float32)
+
     model = Encoder()
     monkeypatch.setattr(embed, "available", lambda: True)
     monkeypatch.setattr(embed, "_model", lambda _tag: model)
@@ -40,21 +50,34 @@ def engine(request, tmp_path):
     if request.param != "sqlite" and not dsn:
         pytest.skip("set UNIMEM_TEST_PGVECTOR_DSN to exercise real pgvector")
     tenant = "conversation-test-" + uuid.uuid4().hex
+
     async def opening():
         common = {"tenant": tenant, "namespace": "memory", "model": embed.MODELS["minilm"][0], "dimension": 3}
         if request.param == "sqlite":
             return await SQLiteVectorIndex.open(str(tmp_path / "vectors.db"), **common)
         return await PostgresVectorIndex.open(dsn, approximate=request.param == "pghnsw", **common)
+
     return tenant, opening
 
 
 def options(**kwargs):
-    return Options(embedder="minilm", rerank=None, neighbours_before=0, neighbours_after=0,
-                   profile_facts=0, instructions=0, summaries=False, entity_boost=0, recency_boost=0, **kwargs)
+    return Options(
+        embedder="minilm",
+        rerank=None,
+        neighbours_before=0,
+        neighbours_after=0,
+        profile_facts=0,
+        instructions=0,
+        summaries=False,
+        entity_boost=0,
+        recency_boost=0,
+        **kwargs,
+    )
 
 
 def test_real_backend_hybrid_recall_and_canonical_deletion(tmp_path, engine, encoder):
     tenant, opening = engine
+
     async def run():
         index = await opening()
         try:
@@ -79,11 +102,13 @@ def test_real_backend_hybrid_recall_and_canonical_deletion(tmp_path, engine, enc
                 assert {hit.key for hit in remaining} == valid
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 def test_concurrent_source_change_rejects_prefetched_candidates(tmp_path, engine, encoder, monkeypatch):
     tenant, opening = engine
+
     async def run():
         index = await opening()
         try:
@@ -91,12 +116,14 @@ def test_concurrent_source_change_rejects_prefetched_candidates(tmp_path, engine
                 await store.add("cats", [{"text": "A lynx rests."}], extract_profile=False)
                 original = index.snapshots.search
                 changed = False
+
                 async def changing(*args, **kwargs):
                     nonlocal changed
                     if not changed:
                         changed = True
                         await store.add("more", [{"text": "Sea waves roll."}], extract_profile=False)
                     return await original(*args, **kwargs)
+
                 monkeypatch.setattr(index.snapshots, "search", changing)
                 with pytest.raises(ConversationError, match="stale"):
                     await store.recall("feline", options=options())
@@ -104,11 +131,13 @@ def test_concurrent_source_change_rejects_prefetched_candidates(tmp_path, engine
                 assert "lynx" in (await store.recall("feline", options=options())).context
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 def test_wrong_owner_namespace_or_model_fails_closed(tmp_path, engine, encoder):
     tenant, opening = engine
+
     async def run():
         index = await opening()
         try:
@@ -122,14 +151,16 @@ def test_wrong_owner_namespace_or_model_fails_closed(tmp_path, engine, encoder):
                     await store.recall("feline", options=Options(embedder="arctic-m"))
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 def test_precomputed_ids_are_rejoined_and_untrusted_text_never_injected(tmp_path):
     with Store(str(tmp_path), "memory") as store:
         store.add("s", [{"text": "Safe canonical evidence"}])
-        dense = DenseCandidates(store._units_identity, store.unit_stamp(), embed.MODELS["minilm"][0],
-                                {"question": (999999, 1)})
+        dense = DenseCandidates(
+            store._units_identity, store.unit_stamp(), embed.MODELS["minilm"][0], {"question": (999999, 1)}
+        )
         found = recall(store, "question", options=options(), dense_candidates=dense)
         assert "canonical evidence" in found.context
         assert 999999 not in found.turns
@@ -140,43 +171,55 @@ def test_precomputed_ids_are_rejoined_and_untrusted_text_never_injected(tmp_path
 
 def test_filtered_corpus_larger_than_engine_batch_budget(tmp_path, encoder):
     async def run():
-        index = await SQLiteVectorIndex.open(str(tmp_path / "vectors.db"), tenant="large", namespace="memory",
-                                            model=embed.MODELS["minilm"][0], dimension=3)
+        index = await SQLiteVectorIndex.open(
+            str(tmp_path / "vectors.db"),
+            tenant="large",
+            namespace="memory",
+            model=embed.MODELS["minilm"][0],
+            dimension=3,
+        )
         try:
             with Store(str(tmp_path), "memory") as stored:
-                stored.add("large", ({"id": str(i), "text": "Lynx resting"} for i in range(10001)),
-                           extract_profile=False)
+                stored.add(
+                    "large", ({"id": str(i), "text": "Lynx resting"} for i in range(10001)), extract_profile=False
+                )
             async with await AsyncStore.open(str(tmp_path), "memory", vector_index=index, tenant="large") as store:
                 found = await store.recall("feline", options=options(sessions=("large",), pool=3))
                 assert "Lynx" in found.context
                 assert len(found.turns) == 3
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 def test_distinct_canonical_roots_cannot_overwrite_one_vector_scope(tmp_path, engine, encoder):
     tenant, opening = engine
+
     async def run():
         index = await opening()
         try:
-            async with await AsyncStore.open(str(tmp_path / "first"), "memory", vector_index=index,
-                                            tenant=tenant) as first:
+            async with await AsyncStore.open(
+                str(tmp_path / "first"), "memory", vector_index=index, tenant=tenant
+            ) as first:
                 await first.add("s", [{"text": "A lynx rests."}], extract_profile=False)
                 assert "lynx" in (await first.recall("feline", options=options())).context
-                async with await AsyncStore.open(str(tmp_path / "second"), "memory", vector_index=index,
-                                                tenant=tenant) as second:
+                async with await AsyncStore.open(
+                    str(tmp_path / "second"), "memory", vector_index=index, tenant=tenant
+                ) as second:
                     await second.add("s", [{"text": "Rocket launches."}], extract_profile=False)
                     with pytest.raises(ValueError, match="different canonical source"):
                         await second.recall("feline", options=options())
                 assert "lynx" in (await first.recall("feline", options=options())).context
         finally:
             await index.close()
+
     asyncio.run(run())
 
 
 def test_copied_database_identity_does_not_bypass_source_binding(tmp_path, engine, encoder):
     tenant, opening = engine
+
     async def run():
         index = await opening()
         first_root, second_root = str(tmp_path / "original"), str(tmp_path / "copied")
@@ -200,4 +243,5 @@ def test_copied_database_identity_does_not_bypass_source_binding(tmp_path, engin
                         await second.recall("feline", options=options())
         finally:
             await index.close()
+
     asyncio.run(run())

@@ -18,6 +18,7 @@ Each check runs through ``/v1/memory/profile``, ``/v1/memory/search`` and
 
     python -m benchmarks.govbench --out govbench.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -68,8 +69,9 @@ class _Client:
         self.gateway, self.token = gateway, token
 
     def post(self, path: str, body: dict) -> dict:
-        response = self.gateway.handle("POST", path, {"Authorization": "Bearer " + self.token,
-                                                      "Host": "localhost"}, json.dumps(body).encode())
+        response = self.gateway.handle(
+            "POST", path, {"Authorization": "Bearer " + self.token, "Host": "localhost"}, json.dumps(body).encode()
+        )
         payload = json.loads(response.body)
         if response.status != 200:
             raise RuntimeError(f"{path} -> {response.status}: {payload}")
@@ -110,9 +112,16 @@ def run() -> dict:
             fact_ids[marker] = added["facts"][0]["id"]
         # A summary derived from a record that will be forgotten: forgetting must follow the lineage.
         with memory_authority.writer("summarizer", "operator"):
-            [(derived, _)] = hierarchical.append_facts(root, [{
-                "statement": "Ward update M09 (summary of M02): stable overnight.",
-                "scopes": ["project:ward-3", "user:patient-a"], "source_trace_id": fact_ids["M02"]}])
+            [(derived, _)] = hierarchical.append_facts(
+                root,
+                [
+                    {
+                        "statement": "Ward update M09 (summary of M02): stable overnight.",
+                        "scopes": ["project:ward-3", "user:patient-a"],
+                        "source_trace_id": fact_ids["M02"],
+                    }
+                ],
+            )
         fact_ids["M09"] = derived.id
         memories = MEMORIES + [("M09", ["project:ward-3", "user:patient-a"], "operator")]
 
@@ -122,9 +131,16 @@ def run() -> dict:
                 for surface in SURFACES:
                     seen = _recall(client, surface)
                     for marker, labels, writer in memories:
-                        rows.append({"principal": principal, "surface": surface, "memory": marker,
-                                     "entitled": _entitled(principal, labels, writer) and marker not in forgotten,
-                                     "forgotten": marker in forgotten, "delivered": marker in seen})
+                        rows.append(
+                            {
+                                "principal": principal,
+                                "surface": surface,
+                                "memory": marker,
+                                "entitled": _entitled(principal, labels, writer) and marker not in forgotten,
+                                "forgotten": marker in forgotten,
+                                "delivered": marker in seen,
+                            }
+                        )
             return rows
 
         before = measure(set())
@@ -141,35 +157,49 @@ def run() -> dict:
         entitled = [r for r in rows if r["entitled"]]
         unentitled = [r for r in rows if not r["entitled"] and not r["forgotten"]]
         forgotten_rows = [r for r in rows if r["forgotten"]]
-        return {"utility": sum(r["delivered"] for r in entitled) / len(entitled) if entitled else None,
-                "leaks": sum(r["delivered"] for r in unentitled),
-                "unentitled_checks": len(unentitled),
-                "forgotten_delivered": sum(r["delivered"] for r in forgotten_rows),
-                "forgotten_checks": len(forgotten_rows)}
+        return {
+            "utility": sum(r["delivered"] for r in entitled) / len(entitled) if entitled else None,
+            "leaks": sum(r["delivered"] for r in unentitled),
+            "unentitled_checks": len(unentitled),
+            "forgotten_delivered": sum(r["delivered"] for r in forgotten_rows),
+            "forgotten_checks": len(forgotten_rows),
+        }
 
     with open(os.path.abspath(__file__), "rb") as fh:
         source = hashlib.sha256(fh.read()).hexdigest()
-    return {"benchmark": "GovBench", "version": 1, "source_sha256": source,
-            "principals": PRINCIPALS, "surfaces": list(SURFACES),
-            "before_forgetting": score(before), "after_forgetting": score(after),
-            "certificate_covers_derived": fact_ids["M09"] in certified and fact_ids["M02"] in certified,
-            "rows": {"before": before, "after": after},
-            "note": "One synthetic clinic deployment through the local gateway's agent credentials. "
-                    "Forgetting covers local recall surfaces, not historical bytes or remote replicas."}
+    return {
+        "benchmark": "GovBench",
+        "version": 1,
+        "source_sha256": source,
+        "principals": PRINCIPALS,
+        "surfaces": list(SURFACES),
+        "before_forgetting": score(before),
+        "after_forgetting": score(after),
+        "certificate_covers_derived": fact_ids["M09"] in certified and fact_ids["M02"] in certified,
+        "rows": {"before": before, "after": after},
+        "note": "One synthetic clinic deployment through the local gateway's agent credentials. "
+        "Forgetting covers local recall surfaces, not historical bytes or remote replicas.",
+    }
 
 
 def render(report: dict) -> str:
     b, a = report["before_forgetting"], report["after_forgetting"]
-    return "\n".join([
-        f"GovBench v{report['version']} -- {len(report['principals'])} principals x "
-        f"{len(report['surfaces'])} recall surfaces", "",
-        "| phase | utility | leaks / checks | forgotten delivered / checks |",
-        "| --- | --: | --: | --: |",
-        f"| before forgetting | {b['utility']:.0%} | {b['leaks']} / {b['unentitled_checks']} | - |",
-        f"| after forgetting | {a['utility']:.0%} | {a['leaks']} / {a['unentitled_checks']} | "
-        f"{a['forgotten_delivered']} / {a['forgotten_checks']} |",
-        "", f"Forgetting certificate covers the derived summary: {report['certificate_covers_derived']}",
-        "", report["note"]])
+    return "\n".join(
+        [
+            f"GovBench v{report['version']} -- {len(report['principals'])} principals x "
+            f"{len(report['surfaces'])} recall surfaces",
+            "",
+            "| phase | utility | leaks / checks | forgotten delivered / checks |",
+            "| --- | --: | --: | --: |",
+            f"| before forgetting | {b['utility']:.0%} | {b['leaks']} / {b['unentitled_checks']} | - |",
+            f"| after forgetting | {a['utility']:.0%} | {a['leaks']} / {a['unentitled_checks']} | "
+            f"{a['forgotten_delivered']} / {a['forgotten_checks']} |",
+            "",
+            f"Forgetting certificate covers the derived summary: {report['certificate_covers_derived']}",
+            "",
+            report["note"],
+        ]
+    )
 
 
 def main(argv=None) -> int:
@@ -181,8 +211,11 @@ def main(argv=None) -> int:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(report, fh, indent=2)
     print(render(report))
-    ok = (report["before_forgetting"]["leaks"] == 0 and report["after_forgetting"]["leaks"] == 0
-          and report["after_forgetting"]["forgotten_delivered"] == 0)
+    ok = (
+        report["before_forgetting"]["leaks"] == 0
+        and report["after_forgetting"]["leaks"] == 0
+        and report["after_forgetting"]["forgotten_delivered"] == 0
+    )
     return 0 if ok else 1
 
 

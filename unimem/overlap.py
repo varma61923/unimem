@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import random
 import re
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
+from typing import Protocol
 
 DEFAULT_NUM_PERM = 128
 
@@ -56,9 +58,14 @@ def minhash(text: str, num_perm: int = DEFAULT_NUM_PERM) -> list[int]:
     return [min((a * h + b) % _MERSENNE_61 for h in hashes) for a, b in perms]
 
 
-def estimate_jaccard(sig_a: list[int], sig_b: list[int]) -> float:
+class _Signature(Protocol):
+    def __len__(self) -> int: ...
+    def __iter__(self) -> Iterator[object]: ...
+
+
+def estimate_jaccard(sig_a: _Signature, sig_b: _Signature) -> float:
     """Fraction of agreeing positions == unbiased Jaccard estimate."""
-    if not sig_a or not sig_b or len(sig_a) != len(sig_b):
+    if len(sig_a) == 0 or len(sig_b) == 0 or len(sig_a) != len(sig_b):
         raise ValueError("signatures must be non-empty and the same length")
     return sum(1 for x, y in zip(sig_a, sig_b) if x == y) / len(sig_a)
 
@@ -79,8 +86,11 @@ class SignedItem:
     @classmethod
     def from_dict(cls, d: dict) -> SignedItem:
         return cls(
-            label=d["label"], kind=d["kind"], domain=d.get("domain", ""),
-            tags=list(d.get("tags") or []), signature=list(d["signature"]),
+            label=d["label"],
+            kind=d["kind"],
+            domain=d.get("domain", ""),
+            tags=list(d.get("tags") or []),
+            signature=list(d["signature"]),
         )
 
 
@@ -158,8 +168,12 @@ def build_report(
                 best, best_sim = lesson, sim
         if best is not None and best_sim >= threshold:
             matches.append(
-                Match(failure_label=f.label, lesson_label=best.label,
-                      similarity=round(best_sim, 4), domain=f.domain or best.domain)
+                Match(
+                    failure_label=f.label,
+                    lesson_label=best.label,
+                    similarity=round(best_sim, 4),
+                    domain=f.domain or best.domain,
+                )
             )
             key = f.domain or best.domain or "(none)"
             by_domain[key] = by_domain.get(key, 0) + 1
@@ -180,7 +194,7 @@ def build_report(
         note = (
             f"Only {len(failures)} recurring failures in the sample. Treat the "
             "percentage as directional; MinHash adds ~"
-            f"{100 / (consumer.num_perm ** 0.5):.0f}% standard error per comparison "
+            f"{100 / (consumer.num_perm**0.5):.0f}% standard error per comparison "
             "on top of small-sample noise."
         )
 
@@ -228,10 +242,7 @@ def render_report(r: OverlapReport) -> str:
             "| Your recurring failure | Solved by (other fleet) | Similarity |",
             "|---|---|---|",
         ]
-        lines += [
-            f"| `{m.failure_label}` | `{m.lesson_label}` | {m.similarity:.2f} |"
-            for m in r.matches[:15]
-        ]
+        lines += [f"| `{m.failure_label}` | `{m.lesson_label}` | {m.similarity:.2f} |" for m in r.matches[:15]]
         lines.append("")
 
     lines += [

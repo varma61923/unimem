@@ -7,6 +7,7 @@ an independently randomized Bernoulli design, including heterogeneous rates.
 Intervals use bounded Hoeffding contrasts, union corrected for a fixed family.
 They require independent tasks, bounded outcomes and the declared design.
 """
+
 from __future__ import annotations
 
 import math
@@ -18,14 +19,15 @@ from unimem import frontier_protocol as fp
 from unimem import transparency_log as log
 
 
-def factorial(rows: Sequence[dict[str, Any]], memories: Sequence[str], *,
-              propensity_floor: float = .1, alpha: float = .05) -> dict[str, Any]:
+def factorial(
+    rows: Sequence[dict[str, Any]], memories: Sequence[str], *, propensity_floor: float = 0.1, alpha: float = 0.05
+) -> dict[str, Any]:
     n = fp.count(len(rows), 1, fp.MAX_ROWS)
     ids = sorted({fp.text(x) for x in memories})
     fp.count(len(ids), 1, 16)
-    fp.number(propensity_floor, .001, .5)
-    fp.number(alpha, 1e-6, .99)
-    terms = [(x,) for x in ids] + [(x, y) for i, x in enumerate(ids) for y in ids[i + 1:]]
+    fp.number(propensity_floor, 0.001, 0.5)
+    fp.number(alpha, 1e-6, 0.99)
+    terms = [(x,) for x in ids] + [(x, y) for i, x in enumerate(ids) for y in ids[i + 1 :]]
     totals = {term: 0.0 for term in terms}
     seen = set()
     for row in rows:
@@ -50,11 +52,17 @@ def factorial(rows: Sequence[dict[str, Any]], memories: Sequence[str], *,
         bound = (1 / propensity_floor) ** len(term)
         radius = bound * math.sqrt(2 * math.log(2 * len(terms) / alpha) / n)
         estimate = totals[term] / n
-        values.append({"memories": list(term), "estimate": estimate,
-                       "interval": [estimate - radius, estimate + radius], "n": n})
-    return {"values": values, "n": n, "design_hash": fp.digest({"memories": ids, "floor": propensity_floor,
-            "independent_bernoulli": True}), "data_hash": fp.digest(list(rows)), "alpha": alpha,
-            "kind": "factorial randomized contrasts; fixed-look finite-sample intervals"}
+        values.append(
+            {"memories": list(term), "estimate": estimate, "interval": [estimate - radius, estimate + radius], "n": n}
+        )
+    return {
+        "values": values,
+        "n": n,
+        "design_hash": fp.digest({"memories": ids, "floor": propensity_floor, "independent_bernoulli": True}),
+        "data_hash": fp.digest(list(rows)),
+        "alpha": alpha,
+        "kind": "factorial randomized contrasts; fixed-look finite-sample intervals",
+    }
 
 
 def certificate(root: str, report: dict[str, Any]) -> dict[str, Any]:
@@ -68,7 +76,7 @@ def certificate(root: str, report: dict[str, Any]) -> dict[str, Any]:
     return {"certificate": signed, "anchor": log.append(root, "valuation", signed)}
 
 
-def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: float = .1) -> dict[str, Any]:
+def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: float = 0.1) -> dict[str, Any]:
     from unimem import allocation, experiment, holdout_io, integrity
     from unimem.commands.experiment_cmd import _load, _observations
 
@@ -87,8 +95,9 @@ def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: floa
             assignment_hashes.update(event["statement"]["assignments"].values())
         elif event["event"] == "holdout-outcome":
             anchored_outcomes.add((event["statement"]["occasion_id"], event["statement"]["succeeded"]))
-    raw = [r for r in fp.rows(holdout_io.holdout_log_path(root))
-           if r["salt"] == config.salt and r["lesson"] in memories]
+    raw = [
+        r for r in fp.rows(holdout_io.holdout_log_path(root)) if r["salt"] == config.salt and r["lesson"] in memories
+    ]
     if any(fp.digest(r) not in assignment_hashes for r in raw):
         raise PermissionError("valuation assignments require transparency anchors")
     ids = sorted(set(memories))
@@ -96,8 +105,9 @@ def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: floa
     for row in assignments:
         if row.lesson not in ids:
             continue
-        group = grouped.setdefault(row.occasion_id, {"occasion_id": row.occasion_id,
-            "included": {}, "probabilities": {}})
+        group = grouped.setdefault(
+            row.occasion_id, {"occasion_id": row.occasion_id, "included": {}, "probabilities": {}}
+        )
         if row.lesson in group["included"]:
             raise ValueError("duplicate valuation assignment")
         group["included"][row.lesson] = row.injected
@@ -112,8 +122,9 @@ def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: floa
             group["outcome"] = int(outcomes[occasion])
             rows.append(group)
     report = factorial(rows, ids, propensity_floor=propensity_floor)
-    report["design_hash"] = fp.digest({"factorial": report["design_hash"], "salt": config.salt,
-                                       "started_at": config.started_at, "rate": config.rate})
+    report["design_hash"] = fp.digest(
+        {"factorial": report["design_hash"], "salt": config.salt, "started_at": config.started_at, "rate": config.rate}
+    )
     revisions: dict[str, str | None] = {}
     for identity in ids:
         versions = {r.revision for r in assignments if r.lesson == identity}
@@ -122,26 +133,31 @@ def certify_logged(root: str, memories: Sequence[str], *, propensity_floor: floa
         revisions[identity] = next(iter(versions))
     report["source_revisions"] = revisions
     report["canonical_effects"] = [asdict(e) for e in experiment.analyze(_observations(assignments), sequential=True)]
-    signed = fp.sign(root, {"type": "causal-valuation-v1", "report": report, "input_attested": True,
-                           "integrity": audit.verdict})
+    signed = fp.sign(
+        root, {"type": "causal-valuation-v1", "report": report, "input_attested": True, "integrity": audit.verdict}
+    )
     return {"certificate": signed, "anchor": log.append(root, "valuation", signed)}
 
 
 def verify(root: str, bundle: dict[str, Any], *, require_attested: bool = False) -> bool:
     try:
         signed = bundle["certificate"]
-        return (fp.verify(root, signed) and signed["record"]["type"] == "causal-valuation-v1"
-                and (not require_attested or signed["record"]["input_attested"])
-                and log.verify(root, bundle["anchor"])
-                and bundle["anchor"]["statement"]["record"]["statement"] == signed)
+        return (
+            fp.verify(root, signed)
+            and signed["record"]["type"] == "causal-valuation-v1"
+            and (not require_attested or signed["record"]["input_attested"])
+            and log.verify(root, bundle["anchor"])
+            and bundle["anchor"]["statement"]["record"]["statement"] == signed
+        )
     except (KeyError, TypeError, ValueError):
         return False
 
 
-def warranty_credit(root: str, bundle: dict[str, Any], *, contract: str, memory: str,
-                    minimum_lift: float, paid_cents: int) -> dict[str, Any]:
+def warranty_credit(
+    root: str, bundle: dict[str, Any], *, contract: str, memory: str, minimum_lift: float, paid_cents: int
+) -> dict[str, Any]:
     fp.text(contract)
-    fp.number(minimum_lift, .0001, 1)
+    fp.number(minimum_lift, 0.0001, 1)
     fp.count(paid_cents, 0, 100_000_000)
     if not verify(root, bundle, require_attested=True):
         raise PermissionError("warranty requires canonical ledger-attested valuation")
@@ -161,29 +177,46 @@ def warranty_credit(root: str, bundle: dict[str, Any], *, contract: str, memory:
         if prior:
             return prior
         cents = min(cents, max(0, paid_cents - sum(r["credit_cents"] for r in history)))
-        signed = fp.append(root, "warranty-credits.jsonl", {"id": identity, "contract": contract, "memory": memory,
-            "credit_cents": cents, "certificate_digest": bundle["certificate"]["digest"],
-            "paid_cents": paid_cents, "minimum_lift": minimum_lift})
+        signed = fp.append(
+            root,
+            "warranty-credits.jsonl",
+            {
+                "id": identity,
+                "contract": contract,
+                "memory": memory,
+                "credit_cents": cents,
+                "certificate_digest": bundle["certificate"]["digest"],
+                "paid_cents": paid_cents,
+                "minimum_lift": minimum_lift,
+            },
+        )
         return cast(dict[str, Any], signed["record"])
 
 
 def underwriting_export(root: str) -> dict[str, Any]:
     from unimem import safety
 
-    body = {"type": "underwriting-evidence-v1", "created_at": fp.now(), "reliability_series": safety.export(root),
-            "incidents": fp.journal(root, "incidents.jsonl"),
-            "harm_budgets": conformal_gate.current(root),
-            "change_certificates": fp.journal(root, "promotion-certificates.jsonl"),
-            "warranty_credits": fp.journal(root, "warranty-credits.jsonl"),
-            "notice": "Evidence fields for underwriting review; no insurance or regulatory certification."}
+    body = {
+        "type": "underwriting-evidence-v1",
+        "created_at": fp.now(),
+        "reliability_series": safety.export(root),
+        "incidents": fp.journal(root, "incidents.jsonl"),
+        "harm_budgets": conformal_gate.current(root),
+        "change_certificates": fp.journal(root, "promotion-certificates.jsonl"),
+        "warranty_credits": fp.journal(root, "warranty-credits.jsonl"),
+        "notice": "Evidence fields for underwriting review; no insurance or regulatory certification.",
+    }
     signed = fp.sign(root, body)
     return {"manifest": signed, "anchor": log.append(root, "underwriting-export", signed)}
 
 
 def verify_export(root: str, bundle: dict[str, Any]) -> bool:
     try:
-        return (fp.verify(root, bundle["manifest"]) and log.verify(root, bundle["anchor"])
-                and bundle["anchor"]["statement"]["record"]["statement"] == bundle["manifest"])
+        return (
+            fp.verify(root, bundle["manifest"])
+            and log.verify(root, bundle["anchor"])
+            and bundle["anchor"]["statement"]["record"]["statement"] == bundle["manifest"]
+        )
     except (ValueError, KeyError, TypeError):
         return False
 
@@ -205,12 +238,23 @@ def data_value_export(episodes: Sequence[dict[str, Any]], *, layout: str = "lero
         for start, end in segments:
             fp.number(start, 0, 1e9)
             fp.number(end, start, 1e9)
-        rows.append({"episode_index": row["episode_id"], "next.success": row["success"],
-                     "intervention_segments": segments, "memory_effect": effect,
-                     "media": row.get("media", []), "value_rank_score": effect})
+        rows.append(
+            {
+                "episode_index": row["episode_id"],
+                "next.success": row["success"],
+                "intervention_segments": segments,
+                "memory_effect": effect,
+                "media": row.get("media", []),
+                "value_rank_score": effect,
+            }
+        )
     rows.sort(key=lambda r: (-r["value_rank_score"], r["episode_index"]))
-    return {"layout": layout, "format": "unimem." + layout + "-metadata.v1", "episodes": rows,
-            "notice": "Metadata interchange; raw training tensors remain in the robot data plane."}
+    return {
+        "layout": layout,
+        "format": "unimem." + layout + "-metadata.v1",
+        "episodes": rows,
+        "notice": "Metadata interchange; raw training tensors remain in the robot data plane.",
+    }
 
 
 def export_data(root: str, episodes: Sequence[dict[str, Any]], *, layout: str = "lerobot") -> dict[str, Any]:

@@ -1,4 +1,5 @@
 """Bounded tenant evidence snapshots under existing legal-hold enforcement."""
+
 from __future__ import annotations
 
 import json
@@ -48,37 +49,67 @@ async def _evidence(session, org_id: str, when: datetime) -> tuple[dict, dict]:
     created = MemoryRecordEvent.record["created_at"].astext
     record_time = case((created.op("~")(_ISO_WITH_OFFSET), cast(created, DateTime(timezone=True))), else_=None)
     collected, window = {}, {}
-    for label, model, moment in (("record_events", MemoryRecordEvent, record_time),
-                                 ("holdouts", HoldoutObservation, HoldoutObservation.created_at),
-                                 ("audit", AuditLogEntry, AuditLogEntry.created_at)):
-        found = list((await session.execute(
-            select(model).where(model.org_id == org_id, moment.is_not(None), moment <= when)
-            .order_by(moment.desc()).limit(EVIDENCE_ROWS + 1))).scalars())
+    for label, model, moment in (
+        ("record_events", MemoryRecordEvent, record_time),
+        ("holdouts", HoldoutObservation, HoldoutObservation.created_at),
+        ("audit", AuditLogEntry, AuditLogEntry.created_at),
+    ):
+        found = list(
+            (
+                await session.execute(
+                    select(model)
+                    .where(model.org_id == org_id, moment.is_not(None), moment <= when)
+                    .order_by(moment.desc())
+                    .limit(EVIDENCE_ROWS + 1)
+                )
+            ).scalars()
+        )
         collected[label] = [_row(model, row) for row in found[:EVIDENCE_ROWS]]
         window[label] = {"rows": len(collected[label]), "older_rows_omitted": len(found) > EVIDENCE_ROWS}
     return collected, window
 
 
-async def freeze(session, org_id: str, identity: str, valid_time: str, *, actor: str, secret: str,
-                 algorithm: str = "hmac-sha256") -> dict:
+async def freeze(
+    session, org_id: str, identity: str, valid_time: str, *, actor: str, secret: str, algorithm: str = "hmac-sha256"
+) -> dict:
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identity):
         raise ValueError("invalid incident identifier")
     when = datetime.fromisoformat(fp.moment(valid_time))
     if await session.get(IncidentSnapshot, (org_id, identity)):
         raise ValueError("incident is already frozen")
     collected, window = await _evidence(session, org_id, when)
-    payload = {"org_id": org_id, "id": identity, "valid_time": when.isoformat(),
-               "known_at": fp.now(), "evidence": collected, "evidence_window": window,
-               "control_mapping": incident.CONTROLS, "legal_note": "Verify against the Official Journal",
-               "replay_limit": "Historical content is limited to recorded versions; no unlogged bytes inferred."}
+    payload = {
+        "org_id": org_id,
+        "id": identity,
+        "valid_time": when.isoformat(),
+        "known_at": fp.now(),
+        "evidence": collected,
+        "evidence_window": window,
+        "control_mapping": incident.CONTROLS,
+        "legal_note": "Verify against the Official Journal",
+        "replay_limit": "Historical content is limited to recorded versions; no unlogged bytes inferred.",
+    }
     signed = origin.bind(payload, transparency.signer(org_id, secret, algorithm))
     fp.wire(signed)
     hold = await retention.place_hold(session, org_id, reason="Incident freeze: " + identity, placed_by=actor)
-    anchor = await transparency.append(session, org_id,
-                                       {"event": "incident-freeze", "id": identity, "digest": fp.digest(signed)},
-                                       secret=secret, algorithm=algorithm)
-    session.add(IncidentSnapshot(org_id=org_id, id=identity, valid_time=when,
-                                known_at=datetime.now(timezone.utc), hold_id=hold.id, snapshot=signed, anchor=anchor))
+    anchor = await transparency.append(
+        session,
+        org_id,
+        {"event": "incident-freeze", "id": identity, "digest": fp.digest(signed)},
+        secret=secret,
+        algorithm=algorithm,
+    )
+    session.add(
+        IncidentSnapshot(
+            org_id=org_id,
+            id=identity,
+            valid_time=when,
+            known_at=datetime.now(timezone.utc),
+            hold_id=hold.id,
+            snapshot=signed,
+            anchor=anchor,
+        )
+    )
     await session.flush()
     return {"snapshot": signed, "hold_id": hold.id, "anchor": anchor}
 
@@ -87,13 +118,24 @@ async def evidence_pack(session, snapshot, regime: str, *, secret: str, algorith
     if regime not in incident.CONTROLS:
         raise ValueError("unknown evidence regime")
     files = {"snapshot.json": snapshot.snapshot}
-    manifest = origin.bind({"incident_id": snapshot.id, "org_id": snapshot.org_id,
-        "files": {name: fp.digest(value) for name, value in files.items()},
-        "control_ids": incident.CONTROLS[regime], "issued_at": fp.now(),
-        "legal_note": "Verify against the Official Journal"},
-        transparency.signer(snapshot.org_id, secret, algorithm))
-    anchor = await transparency.append(session, snapshot.org_id,
-        {"event": "incident-pack", "manifest_digest": fp.digest(manifest)}, secret=secret, algorithm=algorithm)
+    manifest = origin.bind(
+        {
+            "incident_id": snapshot.id,
+            "org_id": snapshot.org_id,
+            "files": {name: fp.digest(value) for name, value in files.items()},
+            "control_ids": incident.CONTROLS[regime],
+            "issued_at": fp.now(),
+            "legal_note": "Verify against the Official Journal",
+        },
+        transparency.signer(snapshot.org_id, secret, algorithm),
+    )
+    anchor = await transparency.append(
+        session,
+        snapshot.org_id,
+        {"event": "incident-pack", "manifest_digest": fp.digest(manifest)},
+        secret=secret,
+        algorithm=algorithm,
+    )
     return {"manifest": manifest, "files": files, "anchor": anchor, "hold_id": snapshot.hold_id}
 
 
@@ -117,9 +159,15 @@ def add_routes(app, session_factory, *, authenticate, require_scope, config):
                     if len(data) > 4096:
                         raise ValueError("incident request exceeds 4 KiB")
                     body = json.loads(data)
-                    result = await freeze(session, authenticated.org_id, body["id"], body["valid_time"],
-                                          actor=authenticated.key_prefix, secret=config.ledger_signing_key,
-                                          algorithm=config.transparency_algorithm)
+                    result = await freeze(
+                        session,
+                        authenticated.org_id,
+                        body["id"],
+                        body["valid_time"],
+                        actor=authenticated.key_prefix,
+                        secret=config.ledger_signing_key,
+                        algorithm=config.transparency_algorithm,
+                    )
                     return JSONResponse(result, status_code=201)
                 snapshot = await session.get(IncidentSnapshot, (authenticated.org_id, identity))
                 if snapshot is None:
@@ -128,10 +176,23 @@ def add_routes(app, session_factory, *, authenticate, require_scope, config):
                 if regime not in incident.CONTROLS:
                     raise ValueError("unknown evidence regime")
                 if request.url.path.endswith("/pack"):
-                    return JSONResponse(await evidence_pack(session, snapshot, regime,
-                        secret=config.ledger_signing_key, algorithm=config.transparency_algorithm))
-                return JSONResponse({"snapshot": snapshot.snapshot, "anchor": snapshot.anchor,
-                                     "control_ids": incident.CONTROLS[regime], "hold_id": snapshot.hold_id})
+                    return JSONResponse(
+                        await evidence_pack(
+                            session,
+                            snapshot,
+                            regime,
+                            secret=config.ledger_signing_key,
+                            algorithm=config.transparency_algorithm,
+                        )
+                    )
+                return JSONResponse(
+                    {
+                        "snapshot": snapshot.snapshot,
+                        "anchor": snapshot.anchor,
+                        "control_ids": incident.CONTROLS[regime],
+                        "hold_id": snapshot.hold_id,
+                    }
+                )
         except (ValueError, KeyError, TypeError) as exc:
             return JSONResponse({"error": "invalid_incident_request", "detail": str(exc)}, status_code=400)
 
@@ -142,10 +203,12 @@ def add_routes(app, session_factory, *, authenticate, require_scope, config):
         denied = require_scope(authenticated, "read")
         if denied is not None:
             return denied
-        return HTMLResponse("<main><h1>Incident evidence</h1><p>Freeze a decision state with the authenticated "
-                            "POST /v1/incidents endpoint. Export its signed evidence and legal hold with "
-                            "GET /v1/incidents/{id}/pack. Verify legal mappings against the Official Journal."
-                            "</p></main>")
+        return HTMLResponse(
+            "<main><h1>Incident evidence</h1><p>Freeze a decision state with the authenticated "
+            "POST /v1/incidents endpoint. Export its signed evidence and legal hold with "
+            "GET /v1/incidents/{id}/pack. Verify legal mappings against the Official Journal."
+            "</p></main>"
+        )
 
     app.add_route("/v1/incidents", handle, methods=["POST"])
     for operation in ("timeline", "pack"):

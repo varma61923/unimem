@@ -19,85 +19,124 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--html", action="store_true", help="Output HTML to memory/benchmark_reports/")
     p.add_argument("--json", action="store_true", help="Raw JSON output to stdout")
     p.add_argument(
-        "--save", action="store_true",
+        "--save",
+        action="store_true",
         help="Deprecated no-op: every run persists its JSON report by default now.",
     )
     p.add_argument(
-        "--no-save", action="store_true",
+        "--no-save",
+        action="store_true",
         help="Do not save benchmark results to memory/benchmark_reports/",
     )
     p.add_argument(
-        "--diff", action="store_true",
+        "--diff",
+        action="store_true",
         help="Compare against last saved benchmark",
     )
     p.add_argument(
-        "--history", action="store_true",
+        "--history",
+        action="store_true",
         help="Show historical benchmark trend",
     )
     p.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Fail if any regression detected",
     )
     p.add_argument("--threshold-quality", type=float, default=None, help="lesson_quality alert threshold")
     p.add_argument("--threshold-retrieval", type=float, default=None, help="implicit_retrieval strict alert threshold")
     p.add_argument("--threshold-never-hit", type=float, default=None, help="Never-hit lesson ratio alert threshold")
     p.add_argument(
-        "--threshold-unimodal", type=float, default=None,
+        "--threshold-unimodal",
+        type=float,
+        default=None,
         help="Unimodal importance-distribution alert threshold",
     )
     p.add_argument("--threshold-semantic", type=float, default=None, help="Semantic similarity threshold")
-    p.add_argument("--threshold-lexical", type=float, default=None,
-                   help="Warn on near-duplicate lessons at or above this lexical similarity (0-1).")
-    p.add_argument("--threshold-freshness", type=float, default=None,
-                   help="Warn when the fraction of recently-hit lessons falls below this (0-1).")
-    p.add_argument("--threshold-composite", type=float, default=None,
-                   help="Warn when the combined health score falls below this (0-1).")
+    p.add_argument(
+        "--threshold-lexical",
+        type=float,
+        default=None,
+        help="Warn on near-duplicate lessons at or above this lexical similarity (0-1).",
+    )
+    p.add_argument(
+        "--threshold-freshness",
+        type=float,
+        default=None,
+        help="Warn when the fraction of recently-hit lessons falls below this (0-1).",
+    )
+    p.add_argument(
+        "--threshold-composite",
+        type=float,
+        default=None,
+        help="Warn when the combined health score falls below this (0-1).",
+    )
     p.add_argument("--dest", default=None, help="Override store root directory")
     p.add_argument(
-        "--pilot", action="store_true",
+        "--pilot",
+        action="store_true",
         help="Compute the five pilot business-outcome metrics from Trace.outcome data "
         "(repeated-error, resolution, escalation, frustration rate, token/LLM-call cost), "
         "baseline vs. current. See protocol/PROTOCOL.md#11-pilot-outcome-metrics.",
     )
     p.add_argument("--agent-type", default=None, help="--pilot only: filter to one agent_type")
     p.add_argument(
-        "--retrieval", action="store_true",
+        "--retrieval",
+        action="store_true",
         help="Measure retrieval quality PER FIELD against the labelled cross-field "
-             "corpus (unimem/fixtures/fields/): precision@1, recall@k, MRR, and the "
-             "pollution ratio that turns retrieval imprecision into a wrong causal "
-             "verdict. This is what keeps 'works for any agent type' a tested property "
-             "rather than a claim.",
+        "corpus (unimem/fixtures/fields/): precision@1, recall@k, MRR, and the "
+        "pollution ratio that turns retrieval imprecision into a wrong causal "
+        "verdict. This is what keeps 'works for any agent type' a tested property "
+        "rather than a claim.",
     )
     p.add_argument(
-        "--max-pollution", type=float, default=None,
+        "--max-pollution",
+        type=float,
+        default=None,
         help="--retrieval only: fail if any field's pollution ratio exceeds this.",
     )
     p.add_argument(
-        "--max-spread", type=float, default=None,
+        "--max-spread",
+        type=float,
+        default=None,
         help="--retrieval only: fail if the worst field's pollution exceeds the best "
-             "field's by more than this multiple.",
+        "field's by more than this multiple.",
     )
     # Conversation-benchmark wiring: --dataset routes bench to the judge-driven
     # conversation harness (benchmarks/conversation_bench.py). Without
     # --dataset, bench behaves (and prints) exactly as before.
-    p.add_argument("--dataset", choices=("locomo", "longmemeval", "dolphin", "beam"), default=None,
-                   help="conversation dataset to benchmark; activates the unified conversation harness")
+    p.add_argument(
+        "--dataset",
+        choices=("locomo", "longmemeval", "dolphin", "beam"),
+        default=None,
+        help="conversation dataset to benchmark; activates the unified conversation harness",
+    )
     p.add_argument("--data", default=None, help="--dataset only: dataset file/directory path")
-    p.add_argument("--judge", choices=("auto", "generic", "longmemeval", "locomo", "beam"), default="auto",
-                   help="--dataset only: judge protocol (default: auto, matching the dataset)")
+    p.add_argument(
+        "--judge",
+        choices=("auto", "generic", "longmemeval", "locomo", "beam"),
+        default="auto",
+        help="--dataset only: judge protocol (default: auto, matching the dataset)",
+    )
     p.add_argument("--budget", default=None, help="--dataset only: token budget(s), comma list")
     p.add_argument("--limit", type=int, default=0, help="--dataset only: question/case limit")
     p.add_argument("--seed", type=int, default=0, help="--dataset only: sampling seed")
-    p.add_argument("--answer", action="store_true",
-                   help="--dataset only: model-answer and judge with UNIMEM_LLM_*")
+    p.add_argument("--answer", action="store_true", help="--dataset only: model-answer and judge with UNIMEM_LLM_*")
     p.add_argument("--answer-model", default=None, help="--dataset only: answer model")
     p.add_argument("--judge-model", default=None, help="--dataset only: judge model")
     p.add_argument("--modes", default=None, help="--dataset only: comma list of memory, full-context, no-memory")
-    p.add_argument("--embedder", default=None,
-                   help="--dataset only: none, a local model (arctic-m, minilm, bge-small, e5-small, nomic) or "
-                        "<provider>:<model>[@dims] (openai, gemini, voyage, cohere, ollama, compat)")
-    p.add_argument("--rerank", default=None, choices=("auto", "none", "cross-encoder", "cross-encoder-fast"),
-                   help="--dataset only: reranker mode")
+    p.add_argument(
+        "--embedder",
+        default=None,
+        help="--dataset only: none, a local model (arctic-m, minilm, bge-small, e5-small, nomic) or "
+        "<provider>:<model>[@dims] (openai, gemini, voyage, cohere, ollama, compat)",
+    )
+    p.add_argument(
+        "--rerank",
+        default=None,
+        choices=("auto", "none", "cross-encoder", "cross-encoder-fast"),
+        help="--dataset only: reranker mode",
+    )
     p.add_argument("--neighbours", type=int, default=None, help="--dataset only: neighbour turns")
     p.add_argument("--rerank-blend", type=float, default=None, help="--dataset only: rerank blend")
     p.add_argument("--profile-facts", type=int, default=None, help="--dataset only: profile facts hint count")
@@ -108,9 +147,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--bootstrap", action="store_true", help="--dataset only: bootstrap 95%% CIs")
     p.add_argument("--compare", default=None, help="--dataset only: baseline JSON for paired comparison")
     p.add_argument("--out", default=None, help="--dataset only: write full results (with rows) to this JSON file")
-    p.add_argument("--chunk-set", default=None,
-                   help="--dataset only: reuse/store parsed evaluation inputs under "
-                        "<root>/runs/chunk_sets/<name>/ (manifest snapshot makes sweeps cheap)")
+    p.add_argument(
+        "--chunk-set",
+        default=None,
+        help="--dataset only: reuse/store parsed evaluation inputs under "
+        "<root>/runs/chunk_sets/<name>/ (manifest snapshot makes sweeps cheap)",
+    )
     p.set_defaults(func=run)
 
 
@@ -185,8 +227,9 @@ def run(args: argparse.Namespace) -> int:
             print("[unimem] --dataset requires --data <path to the dataset file or directory>", file=sys.stderr)
             return 2
         if args.retrieval or args.pilot:
-            print("[unimem] --dataset measures conversation memory; run --retrieval/--pilot separately.",
-                  file=sys.stderr)
+            print(
+                "[unimem] --dataset measures conversation memory; run --retrieval/--pilot separately.", file=sys.stderr
+            )
             return 2
         try:
             argv = conversation_bench_argv(args)

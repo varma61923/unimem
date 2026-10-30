@@ -3,6 +3,7 @@
 The monitor computes discrete-time robustness over caller-supplied telemetry. It
 is a runtime guardrail and evidence record, not a certified safety controller.
 """
+
 from __future__ import annotations
 
 import math
@@ -60,13 +61,24 @@ def _formula(node: Any, depth: int = 0, work: list[int] | None = None) -> dict[s
         start, end = fp.number(node["from"], 0, 1e6), fp.number(node["to"], 0, 1e6)
         if end < start:
             raise ValueError("STL interval end must be >= start")
-        return {"op": op, "from": start, "to": end,
-                "left": _formula(node["left"], depth + 1, work), "right": _formula(node["right"], depth + 1, work)}
+        return {
+            "op": op,
+            "from": start,
+            "to": end,
+            "left": _formula(node["left"], depth + 1, work),
+            "right": _formula(node["right"], depth + 1, work),
+        }
     raise ValueError("STL operator must be predicate, always, eventually or until")
 
 
-def _robust(node: dict[str, Any], trace: list[dict[str, Any]], times: list[float], at: float,
-            index: dict[float, int], work: list[int]) -> float:
+def _robust(
+    node: dict[str, Any],
+    trace: list[dict[str, Any]],
+    times: list[float],
+    at: float,
+    index: dict[float, int],
+    work: list[int],
+) -> float:
     work[0] += 1
     if work[0] > MAX_MONITOR_WORK:
         raise _MonitorBudgetExceeded
@@ -109,24 +121,38 @@ def _robust(node: dict[str, Any], trace: list[dict[str, Any]], times: list[float
     return best
 
 
-def register(root: str, spec_id: str, *, formula: dict[str, Any], memory_id: str,
-             embodiment: str, description: str) -> dict[str, Any]:
+def register(
+    root: str, spec_id: str, *, formula: dict[str, Any], memory_id: str, embodiment: str, description: str
+) -> dict[str, Any]:
     spec_id = fp.text(spec_id, "spec id", 96)
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,95}", spec_id):
         raise ValueError("spec id must be a lowercase identifier")
     normalized = _formula(formula)
-    body = {"spec_id": spec_id, "formula": normalized, "memory_id": fp.text(memory_id, "memory id", 256),
-            "embodiment": fp.text(embodiment, "embodiment", 96),
-            "description": fp.text(description, "description", 1024), "at": fp.now()}
+    body = {
+        "spec_id": spec_id,
+        "formula": normalized,
+        "memory_id": fp.text(memory_id, "memory id", 256),
+        "embodiment": fp.text(embodiment, "embodiment", 96),
+        "description": fp.text(description, "description", 1024),
+        "at": fp.now(),
+    }
     with _jsonl.locked(fp.filename(root, JOURNAL)):
         if any(row.get("type") == "spec" and row["spec_id"] == spec_id for row in fp.journal(root, JOURNAL)):
             raise ValueError("STL spec identifiers are immutable")
         return cast(dict[str, Any], fp.append(root, JOURNAL, {"type": "spec", **body})["record"])
 
 
-def check(root: str, spec_id: str, *, action: dict[str, Any], trace: list[dict[str, Any]], source_memory_ids: list[str],
-          recovery_memory_ids: list[str] | None = None, recovery_context: dict[str, str] | None = None,
-          failure_type: str | None = None) -> dict[str, Any]:
+def check(
+    root: str,
+    spec_id: str,
+    *,
+    action: dict[str, Any],
+    trace: list[dict[str, Any]],
+    source_memory_ids: list[str],
+    recovery_memory_ids: list[str] | None = None,
+    recovery_context: dict[str, str] | None = None,
+    failure_type: str | None = None,
+) -> dict[str, Any]:
     start_ns = time.perf_counter_ns()
     rows = [row for row in fp.journal(root, JOURNAL) if row.get("type") == "spec" and row["spec_id"] == spec_id]
     if not rows:
@@ -137,7 +163,8 @@ def check(root: str, spec_id: str, *, action: dict[str, Any], trace: list[dict[s
     if not isinstance(source_memory_ids, list) or len(source_memory_ids) > 1024:
         raise ValueError("shield sources must be an array of at most 1024 memory IDs")
     if recovery_memory_ids is not None and (
-            not isinstance(recovery_memory_ids, list) or len(recovery_memory_ids) > 1024):
+        not isinstance(recovery_memory_ids, list) or len(recovery_memory_ids) > 1024
+    ):
         raise ValueError("shield recoveries must be an array of at most 1024 memory IDs")
     clean: list[dict[str, float]] = []
     times: list[float] = []
@@ -173,19 +200,26 @@ def check(root: str, spec_id: str, *, action: dict[str, Any], trace: list[dict[s
     if verdict == "violated" and recovery_context is not None and failure_type:
         from unimem import recovery as recovery_registry
 
-        candidates = recovery_registry.recall(root, {"failure_type": fp.text(failure_type, "failure type", 128)},
-                                              recovery_context)["recoveries"]
+        candidates = recovery_registry.recall(
+            root, {"failure_type": fp.text(failure_type, "failure type", 128)}, recovery_context
+        )["recoveries"]
         wanted = set(recovery_memory_ids or [])
         fallback = [row for row in candidates if row["hazard"] and (not wanted or row["id"] in wanted)]
     recovery = [row["id"] for row in fallback]
     elapsed = (time.perf_counter_ns() - start_ns) / 1_000_000
-    result = {"spec_id": spec_id, "verdict": verdict, "robustness": robustness,
-              "proposed_action_digest": fp.digest(action),
-              "source_memory_ids": sources, "recovery_memory_ids": recovery,
-              "recovery_fallback": fallback,
-              "action": "continue" if verdict == "safe" else "hold-and-use-recovery" if recovery else "hold",
-              "monitor_work": work[0],
-              "latency_ms": elapsed, "certified_safety_function": False}
+    result = {
+        "spec_id": spec_id,
+        "verdict": verdict,
+        "robustness": robustness,
+        "proposed_action_digest": fp.digest(action),
+        "source_memory_ids": sources,
+        "recovery_memory_ids": recovery,
+        "recovery_fallback": fallback,
+        "action": "continue" if verdict == "safe" else "hold-and-use-recovery" if recovery else "hold",
+        "monitor_work": work[0],
+        "latency_ms": elapsed,
+        "certified_safety_function": False,
+    }
     # Preserve the legacy signals-only commitment and add a separate binding
     # for sample times, which determine temporal semantics.
     trace_digest = fp.digest(clean)
@@ -196,11 +230,22 @@ def check(root: str, spec_id: str, *, action: dict[str, Any], trace: list[dict[s
     fp.append(root, JOURNAL, {"type": "verdict", **result, "trace_digest": trace_digest, "at": fp.now()})
     from unimem import lineage
 
-    lineage_record = {"id": lineage_id, "memory_id": spec["memory_id"],
-                      "verdict": verdict, "proposed_action_digest": result["proposed_action_digest"],
-                      "trace_digest": trace_digest, "telemetry_digest": telemetry_digest, "scopes": []}
-    lineage.attest(root, lineage_record, fp.sign(root, lineage_record), inputs=[spec["memory_id"]],
-                   operation="robot-shield-verdict")
+    lineage_record = {
+        "id": lineage_id,
+        "memory_id": spec["memory_id"],
+        "verdict": verdict,
+        "proposed_action_digest": result["proposed_action_digest"],
+        "trace_digest": trace_digest,
+        "telemetry_digest": telemetry_digest,
+        "scopes": [],
+    }
+    lineage.attest(
+        root,
+        lineage_record,
+        fp.sign(root, lineage_record),
+        inputs=[spec["memory_id"]],
+        operation="robot-shield-verdict",
+    )
     return result
 
 

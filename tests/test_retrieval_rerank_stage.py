@@ -1,4 +1,5 @@
 """The shared reranker stage in multi-channel recall, fact search and conversation recall."""
+
 from __future__ import annotations
 
 import json
@@ -116,9 +117,10 @@ def test_recall_reranker_failure_keeps_the_fused_page(store, fake_reranker):  # 
 
 
 def test_recall_reranker_from_budgets_json_and_per_call_override(store, tmp_memory, fake_reranker):  # noqa: F811
-    (tmp_memory / "budgets.json").write_text(json.dumps(
-        {"rerank": {"reranker": FAKE, "depth": 3, "blend": 1.0},
-         "agents": {"plain": {"rerank": "none"}}}), encoding="utf-8")
+    (tmp_memory / "budgets.json").write_text(
+        json.dumps({"rerank": {"reranker": FAKE, "depth": 3, "blend": 1.0}, "agents": {"plain": {"rerank": "none"}}}),
+        encoding="utf-8",
+    )
     configured = recall.recall(store, "postgres failover", budget=600)
     assert configured.explain["rerank"]["depth"] == 3 and configured.explain["rerank"]["blend"] == 1.0
     assert "rerank" not in recall.recall(store, "postgres failover", budget=600, agent="plain").explain
@@ -149,8 +151,9 @@ def test_fact_search_reranks_and_reports(tmp_path, fake_reranker):
     assert rows[0]["text"] == "deploy uses blue green" and rows[0]["rerank_score"] == 1.0
     assert explain["rerank"]["items"] == 3 and sorted(r["id"] for r in rows) == sorted(r["id"] for r in base)
     # Blend 0: the reranker runs and reports, but the order is the first stage's.
-    assert [r["id"] for r in search(root, "deploy", dense_scores={}, reranker=FAKE, rerank_blend=0.0)] == \
-        [r["id"] for r in base]
+    assert [r["id"] for r in search(root, "deploy", dense_scores={}, reranker=FAKE, rerank_blend=0.0)] == [
+        r["id"] for r in base
+    ]
 
 
 def test_fact_search_reads_the_configured_reranker(tmp_path, fake_reranker):
@@ -166,8 +169,13 @@ def test_fact_search_reads_the_configured_reranker(tmp_path, fake_reranker):
 
 def test_conversation_recall_accepts_any_text_reranker(tmp_path, fake_reranker):
     with Store(str(tmp_path), "chat") as conv:
-        conv.add("s1", [{"speaker": "ana", "text": "We moved the deploy to friday."},
-                        {"speaker": "ana", "text": "The deploy uses blue green switching."}])
+        conv.add(
+            "s1",
+            [
+                {"speaker": "ana", "text": "We moved the deploy to friday."},
+                {"speaker": "ana", "text": "The deploy uses blue green switching."},
+            ],
+        )
         fake_reranker.words = ("green",)
         result = conversation_recall(conv, "deploy", options=Options(embedder=None, rerank=FAKE, rerank_blend=0))
         assert result.explain["rerank"] == FAKE and result.explain["rerank_stage"]["items"] == 2

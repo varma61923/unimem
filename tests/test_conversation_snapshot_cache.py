@@ -1,4 +1,5 @@
 """Bounded cache accounting and adversarial snapshot acquisition races."""
+
 from unimem.conversation import Options, Store, recall, search
 
 
@@ -57,7 +58,6 @@ class _RacingConnection:
         if not self.fired and self.phase == "after-pin" and query == "PRAGMA data_version":
             return _CallbackCursor(cursor, self.delete)
         return cursor
-
 
 
 def _race(tmp_path, phase):
@@ -124,8 +124,11 @@ def test_auto_model_reconfiguration_cannot_reuse_old_response(tmp_path, monkeypa
     configured = [None]
     monkeypatch.setattr(embed, "configured", lambda: configured[0])
     monkeypatch.setattr(embed, "available_for", lambda tag: True)
-    monkeypatch.setattr(search, "_recall", lambda store, question, **kwargs:
-                        search.Recall(question, str(configured[0]), 1, [], [], None))
+    monkeypatch.setattr(
+        search,
+        "_recall",
+        lambda store, question, **kwargs: search.Recall(question, str(configured[0]), 1, [], [], None),
+    )
     with Store(str(tmp_path), "user") as store:
         assert recall(store, "same question").context == "None"
         configured[0] = "minilm"

@@ -49,6 +49,7 @@ Usage:
     python measure_retrieval.py --fixtures DIR  # override the corpus
     python measure_retrieval.py --max-spread 2  # non-zero exit if exceeded
 """
+
 import argparse
 import glob
 import json
@@ -90,8 +91,7 @@ def measure_field(doc, top_k=3, floor=None, scorer=retrieval.SCORER_IDF):
 
     for case in doc["queries"]:
         relevant = set(case["relevant"])
-        ranked = retrieval.rank_lessons(
-            case["query"], lessons, top_k=top_k, floor=floor, scorer=scorer)
+        ranked = retrieval.rank_lessons(case["query"], lessons, top_k=top_k, floor=floor, scorer=scorer)
         slugs = [r.slug for r in ranked]
         n_q += 1
         retrieved_total += len(slugs)
@@ -117,10 +117,8 @@ def measure_field(doc, top_k=3, floor=None, scorer=retrieval.SCORER_IDF):
     }
 
 
-def compute(fixtures_dir=DEFAULT_FIXTURES, top_k=3, floor=None,
-            scorer=retrieval.SCORER_IDF):
-    fields = [measure_field(doc, top_k=top_k, floor=floor, scorer=scorer)
-              for doc in load_fields(fixtures_dir)]
+def compute(fixtures_dir=DEFAULT_FIXTURES, top_k=3, floor=None, scorer=retrieval.SCORER_IDF):
+    fields = [measure_field(doc, top_k=top_k, floor=floor, scorer=scorer) for doc in load_fields(fixtures_dir)]
     ratios = [f["pollution_ratio"] for f in fields if f["pollution_ratio"]]
     worst = max(ratios) if ratios else None
     best = min(ratios) if ratios else None
@@ -132,9 +130,7 @@ def compute(fixtures_dir=DEFAULT_FIXTURES, top_k=3, floor=None,
         "fields": fields,
         "pollution_spread": (worst / best) if (worst and best) else None,
         "worst_field": max(fields, key=lambda f: f["pollution_ratio"] or 0)["field"] if fields else None,
-        "mean_precision_at_1": (
-            sum(f["precision_at_1"] or 0 for f in fields) / len(fields) if fields else None
-        ),
+        "mean_precision_at_1": (sum(f["precision_at_1"] or 0 for f in fields) / len(fields) if fields else None),
     }
 
 
@@ -146,8 +142,7 @@ def render_markdown(report):
     out = [
         "# Cross-field retrieval",
         "",
-        f"**Scorer** : `{report['scorer']}` · **floor** : {report['floor']} · "
-        f"**top-k** : {report['top_k']}",
+        f"**Scorer** : `{report['scorer']}` · **floor** : {report['floor']} · **top-k** : {report['top_k']}",
         "",
         "| Field | Lessons | Queries | P@1 | Recall@k | MRR | Collateral | Pollution |",
         "|---|---|---|---|---|---|---|---|",
@@ -180,19 +175,22 @@ def main():
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--top-k", type=int, default=3)
     parser.add_argument("--floor", type=float, default=None)
-    parser.add_argument("--scorer", default=retrieval.SCORER_IDF,
-                        choices=list(retrieval.LEXICAL_SCORERS))
+    parser.add_argument("--scorer", default=retrieval.SCORER_IDF, choices=list(retrieval.LEXICAL_SCORERS))
     parser.add_argument(
-        "--max-spread", type=float, default=None,
+        "--max-spread",
+        type=float,
+        default=None,
         help="Exit non-zero if the worst field's pollution ratio exceeds the best "
-             "field's by more than this multiple -- retrieval being materially worse "
-             "in one field than another is what 'works for any agent type' cannot mean.",
+        "field's by more than this multiple -- retrieval being materially worse "
+        "in one field than another is what 'works for any agent type' cannot mean.",
     )
     parser.add_argument(
-        "--max-pollution", type=float, default=None,
+        "--max-pollution",
+        type=float,
+        default=None,
         help="Exit non-zero if ANY field's pollution ratio exceeds this. Needed "
-             "alongside --max-spread: a scorer that is equally bad everywhere has an "
-             "excellent spread.",
+        "alongside --max-spread: a scorer that is equally bad everywhere has an "
+        "excellent spread.",
     )
     parser.add_argument("--dest", default=None, help="Ignored; accepted for `bench` parity.")
     args = parser.parse_args()
@@ -203,7 +201,8 @@ def main():
     failed = False
     if args.max_pollution is not None:
         over = [
-            f for f in report["fields"]
+            f
+            for f in report["fields"]
             if f["pollution_ratio"] is not None and f["pollution_ratio"] > args.max_pollution
         ]
         if over:

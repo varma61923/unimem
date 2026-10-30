@@ -1,4 +1,5 @@
 """Bounded MCAP and LeRobot metadata ingest without decoding media in the Hub."""
+
 from __future__ import annotations
 
 import json
@@ -9,9 +10,15 @@ from unimem import episodes
 from unimem import frontier_protocol as fp
 
 
-def ingest_records(root: str, records: Iterable[dict[str, Any]], *, format: str,
-                   environment: str, robot: str,
-                   on_record: Callable[[dict[str, Any]], Any] | None = None) -> list[dict[str, Any]]:
+def ingest_records(
+    root: str,
+    records: Iterable[dict[str, Any]],
+    *,
+    format: str,
+    environment: str,
+    robot: str,
+    on_record: Callable[[dict[str, Any]], Any] | None = None,
+) -> list[dict[str, Any]]:
     if format not in ("mcap", "lerobot") or environment not in ("sim", "real"):
         raise ValueError("declare MCAP/LeRobot format and sim/real environment")
     fp.text(robot, "robot", 64)
@@ -39,26 +46,43 @@ def ingest_records(root: str, records: Iterable[dict[str, Any]], *, format: str,
                 raise ValueError("media references require sha256 content addresses")
         if refs:
             summary += "\nMedia references: " + ", ".join(refs)
-        result.append(episodes.record(root, occasion_id=occasion, summary=summary, agent_id=robot,
-                                       env=environment, sensors=sensors, outcome=success))
+        result.append(
+            episodes.record(
+                root,
+                occasion_id=occasion,
+                summary=summary,
+                agent_id=robot,
+                env=environment,
+                sensors=sensors,
+                outcome=success,
+            )
+        )
     return result
 
 
 def lerobot_jsonl(root: str, path: str, *, environment: str, robot: str) -> list[dict[str, Any]]:
     if Path(path).stat().st_size > 8 * fp.MAX_BYTES:
         raise ValueError("LeRobot metadata file exceeds 8 MiB")
+
     def records() -> Iterable[dict[str, Any]]:
         with open(path, "rb") as stream:
             while line := stream.readline(8193):
                 if len(line) > 8192:
                     raise ValueError("LeRobot record exceeds 8 KiB")
                 yield json.loads(line)
+
     return ingest_records(root, records(), format="lerobot", environment=environment, robot=robot)
 
 
-def mcap_file(root: str, path: str, *, environment: str, robot: str,
-              topics: tuple[str, ...] = ("/unimem/episode",),
-              on_record: Callable[[dict[str, Any]], Any] | None = None) -> list[dict[str, Any]]:
+def mcap_file(
+    root: str,
+    path: str,
+    *,
+    environment: str,
+    robot: str,
+    topics: tuple[str, ...] = ("/unimem/episode",),
+    on_record: Callable[[dict[str, Any]], Any] | None = None,
+) -> list[dict[str, Any]]:
     try:
         from mcap.records import Channel, Chunk, Message
         from mcap.stream_reader import StreamReader, breakup_chunk
@@ -101,6 +125,7 @@ def mcap_file(root: str, path: str, *, environment: str, robot: str,
                     if len(data) != record.uncompressed_size or total_decoded > 8 * fp.MAX_BYTES:
                         raise ValueError("MCAP decompressed batch exceeds its declared bounded size")
                     from dataclasses import replace
+
                     batch = breakup_chunk(replace(record, compression="", data=data), validate_crc=True)
                 for item in batch:
                     if isinstance(item, Channel):
@@ -113,5 +138,5 @@ def mcap_file(root: str, path: str, *, environment: str, robot: str,
                         if channel.message_encoding != "json" or len(item.data) > 8192:
                             raise ValueError("MCAP episode channels require bounded JSON metadata")
                         yield json.loads(item.data)
-        return ingest_records(root, records(), format="mcap", environment=environment, robot=robot,
-                              on_record=on_record)
+
+        return ingest_records(root, records(), format="mcap", environment=environment, robot=robot, on_record=on_record)

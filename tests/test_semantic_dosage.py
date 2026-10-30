@@ -13,12 +13,16 @@ N = 40
 
 
 def _write(root, slug, *, importance=5, core=False):
-    fm = {"name": slug, "status": "active", "description": f"{slug} about refunds",
-          "importance": importance, "agent_type": "code"}
+    fm = {
+        "name": slug,
+        "status": "active",
+        "description": f"{slug} about refunds",
+        "importance": importance,
+        "agent_type": "code",
+    }
     if core:
         fm["core"] = True
-    frontmatter.write(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), fm,
-                      f"## Rule\nRule for {slug}.\n")
+    frontmatter.write(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), fm, f"## Rule\nRule for {slug}.\n")
 
 
 @pytest.fixture
@@ -28,18 +32,19 @@ def store(tmp_path, monkeypatch, capsys):
     for i in range(N):
         _write(root, f"l{i:02d}")
     stdout = "# Top-3 retrieval (+ importance>=4 override)\n# Query: 'refund'\n" + "".join(
-        f"l{i:02d} | cosine={0.9 - i * 0.01:.3f} | importance=5\n" for i in range(N))
+        f"l{i:02d} | cosine={0.9 - i * 0.01:.3f} | importance=5\n" for i in range(N)
+    )
     monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: True)
     monkeypatch.setattr(query_cmd, "_index_is_unusable", lambda root: "")
-    monkeypatch.setattr(query_cmd, "run_script",
-                        lambda root, rel, args, hint, capture=False: (0, stdout) if capture else 0)
+    monkeypatch.setattr(
+        query_cmd, "run_script", lambda root, rel, args, hint, capture=False: (0, stdout) if capture else 0
+    )
     capsys.readouterr()
     return root
 
 
 def _listed(out):
-    return [line.split("|")[0].strip() for line in out.splitlines()
-            if "|" in line and not line.startswith("#")]
+    return [line.split("|")[0].strip() for line in out.splitlines() if "|" in line and not line.startswith("#")]
 
 
 def test_the_override_is_cut_to_the_budget_and_the_rest_is_named(store, capsys):
@@ -71,9 +76,13 @@ def test_a_core_lesson_is_admitted_first(store, capsys):
 
 
 def test_only_what_is_injected_is_given_an_arm(store, capsys):
-    assert main(["query", "refund", "--experiment", "--occasion-id", "o1",
-                 "--holdout-rate", "0.5", "--dest", store]) == 0
-    logged = {json.loads(line)["lesson"] for line in Path(holdout_log_path(store)).read_text(encoding='utf-8').splitlines(keepends=True)}
+    assert (
+        main(["query", "refund", "--experiment", "--occasion-id", "o1", "--holdout-rate", "0.5", "--dest", store]) == 0
+    )
+    logged = {
+        json.loads(line)["lesson"]
+        for line in Path(holdout_log_path(store)).read_text(encoding="utf-8").splitlines(keepends=True)
+    }
     assert logged == {f"l{i:02d}" for i in range(10)}
 
 
@@ -85,7 +94,10 @@ def test_a_wider_budget_admits_more(store, capsys):
 
 
 def _labels(root):
-    return [json.loads(line).get("scorer") for line in Path(holdout_log_path(root)).read_text(encoding='utf-8').splitlines(keepends=True)]
+    return [
+        json.loads(line).get("scorer")
+        for line in Path(holdout_log_path(root)).read_text(encoding="utf-8").splitlines(keepends=True)
+    ]
 
 
 def test_a_new_experiment_records_the_budgeted_treatment(store, capsys):
@@ -94,8 +106,9 @@ def test_a_new_experiment_records_the_budgeted_treatment(store, capsys):
 
 
 def test_an_experiment_already_on_the_unbudgeted_treatment_keeps_it(store, capsys):
-    holdout_io.assign_and_log(store, ["l00"], occasion_id="before-upgrade", rate=0.5, salt="s",
-                              scorer=retrieval_io.SEMANTIC_ONLY, floor=0.0)
+    holdout_io.assign_and_log(
+        store, ["l00"], occasion_id="before-upgrade", rate=0.5, salt="s", scorer=retrieval_io.SEMANTIC_ONLY, floor=0.0
+    )
     assert retrieval_io.semantic_only_undosed_pinned(store)
     assert main(["query", "refund", "--experiment", "--occasion-id", "o2", "--dest", store]) == 0
     out = capsys.readouterr().out
@@ -106,9 +119,10 @@ def test_an_experiment_already_on_the_unbudgeted_treatment_keeps_it(store, capsy
 
 
 def test_the_two_treatments_are_never_pooled_silently():
-    rows = [integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=bool(i % 2), salt="s",
-                                 scorer=label, floor=0.0)
-            for i, label in enumerate([retrieval_io.SEMANTIC_ONLY, retrieval_io.SEMANTIC_ONLY_DOSED] * 3)]
+    rows = [
+        integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=bool(i % 2), salt="s", scorer=label, floor=0.0)
+        for i, label in enumerate([retrieval_io.SEMANTIC_ONLY, retrieval_io.SEMANTIC_ONLY_DOSED] * 3)
+    ]
     assert integrity.check_scorer_drift(rows).severity == integrity.SEVERITY_INVALIDATES
 
 
@@ -123,8 +137,9 @@ def test_the_new_label_reads_as_semantic_only():
 def test_a_semantic_only_log_pins_the_store_to_what_it_ran(tmp_path):
     root = str(tmp_path / "pinned")
     main(["init", "--agent-type", "code", "--dest", root])
-    holdout_io.assign_and_log(root, ["a"], occasion_id="o", rate=0.5, salt="s",
-                              scorer=retrieval_io.semantic_only_label("arctic-m"))
+    holdout_io.assign_and_log(
+        root, ["a"], occasion_id="o", rate=0.5, salt="s", scorer=retrieval_io.semantic_only_label("arctic-m")
+    )
     config = retrieval_io.load_config(root)
     assert config.pinned_for_running_experiment
     assert config.scorer == retrieval.SCORER_IDF and config.fusion == retrieval_io.FUSION_NONE

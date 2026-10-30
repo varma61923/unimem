@@ -4,6 +4,7 @@ KV payloads are opaque model data: this module neither evaluates them nor claims
 that its adapters implement CacheBlend partial recomputation. Production adapters
 must bind tenant isolation and deletion semantics to their own pool guarantees.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -42,6 +43,7 @@ class IdentityCompression:
 
 class MemoryPool:
     """Process-local reference tier for tests and short-lived workers."""
+
     def __init__(self) -> None:
         self.values: dict[str, bytes] = {}
         self.lock = threading.RLock()
@@ -61,6 +63,7 @@ class MemoryPool:
 
 class DiskPool:
     """Owner-only local disk tier using atomic writes inside the selected store."""
+
     def __init__(self, root: str, name: str = "disk") -> None:
         self.root = os.path.realpath(root)
         self.directory = os.path.join(paths.memory_dir(root), "kv-capsules", fp.digest(name))
@@ -159,9 +162,18 @@ def _source(root: str, memory_id: str, context: Sequence[str]) -> tuple[str, str
     return content_hash, str(admitted[memory_id].statement)
 
 
-def build(root: str, memory_id: str, model_fingerprint: str, kv_bytes: bytes, *,
-          promotion_score: float, promotion_threshold: float, tiers: Sequence[str] = ("memory", "disk"),
-          compressor: str = "identity", context: Sequence[str] = ()) -> dict[str, Any]:
+def build(
+    root: str,
+    memory_id: str,
+    model_fingerprint: str,
+    kv_bytes: bytes,
+    *,
+    promotion_score: float,
+    promotion_threshold: float,
+    tiers: Sequence[str] = ("memory", "disk"),
+    compressor: str = "identity",
+    context: Sequence[str] = (),
+) -> dict[str, Any]:
     """Compile one admitted, over-threshold memory into tenant/model-bound opaque KV."""
     model = _model(model_fingerprint)
     score = fp.number(promotion_score, 0, 1, "promotion score")
@@ -182,10 +194,19 @@ def build(root: str, memory_id: str, model_fingerprint: str, kv_bytes: bytes, *,
     compressed = _COMPRESSORS[compressor].compress(kv_bytes)
     if not isinstance(compressed, bytes) or len(compressed) > MAX_KV_BYTES:
         raise ValueError("KV compressor returned an invalid or oversized payload")
-    record = {"id": key, "memory_id": memory_id, "memory_hash": source_hash, "model_fingerprint": model,
-              "kv_digest": hashlib.sha256(compressed).hexdigest(), "kv_bytes": len(compressed), "tiers": names,
-              "compressor": compressor, "promotion_score": score, "promotion_threshold": threshold,
-              "status": "active"}
+    record = {
+        "id": key,
+        "memory_id": memory_id,
+        "memory_hash": source_hash,
+        "model_fingerprint": model,
+        "kv_digest": hashlib.sha256(compressed).hexdigest(),
+        "kv_bytes": len(compressed),
+        "tiers": names,
+        "compressor": compressor,
+        "promotion_score": score,
+        "promotion_threshold": threshold,
+        "status": "active",
+    }
     with _jsonl.locked(fp.filename(root, INDEX) + ".write"):
         prior = [row for row in fp.journal(root, INDEX) if row.get("id") == key and row.get("status") == "active"]
         if prior:
@@ -236,8 +257,9 @@ def evict(root: str, memory_id: str, *, reason: str) -> dict[str, Any]:
     if reason not in {"retract", "erase", "quarantine", "supersede"}:
         raise ValueError("capsule eviction reason must be a governed removal event")
     fp.text(memory_id, "memory id")
-    matches = [row for row in fp.journal(root, INDEX)
-               if row.get("memory_id") == memory_id and row.get("status") == "active"]
+    matches = [
+        row for row in fp.journal(root, INDEX) if row.get("memory_id") == memory_id and row.get("status") == "active"
+    ]
     removed, failed, tiers = [], [], set()
     for record in matches:
         key = record["id"]
@@ -254,11 +276,21 @@ def evict(root: str, memory_id: str, *, reason: str) -> dict[str, Any]:
             fp.append(root, INDEX, {**record, "status": "evicted", "reason": reason})
     from unimem import change_stream
 
-    event = change_stream.publish(root, reason, memory_id, revision=fp.digest(sorted(removed)),
-                                  event_id="kv-" + fp.digest([reason, memory_id, fp.now()])[:32])
-    return {"memory_id": memory_id, "reason": reason, "capsule_tiers": sorted(tiers),
-            "removed_tiers": sorted(set(removed)), "failed_tiers": sorted(set(failed)),
-            "event_sequence": event["sequence"]}
+    event = change_stream.publish(
+        root,
+        reason,
+        memory_id,
+        revision=fp.digest(sorted(removed)),
+        event_id="kv-" + fp.digest([reason, memory_id, fp.now()])[:32],
+    )
+    return {
+        "memory_id": memory_id,
+        "reason": reason,
+        "capsule_tiers": sorted(tiers),
+        "removed_tiers": sorted(set(removed)),
+        "failed_tiers": sorted(set(failed)),
+        "event_sequence": event["sequence"],
+    }
 
 
 def evict_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]:
@@ -266,8 +298,9 @@ def evict_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]:
     present = {row.get("memory_id") for row in fp.journal(root, INDEX)}
     receipts = []
     for identity in sorted(set(identities) & present):
-        current = [row for row in fp.journal(root, INDEX)
-                   if row.get("memory_id") == identity and row.get("status") == "active"]
+        current = [
+            row for row in fp.journal(root, INDEX) if row.get("memory_id") == identity and row.get("status") == "active"
+        ]
         if current:
             receipts.append(evict(root, identity, reason="erase"))
     return receipts

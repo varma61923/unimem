@@ -1,4 +1,5 @@
 """Authoritative real-file boundaries for incremental fact snapshot publication."""
+
 from __future__ import annotations
 
 import hashlib
@@ -41,8 +42,12 @@ os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
 if atomic == '1':
     os.replace(target, path)
 """
-    subprocess.run([sys.executable, "-c", script, str(path), old, new, "1" if atomic else "0"],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, "-c", script, str(path), old, new, "1" if atomic else "0"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def serialized(root: Path) -> tuple[tuple[str, ...], str]:
@@ -173,8 +178,9 @@ def test_incremental_source_forgetting_withdraws_unchanged_derived_fact(tmp_path
     fallback = add(tmp_path, "Lumen timeout fallback remains available", scopes=["alpha"])
     held = fact_index.snapshot_facts(str(tmp_path))
     old_target = held[target.id].to_dict()
-    assert target.id in {row.id for row, _ in hierarchical.search_facts(
-        str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer)}
+    assert target.id in {
+        row.id for row, _ in hierarchical.search_facts(str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer)
+    }
     hierarchical.forget_fact(str(tmp_path), source.id)
     assert fact_index.snapshot_facts(str(tmp_path))[target.id].to_dict() == old_target
     ranked = hierarchical.search_facts(str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer)
@@ -193,6 +199,7 @@ def test_failed_serialization_keeps_old_snapshot_and_authoritative_file(tmp_path
         def write_then_fail(output):
             write(output)
             raise OSError("intentional write interruption")
+
         return original(path, write_then_fail)
 
     monkeypatch.setattr(_jsonl, "_replace", failing_replace)
@@ -226,16 +233,23 @@ def test_unchanged_lesson_dependency_is_revalidated_after_incremental_write(tmp_
     metadata = {"name": "lesson_lumen", "status": "active", "scopes": ["alpha"]}
     body = "Lumen timeout measurements establish a five second deadline.\n"
     metadata[lesson_admission.RECEIPT_FIELD] = lesson_admission.issue(
-        str(tmp_path), str(path), metadata, body, actor="reviewer")
+        str(tmp_path), str(path), metadata, body, actor="reviewer"
+    )
     frontmatter.write(str(path), metadata, body)
-    target = add(tmp_path, "Lumen timeout is five seconds", scopes=["alpha"],
-                 evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")])
+    target = add(
+        tmp_path,
+        "Lumen timeout is five seconds",
+        scopes=["alpha"],
+        evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")],
+    )
     fallback = add(tmp_path, "Lumen timeout troubleshooting has detailed fallback instructions", scopes=["alpha"])
     unrelated = add(tmp_path, "Independent calibration measurement", scopes=["alpha"])
     before = fact_index.snapshot_facts(str(tmp_path))
     old_target = before[target.id].to_dict()
-    assert hierarchical.search_facts(str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer,
-                                     limit=1)[0][0].id == target.id
+    assert (
+        hierarchical.search_facts(str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer, limit=1)[0][0].id
+        == target.id
+    )
     hierarchical.update_fact(str(tmp_path), unrelated.id, statement="Independent calibration procedure")
     committed = fact_index.snapshot_facts(str(tmp_path))
     assert committed.generation != before.generation
@@ -249,8 +263,9 @@ def test_unchanged_lesson_dependency_is_revalidated_after_incremental_write(tmp_
             frontmatter.write(str(path), metadata, body)
     assert fact_index.snapshot_facts(str(tmp_path)).generation == generation
     for as_of in (None, "2025-01-01T00:00:00Z"):
-        ranked = hierarchical.search_facts(str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer,
-                                          limit=1, as_of=as_of)
+        ranked = hierarchical.search_facts(
+            str(tmp_path), "Lumen timeout", scope="alpha", scorer=scorer, limit=1, as_of=as_of
+        )
         assert [row.id for row, _ in ranked] == [fallback.id]
 
 

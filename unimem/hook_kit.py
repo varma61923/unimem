@@ -67,8 +67,7 @@ class HookKit:
 
             try:
                 embedder = (
-                    _configuration_getenv("UNIMEM_GRAPH_EMBEDDER")
-                    or configuration.load(root)["options"]["embedding"]
+                    _configuration_getenv("UNIMEM_GRAPH_EMBEDDER") or configuration.load(root)["options"]["embedding"]
                 )
             except (OSError, ValueError):
                 embedder = "none"  # Capture remains available even with an invalid model configuration.
@@ -103,7 +102,7 @@ class HookKit:
         child = payload.get("agent_id")
         parent = payload.get("parent_session_id")
         valid_child = isinstance(child, str) and bool(child) and len(child) <= 128
-        if valid_child and isinstance(session, str) and session:
+        if valid_child and isinstance(child, str) and isinstance(session, str) and session:
             if isinstance(parent, str) and parent and session == parent:
                 session = f"{parent}:{child}"
                 payload["session_id"] = session
@@ -176,8 +175,11 @@ class HookKit:
                     fm, body = frontmatter.read(canonical)
                     digest = hashlib.sha256((json.dumps(fm, sort_keys=True, default=str) + body).encode()).hexdigest()
                     if digest != record.payload.get("source_digest") or not lesson_cache.fresh_eligible(
-                        canonical, fm, slug=lesson_io.canonical_slug(os.path.basename(canonical)),
-                        body=body, root=self.root,
+                        canonical,
+                        fm,
+                        slug=lesson_io.canonical_slug(os.path.basename(canonical)),
+                        body=body,
+                        root=self.root,
                     ):
                         continue
                 except (OSError, ValueError, TypeError):
@@ -228,9 +230,11 @@ class HookKit:
                         term for term in query_terms if len(term) > 1 and term not in _HOOK_GENERIC_TERMS
                     }
                     informative_overlap = [
-                        bool(informative_query_terms.intersection(
-                            term for term in document if len(term) > 1 and term not in _HOOK_GENERIC_TERMS
-                        ))
+                        bool(
+                            informative_query_terms.intersection(
+                                term for term in document if len(term) > 1 and term not in _HOOK_GENERIC_TERMS
+                            )
+                        )
                         for document in document_terms
                     ]
                     sparse = _bm25(query_terms, document_terms)
@@ -281,7 +285,9 @@ class HookKit:
         if template is not None:
             from unimem.context_template import select
 
-            slots = {name: [] for name in ("lessons", "profiles", "directives", "edges", "buffer")}
+            slots: dict[str, list[dict]] = {
+                name: [] for name in ("lessons", "profiles", "directives", "edges", "buffer")
+            }
             by_id = {record.id: (record, text) for record, text in selected}
             for record, text in selected:
                 slot = {"lesson": "lessons", "profile": "profiles", "directive": "directives"}.get(record.kind, "edges")
@@ -305,7 +311,8 @@ class HookKit:
             fixed += [by_id[row["id"]] for row in chosen if row["id"].startswith("buffer:")]
         ordered = [*fixed, *selected]
         # Budget before claiming: unseen items that don't fit may be tried later.
-        lines, eligible = [], []
+        lines: list[str] = []
+        eligible: list[str] = []
         for record, text in ordered:
             line = "[" + record.id + "] " + text
             block = render_context([*lines, line], budget=budget)

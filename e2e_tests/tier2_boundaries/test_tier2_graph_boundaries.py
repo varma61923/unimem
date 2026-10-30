@@ -44,8 +44,9 @@ def test_t2_graph_duplicate_edge_deduplication(isolated_store: str):
     matching = [e for e in graph.load_edges(isolated_store) if e.source == "service:src"]
     assert len(matching) == 1 and matching[0].weight == 0.9
 
-    graph.add_edge(isolated_store, "service:src", "service:dst", "depends_on", weight=0.4,
-                   valid_at="2099-01-01T00:00:00Z")
+    graph.add_edge(
+        isolated_store, "service:src", "service:dst", "depends_on", weight=0.4, valid_at="2099-01-01T00:00:00Z"
+    )
     matching = [e for e in graph.load_edges(isolated_store) if e.source == "service:src"]
     assert len(matching) == 2
     active = [e for e in matching if e.invalid_at is None]

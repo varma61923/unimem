@@ -14,6 +14,7 @@ catch (an earlier version of `record_outcome` was O(n^2) and would have).
 The numbers are THIS MACHINE'S. A robot's flash storage can make `--strict` (an
 fsync per log line) far slower than here, which is what `--relaxed-durability` is for.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,8 +43,9 @@ def measure(occasions: int, items: int, durable: bool) -> dict:
             t0 = time.perf_counter()
             r = gw.handle("POST", "/v1/recall", headers, body)
             t1 = time.perf_counter()
-            gw.handle("POST", "/v1/outcome", headers,
-                      json.dumps({"occasion_id": f"o{i}", "succeeded": i % 2 == 0}).encode())
+            gw.handle(
+                "POST", "/v1/outcome", headers, json.dumps({"occasion_id": f"o{i}", "succeeded": i % 2 == 0}).encode()
+            )
             t2 = time.perf_counter()
             if r.status != 200:
                 raise RuntimeError(f"recall returned {r.status}")
@@ -51,17 +53,22 @@ def measure(occasions: int, items: int, durable: bool) -> dict:
             if len(current) == BUCKET or i == occasions - 1:
                 rec = sorted(c[0] for c in current)
                 out = sorted(c[1] for c in current)
-                buckets.append({
-                    "through_occasion": i + 1,
-                    "recall_p50_ms": round(statistics.median(rec), 3),
-                    "recall_p99_ms": round(rec[int(0.99 * (len(rec) - 1))], 3),
-                    "outcome_p50_ms": round(statistics.median(out), 3),
-                    "outcome_p99_ms": round(out[int(0.99 * (len(out) - 1))], 3),
-                })
+                buckets.append(
+                    {
+                        "through_occasion": i + 1,
+                        "recall_p50_ms": round(statistics.median(rec), 3),
+                        "recall_p99_ms": round(rec[int(0.99 * (len(rec) - 1))], 3),
+                        "outcome_p50_ms": round(statistics.median(out), 3),
+                        "outcome_p99_ms": round(out[int(0.99 * (len(out) - 1))], 3),
+                    }
+                )
                 current = []
-        return {"occasions": occasions, "items_per_recall": items,
-                "durability": "strict (fsync per line)" if durable else "relaxed (no fsync)",
-                "buckets": buckets}
+        return {
+            "occasions": occasions,
+            "items_per_recall": items,
+            "durability": "strict (fsync per line)" if durable else "relaxed (no fsync)",
+            "buckets": buckets,
+        }
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -80,8 +87,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{result['occasions']:,} occasions x {result['items_per_recall']} items, {result['durability']}")
     print("through   recall p50   recall p99   outcome p50   outcome p99   (ms)")
     for b in result["buckets"]:
-        print(f"{b['through_occasion']:7d}   {b['recall_p50_ms']:10.3f}   {b['recall_p99_ms']:10.3f}   "
-              f"{b['outcome_p50_ms']:11.3f}   {b['outcome_p99_ms']:11.3f}")
+        print(
+            f"{b['through_occasion']:7d}   {b['recall_p50_ms']:10.3f}   {b['recall_p99_ms']:10.3f}   "
+            f"{b['outcome_p50_ms']:11.3f}   {b['outcome_p99_ms']:11.3f}"
+        )
     return 0
 
 

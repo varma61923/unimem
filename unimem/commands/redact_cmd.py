@@ -31,8 +31,7 @@ def _redact_value(value: Any, found: list[str]) -> Any:
 
 def trace_paths(root: str) -> list[str]:
     return sorted(
-        p for p in glob.glob(os.path.join(paths.traces_dir(root), "*.md"))
-        if os.path.basename(p) != "README.md"
+        p for p in glob.glob(os.path.join(paths.traces_dir(root), "*.md")) if os.path.basename(p) != "README.md"
     )
 
 

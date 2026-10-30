@@ -90,9 +90,7 @@ def resolve_kimi_config_target(root: str, configured_path: str | None = None) ->
     return target, not paths.is_within_directory(root, target)
 
 
-def install_special(
-    root: str, agent: str, target: str, manifest: dict, *, allow_external: bool = False
-) -> dict | None:
+def install_special(root: str, agent: str, target: str, manifest: dict, *, allow_external: bool = False) -> dict | None:
     if agent == "kimi":
         if allow_external:
             if not os.path.isabs(target):

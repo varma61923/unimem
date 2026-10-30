@@ -2,8 +2,16 @@ import pilot_metrics as pm
 import pytest
 
 
-def _trace(name, resolved=None, escalated=None, repeated_error=None,
-           frustration_signal=None, tokens_used=None, llm_calls=None, baseline=False):
+def _trace(
+    name,
+    resolved=None,
+    escalated=None,
+    repeated_error=None,
+    frustration_signal=None,
+    tokens_used=None,
+    llm_calls=None,
+    baseline=False,
+):
     outcome = {}
     if resolved is not None:
         outcome["resolved"] = resolved
@@ -89,10 +97,24 @@ class TestSplitBaseline:
 class TestComputeBucket:
     def test_full_bucket(self):
         traces = [
-            _trace("a", resolved=True, escalated=False, repeated_error=False,
-                    frustration_signal=False, tokens_used=100, llm_calls=1),
-            _trace("b", resolved=False, escalated=True, repeated_error=True,
-                    frustration_signal=True, tokens_used=300, llm_calls=3),
+            _trace(
+                "a",
+                resolved=True,
+                escalated=False,
+                repeated_error=False,
+                frustration_signal=False,
+                tokens_used=100,
+                llm_calls=1,
+            ),
+            _trace(
+                "b",
+                resolved=False,
+                escalated=True,
+                repeated_error=True,
+                frustration_signal=True,
+                tokens_used=300,
+                llm_calls=3,
+            ),
         ]
         r = pm.compute_bucket(traces)
         assert r["n_traces"] == 2

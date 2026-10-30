@@ -117,8 +117,18 @@ def test_dest_flag_controls_where_the_blocklist_lives(tmp_path):
     store_dir = tmp_path / "store"
     store_dir.mkdir()
 
-    assert main([
-        "source", "withdraw", str(claude_md), "--section-id", "office-hours",
-        "--dest", str(store_dir),
-    ]) == 0
+    assert (
+        main(
+            [
+                "source",
+                "withdraw",
+                str(claude_md),
+                "--section-id",
+                "office-hours",
+                "--dest",
+                str(store_dir),
+            ]
+        )
+        == 0
+    )
     assert os.path.isfile(memory_sources.blocklist_path(str(store_dir)))

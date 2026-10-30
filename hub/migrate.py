@@ -4,6 +4,7 @@ Run with the migration owner's HUB_DATABASE_URL, never the serving role. Reads
 are the default; upgrade/rollback require --apply. A rollback additionally needs
 an explicit acknowledgement of data loss and a separately restore-tested backup.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -12,7 +13,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from alembic import command
 from alembic.config import Config
@@ -41,8 +42,15 @@ def alembic_config() -> Config:
     return cfg
 
 
-def execute(connection: Connection, operation: str, *, revision: str = "head", apply: bool = False,
-            allow_data_loss: bool = False, backup_verified: bool = False) -> dict[str, Any]:
+def execute(
+    connection: Connection,
+    operation: str,
+    *,
+    revision: str = "head",
+    apply: bool = False,
+    allow_data_loss: bool = False,
+    backup_verified: bool = False,
+) -> dict[str, Any]:
     """Operate on a dedicated connection; Alembic owns revision transactions.
 
     Concurrent-index migrations require autocommit. Do not wrap this operation
@@ -81,8 +89,14 @@ def execute(connection: Connection, operation: str, *, revision: str = "head", a
         raise
     except Exception as exc:
         raise MigrationError("unknown or incompatible migration revision") from exc
-    result: dict[str, Any] = {"operation": operation, "current": list(current), "heads": list(heads),
-                              "target": target_id, "steps": steps, "applied": False}
+    result: dict[str, Any] = {
+        "operation": operation,
+        "current": list(current),
+        "heads": list(heads),
+        "target": target_id,
+        "steps": steps,
+        "applied": False,
+    }
     # Inspection starts an implicit read transaction. End it before Alembic
     # establishes its own transaction and any required autocommit blocks.
     connection.rollback()
@@ -94,8 +108,9 @@ def execute(connection: Connection, operation: str, *, revision: str = "head", a
             with contextlib.redirect_stdout(io.StringIO()):
                 command.check(cfg)
         except Exception as exc:
-            raise MigrationError("schema verification failed; inspect drift with Alembic as the migration owner"
-                                 ) from exc
+            raise MigrationError(
+                "schema verification failed; inspect drift with Alembic as the migration owner"
+            ) from exc
         result["verified"] = True
     elif operation in {"upgrade", "rollback"} and apply:
         if operation == "rollback" and not (allow_data_loss and backup_verified):
@@ -122,7 +137,10 @@ async def run(operation: str, **kwargs: Any) -> dict[str, Any]:
             if not acquired:
                 raise MigrationError("another migration operator holds the schema lock")
             try:
-                return await connection.run_sync(lambda sync: execute(sync, operation, **kwargs))
+                result = await connection.run_sync(lambda sync: execute(sync, operation, **kwargs))
+                if not isinstance(result, dict) or any(not isinstance(key, str) for key in result):
+                    raise MigrationError("migration operation returned an invalid result")
+                return cast(dict[str, Any], result)
             finally:
                 await connection.rollback()
                 await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _MIGRATION_LOCK})
@@ -137,8 +155,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--revision", default="head", help="explicit revision or head/base")
     parser.add_argument("--apply", action="store_true", help="apply using Alembic transaction boundaries")
     parser.add_argument("--allow-data-loss", action="store_true")
-    parser.add_argument("--backup-verified", action="store_true",
-                        help="attest that a separate backup restore drill succeeded")
+    parser.add_argument(
+        "--backup-verified", action="store_true", help="attest that a separate backup restore drill succeeded"
+    )
     args = parser.parse_args(argv)
     if args.operation == "rollback" and args.revision == "head":
         parser.error("rollback requires an explicit ancestor --revision")
@@ -147,8 +166,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.operation == "rollback" and args.apply and not (args.allow_data_loss and args.backup_verified):
         parser.error("rollback needs --allow-data-loss and --backup-verified")
     try:
-        result = asyncio.run(run(args.operation, revision=args.revision, apply=args.apply,
-                                 allow_data_loss=args.allow_data_loss, backup_verified=args.backup_verified))
+        result = asyncio.run(
+            run(
+                args.operation,
+                revision=args.revision,
+                apply=args.apply,
+                allow_data_loss=args.allow_data_loss,
+                backup_verified=args.backup_verified,
+            )
+        )
     except MigrationError as exc:
         print(json.dumps({"error": str(exc)}))
         return 1

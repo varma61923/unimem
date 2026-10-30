@@ -5,6 +5,7 @@ that same entry point instead of maintaining a second UI-only command graph, so
 new command behavior and validation stay in one place. Process-lifecycle commands
 are catalogued for discoverability but cannot be launched inside a running gateway.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,20 +29,75 @@ _TERMINAL_ONLY = frozenset({"daemon", "gateway", "serve", "watch", "evolve", "up
 _GROUPS: dict[str, tuple[str, ...]] = {
     "Capture": ("capture", "import", "trace", "ingest", "source"),
     "Curate": (
-        "block", "community", "consolidate", "distill", "fact", "graph", "lesson",
-        "observation", "ontology", "page", "saga", "taxonomy",
+        "block",
+        "community",
+        "consolidate",
+        "distill",
+        "fact",
+        "graph",
+        "lesson",
+        "observation",
+        "ontology",
+        "page",
+        "saga",
+        "taxonomy",
     ),
     "Measure": (
-        "bench", "bill", "conformance", "experiment", "gate", "impact", "overlap",
-        "pilot", "proof", "prove", "reliability", "retrieval", "signals",
+        "bench",
+        "bill",
+        "conformance",
+        "experiment",
+        "gate",
+        "impact",
+        "overlap",
+        "pilot",
+        "proof",
+        "prove",
+        "reliability",
+        "retrieval",
+        "signals",
     ),
     "Explore": (
-        "agent", "conversation", "defense", "doctor", "dream", "export", "fleet",
-        "function", "index", "jobs", "kb", "memory", "procedural", "query", "recall",
-        "redact", "session_ledger", "sql_query", "viz", "codegraph", "help",
+        "agent",
+        "conversation",
+        "defense",
+        "doctor",
+        "dream",
+        "export",
+        "fleet",
+        "function",
+        "index",
+        "jobs",
+        "kb",
+        "memory",
+        "procedural",
+        "query",
+        "recall",
+        "redact",
+        "session_ledger",
+        "sql_query",
+        "viz",
+        "codegraph",
+        "help",
     ),
-    "Govern": ("policy", "assurance", "compression", "allocate", "lineage", "log", "incident",
-               "promote", "safety", "frontier", "skill", "team", "stream", "erasure", "sentinel", "person"),
+    "Govern": (
+        "policy",
+        "assurance",
+        "compression",
+        "allocate",
+        "lineage",
+        "log",
+        "incident",
+        "promote",
+        "safety",
+        "frontier",
+        "skill",
+        "team",
+        "stream",
+        "erasure",
+        "sentinel",
+        "person",
+    ),
     "Operate": ("account", "commons", "release", "sync", "migrate", "connect", "providers", "market", "tier", "pack"),
     "Setup": ("init", "install", "setup", "up", "integration", "demo"),
     "Runtime": tuple(sorted(_TERMINAL_ONLY)),
@@ -184,28 +240,42 @@ def _authorize(command: str, parsed: argparse.Namespace, *, allow_approval: bool
     handler = getattr(fn, "__name__", "")
     module = getattr(fn, "__module__", "")
     if command not in {"init", "install"} and (
-            getattr(parsed, "dest", None) is not None or getattr(parsed, "root", None) is not None):
+        getattr(parsed, "dest", None) is not None or getattr(parsed, "root", None) is not None
+    ):
         raise UICommandError("command arguments cannot override the gateway store root")
     if getattr(parsed, "force", False):
         raise UICommandError("force overrides are terminal-only", status=409, code="command_unavailable")
     if command == "lesson" and handler in _LESSON_REVIEW_HANDLERS:
-        raise UICommandError("lesson review actions require the revision-checked review endpoints or a terminal",
-                             status=409, code="command_unavailable")
+        raise UICommandError(
+            "lesson review actions require the revision-checked review endpoints or a terminal",
+            status=409,
+            code="command_unavailable",
+        )
     if command == "prove" and getattr(parsed, "prove_cmd", "") in {"effect", "verify", "measurements"}:
-        raise UICommandError("private proof witnesses and native verifier enrollment require an operator terminal",
-                             status=409, code="command_unavailable")
-    if command == "person" and (getattr(parsed, "unimem_person", "") in {"present", "holder-key", "consent"}
-                                or getattr(parsed, "file", None)):
-        raise UICommandError("holder keys, consent enrollment and local summary files require an operator terminal",
-                             status=409, code="command_unavailable")
+        raise UICommandError(
+            "private proof witnesses and native verifier enrollment require an operator terminal",
+            status=409,
+            code="command_unavailable",
+        )
+    if command == "person" and (
+        getattr(parsed, "unimem_person", "") in {"present", "holder-key", "consent"} or getattr(parsed, "file", None)
+    ):
+        raise UICommandError(
+            "holder keys, consent enrollment and local summary files require an operator terminal",
+            status=409,
+            code="command_unavailable",
+        )
     # CLI scopes/spaces are caller-controlled routing parameters. They cannot
     # inherit the gateway's container namespace safely through an arbitrary CLI.
     if scope:
         raise UICommandError("scoped requests must use the scoped API endpoints", status=403, code="forbidden")
-    if not allow_approval and (module != f"unimem.commands.{command.replace('-', '_')}_cmd"
-                               or handler not in _READ_ONLY_HANDLERS.get(command, ())):
-        raise UICommandError("this command requires a gateway started with --allow-approval",
-                             status=403, code="approval_disabled")
+    if not allow_approval and (
+        module != f"unimem.commands.{command.replace('-', '_')}_cmd"
+        or handler not in _READ_ONLY_HANDLERS.get(command, ())
+    ):
+        raise UICommandError(
+            "this command requires a gateway started with --allow-approval", status=403, code="approval_disabled"
+        )
 
 
 _COMMAND_LOCK = threading.RLock()
@@ -228,10 +298,14 @@ def catalog() -> list[dict[str, Any]]:
             group=_group_for(name),
             description=_DESCRIPTIONS.get(name, f"Run the UniMem {name} command."),
             runnable=name not in _TERMINAL_ONLY,
-            reason=("Provider configuration is managed from an operator terminal." if name == "providers" else
-                    "Guided workflows require a terminal." if name == "setup" else
-                "This command owns the gateway/process lifecycle and is available from a terminal."
-                if name in _TERMINAL_ONLY else ""
+            reason=(
+                "Provider configuration is managed from an operator terminal."
+                if name == "providers"
+                else "Guided workflows require a terminal."
+                if name == "setup"
+                else "This command owns the gateway/process lifecycle and is available from a terminal."
+                if name in _TERMINAL_ONLY
+                else ""
             ),
             example=tuple(_EXAMPLES.get(name, ())),
         ).to_dict()
@@ -248,23 +322,25 @@ def _validate_args(args: object) -> list[str]:
     # All CLI code resolves the authenticated gateway's root through this env.
     for index, value in enumerate(args):
         option = value.split("=", 1)[0]
-        if option.startswith("--") and len(option) > 2 and any(
-                reserved.startswith(option) for reserved in ("--dest", "--root")):
+        if (
+            option.startswith("--")
+            and len(option) > 2
+            and any(reserved.startswith(option) for reserved in ("--dest", "--root"))
+        ):
             raise UICommandError(f"args[{index}] cannot override the gateway store root")
     return list(args)
 
 
-def run(root: str, command: object, args: object = None, *, allow_approval: bool = False,
-        scope: str = "") -> dict[str, Any]:
+def run(
+    root: str, command: object, args: object = None, *, allow_approval: bool = False, scope: str = ""
+) -> dict[str, Any]:
     """Run one allowlisted CLI command against *root* and capture its output."""
     from unimem.cli import _COMMANDS, build_parser, main
 
     if not isinstance(command, str) or command not in _COMMANDS:
         raise UICommandError("unknown UniMem command")
     if command in _TERMINAL_ONLY:
-        raise UICommandError(
-            f"{command} is terminal-only because it owns the gateway or process lifecycle"
-        )
+        raise UICommandError(f"{command} is terminal-only because it owns the gateway or process lifecycle")
     argv = _validate_args(args)
     command_args = [*argv, "--dest", os.path.abspath(root)] if command in {"init", "install"} else argv
     stdout, stderr = BoundedCapture(), BoundedCapture()

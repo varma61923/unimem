@@ -1,4 +1,5 @@
 """Session context layer: scoped memory blocks, rolling summaries, working-memory assembly, gateway routes."""
+
 from __future__ import annotations
 
 import json
@@ -30,11 +31,28 @@ def root(tmp_path):
 
 def _seed(root: str) -> None:
     with Store(root, "u1") as store:
-        store.add("trip", [
-            {"speaker": "Alice", "text": "I moved to Paris in May and started work at a bakery.", "at": "2024-05-02"},
-            {"speaker": "Bot", "text": "Congratulations on the bakery job in Paris.", "at": "2024-05-02"}])
-        store.add("plan", [{"speaker": "Alice", "text": f"Note {i}: booking the Lisbon train with my sister.",
-                            "at": f"2024-06-{i + 1:02d}"} for i in range(8)])
+        store.add(
+            "trip",
+            [
+                {
+                    "speaker": "Alice",
+                    "text": "I moved to Paris in May and started work at a bakery.",
+                    "at": "2024-05-02",
+                },
+                {"speaker": "Bot", "text": "Congratulations on the bakery job in Paris.", "at": "2024-05-02"},
+            ],
+        )
+        store.add(
+            "plan",
+            [
+                {
+                    "speaker": "Alice",
+                    "text": f"Note {i}: booking the Lisbon train with my sister.",
+                    "at": f"2024-06-{i + 1:02d}",
+                }
+                for i in range(8)
+            ],
+        )
 
 
 # --- scoped memory blocks ------------------------------------------------------------
@@ -63,8 +81,11 @@ def test_resolution_order_is_session_then_agent_then_global(root):
     assert memory_blocks.resolve_block(root, "persona", session="s2", agent="bot").content == "agent"
     assert memory_blocks.resolve_block(root, "persona").content == "global"
     effective = {b.name: (b.content, b.scope) for b in memory_blocks.resolved_blocks(root, session="s1", agent="bot")}
-    assert effective == {"human": ("global human", ""), "persona": ("session", "session:s1"),
-                         "scratch": ("agent scratch", "agent:bot")}
+    assert effective == {
+        "human": ("global human", ""),
+        "persona": ("session", "session:s1"),
+        "scratch": ("agent scratch", "agent:bot"),
+    }
     assert memory_blocks.list_scopes(root) == ["agent:bot", "session:s1"]
     with pytest.raises(memory_blocks.BlockNotFoundError):
         memory_blocks.resolve_block(root, "missing", session="s1")
@@ -86,13 +107,19 @@ def test_scoped_mutations_and_validation(root):
     memory_blocks.set_block(root, "p", "two", scope="session:a_b")
     assert memory_blocks.get_block(root, "p", scope="session:a/b").content == "one"
     assert 'scope="session:a_b"' in memory_blocks.render_memory_blocks(
-        memory_blocks.list_blocks(root, scope="session:a_b"))
+        memory_blocks.list_blocks(root, scope="session:a_b")
+    )
 
 
 def test_block_cli_scope_flags(root):
     def cli(*argv):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "block", *argv, "--dest", root],
-                              capture_output=True, text=True, cwd=REPO, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "block", *argv, "--dest", root],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            check=False,
+        )
 
     assert cli("set", "persona", "Global.").returncode == 0
     assert cli("set", "persona", "Session only.", "--scope", "session:s9").returncode == 0
@@ -119,8 +146,10 @@ def test_rolling_reads_only_new_turns(root, monkeypatch):
     with Store(root, "u1") as store:
         summary_mod.rolling(store, "plan")
         assert summary_mod.rolling(store, "plan")["mode"] == "unchanged"
-        store.add("plan", [{"speaker": "Alice", "text": "The Lisbon train leaves Friday morning at nine sharp.",
-                            "at": "2024-06-20"}])
+        store.add(
+            "plan",
+            [{"speaker": "Alice", "text": "The Lisbon train leaves Friday morning at nine sharp.", "at": "2024-06-20"}],
+        )
         folded = []
         original = summary_mod._fold_extractive
 
@@ -144,8 +173,10 @@ def test_rolling_rebuilds_when_earlier_turns_change(root):
         summary_mod.rolling(store, "plan")
         # Tamper with a covered turn behind the summary's back.
         with store.db:
-            store.db.execute("UPDATE turns SET text='Note 0: the Lisbon trip is cancelled entirely now.' "
-                             "WHERE session='plan' AND idx=0")
+            store.db.execute(
+                "UPDATE turns SET text='Note 0: the Lisbon trip is cancelled entirely now.' "
+                "WHERE session='plan' AND idx=0"
+            )
         out = summary_mod.rolling(store, "plan")
         assert out["mode"] == "full" and out["reason"] == "history-changed"
         # A purged prefix is caught by the cheap tail check as well.
@@ -184,10 +215,12 @@ def test_assemble_labels_sections_dedupes_and_is_deterministic(root):
     memory_blocks.set_block(root, "human", "Alice prefers trains.", scope="agent:bot")
     with Store(root, "u1") as store:
         summary_mod.rolling(store, "plan")
-    first = working_memory.assemble(root, "u1", "plan", "Where did Alice move?", budget=600, recent_turns=3,
-                                    agent="bot")
-    again = working_memory.assemble(root, "u1", "plan", "Where did Alice move?", budget=600, recent_turns=3,
-                                    agent="bot")
+    first = working_memory.assemble(
+        root, "u1", "plan", "Where did Alice move?", budget=600, recent_turns=3, agent="bot"
+    )
+    again = working_memory.assemble(
+        root, "u1", "plan", "Where did Alice move?", budget=600, recent_turns=3, agent="bot"
+    )
     assert first == again
     names = [s["name"] for s in first["sections"]]
     assert names == ["core_blocks", "session_summary", "recent_turns", "evidence"]
@@ -239,17 +272,34 @@ def _call(gw, method, target, body=None, headers=None):
 
 def test_gateway_session_routes(root):
     gw = gateway.Gateway(root, token=TOKEN, durable=False)
-    assert _call(gw, "POST", "/v1/conversation/add", {"space": "u1", "session": "s1", "messages": [
-        {"speaker": "A", "text": "I moved to Oslo in March for a new job.", "at": "2024-03-01"},
-        {"speaker": "B", "text": "Oslo winters are long and dark.", "at": "2024-03-01"}]})[0] == 200
+    assert (
+        _call(
+            gw,
+            "POST",
+            "/v1/conversation/add",
+            {
+                "space": "u1",
+                "session": "s1",
+                "messages": [
+                    {"speaker": "A", "text": "I moved to Oslo in March for a new job.", "at": "2024-03-01"},
+                    {"speaker": "B", "text": "Oslo winters are long and dark.", "at": "2024-03-01"},
+                ],
+            },
+        )[0]
+        == 200
+    )
     status, listing = _call(gw, "GET", "/v1/conversation/sessions?space=u1")
     assert status == 200 and listing["space"] == "u1" and listing["sessions"][0]["turns"] == 2
     status, out = _call(gw, "POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1"})
     assert status == 200 and out["mode"] == "full" and out["space"] == "u1"
     assert _call(gw, "POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1"})[1]["mode"] == "unchanged"
     assert _call(gw, "POST", "/v1/conversation/summarize", {"space": "u1", "session": "s1", "mode": "x"})[0] == 400
-    status, wm = _call(gw, "POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "Where?",
-                                                          "budget": 300, "recent_turns": 1})
+    status, wm = _call(
+        gw,
+        "POST",
+        "/v1/working-memory",
+        {"space": "u1", "session": "s1", "question": "Where?", "budget": 300, "recent_turns": 1},
+    )
     assert status == 200 and wm["space"] == "u1" and len(wm["sections"]) == 4
     assert _call(gw, "POST", "/v1/working-memory", {"space": "nope", "session": "s1", "question": "q"})[0] == 404
 
@@ -258,8 +308,13 @@ def test_gateway_container_scoping_isolates_sessions_and_blocks(root):
     gw = gateway.Gateway(root, token=TOKEN, durable=False)
     tenant_a = {**HEADERS, "X-Container-Tag": "team-a"}
     tenant_b = {**HEADERS, "X-Container-Tag": "team-b"}
-    _call(gw, "POST", "/v1/conversation/add", {"space": "u1", "session": "s1", "messages": [
-        {"speaker": "A", "text": "Team A secret plan for the launch."}]}, headers=tenant_a)
+    _call(
+        gw,
+        "POST",
+        "/v1/conversation/add",
+        {"space": "u1", "session": "s1", "messages": [{"speaker": "A", "text": "Team A secret plan for the launch."}]},
+        headers=tenant_a,
+    )
     status, _ = _call(gw, "GET", "/v1/conversation/sessions?space=u1", headers=tenant_b)
     assert status == 404
     assert _call(gw, "GET", "/v1/conversation/sessions?space=u1", headers=tenant_a)[0] == 200
@@ -269,7 +324,8 @@ def test_gateway_container_scoping_isolates_sessions_and_blocks(root):
         namespace = gw._scoped_space("u1")  # the namespace the gateway derives for team-a
     memory_blocks.set_block(root, "persona", "Team A session persona.", scope=f"session:{namespace}/s1")
     memory_blocks.set_block(root, "persona", "Unscoped session persona.", scope="session:s1")
-    status, wm = _call(gw, "POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "plan"},
-                       headers=tenant_a)
+    status, wm = _call(
+        gw, "POST", "/v1/working-memory", {"space": "u1", "session": "s1", "question": "plan"}, headers=tenant_a
+    )
     assert status == 200
     assert "Team A session persona." in wm["context"] and "Unscoped" not in wm["context"]

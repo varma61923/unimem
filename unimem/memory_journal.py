@@ -45,7 +45,10 @@ def close_connections(root: str | None = None) -> None:
         return
     _INITIALIZED.invalidate((path, stamp.st_dev, stamp.st_ino))
 
-_INITIALIZED = RuntimeCache(max_entries=128, max_bytes=256 * 1024, ttl=600, weigh=lambda key, value: len(repr(key)) + 1)
+
+_INITIALIZED: RuntimeCache[bool] = RuntimeCache(
+    max_entries=128, max_bytes=256 * 1024, ttl=600, weigh=lambda key, value: len(repr(key)) + 1
+)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS record_events(id TEXT, version INTEGER, body TEXT, PRIMARY KEY(id,version));
@@ -132,12 +135,14 @@ class Journal:
             except (OSError, ValueError, PermissionError, RuntimeError, sqlite3.Error) as exc:
                 import logging
 
-                logging.getLogger(__name__).warning("UniMem committed runtime authority metadata awaits recovery: %s",
-                                                    type(exc).__name__)
+                logging.getLogger(__name__).warning(
+                    "UniMem committed runtime authority metadata awaits recovery: %s", type(exc).__name__
+                )
 
     def _delegated(self):
         return capabilities.CURRENT.get() is not None or os.path.isfile(
-            os.path.join(paths.memory_dir(self.root), "capabilities.json"))
+            os.path.join(paths.memory_dir(self.root), "capabilities.json")
+        )
 
     def _runtime_readable(self, record):
         from unimem import capability_io, policy_io, policy_relations
@@ -166,8 +171,9 @@ class Journal:
         try:
             with _jsonl.locked(self.path + ".authority"):
                 with self.connect() as db:
-                    rows = db.execute("SELECT sequence,body FROM authority_outbox "
-                                      "ORDER BY sequence LIMIT 10000").fetchall()
+                    rows = db.execute(
+                        "SELECT sequence,body FROM authority_outbox ORDER BY sequence LIMIT 10000"
+                    ).fetchall()
                 for sequence, body in rows:
                     lineage.commit_prepared(self.root, json.loads(body))
                     with self.connect(write=True) as db:
@@ -190,8 +196,13 @@ class Journal:
         if streaming:
             if db.execute("SELECT count(*) FROM change_outbox").fetchone()[0] >= 10000:
                 raise RuntimeError("UniMem runtime change outbox requires recovery")
-            body = {"kind": kind, "target": reference, "scopes": capability_io.scope_labels(scope),
-                    "namespace": "records", "revision": revision}
+            body = {
+                "kind": kind,
+                "target": reference,
+                "scopes": capability_io.scope_labels(scope),
+                "namespace": "records",
+                "revision": revision,
+            }
             db.execute("INSERT INTO change_outbox VALUES(?,?)", (uuid.uuid4().hex, fp.wire(body).decode()))
 
     def drain_changes(self) -> None:
@@ -222,16 +233,22 @@ class Journal:
                 record = self.current(row[0], scope=scope)
                 if record is None:
                     return None
-                return {"id": reference, "text": json.dumps(record.payload, ensure_ascii=False, sort_keys=True),
-                        "revision": str(record.version), "content_digest": fp.digest(record.to_dict()),
-                        "scopes": capability_io.scope_labels(record.scope),
-                        "namespace": "records", "memory_class": record.kind}
+                return {
+                    "id": reference,
+                    "text": json.dumps(record.payload, ensure_ascii=False, sort_keys=True),
+                    "revision": str(record.version),
+                    "content_digest": fp.digest(record.to_dict()),
+                    "scopes": capability_io.scope_labels(record.scope),
+                    "namespace": "records",
+                    "memory_class": record.kind,
+                }
             capture = db.execute("SELECT session,event,body,scope FROM captures WHERE id=?", (row[0],)).fetchone()
             if capture is None:
                 return None
             actual = json.loads(capture[3])
-            if (not all(scope.get(key) == value for key, value in actual.items() if key != "labels")
-                    or not set(actual.get("labels", [])) <= set(scope.get("labels", []))):
+            if not all(scope.get(key) == value for key, value in actual.items() if key != "labels") or not set(
+                actual.get("labels", [])
+            ) <= set(scope.get("labels", [])):
                 return None
             body = capability_io.capture_descriptor(row[0], capture[0], capture[1], json.loads(capture[2]), actual)
             from unimem import policy_io
@@ -244,9 +261,15 @@ class Journal:
                 return None
             if not capability_io.permits(self.root, body, namespace="records"):
                 return None
-            return {"id": reference, "text": json.dumps(body["payload"], ensure_ascii=False, sort_keys=True),
-                    "revision": fp.digest(body), "content_digest": fp.digest(body), "scopes": body["scopes"],
-                    "namespace": "records", "memory_class": "capture"}
+            return {
+                "id": reference,
+                "text": json.dumps(body["payload"], ensure_ascii=False, sort_keys=True),
+                "revision": fp.digest(body),
+                "content_digest": fp.digest(body),
+                "scopes": body["scopes"],
+                "namespace": "records",
+                "memory_class": "capture",
+            }
 
     def _delegated_search(self, query, *, scope, kinds, statuses, limit, at, always):
         from unimem import capability_io
@@ -256,8 +279,10 @@ class Journal:
         fp.count(limit, 1, 1000)
         if not statuses:
             return []
-        clauses = ["json_extract(body,'$.is_latest')=1",
-                   "json_extract(body,'$.status') IN (SELECT value FROM json_each(?))"]
+        clauses = [
+            "json_extract(body,'$.is_latest')=1",
+            "json_extract(body,'$.status') IN (SELECT value FROM json_each(?))",
+        ]
         parameters = [json.dumps(list(statuses))]
         if kinds:
             clauses.append("kind IN (SELECT value FROM json_each(?))")
@@ -266,8 +291,10 @@ class Journal:
             field = "json_extract(body,'$.scope." + dimension + "')"
             clauses.append("(" + field + " IS NULL OR " + field + "=?)")
             parameters.append(scope.get(dimension))
-        clauses.append("NOT EXISTS (SELECT 1 FROM json_each(json_extract(body,'$.scope.labels')) "
-                       "WHERE value NOT IN (SELECT value FROM json_each(?)))")
+        clauses.append(
+            "NOT EXISTS (SELECT 1 FROM json_each(json_extract(body,'$.scope.labels')) "
+            "WHERE value NOT IN (SELECT value FROM json_each(?)))"
+        )
         parameters.append(json.dumps(scope.get("labels", [])))
         value = capability_io.current(self.root)
         if value is not None:
@@ -283,23 +310,32 @@ class Journal:
                 field = "json_extract(body,'$.scope." + dimension + "')"
                 clauses.append("(" + field + " IS NULL OR " + field + "=?)")
                 parameters.append(ceiling.get(dimension))
-            clauses.append("NOT EXISTS (SELECT 1 FROM json_each(json_extract(body,'$.scope.labels')) "
-                           "WHERE value NOT IN (SELECT value FROM json_each(?)))")
+            clauses.append(
+                "NOT EXISTS (SELECT 1 FROM json_each(json_extract(body,'$.scope.labels')) "
+                "WHERE value NOT IN (SELECT value FROM json_each(?)))"
+            )
             parameters.append(json.dumps(ceiling.get("labels", [])))
         if always:
-            clauses.append("(kind='directive' OR (kind='profile' AND json_extract(body,'$.payload.critical')=1) "
-                           "OR (kind='lesson' AND json_extract(body,'$.payload.lesson_kind')='directive'))")
+            clauses.append(
+                "(kind='directive' OR (kind='profile' AND json_extract(body,'$.payload.critical')=1) "
+                "OR (kind='lesson' AND json_extract(body,'$.payload.lesson_kind')='directive'))"
+            )
         with self.connect() as db:
             db.execute("BEGIN")  # Keep memoized proofs on one canonical revision.
-            rows = db.execute("SELECT body FROM records WHERE " + " AND ".join(clauses) +  # nosec B608
-                              " ORDER BY id LIMIT 2001", parameters).fetchall()
+            rows = db.execute(
+                "SELECT body FROM records WHERE "
+                + " AND ".join(clauses)  # nosec B608
+                + " ORDER BY id LIMIT 2001",
+                parameters,
+            ).fetchall()
             fp.count(len(rows), 0, 2000, "UniMem scoped runtime search namespace")
             admitted = []
             grounding = GroundingState()
             for row in rows:
                 record = MemoryRecord(**json.loads(row[0]))
-                if (visible(record, scope, statuses=statuses, at=at)
-                        and self._grounded(db, record, scope, statuses=statuses, at=at, grounding=grounding)):
+                if visible(record, scope, statuses=statuses, at=at) and self._grounded(
+                    db, record, scope, statuses=statuses, at=at, grounding=grounding
+                ):
                     admitted.append(record)
         tokens = list(dict.fromkeys(terms(query)))[:32]
         if not tokens:
@@ -321,13 +357,19 @@ class Journal:
             if capture is None:
                 raise ValueError("record not found")
             actual = json.loads(capture[2])
-            descriptor = capability_io.capture_descriptor(identity, capture[3], capture[0],
-                                                         json.loads(capture[1]), actual)
+            descriptor = capability_io.capture_descriptor(
+                identity, capture[3], capture[0], json.loads(capture[1]), actual
+            )
         required = memory_control.REQUIRED_PRINCIPAL_SCOPE.get()
-        if (scope is None or exact_scope and actual != scope
-                or not all(scope.get(key) == value for key, value in actual.items() if key != "labels")
-                or not set(actual.get("labels", [])) <= set(scope.get("labels", []))
-                or required and actual.get("agent") != required.partition(":")[2]):
+        if (
+            scope is None
+            or exact_scope
+            and actual != scope
+            or not all(scope.get(key) == value for key, value in actual.items() if key != "labels")
+            or not set(actual.get("labels", [])) <= set(scope.get("labels", []))
+            or required
+            and actual.get("agent") != required.partition(":")[2]
+        ):
             raise PermissionError("UniMem delegated erasure is outside authenticated ownership scope")
         capability_io.assert_forget(self.root, descriptor, namespace="records")
 
@@ -389,8 +431,14 @@ class Journal:
             "INSERT INTO records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body",
             (record.id, record.kind, body),
         )
-        self._stage_change(db, "record", record.id, record.scope, str(record.version),
-                           "assert" if record.status == "active" else "retract")
+        self._stage_change(
+            db,
+            "record",
+            record.id,
+            record.scope,
+            str(record.version),
+            "assert" if record.status == "active" else "retract",
+        )
         db.execute("DELETE FROM record_fts WHERE id=?", (record.id,))
         db.execute("INSERT INTO record_fts VALUES(?,?)", (record.id, json.dumps(record.payload, ensure_ascii=False)))
         if record.kind == "fact":
@@ -428,8 +476,9 @@ class Journal:
         if self._delegated():
             from unimem import capability_io
 
-            if not capability_io.permits(self.root, capability_io.runtime_descriptor(observation),
-                                         namespace="records", operation="write"):
+            if not capability_io.permits(
+                self.root, capability_io.runtime_descriptor(observation), namespace="records", operation="write"
+            ):
                 return
         self._put(db, observation)
 
@@ -437,8 +486,9 @@ class Journal:
         self._drain_authority()
         with self.connect() as db:
             rows = db.execute("SELECT body FROM record_events WHERE id=? ORDER BY version", (identity,)).fetchall()
-        records = [replace(MemoryRecord(**json.loads(row[0])), is_latest=i == len(rows) - 1)
-                   for i, row in enumerate(rows)]
+        records = [
+            replace(MemoryRecord(**json.loads(row[0])), is_latest=i == len(rows) - 1) for i, row in enumerate(rows)
+        ]
         return [record for record in records if self._runtime_readable(record)]
 
     def latest(self, identity: str) -> MemoryRecord | None:
@@ -468,8 +518,16 @@ class Journal:
         cached = grounding.enter(record.id, seen)
         if cached is not None:
             return cached
-        eligible = self._grounded_record(db, record, scope, statuses=statuses, at=at,
-                                         seen=seen | {record.id}, delegated=delegated, grounding=grounding)
+        eligible = self._grounded_record(
+            db,
+            record,
+            scope,
+            statuses=statuses,
+            at=at,
+            seen=seen | {record.id},
+            delegated=delegated,
+            grounding=grounding,
+        )
         return grounding.remember(record.id, seen, eligible)
 
     def _grounded_record(self, db, record, scope, *, statuses, at, seen, delegated, grounding):
@@ -478,22 +536,30 @@ class Journal:
         from unimem import capability_io, policy_io, policy_relations, purpose, subject_policy
 
         delegated = self._delegated() if delegated is None else delegated
-        if (delegated or policy_io.enabled(self.root) or purpose.enabled(self.root) or subject_policy.enabled(self.root)
-                or policy_relations.enabled(self.root, "records")):
+        if (
+            delegated
+            or policy_io.enabled(self.root)
+            or purpose.enabled(self.root)
+            or subject_policy.enabled(self.root)
+            or policy_relations.enabled(self.root, "records")
+        ):
             for identity in record.relations.get("caused_by", []):
-                capture = db.execute("SELECT session,event,body,scope FROM captures WHERE id=?",
-                                     (identity,)).fetchone()
+                capture = db.execute("SELECT session,event,body,scope FROM captures WHERE id=?", (identity,)).fetchone()
                 if capture is None or json.loads(capture[3]) != record.scope:
                     return False
-                descriptor = capability_io.capture_descriptor(identity, capture[0], capture[1], json.loads(capture[2]),
-                                                              record.scope)
+                descriptor = capability_io.capture_descriptor(
+                    identity, capture[0], capture[1], json.loads(capture[2]), record.scope
+                )
                 if not policy_io.permits(self.root, descriptor):
                     return False
                 if identity not in policy_relations.authorized_ids(self.root, [identity], "records"):
                     return False
-                if delegated and (not capability_io.permits(self.root, descriptor, namespace="records")
-                        or capability_io.quarantined(self.root, capability_io.runtime_identity(
-                            self.root, identity, capture=True))):
+                if delegated and (
+                    not capability_io.permits(self.root, descriptor, namespace="records")
+                    or capability_io.quarantined(
+                        self.root, capability_io.runtime_identity(self.root, identity, capture=True)
+                    )
+                ):
                     return False
         if record.provenance.get("code_evidence"):
             from unimem.record_visibility import code_evidence_current
@@ -511,7 +577,13 @@ class Journal:
             if versions is not None and (not isinstance(versions, dict) or versions.get(source) != parent.version):
                 return False
             if not visible(parent, scope, statuses=("active",), at=at) or not self._grounded(
-                db, parent, scope, statuses=statuses, at=at, seen=seen, grounding=grounding,
+                db,
+                parent,
+                scope,
+                statuses=statuses,
+                at=at,
+                seen=seen,
+                grounding=grounding,
                 delegated=delegated,
             ):
                 return False
@@ -528,17 +600,22 @@ class Journal:
             return []
         from unimem import policy_io, policy_relations, purpose, subject_policy
 
-        if (self._delegated() or policy_io.enabled(self.root) or purpose.enabled(self.root)
-                or subject_policy.enabled(self.root)
-                or policy_relations.enabled(self.root, "records")):
+        if (
+            self._delegated()
+            or policy_io.enabled(self.root)
+            or purpose.enabled(self.root)
+            or subject_policy.enabled(self.root)
+            or policy_relations.enabled(self.root, "records")
+        ):
             with policy_relations.admission(self.root, "records"):
-                return self._delegated_search(query, scope=scope or {}, kinds=kinds, statuses=statuses,
-                                              limit=limit, at=at, always=always)
+                return self._delegated_search(
+                    query, scope=scope or {}, kinds=kinds, statuses=statuses, limit=limit, at=at, always=always
+                )
         tokens = list(dict.fromkeys(terms(query)))[:32]
         with self.connect() as db:
             db.execute("BEGIN")
             clauses = ["json_extract(r.body,'$.is_latest')=1"]
-            parameters = []
+            parameters: list[str | None] = []
             if statuses:
                 clauses.append("json_extract(r.body,'$.status') IN (SELECT value FROM json_each(?))")
                 parameters.append(json.dumps(list(statuses)))
@@ -554,7 +631,8 @@ class Journal:
             if always:
                 clauses.append(
                     "(r.kind='directive' OR (r.kind='profile' AND json_extract(r.body,'$.payload.critical')=1) "
-                               "OR (r.kind='lesson' AND json_extract(r.body,'$.payload.lesson_kind')='directive'))")
+                    "OR (r.kind='lesson' AND json_extract(r.body,'$.payload.lesson_kind')='directive'))"
+                )
             source = "records r"
             order = "r.id"
             if tokens:
@@ -564,15 +642,23 @@ class Journal:
                 parameters.append(expression)
                 order = "bm25(record_fts)"
             # Identifiers and predicates above are fixed internal literals; every caller value is bound.
-            rows = db.execute("SELECT r.body FROM " + source + " WHERE " + " AND ".join(clauses) +  # nosec B608
-                              " ORDER BY " + order, parameters)
+            rows = db.execute(
+                "SELECT r.body FROM "  # nosec B608
+                + source
+                + " WHERE "
+                + " AND ".join(clauses)
+                + " ORDER BY "
+                + order,
+                parameters,
+            )
             result = []
             grounding = GroundingState()
             for row in rows:
                 record = MemoryRecord(**json.loads(row[0]))
                 if (not kinds or record.kind in kinds) and visible(record, scope or {}, statuses=statuses, at=at):
-                    if not self._grounded(db, record, scope or {}, statuses=statuses, at=at, delegated=False,
-                                          grounding=grounding):
+                    if not self._grounded(
+                        db, record, scope or {}, statuses=statuses, at=at, delegated=False, grounding=grounding
+                    ):
                         continue
                     result.append(record)
                     if len(result) >= limit:
@@ -593,8 +679,11 @@ class Journal:
             labels = capability_io.inherit_labels(self.root, capability_io.scope_labels(scope))
             if set(labels) != set(capability_io.scope_labels(scope)):
                 scope = scope_from_labels(labels)
-            capability_io.before_write(self.root, capability_io.capture_descriptor(identity, session, event,
-                                                                                   payload, scope), namespace="records")
+            capability_io.before_write(
+                self.root,
+                capability_io.capture_descriptor(identity, session, event, payload, scope),
+                namespace="records",
+            )
         from unimem import capability_io, policy_io
 
         policy_io.assert_write(self.root, capability_io.capture_descriptor(identity, session, event, payload, scope))
@@ -620,8 +709,9 @@ class Journal:
                 if capabilities.CURRENT.get() is not None:
                     from unimem import capability_io
 
-                    self._queue_authority(db, capability_io.capture_attest(self.root, identity, session, event,
-                                                                           payload, scope))
+                    self._queue_authority(
+                        db, capability_io.capture_attest(self.root, identity, session, event, payload, scope)
+                    )
                 self._stage_change(db, "capture", identity, scope, str(row[0]), "assert")
             return {"id": identity, "sequence": row[0], "event": row[2], "payload": json.loads(row[3]), "scope": scope}
 
@@ -639,8 +729,12 @@ class Journal:
         descriptor = capability_io.capture_descriptor("scope-check", session, "buffer", {}, scope)
         if not policy_io.permits(self.root, descriptor):
             return []
-        if (self._delegated() or policy_relations.enabled(self.root, "records")
-                or purpose.enabled(self.root) or subject_policy.enabled(self.root)):
+        if (
+            self._delegated()
+            or policy_relations.enabled(self.root, "records")
+            or purpose.enabled(self.root)
+            or subject_policy.enabled(self.root)
+        ):
             from unimem import capability_io
             from unimem import frontier_protocol as fp
 
@@ -649,17 +743,24 @@ class Journal:
             if not capability_io.permits(self.root, descriptor, namespace="records"):
                 return []
             with self.connect() as db:
-                rows = db.execute("SELECT sequence,id,event,body FROM captures WHERE session=? AND scope=? "
-                                  "AND sequence>? ORDER BY sequence LIMIT 2001",
-                                  (session, json.dumps(scope, sort_keys=True), through)).fetchall()
+                rows = db.execute(
+                    "SELECT sequence,id,event,body FROM captures WHERE session=? AND scope=? "
+                    "AND sequence>? ORDER BY sequence LIMIT 2001",
+                    (session, json.dumps(scope, sort_keys=True), through),
+                ).fetchall()
             fp.count(len(rows), 0, 2000, "UniMem scoped capture buffer namespace")
             allowed = policy_relations.authorized_ids(self.root, [row[1] for row in rows], "records")
-            return [{"sequence": row[0], "id": row[1], "event": row[2], "payload": json.loads(row[3])}
-                    for row in rows if row[1] in allowed
-                    and policy_io.permits(self.root, capability_io.capture_descriptor(
-                        row[1], session, row[2], json.loads(row[3]), scope))
-                    and not capability_io.quarantined(self.root, capability_io.runtime_identity(
-                        self.root, row[1], capture=True))][:limit]
+            return [
+                {"sequence": row[0], "id": row[1], "event": row[2], "payload": json.loads(row[3])}
+                for row in rows
+                if row[1] in allowed
+                and policy_io.permits(
+                    self.root, capability_io.capture_descriptor(row[1], session, row[2], json.loads(row[3]), scope)
+                )
+                and not capability_io.quarantined(
+                    self.root, capability_io.runtime_identity(self.root, row[1], capture=True)
+                )
+            ][:limit]
         with self.connect() as db:
             return [
                 {"sequence": row[0], "id": row[1], "event": row[2], "payload": json.loads(row[3])}
@@ -875,26 +976,52 @@ class Journal:
             record = MemoryRecord(**body)
             try:
                 result.append(
-                    self.forget(record.id, reason=record.payload["forget_reason"], expected_version=record.version,
-                                _expected_digest=digest(body))
+                    self.forget(
+                        record.id,
+                        reason=record.payload["forget_reason"],
+                        expected_version=record.version,
+                        _expected_digest=digest(body),
+                    )
                 )
             except ValueError:
                 continue
         return result
 
-    def forget(self, identity: str, *, reason: str, expected_version: int | None = None,
-               scope: dict | None = None, exact_scope: bool = False, _authorized_cascade: bool = False,
-               _expected_digest: str | None = None) -> dict:
+    def forget(
+        self,
+        identity: str,
+        *,
+        reason: str,
+        expected_version: int | None = None,
+        scope: dict | None = None,
+        exact_scope: bool = False,
+        _authorized_cascade: bool = False,
+        _expected_digest: str | None = None,
+    ) -> dict:
         from unimem import incident
 
         with incident.protect(self.root):
-            return self._forget(identity, reason=reason, expected_version=expected_version, scope=scope,
-                                exact_scope=exact_scope, _authorized_cascade=_authorized_cascade,
-                                _expected_digest=_expected_digest)
+            return self._forget(
+                identity,
+                reason=reason,
+                expected_version=expected_version,
+                scope=scope,
+                exact_scope=exact_scope,
+                _authorized_cascade=_authorized_cascade,
+                _expected_digest=_expected_digest,
+            )
 
-    def _forget(self, identity: str, *, reason: str, expected_version: int | None = None,
-               scope: dict | None = None, exact_scope: bool = False, _authorized_cascade: bool = False,
-               _expected_digest: str | None = None) -> dict:
+    def _forget(
+        self,
+        identity: str,
+        *,
+        reason: str,
+        expected_version: int | None = None,
+        scope: dict | None = None,
+        exact_scope: bool = False,
+        _authorized_cascade: bool = False,
+        _expected_digest: str | None = None,
+    ) -> dict:
         if not reason.strip():
             raise ValueError("erasure requires a reason")
         with self.connect(write=True) as db:
@@ -913,20 +1040,30 @@ class Journal:
                     try:
                         fact = atomic_fact_from_record(MemoryRecord(**json.loads(mirrored[0])))
                         valid = fact.id == identity and memory_authority.verify(
-                            self.root, fact.origin, memory_authority.fact_record(fact))
+                            self.root, fact.origin, memory_authority.fact_record(fact)
+                        )
                     except (ValueError, TypeError, KeyError):
                         valid = False
                 if not valid:
-                    return {"at": now(), "deleted": [], "unverified_cascade": [identity],
-                            "reason": "no authenticated native mirror of the authorized canonical fact"}
+                    return {
+                        "at": now(),
+                        "deleted": [],
+                        "unverified_cascade": [identity],
+                        "reason": "no authenticated native mirror of the authorized canonical fact",
+                    }
             db.execute("PRAGMA secure_delete=ON")
             if expected_version is not None or _expected_digest is not None:
                 from unimem.frontier_protocol import digest
 
                 current = db.execute("SELECT body FROM records WHERE id=?", (identity,)).fetchone()
                 body = json.loads(current[0]) if current else None
-                if (body is None or expected_version is not None and body["version"] != expected_version
-                        or _expected_digest is not None and digest(body) != _expected_digest):
+                if (
+                    body is None
+                    or expected_version is not None
+                    and body["version"] != expected_version
+                    or _expected_digest is not None
+                    and digest(body) != _expected_digest
+                ):
                     raise ValueError("expiration record version changed")
             direct_capture = db.execute("SELECT scope FROM captures WHERE id=?", (identity,)).fetchone()
             pending, deleted = [identity], set()
@@ -961,9 +1098,12 @@ class Journal:
             if scope is not None and not _authorized_cascade:
                 for _, capture_scope in capture_ids:
                     actual = json.loads(capture_scope)
-                    if (exact_scope and actual != scope
-                            or not all(scope.get(key) == value for key, value in actual.items() if key != "labels")
-                            or not set(actual.get("labels", [])) <= set(scope.get("labels", []))):
+                    if (
+                        exact_scope
+                        and actual != scope
+                        or not all(scope.get(key) == value for key, value in actual.items() if key != "labels")
+                        or not set(actual.get("labels", [])) <= set(scope.get("labels", []))
+                    ):
                         raise PermissionError("UniMem capture erasure would cross the authenticated ownership scope")
             if capabilities.CURRENT.get() is not None:
                 from unimem import capability_io
@@ -971,16 +1111,22 @@ class Journal:
                 # A fact-only leaf must not gain permission to erase a hidden
                 # ancestor capture merely by naming it as its own evidence.
                 for capture_id, capture_scope in capture_ids:
-                    source = db.execute("SELECT session,event,body FROM captures WHERE id=? AND scope=?",
-                                        (capture_id, capture_scope)).fetchone()
+                    source = db.execute(
+                        "SELECT session,event,body FROM captures WHERE id=? AND scope=?", (capture_id, capture_scope)
+                    ).fetchone()
                     if source is not None:
-                        descriptor = capability_io.capture_descriptor(capture_id, source[0], source[1],
-                            json.loads(source[2]), json.loads(capture_scope))
+                        descriptor = capability_io.capture_descriptor(
+                            capture_id, source[0], source[1], json.loads(source[2]), json.loads(capture_scope)
+                        )
                         capability_io.assert_forget(self.root, descriptor, namespace="records")
             native_ids = sorted(deleted | {value[0] for value in capture_ids})
-            references = [row[0] for row in db.execute(
-                "SELECT ref FROM resource_refs WHERE id IN (SELECT value FROM json_each(?))",
-                (json.dumps(native_ids),))]
+            references = [
+                row[0]
+                for row in db.execute(
+                    "SELECT ref FROM resource_refs WHERE id IN (SELECT value FROM json_each(?))",
+                    (json.dumps(native_ids),),
+                )
+            ]
             if references:
                 # Governed references carry the namespace, so a native id that
                 # matches a fact id cannot erase the unrelated fact's artifacts.
@@ -989,16 +1135,19 @@ class Journal:
                 for reference in references:
                     memory_authority.record_forgetting(self.root, reference, forgotten=True)
                 nextwave_store._erase_sources(self.root, references)
-            for capture_id, scope in capture_ids:
-                if db.execute("SELECT 1 FROM captures WHERE id=? AND scope=?", (capture_id, scope)).fetchone():
-                    self._stage_change(db, "capture", capture_id, json.loads(scope), "", "erase")
+            for capture_id, encoded_scope in capture_ids:
+                if db.execute("SELECT 1 FROM captures WHERE id=? AND scope=?", (capture_id, encoded_scope)).fetchone():
+                    self._stage_change(db, "capture", capture_id, json.loads(encoded_scope), "", "erase")
                     if self._delegated():
                         from unimem import capability_io, memory_authority
 
-                        memory_authority.record_forgetting(self.root, capability_io.runtime_identity(
-                            self.root, capture_id, capture=True), forgotten=True)
+                        memory_authority.record_forgetting(
+                            self.root,
+                            capability_io.runtime_identity(self.root, capture_id, capture=True),
+                            forgotten=True,
+                        )
                 db.execute("DELETE FROM resource_refs WHERE id=? AND kind='capture'", (capture_id,))
-                db.execute("DELETE FROM captures WHERE id=? AND scope=?", (capture_id, scope))
+                db.execute("DELETE FROM captures WHERE id=? AND scope=?", (capture_id, encoded_scope))
             for token, body in db.execute("SELECT token,body FROM deliveries").fetchall():
                 receipt = json.loads(body)
                 assigned = {row.get("lesson") for row in receipt["assignments"]}
@@ -1011,8 +1160,9 @@ class Journal:
                     if self._delegated():
                         from unimem import capability_io, memory_authority
 
-                        memory_authority.record_forgetting(self.root, capability_io.runtime_identity(
-                            self.root, current), forgotten=True)
+                        memory_authority.record_forgetting(
+                            self.root, capability_io.runtime_identity(self.root, current), forgotten=True
+                        )
                 db.execute("DELETE FROM resource_refs WHERE id=? AND kind='record'", (current,))
                 for table in ("record_events", "records", "record_fts", "vectors", "injected", "decisions", "studies"):
                     db.execute("DELETE FROM " + table + " WHERE id=?", (current,))  # nosec B608 - fixed table list

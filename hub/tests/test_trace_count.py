@@ -26,10 +26,7 @@ async def orgs(session_factory):
 
 async def _real_count(session_factory, org_id: str) -> int:
     async with session_scope(session_factory) as session:
-        return int(
-            await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org_id))
-            or 0
-        )
+        return int(await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org_id)) or 0)
 
 
 async def _stored_count(session_factory, org_id: str) -> int:
@@ -47,9 +44,17 @@ async def _contribute(session_factory, config, org_id, title, **kw):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text="ctx", solution_text="fix",
-            tags=[], agent_type="code", actor="test", **kw,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text="ctx",
+            solution_text="fix",
+            tags=[],
+            agent_type="code",
+            actor="test",
+            **kw,
         )
 
 
@@ -57,7 +62,13 @@ async def _amend(session_factory, config, org_id, trace_id, **kw):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.amend_trace(
-            session, org_id, trace_id, config, rate_limiter, actor="test", **kw,
+            session,
+            org_id,
+            trace_id,
+            config,
+            rate_limiter,
+            actor="test",
+            **kw,
         )
 
 
@@ -84,9 +95,7 @@ class TestContributeTraceMaintainsTheCounter:
 
 
 class TestAmendTraceMaintainsTheCounter:
-    async def test_amending_increments_by_one_it_is_a_new_row_not_a_mutation(
-        self, session_factory, config, orgs
-    ):
+    async def test_amending_increments_by_one_it_is_a_new_row_not_a_mutation(self, session_factory, config, orgs):
         original = await _contribute(session_factory, config, orgs["customer"], "t1")
         assert await _assert_accurate(session_factory, orgs["customer"]) == 1
 
@@ -95,12 +104,12 @@ class TestAmendTraceMaintainsTheCounter:
 
     async def test_an_amend_idempotent_replay_does_not_double_count(self, session_factory, config, orgs):
         original = await _contribute(session_factory, config, orgs["customer"], "t1")
-        await _amend(session_factory, config, orgs["customer"], original["id"],
-                     title="edit", idempotency_key="ak1")
+        await _amend(session_factory, config, orgs["customer"], original["id"], title="edit", idempotency_key="ak1")
         assert await _assert_accurate(session_factory, orgs["customer"]) == 2
 
-        replay = await _amend(session_factory, config, orgs["customer"], original["id"],
-                              title="edit", idempotency_key="ak1")
+        replay = await _amend(
+            session_factory, config, orgs["customer"], original["id"], title="edit", idempotency_key="ak1"
+        )
         assert replay is not None
         assert await _assert_accurate(session_factory, orgs["customer"]) == 2
 
@@ -138,20 +147,27 @@ class TestDeletionMaintainsTheCounter:
 
 
 class TestReviewKbSubmissionMaintainsTheCounter:
-    async def test_approving_a_submission_increments_the_operator_orgs_count(
-        self, session_factory, config, orgs
-    ):
+    async def test_approving_a_submission_increments_the_operator_orgs_count(self, session_factory, config, orgs):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             submission = await crud.submit_kb_entry(
-                session, orgs["customer"], config, rate_limiter,
-                title="pattern", context_text="ctx", solution_text="fix",
+                session,
+                orgs["customer"],
+                config,
+                rate_limiter,
+                title="pattern",
+                context_text="ctx",
+                solution_text="fix",
             )
         assert await _stored_count(session_factory, orgs["operator"]) == 0
 
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, submission["id"], "approve", orgs["operator"], reviewer="op",
+                session,
+                submission["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
             )
         assert result is not None
         assert await _assert_accurate(session_factory, orgs["operator"]) == 1
@@ -159,15 +175,11 @@ class TestReviewKbSubmissionMaintainsTheCounter:
 
 
 class TestCommonsSeedMaintainsTheCounter:
-    async def test_seeding_n_entries_increments_by_n_in_one_batched_call(
-        self, session_factory, config, orgs, tmp_path
-    ):
+    async def test_seeding_n_entries_increments_by_n_in_one_batched_call(self, session_factory, config, orgs, tmp_path):
         path = tmp_path / "seed.jsonl"
         path.write_text(
             "\n".join(
-                '{"title": "t%d", "context_text": "ctx %d", "solution_text": "fix %d"}'
-                % (i, i, i)
-                for i in range(5)
+                '{"title": "t%d", "context_text": "ctx %d", "solution_text": "fix %d"}' % (i, i, i) for i in range(5)
             )
         )
         ok = await manage.commons_seed(str(path), orgs["operator"], session_factory=session_factory)

@@ -3,6 +3,7 @@
 Opt-in via UNIMEM_LLM_CACHE. Failures degrade to provider calls. No pickle,
 no shared temporary database, no connections retained across threads or forks.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,8 +29,10 @@ DEFAULT_MAX_ENTRIES = 10_000
 DEFAULT_MAX_BYTES = 64 * 1024 * 1024
 DEFAULT_TTL_SECONDS = 86_400.0
 _SCHEMA = "CREATE TABLE IF NOT EXISTS cache (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-_META_SCHEMA = ("CREATE TABLE IF NOT EXISTS cache_meta (key TEXT PRIMARY KEY, created_at REAL NOT NULL, "
-                "size_bytes INTEGER NOT NULL DEFAULT 0)")
+_META_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS cache_meta (key TEXT PRIMARY KEY, created_at REAL NOT NULL, "
+    "size_bytes INTEGER NOT NULL DEFAULT 0)"
+)
 
 
 def default_path() -> str:
@@ -42,19 +45,30 @@ def enabled() -> bool:
 
 
 def cache_key(model: str, prompt: str, *, namespace: str = "") -> str:
-    return hashlib.sha256(json.dumps(["v2", namespace, model, prompt], ensure_ascii=False,
-                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(["v2", namespace, model, prompt], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
-_HOT = RuntimeCache[str](max_entries=256, max_bytes=8 * 1024 * 1024, ttl=300,
-                         weigh=lambda k, v: 512 + len(str(k).encode()) + len(v.encode("utf-8")))
+_HOT = RuntimeCache[str](
+    max_entries=256,
+    max_bytes=8 * 1024 * 1024,
+    ttl=300,
+    weigh=lambda k, v: 512 + len(str(k).encode()) + len(v.encode("utf-8")),
+)
 
 
 class LLMCache:
     """Thread-safe optional cache. Every database connection is explicitly closed."""
 
-    def __init__(self, path: str | None = None, *, ttl: float = DEFAULT_TTL_SECONDS,
-                 max_entries: int = DEFAULT_MAX_ENTRIES, max_bytes: int = DEFAULT_MAX_BYTES) -> None:
+    def __init__(
+        self,
+        path: str | None = None,
+        *,
+        ttl: float = DEFAULT_TTL_SECONDS,
+        max_entries: int = DEFAULT_MAX_ENTRIES,
+        max_bytes: int = DEFAULT_MAX_BYTES,
+    ) -> None:
         if not math.isfinite(ttl) or ttl <= 0 or max_entries < 1 or max_bytes < 1:
             raise ValueError("cache ttl and max_entries must be positive and finite")
         self.path = os.path.abspath(path or _configuration_getenv(ENV_PATH, "") or default_path())
@@ -72,8 +86,11 @@ class LLMCache:
         fd = os.open(self.path, flags, 0o600)
         try:
             info = os.fstat(fd)
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or (hasattr(os, "getuid") and info.st_uid != os.getuid())):
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or (hasattr(os, "getuid") and info.st_uid != os.getuid())
+            ):
                 raise OSError("completion cache must be a regular file owned by this user")
             if hasattr(os, "fchmod"):
                 os.fchmod(fd, 0o600)
@@ -90,8 +107,10 @@ class LLMCache:
                     # Another process may have migrated while we awaited the writer lock.
                     if "size_bytes" not in {row[1] for row in db.execute("PRAGMA table_info(cache_meta)")}:
                         db.execute("ALTER TABLE cache_meta ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0")
-                        db.execute("UPDATE cache_meta SET size_bytes=COALESCE("
-                                   "(SELECT length(CAST(value AS BLOB)) FROM cache WHERE key=cache_meta.key),0)")
+                        db.execute(
+                            "UPDATE cache_meta SET size_bytes=COALESCE("
+                            "(SELECT length(CAST(value AS BLOB)) FROM cache WHERE key=cache_meta.key),0)"
+                        )
                     db.execute("COMMIT")
                 except BaseException:
                     db.execute("ROLLBACK")
@@ -141,12 +160,17 @@ class LLMCache:
                     now = time.time()
                     db.execute("INSERT OR REPLACE INTO cache VALUES (?, ?)", (key, raw))
                     db.execute("INSERT OR REPLACE INTO cache_meta VALUES (?, ?, ?)", (key, now, size))
-                    db.execute("DELETE FROM cache_meta WHERE created_at<=? OR key IN "
-                               "(SELECT key FROM cache_meta ORDER BY created_at DESC, key LIMIT -1 OFFSET ?)",
-                               (now - self.ttl, self.max_entries))
-                    db.execute("DELETE FROM cache_meta WHERE key IN (SELECT key FROM "
-                               "(SELECT key, SUM(size_bytes) OVER (ORDER BY created_at DESC, key) AS retained "
-                               "FROM cache_meta) WHERE retained>?)", (self.max_bytes,))
+                    db.execute(
+                        "DELETE FROM cache_meta WHERE created_at<=? OR key IN "
+                        "(SELECT key FROM cache_meta ORDER BY created_at DESC, key LIMIT -1 OFFSET ?)",
+                        (now - self.ttl, self.max_entries),
+                    )
+                    db.execute(
+                        "DELETE FROM cache_meta WHERE key IN (SELECT key FROM "
+                        "(SELECT key, SUM(size_bytes) OVER (ORDER BY created_at DESC, key) AS retained "
+                        "FROM cache_meta) WHERE retained>?)",
+                        (self.max_bytes,),
+                    )
                     db.execute("DELETE FROM cache WHERE key NOT IN (SELECT key FROM cache_meta)")
                     db.execute("COMMIT")
                 except BaseException:

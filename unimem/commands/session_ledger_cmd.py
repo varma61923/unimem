@@ -1,4 +1,5 @@
 """`unimem session-ledger`: Track per-session cost and tokens with per-model attribution."""
+
 from __future__ import annotations
 
 import argparse
@@ -68,15 +69,11 @@ def run_show(args: argparse.Namespace) -> int:
     if summary["by_model"]:
         print("\n  Attribution by Model:")
         for m, stat in summary["by_model"].items():
-            print(
-                f"    - {m:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}"
-            )
+            print(f"    - {m:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}")
     if summary["by_occasion"]:
         print("\n  Attribution by Occasion:")
         for occ, stat in summary["by_occasion"].items():
-            print(
-                f"    - {occ:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}"
-            )
+            print(f"    - {occ:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}")
     return 0
 
 
@@ -97,21 +94,24 @@ def run_summary(args: argparse.Namespace) -> int:
     if summary["by_model"]:
         print("\n  Spend by Model:")
         for m, stat in summary["by_model"].items():
-            print(
-                f"    - {m:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}"
-            )
+            print(f"    - {m:<18} {stat['calls']} call(s) | {stat['total_tokens']:,} tokens | {_cost_label(stat)}")
     return 0
 
 
 def run_record(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     entry = session_ledger.record_usage(
-        root, args.session_id, args.model, args.prompt_tokens, args.completion_tokens,
-        provider=args.provider, cost_usd=args.cost, occasion=args.occasion,
+        root,
+        args.session_id,
+        args.model,
+        args.prompt_tokens,
+        args.completion_tokens,
+        provider=args.provider,
+        cost_usd=args.cost,
+        occasion=args.occasion,
     )
     print(
         f"[unimem] Recorded {entry.total_tokens:,} tokens "
         f"(${entry.cost_usd:.6f}) for session '{entry.session_id}' [{entry.model}]"
     )
     return 0
-

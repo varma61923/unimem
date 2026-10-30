@@ -1,4 +1,5 @@
 """Many robots, one experiment."""
+
 from __future__ import annotations
 
 import json
@@ -65,9 +66,16 @@ def summarise(root: str) -> StoreSummary:
     assignments, bad_a = _read_jsonl(holdout_io.holdout_log_path(root))
     outcomes, bad_o = _read_jsonl(holdout_io.outcomes_log_path(root))
     return StoreSummary(
-        path=root, salt=config.salt, rate=config.rate, env=gw.env, protected=gw.protected_prefixes,
-        assignments=len(assignments), outcomes=len(outcomes), corrupt=bad_a + bad_o,
-        started=bool(config.started_at))
+        path=root,
+        salt=config.salt,
+        rate=config.rate,
+        env=gw.env,
+        protected=gw.protected_prefixes,
+        assignments=len(assignments),
+        outcomes=len(outcomes),
+        corrupt=bad_a + bad_o,
+        started=bool(config.started_at),
+    )
 
 
 def _assignment_key(row: dict) -> tuple:
@@ -84,20 +92,24 @@ def check(sources: list[str]) -> CheckReport:
         if not other.started or not first.started:
             report.problems.append(
                 f"{other.path if not other.started else first.path} has no experiment started: "
-                "there is no randomization to pool")
+                "there is no randomization to pool"
+            )
             continue
         if other.salt != first.salt:
             report.problems.append(
                 f"{other.path} ran a different randomization (salt {other.salt!r} vs {first.salt!r}); "
                 "adding its log to the others' would pool two experiments. Give every robot the "
-                "same one with `unimem fleet adopt`.")
+                "same one with `unimem fleet adopt`."
+            )
         if abs(other.rate - first.rate) > 1e-9:
             report.problems.append(
-                f"{other.path} held out {other.rate:.0%}, {first.path} {first.rate:.0%}: not one design")
+                f"{other.path} held out {other.rate:.0%}, {first.path} {first.rate:.0%}: not one design"
+            )
         if other.env != first.env:
             report.problems.append(
                 f"{other.path} measures {other.env!r} and {first.path} {first.env!r}; simulation and "
-                "reality are never pooled")
+                "reality are never pooled"
+            )
     arms: dict[tuple, tuple[bool, str]] = {}
     answers: dict[str, tuple[bool, str]] = {}
     seen_lines: set[str] = set()
@@ -112,8 +124,8 @@ def check(sources: list[str]) -> CheckReport:
             prior = arms.get(key)
             if prior is not None and prior[0] != injected:
                 report.conflicts.append(
-                    f"memory {key[0]!r} on occasion {key[1]!r} is in opposite arms in {prior[1]} and "
-                    f"{store.path}")
+                    f"memory {key[0]!r} on occasion {key[1]!r} is in opposite arms in {prior[1]} and {store.path}"
+                )
             else:
                 arms.setdefault(key, (injected, store.path))
         for row in _read_jsonl(holdout_io.outcomes_log_path(store.path))[0]:
@@ -129,8 +141,9 @@ def check(sources: list[str]) -> CheckReport:
             if prior is not None and prior[0] != succeeded:
                 report.conflicts.append(
                     f"occasion {occasion!r} succeeded in {prior[1]} and failed in {store.path}"
-                    if prior[0] else
-                    f"occasion {occasion!r} failed in {prior[1]} and succeeded in {store.path}")
+                    if prior[0]
+                    else f"occasion {occasion!r} failed in {prior[1]} and succeeded in {store.path}"
+                )
             else:
                 answers.setdefault(occasion, (succeeded, store.path))
     return report
@@ -139,18 +152,21 @@ def check(sources: list[str]) -> CheckReport:
 def adopt(source: str, dest: str) -> dict:
     config = holdout_io.load_config(source)
     if not config.started_at:
-        raise FleetError(f"{source} has no experiment started; start one first "
-                         "(`unimem proof start` or `unimem experiment --configure`)")
+        raise FleetError(
+            f"{source} has no experiment started; start one first "
+            "(`unimem proof start` or `unimem experiment --configure`)"
+        )
     log = holdout_io.holdout_log_path(dest)
     if os.path.isfile(log) and os.path.getsize(log) > 0:
-        raise FleetError(f"{dest} already holds assignments; adopting a different randomization "
-                         "under them would pool two experiments")
+        raise FleetError(
+            f"{dest} already holds assignments; adopting a different randomization "
+            "under them would pool two experiments"
+        )
     os.makedirs(paths.memory_dir(dest), exist_ok=True)
     shutil.copyfile(holdout_io.config_path(source), holdout_io.config_path(dest))
     gw = gateway.load_config(source)
     gateway.save_config(dest, gw)
-    return {"salt": config.salt, "rate": config.rate, "env": gw.env,
-            "protected_prefixes": list(gw.protected_prefixes)}
+    return {"salt": config.salt, "rate": config.rate, "env": gw.env, "protected_prefixes": list(gw.protected_prefixes)}
 
 
 def _time_key(row: dict) -> str:
@@ -168,8 +184,7 @@ def merge(sources: list[str], dest: str, *, report: CheckReport | None = None) -
     os.makedirs(paths.memory_dir(dest), exist_ok=True)
 
     totals = {"assignments": 0, "outcomes": 0, "duplicates": report.duplicates, "events": 0}
-    for name, path_of in (("assignments", holdout_io.holdout_log_path),
-                          ("outcomes", holdout_io.outcomes_log_path)):
+    for name, path_of in (("assignments", holdout_io.holdout_log_path), ("outcomes", holdout_io.outcomes_log_path)):
         merged, seen = [], set()
         for src in sources:
             for row in _read_jsonl(path_of(src))[0]:

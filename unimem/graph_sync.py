@@ -25,6 +25,7 @@ It runs on its own: the daemon's consolidation pass and the hook broker call
 `run_if_due`, a cheap check that only syncs when the fact store changed. The
 ``UNIMEM_GRAPH_AUTO=off`` switch turns the automatic runs off;
 ``unimem graph sync`` runs a pass on demand."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -33,7 +34,7 @@ import json
 import os
 import threading
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypedDict
 
 from unimem import paths
 from unimem.configuration import getenv as _configuration_getenv
@@ -102,8 +103,12 @@ def _digest(fact) -> str:
 def _current(fact, now: datetime) -> bool:
     from unimem import hierarchical
 
-    return fact.status == "active" and not fact.forgotten and hierarchical._valid_at(fact, now) and \
-        not (fact.expires_at and fact.expires_at <= now.isoformat())
+    return (
+        fact.status == "active"
+        and not fact.forgotten
+        and hierarchical._valid_at(fact, now)
+        and not (fact.expires_at and fact.expires_at <= now.isoformat())
+    )
 
 
 def fact_node(fact_id: str) -> str:
@@ -151,8 +156,12 @@ def _relations_by_fact(txn) -> dict[str, list]:
     for edge in txn.edges:
         props = edge.properties or {}
         source = props.get("source", "")
-        if edge.invalid_at is None and isinstance(source, str) and source.startswith("fact:") and \
-                str(props.get("extracted_by", "")).startswith("relation_extraction"):
+        if (
+            edge.invalid_at is None
+            and isinstance(source, str)
+            and source.startswith("fact:")
+            and str(props.get("extracted_by", "")).startswith("relation_extraction")
+        ):
             out.setdefault(source, []).append(edge)
     return out
 
@@ -168,16 +177,37 @@ def _close_relations_from(txn, index: dict[str, list], fact_id: str, at: str, re
     return len(edges)
 
 
-def sync(root: str, *, limit: int = DEFAULT_LIMIT, llm=None) -> dict[str, Any]:
+class _SyncReport(TypedDict):
+    facts: int
+    retired: int
+    entities: int
+    new_entities: int
+    mentions: int
+    relations: int
+    closed: int
+    conflicts: int
+    errors: list[str]
+
+
+def sync(root: str, *, limit: int = DEFAULT_LIMIT, llm=None) -> _SyncReport:
     """Project new and changed facts into the graph and close what retired facts produced."""
     from unimem import entities, graph, ontology, ontology_classify, relation_extraction
 
     with _LOCK:
         stamp = _store_stamp(root)
         todo, retired, state = plan(root)
-        todo = todo[:max(1, int(limit))]
-        report = {"facts": len(todo), "retired": len(retired), "entities": 0, "new_entities": 0,
-                  "mentions": 0, "relations": 0, "closed": 0, "conflicts": 0, "errors": []}
+        todo = todo[: max(1, int(limit))]
+        report: _SyncReport = {
+            "facts": len(todo),
+            "retired": len(retired),
+            "entities": 0,
+            "new_entities": 0,
+            "mentions": 0,
+            "relations": 0,
+            "closed": 0,
+            "conflicts": 0,
+            "errors": [],
+        }
         if not todo and not retired:
             state["stamp"] = stamp
             _save_state(root, state)
@@ -185,69 +215,95 @@ def sync(root: str, *, limit: int = DEFAULT_LIMIT, llm=None) -> dict[str, Any]:
             return report
         onto = ontology.load(root)
         exemplars = ontology_classify.Exemplars.from_graph(root)
-        mentions = entities.extract_batch([f.statement for f in todo], onto=onto, use_spacy=False,
-                                          exemplars=exemplars)
+        mentions = entities.extract_batch([f.statement for f in todo], onto=onto, use_spacy=False, exemplars=exemplars)
         triples: list[tuple[Any, list]] = []
         for fact in todo:
             try:
-                found = relation_extraction.extract(fact.statement, onto, llm=llm, exemplars=exemplars)
+                extracted_triples = relation_extraction.extract(fact.statement, onto, llm=llm, exemplars=exemplars)
             except ValueError as exc:
                 report["errors"].append(f"{fact.id}: {exc}")
-                found = []
-            triples.append((fact, [dataclasses.replace(t, valid_at=t.valid_at or fact.valid_from or None)
-                                   for t in found]))
+                extracted_triples = []
+            triples.append(
+                (
+                    fact,
+                    [dataclasses.replace(t, valid_at=t.valid_at or fact.valid_from or None) for t in extracted_triples],
+                )
+            )
         seen: dict[str, str] = state["facts"]
         exclusive = {name for name, rel in onto.relations.items() if rel.exclusive}
         replaced: list[tuple[str, str, str]] = []  # (older fact, newer fact, relation)
         with graph.batch(root) as txn:
             relations = _relations_by_fact(txn)
-            watched = [e for e in txn.edges if e.invalid_at is None and e.relation in exclusive and
-                       str((e.properties or {}).get("source", "")).startswith("fact:")]
+            watched = [
+                e
+                for e in txn.edges
+                if e.invalid_at is None
+                and e.relation in exclusive
+                and str((e.properties or {}).get("source", "")).startswith("fact:")
+            ]
             for fact_id, ended in retired:
                 node = fact_node(fact_id)
                 report["closed"] += _close_edges_from(txn, node, ended, "fact no longer current")
                 report["closed"] += _close_relations_from(txn, relations, fact_id, ended, "fact no longer current")
                 seen.pop(fact_id, None)
-            for fact, found in zip(todo, mentions):
+            for fact, found_mentions in zip(todo, mentions):
                 node = fact_node(fact.id)
                 prov = {"source_path": f"fact:{fact.id}", "run_id": SOURCE, "detail": {"method": "graph_sync"}}
-                graph._put_node(txn, node, "memory", fact.statement[:120],
-                                {"fact_id": fact.id, "scopes": list(fact.scopes or []), "source": SOURCE}, prov)
+                graph._put_node(
+                    txn,
+                    node,
+                    "memory",
+                    fact.statement[:120],
+                    {"fact_id": fact.id, "scopes": list(fact.scopes or []), "source": SOURCE},
+                    prov,
+                )
                 keep = set()
-                for m in found:
+                for m in found_mentions:
                     existing = txn.nodes.get(m.key)
                     if existing is None:
                         report["new_entities"] += 1
-                    aliases = sorted({*((existing.properties or {}).get("aliases", []) if existing else []),
-                                      m.name})[:20]
+                    aliases = sorted({*((existing.properties or {}).get("aliases", []) if existing else []), m.name})[
+                        :20
+                    ]
                     count = int(((existing.properties or {}).get("mentions", 0) if existing else 0) or 0)
-                    graph._put_node(txn, m.key, m.type, m.name if existing is None else "",
-                                    {"aliases": aliases, "mentions": count + 1}, prov if existing is None else None)
+                    graph._put_node(
+                        txn,
+                        m.key,
+                        m.type,
+                        m.name if existing is None else "",
+                        {"aliases": aliases, "mentions": count + 1},
+                        prov if existing is None else None,
+                    )
                     keep.add(m.key)
                     if not any(e.invalid_at is None for e in txn.by_key.get((node, m.key, "mentions"), [])):
-                        graph.add_edge(root, node, m.key, "mentions", valid_at=fact.valid_from or None,
-                                       properties={"extracted_by": m.source, "source": f"fact:{fact.id}"},
-                                       provenance=prov)
+                        graph.add_edge(
+                            root,
+                            node,
+                            m.key,
+                            "mentions",
+                            valid_at=fact.valid_from or None,
+                            properties={"extracted_by": m.source, "source": f"fact:{fact.id}"},
+                            provenance=prov,
+                        )
                         report["mentions"] += 1
                 report["entities"] += len(keep)
                 # A changed statement no longer naming an entity closes that link.
                 report["closed"] += _close_edges_from(txn, node, graph._now(), "statement changed", keep=keep)
             for fact, found in triples:
                 if seen.get(fact.id) is not None:
-                    report["closed"] += _close_relations_from(txn, relations, fact.id, graph._now(),
-                                                              "statement changed")
+                    report["closed"] += _close_relations_from(
+                        txn, relations, fact.id, graph._now(), "statement changed"
+                    )
                 if found:
                     before = len(txn.edges)
-                    written = relation_extraction.write_triples(root, found, source=f"fact:{fact.id}",
-                                                                run_id=SOURCE)
+                    written = relation_extraction.write_triples(root, found, source=f"fact:{fact.id}", run_id=SOURCE)
                     report["relations"] += written["edges_written"]
                     report["errors"] += written["errors"]
                     if any(t.relation in exclusive for t in found):
                         for edge in watched:
                             reason = str((edge.properties or {}).get("closed_reason", ""))
                             older = str(edge.properties.get("source", ""))[5:]
-                            if edge.invalid_at is not None and reason.startswith("superseded by") and \
-                                    older != fact.id:
+                            if edge.invalid_at is not None and reason.startswith("superseded by") and older != fact.id:
                                 replaced.append((older, fact.id, edge.relation))
                         watched = [e for e in watched if e.invalid_at is None]
                     watched += [e for e in txn.edges[before:] if e.invalid_at is None and e.relation in exclusive]
@@ -285,8 +341,11 @@ def _record_exclusive(root: str, replaced: list[tuple[str, str, str]], errors: l
                 action = "superseded"
             except (ValueError, KeyError) as exc:  # the temporal guard refused: different windows
                 reason = f"{reason}; not superseded: {exc}"
-        out.append(fact_conflicts.Conflict(older, newer, "exclusive", facts[older].statement,
-                                           facts[newer].statement, now, action, reason))
+        out.append(
+            fact_conflicts.Conflict(
+                older, newer, "exclusive", facts[older].statement, facts[newer].statement, now, action, reason
+            )
+        )
     try:
         fact_conflicts.record(root, out)
     except OSError as exc:
@@ -315,6 +374,6 @@ def run_if_due(root: str, *, limit: int = DEFAULT_LIMIT) -> dict[str, Any] | Non
     try:
         if not enabled() or not due(root):
             return None
-        return sync(root, limit=limit)
+        return dict(sync(root, limit=limit))
     except Exception as exc:  # noqa: BLE001 - background maintenance must not break its caller
         return {"error": str(exc)}

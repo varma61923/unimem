@@ -1,4 +1,5 @@
 """Snapshot consistency checks against real pooled PostgreSQL and pgvector."""
+
 from __future__ import annotations
 
 import asyncio
@@ -18,15 +19,17 @@ from unimem.vector_store import VectorRecord
 
 
 @asynccontextmanager
-async def backend(*, scope: tuple[str, str, str, int] | None = None,
-                  approximate: bool = False) -> AsyncIterator[tuple[PostgresSnapshots, Any]]:
+async def backend(
+    *, scope: tuple[str, str, str, int] | None = None, approximate: bool = False
+) -> AsyncIterator[tuple[PostgresSnapshots, Any]]:
     dsn = os.environ.get("UNIMEM_TEST_PGVECTOR_DSN")
     if not dsn:
         pytest.skip("set UNIMEM_TEST_PGVECTOR_DSN to exercise real pgvector snapshots")
     asyncpg = importlib.import_module("asyncpg")
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=8)
-    snapshots = PostgresSnapshots(pool, scope or ("snapshot-test-" + uuid.uuid4().hex, "memory", "embedding", 3),
-                                  approximate=approximate)
+    snapshots = PostgresSnapshots(
+        pool, scope or ("snapshot-test-" + uuid.uuid4().hex, "memory", "embedding", 3), approximate=approximate
+    )
     initialized = False
     try:
         await snapshots.initialize()
@@ -36,16 +39,31 @@ async def backend(*, scope: tuple[str, str, str, int] | None = None,
         try:
             if initialized:
                 async with pool.acquire() as db, db.transaction():
-                    for table in ("unimem_vector_stages", "unimem_vector_readers", "unimem_vector_builds",
-                                  "unimem_vector_snapshots", "unimem_vector_versions", "unimem_vector_heads"):
-                        await db.execute(f"DELETE FROM {table} WHERE tenant=$1 AND namespace=$2 "
-                                         "AND model=$3 AND dimension=$4", *snapshots._scope)
+                    for table in (
+                        "unimem_vector_stages",
+                        "unimem_vector_readers",
+                        "unimem_vector_builds",
+                        "unimem_vector_snapshots",
+                        "unimem_vector_versions",
+                        "unimem_vector_heads",
+                    ):
+                        await db.execute(
+                            f"DELETE FROM {table} WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                            *snapshots._scope,
+                        )
         finally:
             await pool.close()
 
 
-async def publish(snapshots: PostgresSnapshots, revision: int, generation: str,
-                  records: list[VectorRecord], *, deleted: tuple[str, ...] = (), full: bool = False) -> None:
+async def publish(
+    snapshots: PostgresSnapshots,
+    revision: int,
+    generation: str,
+    records: list[VectorRecord],
+    *,
+    deleted: tuple[str, ...] = (),
+    full: bool = False,
+) -> None:
     lease = await snapshots.begin(revision, generation, full=full)
     assert lease is not None
     await snapshots.stage(lease, records, deleted)
@@ -55,8 +73,9 @@ async def publish(snapshots: PostgresSnapshots, revision: int, generation: str,
 def test_hard_erasure_overrides_old_pins_and_revokes_builders() -> None:
     async def run() -> None:
         async with backend() as (snapshots, pool):
-            await publish(snapshots, 0, "first", [VectorRecord("a", [1, 0, 0]),
-                                                VectorRecord("b", [0, 1, 0])], full=True)
+            await publish(
+                snapshots, 0, "first", [VectorRecord("a", [1, 0, 0]), VectorRecord("b", [0, 1, 0])], full=True
+            )
             old = await snapshots.pin("first")
             await publish(snapshots, 1, "next", [VectorRecord("a", [-1, 0, 0])])
             pending = await snapshots.begin(2, "pending")
@@ -69,10 +88,17 @@ def test_hard_erasure_overrides_old_pins_and_revokes_builders() -> None:
                 await snapshots.stage(pending, [VectorRecord("a", [1, 0, 0])])
             async with pool.acquire() as db:
                 for table in ("unimem_vector_versions", "unimem_vector_stages"):
-                    assert await db.fetchval(f"SELECT count(*) FROM {table} WHERE tenant=$1 AND namespace=$2 "
-                                             "AND model=$3 AND dimension=$4 AND key='a'", *snapshots._scope) == 0
+                    assert (
+                        await db.fetchval(
+                            f"SELECT count(*) FROM {table} WHERE tenant=$1 AND namespace=$2 "
+                            "AND model=$3 AND dimension=$4 AND key='a'",
+                            *snapshots._scope,
+                        )
+                        == 0
+                    )
             assert await snapshots.erase(["a"]) == 0
             await snapshots.release(old)
+
     asyncio.run(run())
 
 
@@ -98,6 +124,7 @@ def test_private_staging_and_stable_readers_across_incremental_publication(appro
             with pytest.raises(SnapshotConflict):
                 await snapshots.pin("first")
             assert (await snapshots.search(current, [1, 0, 0]))[0].key == "a"
+
     asyncio.run(run())
 
 
@@ -109,8 +136,10 @@ def test_independent_builds_same_base_have_one_atomic_winner() -> None:
             first, second = await asyncio.gather(snapshots.begin(1, "left"), other.begin(2, "right"))
             assert first is not None and second is not None
             assert first.fence != second.fence and first.base_revision == second.base_revision == -1
-            await asyncio.gather(snapshots.stage(first, [VectorRecord("left", [1, 0, 0])]),
-                                 other.stage(second, [VectorRecord("right", [0, 1, 0])]))
+            await asyncio.gather(
+                snapshots.stage(first, [VectorRecord("left", [1, 0, 0])]),
+                other.stage(second, [VectorRecord("right", [0, 1, 0])]),
+            )
             winners = await asyncio.gather(snapshots.publish(first), other.publish(second))
             assert sorted(winners) == [False, True]
             head = await snapshots.head()
@@ -119,6 +148,7 @@ def test_independent_builds_same_base_have_one_atomic_winner() -> None:
             await snapshots.abort(first)
             await other.abort(second)
             assert not await snapshots.publish(first)
+
     asyncio.run(run())
 
 
@@ -129,9 +159,14 @@ def test_full_publication_checksum_reuse_and_partial_replacement() -> None:
             old = await snapshots.pin("zero")
             await publish(snapshots, 1, "one", [VectorRecord("a", [2, 0, 0])], full=True)
             async with pool.acquire() as db:
-                assert await db.fetchval("SELECT count(*) FROM unimem_vector_versions "
-                                         "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
-                                         *snapshots._scope) == 2
+                assert (
+                    await db.fetchval(
+                        "SELECT count(*) FROM unimem_vector_versions "
+                        "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                        *snapshots._scope,
+                    )
+                    == 2
+                )
             read = await snapshots.pin("one")
             assert [hit.key for hit in await snapshots.search(read, [1, 0, 0])] == ["a"]
             assert len(await snapshots.search(old, [1, 0, 0])) == 2
@@ -139,6 +174,7 @@ def test_full_publication_checksum_reuse_and_partial_replacement() -> None:
             latest = await snapshots.pin("two")
             assert (await snapshots.search(latest, [1, 0, 0]))[0].score == 0
             assert (await snapshots.search(read, [1, 0, 0]))[0].score == 1
+
     asyncio.run(run())
 
 
@@ -152,8 +188,12 @@ def test_expired_and_forged_leases_fail_closed_and_cannot_resurrect() -> None:
             await snapshots.abort(replace(lease, fence=lease.fence + 1))
             await snapshots.stage(lease, [VectorRecord("a", [1, 0, 0])])
             async with pool.acquire() as db:
-                await db.execute("UPDATE unimem_vector_builds SET expires=clock_timestamp()-interval '1 second' "
-                                 "WHERE tenant=$1 AND token=$2", snapshots._scope[0], lease.token)
+                await db.execute(
+                    "UPDATE unimem_vector_builds SET expires=clock_timestamp()-interval '1 second' "
+                    "WHERE tenant=$1 AND token=$2",
+                    snapshots._scope[0],
+                    lease.token,
+                )
             assert not await snapshots.publish(lease)
             with pytest.raises(SnapshotConflict):
                 await snapshots.stage(lease, [])
@@ -164,18 +204,26 @@ def test_expired_and_forged_leases_fail_closed_and_cannot_resurrect() -> None:
                 await snapshots.search(replace(read, revision=99), [1, 0, 0])
             await snapshots.renew(read)
             async with pool.acquire() as db:
-                await db.execute("UPDATE unimem_vector_readers SET expires=clock_timestamp()-interval '1 second' "
-                                 "WHERE tenant=$1 AND token=$2", snapshots._scope[0], read.token)
+                await db.execute(
+                    "UPDATE unimem_vector_readers SET expires=clock_timestamp()-interval '1 second' "
+                    "WHERE tenant=$1 AND token=$2",
+                    snapshots._scope[0],
+                    read.token,
+                )
             with pytest.raises(SnapshotConflict):
                 await snapshots.renew(read)
             with pytest.raises(SnapshotConflict):
                 await snapshots.search(read, [1, 0, 0])
+
     asyncio.run(run())
 
 
 def test_scope_isolation_and_parameterized_injection_shaped_identifiers() -> None:
     async def run() -> None:
-        async with backend(scope=("owner'; DROP TABLE nope; --" + uuid.uuid4().hex, "memory", "model", 3)) as (first, pool):
+        async with backend(scope=("owner'; DROP TABLE nope; --" + uuid.uuid4().hex, "memory", "model", 3)) as (
+            first,
+            pool,
+        ):
             second = PostgresSnapshots(pool, (first._scope[0], "other", "model", 3))
             await second.initialize()
             try:
@@ -190,9 +238,16 @@ def test_scope_isolation_and_parameterized_injection_shaped_identifiers() -> Non
                 assert (await first.search(read, [1, 0, 0]))[0].score == 1
             finally:
                 async with pool.acquire() as db:
-                    for table in ("unimem_vector_versions", "unimem_vector_readers",
-                                  "unimem_vector_snapshots", "unimem_vector_heads"):
-                        await db.execute(f"DELETE FROM {table} WHERE tenant=$1 AND namespace=$2", first._scope[0], "other")
+                    for table in (
+                        "unimem_vector_versions",
+                        "unimem_vector_readers",
+                        "unimem_vector_snapshots",
+                        "unimem_vector_heads",
+                    ):
+                        await db.execute(
+                            f"DELETE FROM {table} WHERE tenant=$1 AND namespace=$2", first._scope[0], "other"
+                        )
+
     asyncio.run(run())
 
 
@@ -223,6 +278,7 @@ def test_validation_is_atomic_and_allowed_ids_preserve_exact_order() -> None:
                 await snapshots.begin(0, "other")
             with pytest.raises(SnapshotConflict):
                 await snapshots.begin(1, "g")
+
     asyncio.run(run())
 
 
@@ -239,6 +295,7 @@ def test_garbage_collection_bound_and_active_builder_base_preservation() -> None
             assert await snapshots.collect_garbage(limit=3) == 3
             assert await snapshots.collect_garbage(limit=100) == 6
             assert await snapshots.collect_garbage() == 0
+
     asyncio.run(run())
 
 
@@ -252,12 +309,14 @@ def test_concurrent_readers_do_not_lock_owner_head_or_each_other() -> None:
             async with pool.acquire() as db, db.transaction():
                 await db.execute("SELECT token FROM unimem_vector_readers WHERE token=$1 FOR SHARE", readers[0].token)
                 await asyncio.wait_for(publish(snapshots, 1, "one", [VectorRecord("a", [0, 1, 0])]), 3)
-                hits = await asyncio.wait_for(asyncio.gather(*[
-                    snapshots.search(read, [1, 0, 0]) for read in readers]), 3)
+                hits = await asyncio.wait_for(
+                    asyncio.gather(*[snapshots.search(read, [1, 0, 0]) for read in readers]), 3
+                )
                 assert all(page[0].score == 1 for page in hits)
             await asyncio.gather(*(snapshots.release(read) for read in readers))
             with pytest.raises(SnapshotConflict):
                 await snapshots.search(readers[0], [1, 0, 0])
+
     asyncio.run(run())
 
 
@@ -265,8 +324,7 @@ def test_bounded_metadata_cleanup_preserves_remaining_pinnable_generations() -> 
     async def run() -> None:
         async with backend() as (snapshots, _):
             for revision in range(6):
-                await publish(snapshots, revision, f"r{revision}",
-                              [VectorRecord("a", [1, revision + 1, 0])])
+                await publish(snapshots, revision, f"r{revision}", [VectorRecord("a", [1, revision + 1, 0])])
             assert await snapshots.collect_garbage(limit=1) <= 1
             surviving = 0
             for revision in range(6):
@@ -279,6 +337,7 @@ def test_bounded_metadata_cleanup_preserves_remaining_pinnable_generations() -> 
                 assert len(hits) == 1 and hits[0].score == pytest.approx(1, abs=1e-6)
                 await snapshots.release(read)
             assert surviving == 5
+
     asyncio.run(run())
 
 
@@ -289,8 +348,12 @@ def test_collector_waits_for_in_flight_reader_even_after_lease_expiry() -> None:
             read = await snapshots.pin("zero")
             await publish(snapshots, 1, "one", [VectorRecord("a", [0, 1, 0])])
             async with pool.acquire() as db:
-                await db.execute("UPDATE unimem_vector_readers SET expires=clock_timestamp()-interval '1 second' "
-                                 "WHERE tenant=$1 AND token=$2", snapshots._scope[0], read.token)
+                await db.execute(
+                    "UPDATE unimem_vector_readers SET expires=clock_timestamp()-interval '1 second' "
+                    "WHERE tenant=$1 AND token=$2",
+                    snapshots._scope[0],
+                    read.token,
+                )
             # Simulate a search that acquired its lease before DB-clock expiry
             # and still holds FOR SHARE while reading immutable old intervals.
             async with pool.acquire() as db, db.transaction():
@@ -298,9 +361,15 @@ def test_collector_waits_for_in_flight_reader_even_after_lease_expiry() -> None:
                 collection = asyncio.create_task(snapshots.collect_garbage())
                 with pytest.raises(asyncio.TimeoutError):
                     await asyncio.wait_for(asyncio.shield(collection), 0.1)
-                assert await db.fetchval("SELECT count(*) FROM unimem_vector_versions "
-                                         "WHERE tenant=$1 AND valid_to IS NOT NULL", snapshots._scope[0]) == 1
+                assert (
+                    await db.fetchval(
+                        "SELECT count(*) FROM unimem_vector_versions WHERE tenant=$1 AND valid_to IS NOT NULL",
+                        snapshots._scope[0],
+                    )
+                    == 1
+                )
             assert await asyncio.wait_for(collection, 3) == 1
+
     asyncio.run(run())
 
 
@@ -310,22 +379,39 @@ def test_successful_staging_renews_original_build_duration_without_resurrection(
             lease = await snapshots.begin(0, "progress", lease_seconds=30)
             assert lease is not None
             async with pool.acquire() as db:
-                previous = await db.fetchval("UPDATE unimem_vector_builds SET "
-                                             "expires=clock_timestamp()+interval '5 seconds' "
-                                             "WHERE tenant=$1 AND token=$2 RETURNING expires",
-                                             snapshots._scope[0], lease.token)
+                previous = await db.fetchval(
+                    "UPDATE unimem_vector_builds SET "
+                    "expires=clock_timestamp()+interval '5 seconds' "
+                    "WHERE tenant=$1 AND token=$2 RETURNING expires",
+                    snapshots._scope[0],
+                    lease.token,
+                )
             await snapshots.stage(lease, [VectorRecord("a", [1, 0, 0])])
             async with pool.acquire() as db:
-                renewed = await db.fetchval("SELECT expires FROM unimem_vector_builds "
-                                            "WHERE tenant=$1 AND token=$2", snapshots._scope[0], lease.token)
+                renewed = await db.fetchval(
+                    "SELECT expires FROM unimem_vector_builds WHERE tenant=$1 AND token=$2",
+                    snapshots._scope[0],
+                    lease.token,
+                )
                 assert (renewed - previous).total_seconds() > 24
-                assert await db.fetchval("SELECT duration FROM unimem_vector_builds "
-                                         "WHERE tenant=$1 AND token=$2", snapshots._scope[0], lease.token) == 30
-                await db.execute("UPDATE unimem_vector_builds SET expires=clock_timestamp()-interval '1 second' "
-                                 "WHERE tenant=$1 AND token=$2", snapshots._scope[0], lease.token)
+                assert (
+                    await db.fetchval(
+                        "SELECT duration FROM unimem_vector_builds WHERE tenant=$1 AND token=$2",
+                        snapshots._scope[0],
+                        lease.token,
+                    )
+                    == 30
+                )
+                await db.execute(
+                    "UPDATE unimem_vector_builds SET expires=clock_timestamp()-interval '1 second' "
+                    "WHERE tenant=$1 AND token=$2",
+                    snapshots._scope[0],
+                    lease.token,
+                )
             with pytest.raises(SnapshotConflict):
                 await snapshots.stage(lease, [VectorRecord("b", [0, 1, 0])])
             assert not await snapshots.publish(lease)
+
     asyncio.run(run())
 
 
@@ -336,18 +422,25 @@ def test_forged_abort_cannot_consume_legitimate_build(forged_field: int) -> None
             lease = await snapshots.begin(0, "legitimate")
             assert lease is not None
             await snapshots.stage(lease, [VectorRecord("a", [1, 0, 0])])
-            forged = (replace(lease, token="forged-token"), replace(lease, fence=999),
-                      replace(lease, base_revision=999), replace(lease, target_revision=999),
-                      replace(lease, generation="forged-generation"), replace(lease, full=True))
+            forged = (
+                replace(lease, token="forged-token"),
+                replace(lease, fence=999),
+                replace(lease, base_revision=999),
+                replace(lease, target_revision=999),
+                replace(lease, generation="forged-generation"),
+                replace(lease, full=True),
+            )
             await snapshots.abort(forged[forged_field])
             assert await snapshots.publish(lease)
             read = await snapshots.pin("legitimate")
             assert [hit.key for hit in await snapshots.search(read, [1, 0, 0])] == ["a"]
+
     asyncio.run(run())
 
 
 def test_initialize_waits_before_ddl_while_builder_owns_head(monkeypatch) -> None:
     """Force the former head/builds DDL inversion using independent connections."""
+
     async def run() -> None:
         async with backend() as (snapshots, pool):
             head_owned, continue_builder = asyncio.Event(), asyncio.Event()
@@ -370,15 +463,19 @@ def test_initialize_waits_before_ddl_while_builder_owns_head(monkeypatch) -> Non
                 other = PostgresSnapshots(pool, snapshots._scope)
                 initializer = asyncio.create_task(other.initialize())
                 async with pool.acquire() as observer:
+
                     async def initialization_blocked_at_barrier() -> None:
                         while not await observer.fetchval(
                             "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE "
                             "$1::integer=ANY(pg_blocking_pids(pid)) AND wait_event_type='Lock' "
-                            "AND query='SELECT pg_advisory_xact_lock(736482091503)')", builder_pid):
+                            "AND query='SELECT pg_advisory_xact_lock(736482091503)')",
+                            builder_pid,
+                        ):
                             if initializer is not None and initializer.done():
                                 initializer.result()
                                 raise AssertionError("initializer bypassed the live builder schema barrier")
                             await asyncio.sleep(0.01)
+
                     await asyncio.wait_for(initialization_blocked_at_barrier(), 5)
                     # Shared barrier was taken before the head lock. DDL has
                     # not acquired builds-table locks, so this INSERT completes.
@@ -399,6 +496,7 @@ def test_initialize_waits_before_ddl_while_builder_owns_head(monkeypatch) -> Non
                     if not task.done():
                         task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
+
     asyncio.run(run())
 
 
@@ -414,18 +512,23 @@ def test_metadata_and_vector_reads_wait_before_schema_ddl(operation: str) -> Non
                     async with schema_connection.transaction():
                         await schema_connection.execute("SELECT pg_advisory_xact_lock(736482091503)")
                         schema_pid = schema_connection.get_server_pid()
-                        pending = asyncio.create_task(snapshots.head() if operation == "head" else
-                                                      snapshots.search(read, [1, 0, 0]))
+                        pending = asyncio.create_task(
+                            snapshots.head() if operation == "head" else snapshots.search(read, [1, 0, 0])
+                        )
                         async with pool.acquire() as observer:
+
                             async def reader_blocked_at_barrier() -> None:
                                 while not await observer.fetchval(
                                     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE "
                                     "$1::integer=ANY(pg_blocking_pids(pid)) AND wait_event_type='Lock' "
-                                    "AND query='SELECT pg_advisory_xact_lock_shared(736482091503)')", schema_pid):
+                                    "AND query='SELECT pg_advisory_xact_lock_shared(736482091503)')",
+                                    schema_pid,
+                                ):
                                     if pending is not None and pending.done():
                                         pending.result()
                                         raise AssertionError("read bypassed schema initialization barrier")
                                     await asyncio.sleep(0.01)
+
                             await asyncio.wait_for(reader_blocked_at_barrier(), 5)
                         assert not pending.done()
                     result = await asyncio.wait_for(pending, 5)
@@ -439,4 +542,5 @@ def test_metadata_and_vector_reads_wait_before_schema_ddl(operation: str) -> Non
                         pending.cancel()
                     await asyncio.gather(pending, return_exceptions=True)
                 await snapshots.release(read)
+
     asyncio.run(run())

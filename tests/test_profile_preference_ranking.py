@@ -44,9 +44,7 @@ def test_order_only_backend_uses_at_most_one_fifth_of_existing_window():
         {"id": f"fact-{index:02}", "payload": {"text": "Give concise answers" if index == 1 else "Other fact"}}
         for index in range(20)
     ]
-    preferences = [
-        {"bucket": "dynamic", "author": "user", "text": "I prefer concise answers", "weight": 1}
-    ]
+    preferences = [{"bucket": "dynamic", "author": "user", "text": "I prefer concise answers", "weight": 1}]
 
     ranked = rerank_profile_results(results, preferences)
 
@@ -62,12 +60,14 @@ def test_preference_with_a_negative_clause_does_not_boost_either_side():
 
     ranked = rerank_profile_results(
         results,
-        [{
-            "bucket": "dynamic",
-            "author": "user",
-            "text": "I prefer concise answers, not verbose replies",
-            "weight": 10,
-        }],
+        [
+            {
+                "bucket": "dynamic",
+                "author": "user",
+                "text": "I prefer concise answers, not verbose replies",
+                "weight": 10,
+            }
+        ],
     )
 
     assert ranked == results

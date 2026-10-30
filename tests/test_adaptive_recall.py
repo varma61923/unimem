@@ -1,4 +1,5 @@
 """Adaptive budgets beyond conversations: multi-channel recall, reflect, the gateway and MCP."""
+
 from __future__ import annotations
 
 import json
@@ -9,10 +10,34 @@ from unimem import api_schema, hierarchical, holdout_io, memory_control, recall
 from unimem.client import MemoryClient
 from unimem.gateway import Gateway
 
-PLACES = ("amsterdam", "berlin", "chicago", "dublin", "everett", "frankfurt", "geneva", "helsinki",
-          "istanbul", "jakarta", "kyoto", "lisbon")
-NOTES = ("replica lag", "failover drill", "runbook owner", "vacuum schedule", "index bloat", "wal archive",
-         "pgbouncer pool", "disk alarm", "restore test", "upgrade plan", "audit trail", "parameter tuning")
+PLACES = (
+    "amsterdam",
+    "berlin",
+    "chicago",
+    "dublin",
+    "everett",
+    "frankfurt",
+    "geneva",
+    "helsinki",
+    "istanbul",
+    "jakarta",
+    "kyoto",
+    "lisbon",
+)
+NOTES = (
+    "replica lag",
+    "failover drill",
+    "runbook owner",
+    "vacuum schedule",
+    "index bloat",
+    "wal archive",
+    "pgbouncer pool",
+    "disk alarm",
+    "restore test",
+    "upgrade plan",
+    "audit trail",
+    "parameter tuning",
+)
 
 
 @pytest.fixture
@@ -21,8 +46,11 @@ def facts(tmp_path):
     root = str(tmp_path)
     holdout_io.configure(root, rate=0)
     for place, note in zip(PLACES, NOTES):
-        hierarchical.add_fact(root, f"Postgres cluster in {place} is backed up every hour; its {note} "
-                                    f"is reviewed weekly by the {place} {note} team.")
+        hierarchical.add_fact(
+            root,
+            f"Postgres cluster in {place} is backed up every hour; its {note} "
+            f"is reviewed weekly by the {place} {note} team.",
+        )
     return root
 
 
@@ -34,22 +62,27 @@ def test_off_by_default_and_unchanged(facts):
 
 
 def test_a_list_question_is_shaped_and_a_focused_one_is_not(facts):
-    shaped = recall.recall(facts, "Summarize the postgres backups", budget=100, channels=("facts",),
-                           adaptive_budget=True, max_budget=1000)
+    shaped = recall.recall(
+        facts, "Summarize the postgres backups", budget=100, channels=("facts",), adaptive_budget=True, max_budget=1000
+    )
     decision = shaped.explain["budget"]
     assert decision["reason"] == "summary" and decision["shaped"] == 300 and shaped.budget >= 300
     assert shaped.tokens <= shaped.budget
-    focused = recall.recall(facts, "how often is postgres cluster 3 backed up", budget=400, channels=("facts",),
-                            adaptive_budget=True)
+    focused = recall.recall(
+        facts, "how often is postgres cluster 3 backed up", budget=400, channels=("facts",), adaptive_budget=True
+    )
     assert focused.explain["budget"]["reason"] == "focused" and focused.explain["budget"]["grown"] == []
-    assert focused.context == recall.recall(facts, "how often is postgres cluster 3 backed up", budget=400,
-                                            channels=("facts",)).context
+    assert (
+        focused.context
+        == recall.recall(facts, "how often is postgres cluster 3 backed up", budget=400, channels=("facts",)).context
+    )
 
 
 def test_weak_evidence_grows_the_budget_up_to_the_cap(facts):
     # "zebra" is a subject term nothing mentions: coverage stays incomplete, so the budget grows.
-    result = recall.recall(facts, "postgres zebra", budget=60, channels=("facts",), adaptive_budget=True,
-                           max_budget=200)
+    result = recall.recall(
+        facts, "postgres zebra", budget=60, channels=("facts",), adaptive_budget=True, max_budget=200
+    )
     decision = result.explain["budget"]
     assert [(g["from"], g["to"]) for g in decision["grown"]] == [(60, 120), (120, 200)]
     assert "zebra" in decision["grown"][0]["why"]
@@ -68,12 +101,12 @@ def test_growth_stops_when_every_candidate_already_fits(tmp_path):
 
 def test_adaptive_settings_come_from_budgets_json(facts, tmp_path):
     (tmp_path / "memory").mkdir(exist_ok=True)
-    (tmp_path / "memory" / "budgets.json").write_text(json.dumps(
-        {"default": 60, "adaptive_budget": True, "max_budget": 120}), encoding="utf-8")
+    (tmp_path / "memory" / "budgets.json").write_text(
+        json.dumps({"default": 60, "adaptive_budget": True, "max_budget": 120}), encoding="utf-8"
+    )
     result = recall.recall(facts, "postgres zebra", channels=("facts",))
     assert result.explain["budget"]["cap"] == 120 and result.budget == 120
-    assert "budget" not in recall.recall(facts, "postgres zebra", channels=("facts",),
-                                         adaptive_budget=False).explain
+    assert "budget" not in recall.recall(facts, "postgres zebra", channels=("facts",), adaptive_budget=False).explain
     (tmp_path / "memory" / "budgets.json").write_text(json.dumps({"adaptive_budget": "yes"}), encoding="utf-8")
     with pytest.raises(ValueError, match="adaptive_budget"):
         recall.recall(facts, "postgres", channels=("facts",))
@@ -89,8 +122,9 @@ def test_bad_adaptive_arguments(facts):
 def test_reflect_adaptive_grows_while_coverage_is_thin(facts):
     fixed = memory_control.reflect(facts, "postgres zebra", budget=60, causal=False)
     assert fixed["budget"] == 60 and "budget_decision" not in fixed
-    grown = memory_control.reflect(facts, "postgres zebra", budget=60, causal=False, adaptive_budget=True,
-                                   max_budget=200)
+    grown = memory_control.reflect(
+        facts, "postgres zebra", budget=60, causal=False, adaptive_budget=True, max_budget=200
+    )
     decision = grown["budget_decision"]
     assert decision["reason"] == "focused" and [g["to"] for g in decision["grown"]] == [120, 200]
     assert grown["budget"] == 200 and fixed["tokens_estimate"] < grown["tokens_estimate"] <= 200
@@ -126,8 +160,12 @@ def test_gateway_reflect_schema_and_route(facts):
     gateway = Gateway(facts, token="owner")
 
     def post(body):
-        response = gateway.handle("POST", "/v1/memory/reflect",
-                                  {"Authorization": "Bearer owner", "Host": "localhost"}, json.dumps(body).encode())
+        response = gateway.handle(
+            "POST",
+            "/v1/memory/reflect",
+            {"Authorization": "Bearer owner", "Host": "localhost"},
+            json.dumps(body).encode(),
+        )
         return response.status, json.loads(response.body)
 
     status, data = post({"query": "postgres zebra", "budget": 60, "adaptive_budget": True})

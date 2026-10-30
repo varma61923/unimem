@@ -31,12 +31,18 @@ async def _submit(session_factory, config, org_id, title="A recurring failure", 
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.submit_kb_entry(
-            session, org_id, config, rate_limiter,
-            title=title, context_text=kw.pop("context_text", "ctx"),
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text=kw.pop("context_text", "ctx"),
             solution_text=kw.pop("solution_text", "fix"),
-            tags=kw.pop("tags", None), agent_type=kw.pop("agent_type", "code"),
+            tags=kw.pop("tags", None),
+            agent_type=kw.pop("agent_type", "code"),
             rationale=kw.pop("rationale", "substrate, not business logic"),
-            actor="test", **kw,
+            actor="test",
+            **kw,
         )
 
 
@@ -53,24 +59,20 @@ class TestSubmissionIsCreatedNotPublished:
     async def test_it_writes_no_trace_row_at_all(self, session_factory, config, orgs):
         await _submit(session_factory, config, orgs["submitter"], "Stripe webhooks retry")
         async with session_scope(session_factory) as session:
-            n = await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == orgs["submitter"])
-            )
+            n = await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == orgs["submitter"]))
         assert n == 0
 
-    async def test_a_pending_submission_never_surfaces_via_commons_overlap(
-        self, session_factory, config, orgs
-    ):
+    async def test_a_pending_submission_never_surfaces_via_commons_overlap(self, session_factory, config, orgs):
         await _submit(session_factory, config, orgs["submitter"], "Stripe webhooks retry", context_text="ctx")
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["other"], [_failure("f", "Stripe webhooks retry", "ctx")],
+                session,
+                orgs["other"],
+                [_failure("f", "Stripe webhooks retry", "ctx")],
             )
         assert report["n_covered"] == 0
 
-    async def test_a_pending_submission_never_surfaces_via_commons_search(
-        self, session_factory, config, orgs
-    ):
+    async def test_a_pending_submission_never_surfaces_via_commons_search(self, session_factory, config, orgs):
         await _submit(session_factory, config, orgs["submitter"], "Stripe webhooks retry", context_text="ctx")
         sig = commons.signature_for("Stripe webhooks retry", "ctx", [])
         async with session_scope(session_factory) as session:
@@ -83,7 +85,9 @@ class TestSubmissionIsCreatedNotPublished:
         await _submit(session_factory, config, orgs["submitter"], "Stripe webhooks retry", context_text="ctx")
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["submitter"], [_failure("f", "Stripe webhooks retry", "ctx")],
+                session,
+                orgs["submitter"],
+                [_failure("f", "Stripe webhooks retry", "ctx")],
             )
         assert report["n_covered"] == 0
 
@@ -96,7 +100,9 @@ class TestSubmissionValidation:
     async def test_an_oversized_solution_is_rejected(self, session_factory, config, orgs):
         with pytest.raises(TraceRejected):
             await _submit(
-                session_factory, config, orgs["submitter"],
+                session_factory,
+                config,
+                orgs["submitter"],
                 solution_text="x" * (config.max_text_chars + 1),
             )
 
@@ -115,14 +121,22 @@ class TestSubmissionValidation:
         from hub.config import HubConfig
 
         strict_config = HubConfig(
-            database_url="postgresql+asyncpg://x/y", rate_limit_per_minute=0, rate_limit_burst=0,
+            database_url="postgresql+asyncpg://x/y",
+            rate_limit_per_minute=0,
+            rate_limit_burst=0,
         )
         rate_limiter = make_rate_limiter(strict_config)
         with pytest.raises(RateLimited):
             async with session_scope(session_factory) as session:
                 await crud.submit_kb_entry(
-                    session, orgs["submitter"], strict_config, rate_limiter,
-                    title="t", context_text="c", solution_text="s", rationale="r",
+                    session,
+                    orgs["submitter"],
+                    strict_config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    rationale="r",
                     actor="test",
                 )
 
@@ -134,10 +148,18 @@ class TestSubmissionValidation:
 
     async def test_an_idempotent_retry_replays_not_duplicates(self, session_factory, config, orgs):
         first = await _submit(
-            session_factory, config, orgs["submitter"], "t", idempotency_key="k1",
+            session_factory,
+            config,
+            orgs["submitter"],
+            "t",
+            idempotency_key="k1",
         )
         replay = await _submit(
-            session_factory, config, orgs["submitter"], "t", idempotency_key="k1",
+            session_factory,
+            config,
+            orgs["submitter"],
+            "t",
+            idempotency_key="k1",
         )
         assert replay["id"] == first["id"]
         async with session_scope(session_factory) as session:
@@ -167,13 +189,15 @@ class TestListMyKbSubmissions:
 
 
 class TestReviewSubmissionApprove:
-    async def test_approving_creates_a_seed_trace_owned_by_the_operator(
-        self, session_factory, config, orgs
-    ):
+    async def test_approving_creates_a_seed_trace_owned_by_the_operator(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "Stripe retries", context_text="ctx")
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, s["id"], "approve", orgs["operator"], reviewer="op",
+                session,
+                s["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
             )
         assert result["status"] == "approved"
         trace_id = result["resulting_trace_id"]
@@ -187,16 +211,16 @@ class TestReviewSubmissionApprove:
         assert trace.shared_with_commons is True
         assert trace.commons_signature is not None
 
-    async def test_the_approved_entry_is_now_visible_via_commons_overlap(
-        self, session_factory, config, orgs
-    ):
+    async def test_the_approved_entry_is_now_visible_via_commons_overlap(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "Stripe retries", context_text="ctx")
         async with session_scope(session_factory) as session:
             await crud.review_kb_submission(session, s["id"], "approve", orgs["operator"], reviewer="op")
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["other"], [_failure("f", "Stripe retries", "ctx")],
+                session,
+                orgs["other"],
+                [_failure("f", "Stripe retries", "ctx")],
             )
         assert report["n_covered"] == 1
 
@@ -204,51 +228,66 @@ class TestReviewSubmissionApprove:
         s = await _submit(session_factory, config, orgs["submitter"], "t")
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, s["id"], "approve", orgs["operator"], reviewer="op", credit=7,
+                session,
+                s["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
+                credit=7,
             )
         assert result["credit_awarded"] == 7
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["submitter"])
         assert org.bonus_commons_queries == 7
 
-    async def test_approving_without_an_explicit_credit_uses_the_default(
-        self, session_factory, config, orgs
-    ):
+    async def test_approving_without_an_explicit_credit_uses_the_default(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "t")
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(session, s["id"], "approve", orgs["operator"], reviewer="op")
         assert result["credit_awarded"] == plans.SUBMISSION_ACCEPTANCE_CREDIT
 
-    async def test_the_credit_actually_raises_the_query_allowance(
-        self, session_factory, config, orgs, monkeypatch
-    ):
+    async def test_the_credit_actually_raises_the_query_allowance(self, session_factory, config, orgs, monkeypatch):
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=1_000, commons_queries_per_month=1,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=1_000, commons_queries_per_month=1, commons_access=True, summary="test"),
         )
         s = await _submit(session_factory, config, orgs["submitter"], "shared thing")
         async with session_scope(session_factory) as session:
             await crud.review_kb_submission(
-                session, s["id"], "approve", orgs["operator"], reviewer="op", credit=3,
+                session,
+                s["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
+                credit=3,
             )
 
         for _ in range(4):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["submitter"], [_failure("f", "shared thing")],
+                    session,
+                    orgs["submitter"],
+                    [_failure("f", "shared thing")],
                 )
         with pytest.raises(plans.EntitlementExceeded):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["submitter"], [_failure("f", "shared thing")],
+                    session,
+                    orgs["submitter"],
+                    [_failure("f", "shared thing")],
                 )
 
     async def test_entitlements_reports_the_bonus_separately(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "t")
         async with session_scope(session_factory) as session:
             await crud.review_kb_submission(
-                session, s["id"], "approve", orgs["operator"], reviewer="op", credit=5,
+                session,
+                s["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
+                credit=5,
             )
         async with session_scope(session_factory) as session:
             e = await crud.entitlements(session, orgs["submitter"])
@@ -262,7 +301,11 @@ class TestReviewSubmissionReject:
         s = await _submit(session_factory, config, orgs["submitter"], "t")
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, s["id"], "reject", orgs["operator"], reviewer="op",
+                session,
+                s["id"],
+                "reject",
+                orgs["operator"],
+                reviewer="op",
                 rejection_reason="too generic",
             )
         assert result["status"] == "rejected"
@@ -278,9 +321,7 @@ class TestReviewSubmissionReject:
         assert org.bonus_commons_queries == 0
         assert n_traces == 0
 
-    async def test_a_rejected_submission_stays_invisible_to_commons_overlap(
-        self, session_factory, config, orgs
-    ):
+    async def test_a_rejected_submission_stays_invisible_to_commons_overlap(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "t", context_text="ctx")
         async with session_scope(session_factory) as session:
             await crud.review_kb_submission(session, s["id"], "reject", orgs["operator"], reviewer="op")
@@ -296,7 +337,11 @@ class TestReviewSubmissionEdgeCases:
             await crud.review_kb_submission(session, s["id"], "approve", orgs["operator"], reviewer="op")
         async with session_scope(session_factory) as session:
             second = await crud.review_kb_submission(
-                session, s["id"], "approve", orgs["operator"], reviewer="op",
+                session,
+                s["id"],
+                "approve",
+                orgs["operator"],
+                reviewer="op",
             )
         assert second is None
 
@@ -305,14 +350,22 @@ class TestReviewSubmissionEdgeCases:
 
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, str(uuid.uuid4()), "approve", orgs["operator"], reviewer="op",
+                session,
+                str(uuid.uuid4()),
+                "approve",
+                orgs["operator"],
+                reviewer="op",
             )
         assert result is None
 
     async def test_a_malformed_id_returns_none_not_raises(self, session_factory, orgs):
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, "not-a-uuid-at-all", "approve", orgs["operator"], reviewer="op",
+                session,
+                "not-a-uuid-at-all",
+                "approve",
+                orgs["operator"],
+                reviewer="op",
             )
         assert result is None
 
@@ -321,7 +374,11 @@ class TestReviewSubmissionEdgeCases:
         with pytest.raises(ValueError):
             async with session_scope(session_factory) as session:
                 await crud.review_kb_submission(
-                    session, s["id"], "maybe", orgs["operator"], reviewer="op",
+                    session,
+                    s["id"],
+                    "maybe",
+                    orgs["operator"],
+                    reviewer="op",
                 )
 
 
@@ -333,8 +390,11 @@ class TestQueryAllowanceBonusArithmetic:
 
     def test_unlimited_plan_stays_unlimited_regardless_of_bonus(self):
         plan = plans.Plan(
-            "x", max_traces=1, commons_queries_per_month=plans.UNLIMITED,
-            commons_access=True, summary="",
+            "x",
+            max_traces=1,
+            commons_queries_per_month=plans.UNLIMITED,
+            commons_access=True,
+            summary="",
         )
         assert plans.query_allowance(plan, bonus=1000) == plans.UNLIMITED
 
@@ -348,15 +408,17 @@ class TestQueryAllowanceBonusArithmetic:
 
 
 class TestConcurrentSubmissionApproval:
-    async def test_two_concurrent_approvals_of_the_same_submission_only_one_wins(
-        self, session_factory, config, orgs
-    ):
+    async def test_two_concurrent_approvals_of_the_same_submission_only_one_wins(self, session_factory, config, orgs):
         s = await _submit(session_factory, config, orgs["submitter"], "t")
 
         async def one():
             async with session_scope(session_factory) as session:
                 return await crud.review_kb_submission(
-                    session, s["id"], "approve", orgs["operator"], reviewer="op",
+                    session,
+                    s["id"],
+                    "approve",
+                    orgs["operator"],
+                    reviewer="op",
                 )
 
         results = await asyncio.gather(*(one() for _ in range(5)))
@@ -366,18 +428,19 @@ class TestConcurrentSubmissionApproval:
             org = await session.get(Organization, orgs["submitter"])
         assert org.bonus_commons_queries == plans.SUBMISSION_ACCEPTANCE_CREDIT
 
-    async def test_ten_distinct_submissions_approved_concurrently_all_credit(
-        self, session_factory, config, orgs
-    ):
+    async def test_ten_distinct_submissions_approved_concurrently_all_credit(self, session_factory, config, orgs):
         submissions = [
-            await _submit(session_factory, config, orgs["submitter"], title=f"failure {i}")
-            for i in range(10)
+            await _submit(session_factory, config, orgs["submitter"], title=f"failure {i}") for i in range(10)
         ]
 
         async def _approve(submission_id):
             async with session_scope(session_factory) as session:
                 return await crud.review_kb_submission(
-                    session, submission_id, "approve", orgs["operator"], reviewer="op",
+                    session,
+                    submission_id,
+                    "approve",
+                    orgs["operator"],
+                    reviewer="op",
                 )
 
         results = await asyncio.gather(*[_approve(s["id"]) for s in submissions], return_exceptions=True)

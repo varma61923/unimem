@@ -3,6 +3,7 @@
 Rank metrics describe candidate ordering before context packing. They do not
 establish that a selected excerpt contains an answer or that a reader is correct.
 """
+
 from __future__ import annotations
 
 import ast
@@ -15,11 +16,21 @@ from typing import Any
 from unimem.conversation.store import Store, Turn
 
 SCHEMA_VERSION = 1
-_ADAPTER_NAMES = frozenset({
-    "locomo_cases", "sample_cases", "longmemeval_cases", "beam_cases", "dolphin_cases", "_ids",
-    "_payload_from_cases", "_cases_from_payload", "BEAM_MARK", "LOCOMO_CATEGORIES",
-    "_load_cases",
-})
+_ADAPTER_NAMES = frozenset(
+    {
+        "locomo_cases",
+        "sample_cases",
+        "longmemeval_cases",
+        "beam_cases",
+        "dolphin_cases",
+        "_ids",
+        "_payload_from_cases",
+        "_cases_from_payload",
+        "BEAM_MARK",
+        "LOCOMO_CATEGORIES",
+        "_load_cases",
+    }
+)
 
 
 def dataset_digest(path: str) -> str:
@@ -60,7 +71,8 @@ def adapter_digest(path: str) -> str:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in _ADAPTER_NAMES:
             selected.append(node)
         elif isinstance(node, ast.Assign) and any(
-                isinstance(target, ast.Name) and target.id in _ADAPTER_NAMES for target in node.targets):
+            isinstance(target, ast.Name) and target.id in _ADAPTER_NAMES for target in node.targets
+        ):
             selected.append(node)
     digest = hashlib.sha256(ast.dump(ast.Module(body=selected, type_ignores=[])).encode("utf-8"))
     with open(__file__, "rb") as source:
@@ -86,6 +98,7 @@ def product_digest(root: str) -> str:
 
 def question_digest(question: Mapping[str, Any]) -> str:
     """Bind pairing to the actual question, answer, rubric and gold annotations."""
+
     def encode(value: object) -> object:
         if isinstance(value, (set, frozenset)):
             return sorted(value)
@@ -95,8 +108,9 @@ def question_digest(question: Mapping[str, Any]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def gold_sessions(evidence: Iterable[str], explicit: Iterable[str],
-                  sessions: Sequence[tuple[str, Any, Sequence[Mapping[str, Any]]]]) -> list[str]:
+def gold_sessions(
+    evidence: Iterable[str], explicit: Iterable[str], sessions: Sequence[tuple[str, Any, Sequence[Mapping[str, Any]]]]
+) -> list[str]:
     """Resolve gold turn refs to sessions; unknown annotations remain misses."""
     by_ref: dict[str, str] = {}
     names = set()
@@ -124,8 +138,7 @@ def gold_sessions(evidence: Iterable[str], explicit: Iterable[str],
     return sorted(out)
 
 
-def gold_turns(evidence: Iterable[str],
-               sessions: Sequence[tuple[str, Any, Sequence[Mapping[str, Any]]]]) -> set[str]:
+def gold_turns(evidence: Iterable[str], sessions: Sequence[tuple[str, Any, Sequence[Mapping[str, Any]]]]) -> set[str]:
     """Expand dataset session-level annotations; never drop an unresolved ref."""
     refs = {str(message["id"]) for _session, _date, messages in sessions for message in messages}
     out = set()
@@ -138,8 +151,9 @@ def gold_turns(evidence: Iterable[str],
     return out
 
 
-def ranking_fields(ranked: Sequence[int], turns: Mapping[int, Turn],
-                   evidence: Iterable[str], session_gold: Iterable[str]) -> dict[str, list[str]]:
+def ranking_fields(
+    ranked: Sequence[int], turns: Mapping[int, Turn], evidence: Iterable[str], session_gold: Iterable[str]
+) -> dict[str, list[str]]:
     """Collapse split passages to unique raw turns, then to unique sessions."""
     refs: dict[str, None] = {}
     sessions: dict[str, None] = {}
@@ -152,8 +166,10 @@ def ranking_fields(ranked: Sequence[int], turns: Mapping[int, Turn],
         refs.setdefault(turn.ref, None)
         sessions.setdefault(turn.session, None)
     return {
-        "ranked_turn_ids": list(refs), "ranked_session_ids": list(sessions),
-        "gold_turn_ids": sorted(set(evidence)), "gold_session_ids": sorted(set(session_gold)),
+        "ranked_turn_ids": list(refs),
+        "ranked_session_ids": list(sessions),
+        "gold_turn_ids": sorted(set(evidence)),
+        "gold_session_ids": sorted(set(session_gold)),
     }
 
 

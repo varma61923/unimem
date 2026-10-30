@@ -8,8 +8,13 @@ from unimem.commands import sync_cmd
 
 def _args(**over):
     base = dict(
-        push=False, pull=False, push_traces=False, query="", tags="",
-        hub_url="http://hub.invalid/mcp", hub_api_key="unimem_live_test",
+        push=False,
+        pull=False,
+        push_traces=False,
+        query="",
+        tags="",
+        hub_url="http://hub.invalid/mcp",
+        hub_api_key="unimem_live_test",
         dest="/tmp/unimem-sync-cmd-test-root",
     )
     base.update(over)

@@ -12,20 +12,22 @@ def test_source_retraction_removes_compiled_artifact_from_serving(tmp_path, monk
     root = str(tmp_path)
     path = _write_lesson(root, "rule", body="Verify the target object before planning a grasp.")
     from unimem import frontmatter, lesson_admission
+
     fm, body = frontmatter.read(path)
     fm["approval_receipt"] = lesson_admission.issue(root, path, fm, body, actor="operator")
     frontmatter.write(path, fm, body)
-    monkeypatch.setattr(evidence, "graduated", lambda root: {"rule": {"effect": .5}})
+    monkeypatch.setattr(evidence, "graduated", lambda root: {"rule": {"effect": 0.5}})
     artifact = compile_memory.build(root, "tiny", ["rule"], target="lora", model="tiny-open", open_weight=True)
     assert not artifact["payload"]["production_weights"]
     assert not compile_memory.stale(root, "tiny")
     with pytest.raises(PermissionError, match="F2 certificate"):
         compile_memory.serve(root, "tiny", {})
-    holdout_io.configure(root, rate=.5, salt="compiled")
-    compile_memory.register_trial(root, "tiny", "compile-trial", propensity_floor=.5)
+    holdout_io.configure(root, rate=0.5, salt="compiled")
+    compile_memory.register_trial(root, "tiny", "compile-trial", propensity_floor=0.5)
     modes = {compile_memory.assign(root, "tiny", str(i))["mode"] for i in range(10)}
     assert modes == {"compiled", "retrieval"}
     from unimem import promotion
+
     for i in range(10, 610):
         decision = compile_memory.assign(root, "tiny", str(i))
         holdout_io.record_outcome(root, str(i), decision["mode"] == "compiled")

@@ -3,6 +3,7 @@ context. Lexical and semantic arms are fused per sub-query and combined by their
 best rank (a turn that is first for one facet keeps that), a question's time
 window lifts the turns said or set in it, and the page is filled best-first with
 each hit's neighbouring turns, then shown in the order things were said."""
+
 from __future__ import annotations
 
 import copy
@@ -91,8 +92,14 @@ class Recall:
     explain: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
-        return {"question": self.question, "context": self.context, "tokens": self.tokens,
-                "turns": self.turns, "window": self.window, "explain": self.explain}
+        return {
+            "question": self.question,
+            "context": self.context,
+            "tokens": self.tokens,
+            "turns": self.turns,
+            "window": self.window,
+            "explain": self.explain,
+        }
 
 
 @dataclass(frozen=True)
@@ -137,15 +144,20 @@ _BROAD = re.compile(
     r"different) (?:conversations?|sessions?|chats?|discussions?|requests?)|walk me through|history of|"
     r"all (?:the )?(?:times|things|steps|changes|features|issues)|every (?:time|change|step)|"
     r"how many (?!(?:days|weeks|months|years|hours|minutes)\b)|"
-    r"total (?:number|count|amount)|in total|altogether|combined|list (?:all|every))\b", re.I)
+    r"total (?:number|count|amount)|in total|altogether|combined|list (?:all|every))\b",
+    re.I,
+)
 
 
-_ABOUT_ASSISTANT = re.compile(r"\b(?:you (?:said|told|suggested|recommended|mentioned|gave|listed|provided|wrote|"
-                              r"explained|shared|described|came up with)|your (?:suggestions?|recommendations?|"
-                              r"answers?|"
-                              r"advice|lists?)|(?:did|have) you (?:suggest|recommend|explain|provide|write)|"
-                              r"(?:the )?assistant (?:said|suggested|recommended|explained)|"
-                              r"our (?:previous |last |earlier )?(?:chat|conversation))\b", re.I)
+_ABOUT_ASSISTANT = re.compile(
+    r"\b(?:you (?:said|told|suggested|recommended|mentioned|gave|listed|provided|wrote|"
+    r"explained|shared|described|came up with)|your (?:suggestions?|recommendations?|"
+    r"answers?|"
+    r"advice|lists?)|(?:did|have) you (?:suggest|recommend|explain|provide|write)|"
+    r"(?:the )?assistant (?:said|suggested|recommended|explained)|"
+    r"our (?:previous |last |earlier )?(?:chat|conversation))\b",
+    re.I,
+)
 _SUMMARY = re.compile(r"\b(?:summar(?:y|ise|ize|ies)|overview|recap)\b", re.I)
 
 
@@ -169,15 +181,19 @@ _PREFERENCE = re.compile(
     re.I,
 )
 
-_RELATIONAL = re.compile(r"\b(?:whose|(?:my|the) (?:person|friend|colleague|company|project|team) (?:who|that)|"
-                         r"(?:friend|colleague|manager|partner|owner|author|founder)(?:'s| of)|"
-                         r"(?:company|organization|university|school|book|software|project) (?:that|which)|"
-                         r"(?:founded|created|built|owned|managed|acquired|written|authored|led|produced) (?:by|of)|"
-                         r"(?:connected|related|associated) (?:to|with))\b", re.I)
+_RELATIONAL = re.compile(
+    r"\b(?:whose|(?:my|the) (?:person|friend|colleague|company|project|team) (?:who|that)|"
+    r"(?:friend|colleague|manager|partner|owner|author|founder)(?:'s| of)|"
+    r"(?:company|organization|university|school|book|software|project) (?:that|which)|"
+    r"(?:founded|created|built|owned|managed|acquired|written|authored|led|produced) (?:by|of)|"
+    r"(?:connected|related|associated) (?:to|with))\b",
+    re.I,
+)
 
 
-def _graph_candidates(store: Store, question: str, ranked: list[int], allowed: set[int] | None,
-                      hops: int) -> tuple[list[int], list[dict]]:
+def _graph_candidates(
+    store: Store, question: str, ranked: list[int], allowed: set[int] | None, hops: int
+) -> tuple[list[int], list[dict]]:
     """Bounded evidence traversal over indexed entity co-occurrences.
 
     This discovers candidates, not inferred facts. Exact source turns must still
@@ -192,10 +208,13 @@ def _graph_candidates(store: Store, question: str, ranked: list[int], allowed: s
         seeds = [t for t in seeds if t in source_turns and not _flagged(source_turns[t])]
         if not seeds:
             break
-        entities = list(store.db.execute(
-            "SELECT name, turn FROM entities WHERE turn IN (SELECT value FROM json_each(?)) "
-            "ORDER BY name, turn LIMIT 96",
-            (json.dumps(seeds),)))
+        entities = list(
+            store.db.execute(
+                "SELECT name, turn FROM entities WHERE turn IN (SELECT value FROM json_each(?)) "
+                "ORDER BY name, turn LIMIT 96",
+                (json.dumps(seeds),),
+            )
+        )
         origins: dict[str, int] = {}
         for name, turn in entities:
             if name not in seen_entities and len(origins) < 16:
@@ -227,8 +246,9 @@ GRAPH_WALK_WEIGHT = float(os.environ.get("UNIMEM_GRAPH_WALK", "0") or 0)
 GRAPH_WALK_SEEDS = 8
 
 
-def _apply_graph_walk(store: Store, question: str, scores: dict[int, float], allowed: set[int] | None,
-                      weight: float, explain: dict) -> None:
+def _apply_graph_walk(
+    store: Store, question: str, scores: dict[int, float], allowed: set[int] | None, weight: float, explain: dict
+) -> None:
     """Spread relevance from the best matches and the question's entities along shared
     entities, and add it to every turn's score; turns it discovers join the ranking
     only if they pass the injection screen."""
@@ -261,8 +281,9 @@ def asks_current(question: str) -> bool:
     return bool(_CURRENT.search(question or ""))
 
 
-_QUESTION_WORDS = frozenset("what when where which who whom whose why how did does tell know remember mention "
-                            "mentioned said say ever".split())
+_QUESTION_WORDS = frozenset(
+    "what when where which who whom whose why how did does tell know remember mention mentioned said say ever".split()
+)
 
 _ATTRIBUTE_WORDS = frozenset(
     "name color colour type kind brand model date time day cost price age size height weight amount number title "
@@ -275,13 +296,16 @@ def confidence(store: Store, question: str, turn_ids: list[int]) -> float:
     from unimem.conversation.coverage import assess
 
     turns = store.turns(turn_ids)
-    return assess(question, [turn.annotated() for turn in turns.values()],
-                  labels=[turn.speaker for turn in turns.values()]).confidence
+    return assess(
+        question, [turn.annotated() for turn in turns.values()], labels=[turn.speaker for turn in turns.values()]
+    ).confidence
 
 
-_REFERS_BACK = re.compile(r"\b(?:remind me|you (?:said|mentioned|told|suggested|recommended|gave|listed|explained|"
-                          r"provided|shared)|(?:our|the) (?:previous|earlier|last) (?:chat|conversation|discussion))\b",
-                          re.I)
+_REFERS_BACK = re.compile(
+    r"\b(?:remind me|you (?:said|mentioned|told|suggested|recommended|gave|listed|explained|"
+    r"provided|shared)|(?:our|the) (?:previous|earlier|last) (?:chat|conversation|discussion))\b",
+    re.I,
+)
 SUMMARY_EXCERPT = 40  # the passage per turn a summary question reads
 # An instruction whose source turn ranks first for the question counts as this many
 # shared condition terms, fading to nothing at INSTRUCTION_RANK_DEPTH.
@@ -289,8 +313,11 @@ INSTRUCTION_RANK_WEIGHT = 8.0
 INSTRUCTION_RANK_DEPTH = 200
 ORDERING_TURNS = 2000  # user turns an ordering question may list
 ORDERING_EXCERPT = 24  # the shortest passage per turn when they do not all fit
-_COUNTING = re.compile(r"\bhow many (?:different |distinct |unique |separate )?(?!(?:days|weeks|months|years|hours|"
-                       r"minutes)\b)", re.I)
+_COUNTING = re.compile(
+    r"\bhow many (?:different |distinct |unique |separate )?(?!(?:days|weeks|months|years|hours|"
+    r"minutes)\b)",
+    re.I,
+)
 _ORDERING = re.compile(r"\b(?:in (?:what|which) order|order in which|sequence|chronolog\w*|timeline)\b", re.I)
 
 
@@ -303,25 +330,36 @@ def is_broad(question: str) -> bool:
     return bool(_BROAD.search(question)) or bool(gap_events(question))
 
 
-_ADVICE = re.compile(r"\b(?:recommend|suggest|suggestions?|ideas?|tips?|advice|should I|what should|"
-                     r"any (?:good|other)|help me|how (?:can|could|should|would|do) I|how to|walk me through|"
-                     r"can you (?:show|explain|help|give|write|create|make|plan)|explain|steps?|approach|"
-                     r"what (?:libraries|tools|options|places|ways)|best way|plan(?:ning)? (?:my|a|the))\b", re.I)
+_ADVICE = re.compile(
+    r"\b(?:recommend|suggest|suggestions?|ideas?|tips?|advice|should I|what should|"
+    r"any (?:good|other)|help me|how (?:can|could|should|would|do) I|how to|walk me through|"
+    r"can you (?:show|explain|help|give|write|create|make|plan)|explain|steps?|approach|"
+    r"what (?:libraries|tools|options|places|ways)|best way|plan(?:ning)? (?:my|a|the))\b",
+    re.I,
+)
 
 
-_ABOUT_SELF = re.compile(r"\b(?:profession|occupation|job|career|for a living|my (?:work|role|background|name|age)|"
-                         r"who am I|where (?:do|did) I (?:live|work|grow up)|how old am I)\b", re.I)
+_ABOUT_SELF = re.compile(
+    r"\b(?:profession|occupation|job|career|for a living|my (?:work|role|background|name|age)|"
+    r"who am I|where (?:do|did) I (?:live|work|grow up)|how old am I)\b",
+    re.I,
+)
 
 
 def _stems(text: str) -> set[str]:
     if unicode_index.relevant(text):
-        return {w if has_cjk(w) else w[:5] for w in _unicode_words(text)
-                if (len(w) > 2 or has_cjk(w)) and w not in profile.STOPWORDS}
+        return {
+            w if has_cjk(w) else w[:5]
+            for w in _unicode_words(text)
+            if (len(w) > 2 or has_cjk(w)) and w not in profile.STOPWORDS
+        }
     return {w[:5] for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 2 and w not in profile.STOPWORDS}
 
 
-_FRAME_WORDS = frozenset("summary summarise summarize summarizing comprehensive overview recap progress progressed "
-                         "evolved evolve provide give describe including include detailed brief please".split())
+_FRAME_WORDS = frozenset(
+    "summary summarise summarize summarizing comprehensive overview recap progress progressed "
+    "evolved evolve provide give describe including include detailed brief please".split()
+)
 
 
 _QUERY_FRAME = re.compile(
@@ -350,10 +388,10 @@ _QUERY_TRAILING = re.compile(
 _CORE_STRIP_ARTICLE = re.compile(r"^(?:the\s+|about\s+|and\s+|my\s+|our\s+|how\s+)+", re.I)
 _CORE_STRIP_ASPECT = re.compile(
     r"^(?:the\s+)?(?:order in which|sequence of|different aspects of|aspects of|timeline of|history of|"
-    r"all the times i|details about)\s+", re.I,
+    r"all the times i|details about)\s+",
+    re.I,
 )
-_CORE_STRIP_MENTION = re.compile(
-    r"^(?:i brought up|we talked about|we discussed|i mentioned)\s+", re.I)
+_CORE_STRIP_MENTION = re.compile(r"^(?:i brought up|we talked about|we discussed|i mentioned)\s+", re.I)
 _CORE_STRIP_ASPECT2 = re.compile(r"^(?:different aspects of|aspects of)\s+", re.I)
 _CLAUSE_SPLIT = re.compile(r"\s*(?:;|,\s*and\b|\band then\b|\balso\b)\s*")
 _WORD3 = re.compile(r"[A-Za-z]{3,}")
@@ -373,13 +411,22 @@ def _core_topic(question: str) -> str:
     return cleaned.strip(" ?,.:;")
 
 
-_GAP_FRAME = re.compile(r"^(?:how (?:many|much|long)\b.*?\b(?:between|from)|"
-                        r"what (?:is|was) the (?:gap|time|difference) between)\s+", re.I)
+_GAP_FRAME = re.compile(
+    r"^(?:how (?:many|much|long)\b.*?\b(?:between|from)|"
+    r"what (?:is|was) the (?:gap|time|difference) between)\s+",
+    re.I,
+)
 _GAP_SPLIT = re.compile(r"\s+(?:and|to|until)\s+(?=(?:when|the|my|i|a|an|what|where|how|our)\b)", re.I)
-_GAP_ORDER = re.compile(r"^how (?:many|much|long)\b[\w\s]*?\b(after|before|since)\s+(.+?)\s+"
-                        r"(?:did|do|was|were|had|have|could|would|when)\s+(?:i|we)\s+(.+)$", re.I)
-_GAP_SINCE = re.compile(r"^how (?:many|much|long)\b.*?\b(?:had|have) (?:i|we) been\s+(.+?)\s+"
-                        r"(?:when|before|by the time)\s+(?:i|we)\s+(.+)$", re.I)
+_GAP_ORDER = re.compile(
+    r"^how (?:many|much|long)\b[\w\s]*?\b(after|before|since)\s+(.+?)\s+"
+    r"(?:did|do|was|were|had|have|could|would|when)\s+(?:i|we)\s+(.+)$",
+    re.I,
+)
+_GAP_SINCE = re.compile(
+    r"^how (?:many|much|long)\b.*?\b(?:had|have) (?:i|we) been\s+(.+?)\s+"
+    r"(?:when|before|by the time)\s+(?:i|we)\s+(.+)$",
+    re.I,
+)
 _EVENT_LEAD = re.compile(r"^(?:when|the (?:day|time|week|moment) (?:when )?|the date )\s*", re.I)
 
 
@@ -390,7 +437,7 @@ def gap_events(question: str) -> list[str]:
     text = question.strip().rstrip("?.! ")
     frame = _GAP_FRAME.match(text)
     if frame:
-        parts = _GAP_SPLIT.split(text[frame.end():], maxsplit=1)
+        parts = _GAP_SPLIT.split(text[frame.end() :], maxsplit=1)
         if len(parts) == 2:
             return [e for e in (_EVENT_LEAD.sub("", p).strip(" ,") for p in parts) if len(_WORD3.findall(e)) >= 2]
     order = _GAP_ORDER.match(text)
@@ -425,15 +472,20 @@ def subqueries(question: str) -> list[str]:
                 out.append(core.replace(coord.group(0), w2))
     if question.count(",") >= 2 or re.search(r"\bincluding\b|:", question):
         head = re.split(r"\bincluding\b|:", question, maxsplit=1)[0]
-        rest = question[len(head):]
+        rest = question[len(head) :]
         multilingual = unicode_index.relevant(question)
-        head_words = [w for w in WORD_RE.findall(head) if len(w) >= 3 or has_cjk(w)] if multilingual \
+        head_words = (
+            [w for w in WORD_RE.findall(head) if len(w) >= 3 or has_cjk(w)]
+            if multilingual
             else re.findall(r"[A-Za-z][A-Za-z'-]{2,}", head)
-        topic = [w for w in head_words
-                 if w.lower() not in profile.STOPWORDS and w.lower() not in _FRAME_WORDS][:4]
+        )
+        topic = [w for w in head_words if w.lower() not in profile.STOPWORDS and w.lower() not in _FRAME_WORDS][:4]
         for aspect in re.split(r",\s*(?:and\s+)?|\band\b|\bincluding\b|:", rest):
-            aspect_words = [w for w in WORD_RE.findall(aspect) if len(w) >= 3 or has_cjk(w)] if multilingual \
+            aspect_words = (
+                [w for w in WORD_RE.findall(aspect) if len(w) >= 3 or has_cjk(w)]
+                if multilingual
                 else re.findall(r"[A-Za-z][A-Za-z'-]{2,}", aspect)
+            )
             words = [w for w in aspect_words if w.lower() not in profile.STOPWORDS]
             if words:
                 if len(words) >= 2:
@@ -443,15 +495,21 @@ def subqueries(question: str) -> list[str]:
     lead = _CONSIDERING.match(question)
     if lead:  # "Considering A, B and C, how ...": each named aspect is searched on its own
         for aspect in re.split(r",\s*(?:and\s+)?|\s+and\s+", lead.group(1)):
-            words = [w for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]+", aspect)
-                     if w.lower() not in profile.STOPWORDS and w.lower() not in _FRAME_WORDS]
+            words = [
+                w
+                for w in re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]+", aspect)
+                if w.lower() not in profile.STOPWORDS and w.lower() not in _FRAME_WORDS
+            ]
             if len(words) >= 2:
                 out.append(" ".join(words))
     return list(dict.fromkeys(out))[:12]
 
 
-_CONSIDERING = re.compile(r"^(?:considering|given|taking into account|based on)\s+(.+?),\s*(?:how|what|which|can|could|"
-                          r"should|would|will|do|does|is|are)\b", re.I)
+_CONSIDERING = re.compile(
+    r"^(?:considering|given|taking into account|based on)\s+(.+?),\s*(?:how|what|which|can|could|"
+    r"should|would|will|do|does|is|are)\b",
+    re.I,
+)
 
 
 SECOND_PASS_TURNS = 8  # most turns a coverage-driven second pass may add
@@ -523,8 +581,7 @@ def filter_self_turns(store: Store, question: str, turn_ids: list[int]) -> tuple
     if not norm_q:
         return list(turn_ids), 0
     turns = store.turns(turn_ids)
-    kept = [tid for tid in turn_ids
-            if tid not in turns or _normalize_text(turns[tid].text) != norm_q]
+    kept = [tid for tid in turn_ids if tid not in turns or _normalize_text(turns[tid].text) != norm_q]
     return kept, len(turn_ids) - len(kept)
 
 
@@ -586,8 +643,7 @@ def _unicode_excerpt(turn: Turn, question: str, cap: int) -> str:
     width = limit - len(prefix) - 4
     if width <= 0:
         return prefix[:limit]
-    asked = {w for w in _unicode_words(question)
-             if (len(w) > 2 or has_cjk(w)) and w not in profile.STOPWORDS}
+    asked = {w for w in _unicode_words(question) if (len(w) > 2 or has_cjk(w)) and w not in profile.STOPWORDS}
     singletons = {w for w in asked if len(w) == 1 and has_cjk(w)}
     best: tuple[int, bool, int] | None = None
     selected = (0, min(width, len(text)))
@@ -636,8 +692,9 @@ def _excerpt(turn: Turn, question: str, cap: int) -> str:
             buf = ""
     if buf:
         pieces.append(buf)
-    scored = sorted(range(len(pieces)), key=lambda i: (
-        -len(asked & set(re.findall(r"[a-z0-9_]+", pieces[i].lower()))), i))
+    scored = sorted(
+        range(len(pieces)), key=lambda i: (-len(asked & set(re.findall(r"[a-z0-9_]+", pieces[i].lower()))), i)
+    )
     keep: set[int] = set()
     spent = tokens(turn.speaker) + 4
     for i in scored:
@@ -683,9 +740,13 @@ class _CachedRecall:
 
 def _recall_size(result: Recall) -> int:
     # Conservative bound including the copied metadata and candidate lists.
-    return len(result.context.encode("utf-8")) + len(result.question.encode("utf-8")) \
-        + len(json.dumps(result.explain, ensure_ascii=False).encode("utf-8")) \
-        + 128 * (len(result.ranked) + len(result.turns)) + 4096
+    return (
+        len(result.context.encode("utf-8"))
+        + len(result.question.encode("utf-8"))
+        + len(json.dumps(result.explain, ensure_ascii=False).encode("utf-8"))
+        + 128 * (len(result.ranked) + len(result.turns))
+        + 4096
+    )
 
 
 def _recall_telemetry(result: Recall) -> dict:
@@ -712,8 +773,7 @@ def forget_store(store: Store) -> None:
                 del _RECALL_CACHE[key]
 
 
-def _recall_key(store: Store, question: str, now, opts: Options,
-                extra_queries: Sequence[str]) -> tuple | None:
+def _recall_key(store: Store, question: str, now, opts: Options, extra_queries: Sequence[str]) -> tuple | None:
     """Cache key for a recall, or None when the call must not be cached.
 
     Includes local change count and SQLite data_version: deletions, profile
@@ -725,38 +785,80 @@ def _recall_key(store: Store, question: str, now, opts: Options,
         from unimem.conversation import embed
 
         resolved_model = embed.configured() if opts.embedder == "auto" else opts.embedder
-        model_binding = (resolved_model, bool(resolved_model and resolved_model != "none"
-                                              and embed.available_for(resolved_model)))
+        model_binding = (
+            resolved_model,
+            bool(resolved_model and resolved_model != "none" and embed.available_for(resolved_model)),
+        )
         stamp = store.read_stamp()
         # With an implicit clock an expiry can pass without a write. Do not
         # cache that view; explicit moments are stable and safe to cache.
-        if now is None and store._has_expiry and store.db.execute(
-                "SELECT 1 FROM turns WHERE expires IS NOT NULL LIMIT 1").fetchone():
+        if (
+            now is None
+            and store._has_expiry
+            and store.db.execute("SELECT 1 FROM turns WHERE expires IS NOT NULL LIMIT 1").fetchone()
+        ):
             return None
     except Exception:  # noqa: BLE001 - no cache without a readable store
         return None
     moment = timeparse.parse_moment(now) if isinstance(now, str) else now
     return (
-        store.cache_identity, store.path, question, str(moment or ""),
-        opts.budget, opts.pool, opts.neighbours_before, opts.neighbours_after,
-        opts.neighbour_hits, opts.neighbour_minutes, opts.bridge_turns, opts.excerpt_tokens,
-        opts.window_boost, opts.entity_boost, opts.lexical_weight, opts.rerank, opts.recency_pool,
-        opts.rerank_depth, opts.rerank_blend, opts.profile_facts, opts.instructions,
-        opts.broad, opts.recency_boost, opts.primary_hits, opts.embedder, model_binding,
-        opts.summaries, opts.sessions, opts.speakers, opts.since, opts.until, opts.graph_hops,
+        store.cache_identity,
+        store.path,
+        question,
+        str(moment or ""),
+        opts.budget,
+        opts.pool,
+        opts.neighbours_before,
+        opts.neighbours_after,
+        opts.neighbour_hits,
+        opts.neighbour_minutes,
+        opts.bridge_turns,
+        opts.excerpt_tokens,
+        opts.window_boost,
+        opts.entity_boost,
+        opts.lexical_weight,
+        opts.rerank,
+        opts.recency_pool,
+        opts.rerank_depth,
+        opts.rerank_blend,
+        opts.profile_facts,
+        opts.instructions,
+        opts.broad,
+        opts.recency_boost,
+        opts.primary_hits,
+        opts.embedder,
+        model_binding,
+        opts.summaries,
+        opts.sessions,
+        opts.speakers,
+        opts.since,
+        opts.until,
+        opts.graph_hops,
         GRAPH_WALK_WEIGHT if opts.graph_walk is None else opts.graph_walk,
-        opts.context_strategy, opts.second_pass, tuple(extra_queries), stamp,
+        opts.context_strategy,
+        opts.second_pass,
+        tuple(extra_queries),
+        stamp,
     )
 
 
-AUTO_BUDGET_FACTORS = {"summary": 3.0, "ordering": 3.0, "counting": 3.0, "broad": 2.0,
-                       "multi-facet": 2.0, "list": 2.0, "focused": 1.0}
+AUTO_BUDGET_FACTORS = {
+    "summary": 3.0,
+    "ordering": 3.0,
+    "counting": 3.0,
+    "broad": 2.0,
+    "multi-facet": 2.0,
+    "list": 2.0,
+    "focused": 1.0,
+}
 _LIST_QUESTION = re.compile(
     r"^\s*(?:what|which)\s+(?:(?:kinds?|types?|sorts?)\s+of\s+[a-z][a-z-]*"
     r"|(?!(?:is|was|does|has|this|these|those|its)\b)[a-z][a-z-]{2,}s)\s+(?:do|does|did|has|have|had|are|were)\b"
     r"|\b(?:both|in common|all of (?:the|my|his|her|their))\b"
     r"|^\s*(?:what|which|where|who)\b[^?]*\b(?:has|have)\s+\w+\s+(?:\w+\s+)?(?:done|made|seen|visited|read|"
-    r"bought|tried|painted|attended|played|taken|used|owned|written|watched|met)\b", re.I)
+    r"bought|tried|painted|attended|played|taken|used|owned|written|watched|met)\b",
+    re.I,
+)
 
 
 def budget_for(question: str, base: int, cap: int = 12_000) -> tuple[int, str]:
@@ -789,8 +891,15 @@ def budget_for(question: str, base: int, cap: int = 12_000) -> tuple[int, str]:
     return min(cap, int(base * AUTO_BUDGET_FACTORS[reason])), reason
 
 
-def recall(store: Store, question: str, *, now=None, options: Options | None = None,
-           extra_queries: Sequence[str] = (), dense_candidates: DenseCandidates | None = None) -> Recall:
+def recall(
+    store: Store,
+    question: str,
+    *,
+    now=None,
+    options: Options | None = None,
+    extra_queries: Sequence[str] = (),
+    dense_candidates: DenseCandidates | None = None,
+) -> Recall:
     """`extra_queries` are searched beside the question, each keeping its own best
     ranks (a follow-up search that finds a missing fact first is not diluted).
 
@@ -803,8 +912,9 @@ def recall(store: Store, question: str, *, now=None, options: Options | None = N
     if options is not None and options.adaptive_budget:
         effective, reason = budget_for(question, options.budget, options.max_budget)
         resolved = dataclasses.replace(options, budget=effective, adaptive_budget=False)
-        result = recall(store, question, now=now, options=resolved, extra_queries=extra_queries,
-                        dense_candidates=dense_candidates)
+        result = recall(
+            store, question, now=now, options=resolved, extra_queries=extra_queries, dense_candidates=dense_candidates
+        )
         result.explain["budget"] = {"requested": options.budget, "effective": effective, "reason": reason}
         return result
     from unimem import telemetry
@@ -812,8 +922,7 @@ def recall(store: Store, question: str, *, now=None, options: Options | None = N
     if question and unicode_index.relevant(question):
         _context_strategy((options or Options()).context_strategy)
         store.prepare_lexical(question)
-    with store.read_snapshot(), telemetry.span(
-            "conversation.recall", queries=1 + len(extra_queries)) as handle:
+    with store.read_snapshot(), telemetry.span("conversation.recall", queries=1 + len(extra_queries)) as handle:
         opts = options or Options()
         _context_strategy(opts.context_strategy)
         key = _recall_key(store, question, now, opts, extra_queries) if dense_candidates is None else None
@@ -824,30 +933,43 @@ def recall(store: Store, question: str, *, now=None, options: Options | None = N
                     _RECALL_CACHE.move_to_end(key)
                     handle.set(**_recall_telemetry(hit.result), cached=True)
                     return copy.deepcopy(hit.result)
-        result = _recall(store, question, now=now, options=options, extra_queries=extra_queries,
-                         dense_candidates=dense_candidates)
+        result = _recall(
+            store, question, now=now, options=options, extra_queries=extra_queries, dense_candidates=dense_candidates
+        )
         handle.set(**_recall_telemetry(result))
-        cacheable = (key is not None and not result.explain.get("dense_fallback")
-                     and not result.explain.get("rerank_fallback")
-                     and not result.explain.get("rerank_stage", {}).get("error"))
+        cacheable = (
+            key is not None
+            and not result.explain.get("dense_fallback")
+            and not result.explain.get("rerank_fallback")
+            and not result.explain.get("rerank_stage", {}).get("error")
+        )
         cache_size = _recall_size(result) if cacheable else 0
         if cacheable and cache_size <= _RECALL_CACHE_BYTES:
             with _RECALL_LOCK:
                 # Remove older revisions of this store before retaining another
                 # copy of potentially sensitive evidence.
                 for old in list(_RECALL_CACHE):
-                    if old[0] is store.cache_identity and old[-1] != key[-1]:
+                    if old[0] is store.cache_identity and key is not None and old[-1] != key[-1]:
                         del _RECALL_CACHE[old]
                 _RECALL_CACHE[key] = _CachedRecall(copy.deepcopy(result), cache_size)
                 _RECALL_CACHE.move_to_end(key)
-                while len(_RECALL_CACHE) > _RECALL_CACHE_MAX or sum(
-                        entry.size for entry in _RECALL_CACHE.values()) > _RECALL_CACHE_BYTES:
+                while (
+                    len(_RECALL_CACHE) > _RECALL_CACHE_MAX
+                    or sum(entry.size for entry in _RECALL_CACHE.values()) > _RECALL_CACHE_BYTES
+                ):
                     _RECALL_CACHE.popitem(last=False)
         return result
 
 
-def _recall(store: Store, question: str, *, now=None, options: Options | None = None,
-            extra_queries: Sequence[str] = (), dense_candidates: DenseCandidates | None = None) -> Recall:
+def _recall(
+    store: Store,
+    question: str,
+    *,
+    now=None,
+    options: Options | None = None,
+    extra_queries: Sequence[str] = (),
+    dense_candidates: DenseCandidates | None = None,
+) -> Recall:
     opts = options or Options()
     _context_strategy(opts.context_strategy)
     question = (question or "").strip()
@@ -865,8 +987,11 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
 
         tag = embed.configured() if opts.embedder == "auto" else opts.embedder
         expected_model = embed.model_identity(tag) if tag and tag != "none" else None
-        if dense_candidates.identity != (store._units_identity or store.cache_identity) \
-                or dense_candidates.stamp != store.unit_stamp() or dense_candidates.model != expected_model:
+        if (
+            dense_candidates.identity != (store._units_identity or store.cache_identity)
+            or dense_candidates.stamp != store.unit_stamp()
+            or dense_candidates.model != expected_model
+        ):
             raise ConversationError("external vector candidates are stale or use a different embedding model")
     dense_fallback: list[str] = []
     try:
@@ -880,17 +1005,25 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
         if parsed_until is None:
             raise ConversationError(f"unrecognised date {until!r}")
         until = min(parsed_until, moment)
-    allowed = store.allowed(sessions=opts.sessions, speakers=opts.speakers, since=opts.since,
-                            until=until, now=moment if now is not None else None)
+    allowed = store.allowed(
+        sessions=opts.sessions,
+        speakers=opts.speakers,
+        since=opts.since,
+        until=until,
+        now=moment if now is not None else None,
+    )
     if allowed is not None and len(allowed) == store.turn_count():
         # a filter that excludes nothing is no filter: every search arm would otherwise
         # carry the whole id list into each full-text query
         allowed = None
     pool = opts.pool
     queries = list(dict.fromkeys(subqueries(question) + [q.strip() for q in extra_queries if q and q.strip()]))
-    dense_rankings: dict[str, list[int]] = {
-        query: list(units) for query, units in dense_candidates.rankings.items()
-    } if dense_candidates is not None else {}
+    dense_rankings: dict[str, list[int]] = (
+        {query: list(units) for query, units in dense_candidates.rankings.items()}
+        if dense_candidates is not None
+        else {}
+    )
+
     def encode_dense(batch_queries: list[str]) -> None:
         nonlocal embedder
         if embedder is None or allowed == set() or pool <= 0 or not batch_queries:
@@ -900,7 +1033,7 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
         # Encode related facets together and scan each bounded query batch once.
         try:
             for start in range(0, len(batch_queries), embed.QUERY_BATCH):
-                batch = batch_queries[start:start + embed.QUERY_BATCH]
+                batch = batch_queries[start : start + embed.QUERY_BATCH]
                 vectors = embedder.encode(batch, query=True)
                 pages = embed.search_many(store, embedder, vectors, pool, allowed=allowed)
                 dense_rankings.update((q, [u for u, _s in hits]) for q, hits in zip(batch, pages))
@@ -925,16 +1058,19 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
         # facet serialized otherwise-independent reads on the same SQLite
         # connection and amplified latency for real multi-hop questions.
         arms = {query: arm_rankings(query) for query in queries}
-        unit_ids = list(dict.fromkeys(unit for query_arms in arms.values()
-                                      for units, _weight in query_arms for unit in units))
+        unit_ids = list(
+            dict.fromkeys(unit for query_arms in arms.values() for units, _weight in query_arms for unit in units)
+        )
         unit_turn = store.unit_turns(unit_ids)
         by_turn: dict[int, float] = {}
         for query_arms in arms.values():
             ranked_turns = []
             for units, weight in query_arms:
-                turns = list(dict.fromkeys(
-                    unit_turn[u] for u in units
-                    if u in unit_turn and (allowed is None or unit_turn[u] in allowed)))
+                turns = list(
+                    dict.fromkeys(
+                        unit_turn[u] for u in units if u in unit_turn and (allowed is None or unit_turn[u] in allowed)
+                    )
+                )
                 ranked_turns.append((turns, weight))
             for turn, score in _rrf(ranked_turns).items():
                 # Independent facets are separate evidence for a candidate.
@@ -981,10 +1117,11 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
         # Only near-equal matches compete on time: a boost spread over every
         # scored turn lets recent chatter outrank the one turn that answers.
         top = max(scores.values())
-        comparable = sorted(scores, key=lambda t: (-scores[t], t))[:max(1, opts.recency_pool)]
+        comparable = sorted(scores, key=lambda t: (-scores[t], t))[: max(1, opts.recency_pool)]
         candidates = store.turns(comparable)
-        order = sorted(comparable, key=lambda t: (candidates[t].at if t in candidates and candidates[t].at
-                                                  else dt.datetime.min, t))
+        order = sorted(
+            comparable, key=lambda t: (candidates[t].at if t in candidates and candidates[t].at else dt.datetime.min, t)
+        )
         for position, turn in enumerate(order):
             scores[turn] += opts.recency_boost * top * (position / max(1, len(order) - 1))
         explain["recency"] = True
@@ -1035,17 +1172,32 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
     if rerank == "auto":
         from unimem import configuration
 
-        rerank = configuration.load(store.root)["options"].get("reranker", "cross-encoder-fast") \
-            if embedder is not None else None
+        rerank = (
+            configuration.load(store.root)["options"].get("reranker", "cross-encoder-fast")
+            if embedder is not None
+            else None
+        )
     if rerank and ranked:
         try:
             ranked = _rerank(
-                store, question, ranked, rerank, opts.rerank_depth, explain, opts.rerank_blend,
+                store,
+                question,
+                ranked,
+                rerank,
+                opts.rerank_depth,
+                explain,
+                opts.rerank_blend,
                 local_files_only=auto_rerank,
             )
         except TypeError:
             ranked = _rerank(
-                store, question, ranked, rerank, opts.rerank_depth, explain, opts.rerank_blend,
+                store,
+                question,
+                ranked,
+                rerank,
+                opts.rerank_depth,
+                explain,
+                opts.rerank_blend,
             )
         explain["rerank"] = rerank
     withheld: list[int] = []
@@ -1061,40 +1213,76 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
     def pack(candidates: list[int], withheld: list[int]):
         emitted: list[_EmittedText] = []
         selection: dict = {}
-        packed = assemble(store, question, candidates, opts, withheld, allowed, now=show_now,
-                          as_of=belief_at, current_instructions=now is None and belief_at is not None,
-                          evidence_paths=explain.get("graph_paths", ()), emitted=emitted, selection=selection)
-        found = assess(question, [part.body for part in emitted if part.body],
-                       labels=[part.speaker for part in emitted if part.body and part.speaker])
+        packed = assemble(
+            store,
+            question,
+            candidates,
+            opts,
+            withheld,
+            allowed,
+            now=show_now,
+            as_of=belief_at,
+            current_instructions=now is None and belief_at is not None,
+            evidence_paths=explain.get("graph_paths", ()),
+            emitted=emitted,
+            selection=selection,
+        )
+        found = assess(
+            question,
+            [part.body for part in emitted if part.body],
+            labels=[part.speaker for part in emitted if part.body and part.speaker],
+        )
         if opts.context_strategy == "coverage-v2":
             sources = store.turns(part.turn for part in emitted if part.turn is not None and part.body)
             selection["evidence"] = [
-                {"id": f"T{part.turn}", "turn": part.turn, "kind": part.kind, "speaker": part.speaker,
-                 "session": sources[part.turn].session, "role": sources[part.turn].role,
-                 "at": sources[part.turn].at.isoformat() if sources[part.turn].at else None, "text": part.body}
-                for part in emitted if part.body and part.turn in sources]
+                {
+                    "id": f"T{part.turn}",
+                    "turn": part.turn,
+                    "kind": part.kind,
+                    "speaker": part.speaker,
+                    "session": sources[part.turn].session,
+                    "role": sources[part.turn].role,
+                    "at": at.isoformat() if (at := sources[part.turn].at) is not None else None,
+                    "text": part.body,
+                }
+                for part in emitted
+                if part.body and part.turn in sources
+            ]
         return packed, selection, found
 
     (context, used, n_tokens), selection, coverage = pack(ranked, withheld)
     if opts.second_pass:
         ranked, withheld, (context, used, n_tokens), selection, coverage = _second_pass(
-            store, question, ranked, withheld, (context, used, n_tokens), selection, coverage, opts, explain,
-            encode_dense, turn_scores, pack, candidate_scores=scores)
+            store,
+            question,
+            ranked,
+            withheld,
+            (context, used, n_tokens),
+            selection,
+            coverage,
+            opts,
+            explain,
+            encode_dense,
+            turn_scores,
+            pack,
+            candidate_scores=scores,
+        )
         if dense_fallback:
             explain["dense_fallback"] = dense_fallback[-1]
     # The ranking score is uncalibrated and precedes reranking. Retain only two
     # scalar aggregates over delivered scored turns, including accepted second-
     # pass additions. Graph-only/profile context does not invent ranking scores.
-    top = heapq.nlargest(2, (scores[turn] for turn in used if turn in scores))
+    top_scores = heapq.nlargest(2, (scores[turn] for turn in used if turn in scores))
     explain["retrieval_score"] = {
-        "top": top[0] if top else 0.0,
-        "margin": top[0] - top[1] if len(top) > 1 else 0.0,
+        "top": top_scores[0] if top_scores else 0.0,
+        "margin": top_scores[0] - top_scores[1] if len(top_scores) > 1 else 0.0,
     }
     explain["context_selection"] = selection
     if explain.get("graph_paths"):
         chosen = set(used)
-        explain["selected_graph_paths"] = [p for p in explain["graph_paths"]
-                                           if p["source"] in chosen and p["turn"] in chosen]
+        explain["selected_graph_paths"] = [
+            p for p in explain["graph_paths"] if p["source"] in chosen and p["turn"] in chosen
+        ]
     conf = coverage.confidence
     explain["confidence"] = conf
     explain["coverage"] = coverage.as_dict()
@@ -1102,13 +1290,33 @@ def _recall(store: Store, question: str, *, now=None, options: Options | None = 
         explain["abstain"] = True
     if withheld:
         explain["withheld"] = withheld
-    return Recall(question, context, n_tokens, used, ranked,
-                  (window[0].isoformat(), window[1].isoformat(), window[2]) if window else None, explain)
+    return Recall(
+        question,
+        context,
+        n_tokens,
+        used,
+        ranked,
+        (window[0].isoformat(), window[1].isoformat(), window[2]) if window else None,
+        explain,
+    )
 
 
-def _second_pass(store: Store, question: str, ranked: list[int], withheld: list[int], packed: tuple,
-                 selection: dict, coverage, opts: Options, explain: dict, encode_dense, turn_scores, pack,
-                 *, candidate_scores: dict[int, float] | None = None):
+def _second_pass(
+    store: Store,
+    question: str,
+    ranked: list[int],
+    withheld: list[int],
+    packed: tuple,
+    selection: dict,
+    coverage,
+    opts: Options,
+    explain: dict,
+    encode_dense,
+    turn_scores,
+    pack,
+    *,
+    candidate_scores: dict[int, float] | None = None,
+):
     """Search facet queries for the subject terms the first context missed.
 
     Runs only when the first pass did not abstain, some subject term is
@@ -1145,8 +1353,12 @@ def _second_pass(store: Store, question: str, ranked: list[int], withheld: list[
     packed2, selection2, coverage2 = pack(merged, second_withheld)
     before = set(packed[1])
     new = [t for t in packed2[1] if t not in before]
-    report.update(added_turns=new, tokens_before=packed[2], tokens_after=packed2[2],
-                  missing_after=list(coverage2.missing_subject_terms))
+    report.update(
+        added_turns=new,
+        tokens_before=packed[2],
+        tokens_after=packed2[2],
+        missing_after=list(coverage2.missing_subject_terms),
+    )
     explain["second_pass"] = report
     if not new:
         report["skipped"] = "the new turns did not fit the remaining budget"
@@ -1156,31 +1368,44 @@ def _second_pass(store: Store, question: str, ranked: list[int], withheld: list[
     return merged, second_withheld, packed2, selection2, coverage2
 
 
-def _rerank(store: Store, question: str, ranked: list[int], mode: str, depth: int,
-            explain: dict | None = None, blend: float = 0.0, *, local_files_only: bool = False) -> list[int]:
+def _rerank(
+    store: Store,
+    question: str,
+    ranked: list[int],
+    mode: str,
+    depth: int,
+    explain: dict | None = None,
+    blend: float = 0.0,
+    *,
+    local_files_only: bool = False,
+) -> list[int]:
     from unimem import rerank_arm
 
     if mode == "mmr":
         from unimem import providers
         from unimem.retrieval import RankedLesson
 
-        head = ranked[:max(1, min(depth, 200))]
+        head = ranked[: max(1, min(depth, 200))]
         turns = store.turns(head)
-        candidates = [RankedLesson("", str(t), _excerpt(turns[t], question, 300),
-                                  1.0 / (RRF_K + 1 + n), []) for n, t in enumerate(head) if t in turns]
+        candidates = [
+            RankedLesson("", str(t), _excerpt(turns[t], question, 300), 1.0 / (RRF_K + 1 + n), [])
+            for n, t in enumerate(head)
+            if t in turns
+        ]
         diverse = providers.mmr_reranker()(question, candidates)
         order = [int(row.slug) for row in diverse]
         selected = set(order)
         if explain is not None:
-            explain["rerank_stage"] = {"reranker": "mmr", "depth": depth, "items": len(order),
-                                       "moved": sum(a != b for a, b in zip(head, order))}
+            explain["rerank_stage"] = {
+                "reranker": "mmr",
+                "depth": depth,
+                "items": len(order),
+                "moved": sum(a != b for a, b in zip(head, order)),
+            }
         return order + [t for t in ranked if t not in selected]
     if mode not in rerank_arm.MODELS:
         return _rerank_provider(store, question, ranked, mode, depth, explain, blend)
-    unavailable = (
-        rerank_arm.ready(mode, local_files_only=True)
-        if local_files_only else rerank_arm.ready(mode)
-    )
+    unavailable = rerank_arm.ready(mode, local_files_only=True) if local_files_only else rerank_arm.ready(mode)
     if unavailable:
         if explain is not None:
             explain["rerank_fallback"] = unavailable
@@ -1192,7 +1417,12 @@ def _rerank(store: Store, question: str, ranked: list[int], mode: str, depth: in
     text_of = {str(t): _excerpt(turns[t], question, 300) for t in head if t in turns}
     if local_files_only:
         page, _ = rerank_arm.rerank(
-            question, list(text_of), text_of, len(text_of), mode=mode, local_files_only=True,
+            question,
+            list(text_of),
+            text_of,
+            len(text_of),
+            mode=mode,
+            local_files_only=True,
         )
     else:
         page, _ = rerank_arm.rerank(question, list(text_of), text_of, len(text_of), mode=mode)
@@ -1203,15 +1433,15 @@ def _rerank(store: Store, question: str, ranked: list[int], mode: str, depth: in
         # the cross-encoder votes beside the fused ranking instead of replacing it: it was
         # trained on question -> passage search and misjudges task requests and diary notes
         fused = {t: i for i, t in enumerate(head)}
-        scores = {t: 1.0 / (RRF_K + fused.get(t, len(head)) + 1) + blend / (RRF_K + i + 1)
-                  for i, t in enumerate(order)}
+        scores = {t: 1.0 / (RRF_K + fused.get(t, len(head)) + 1) + blend / (RRF_K + i + 1) for i, t in enumerate(order)}
         order = sorted(scores, key=lambda t: -scores[t])
     returned = set(order)
     return order + [t for t in ranked if t not in returned]
 
 
-def _rerank_provider(store: Store, question: str, ranked: list[int], name: str, depth: int,
-                     explain: dict | None, blend: float) -> list[int]:
+def _rerank_provider(
+    store: Store, question: str, ranked: list[int], name: str, depth: int, explain: dict | None, blend: float
+) -> list[int]:
     """Any `providers.reranker` text reranker (hosted, LLM or registered) over the head.
 
     ``blend`` keeps this module's meaning: the reranker's weight beside the
@@ -1229,12 +1459,13 @@ def _rerank_provider(store: Store, question: str, ranked: list[int], name: str, 
         report = {"reranker": name, "items": 0, "latency_ms": 0.0, "error": unavailable}
         order = ranked
     else:
-        head = ranked[:max(1, min(depth, reranking.MAX_DEPTH))]
+        head = ranked[: max(1, min(depth, reranking.MAX_DEPTH))]
         turns = store.turns(head)
         text_of = {str(t): _excerpt(turns[t], question, 300) for t in head if t in turns}
         stage_blend = 1.0 if not blend else blend / (1.0 + blend)
-        keys, report = reranking.stage(question, [str(t) for t in ranked], text_of, ranker,
-                                       depth=len(head), blend=stage_blend)
+        keys, report = reranking.stage(
+            question, [str(t) for t in ranked], text_of, ranker, depth=len(head), blend=stage_blend
+        )
         order = [int(k) for k in keys]
         if report.get("top"):
             report["top"] = [{"id": int(row["id"]), "score": row["score"]} for row in report["top"]]
@@ -1245,18 +1476,27 @@ def _rerank_provider(store: Store, question: str, ranked: list[int], name: str, 
     return order
 
 
-_GLOBAL_RULE = re.compile(r"\b(?:format\w*|style|length|short|shorter|concise|brief|bullet\w*|list|language|units?|"
-                          r"metric|imperial|code|snippets?|syntax|tone|formal|casual|words?|examples?|step|steps|"
-                          r"explain\w*|answers?|responses?|repl(?:y|ies)|summar\w*|cite|sources?|emoji\w*)\b", re.I)
+_GLOBAL_RULE = re.compile(
+    r"\b(?:format\w*|style|length|short|shorter|concise|brief|bullet\w*|list|language|units?|"
+    r"metric|imperial|code|snippets?|syntax|tone|formal|casual|words?|examples?|step|steps|"
+    r"explain\w*|answers?|responses?|repl(?:y|ies)|summar\w*|cite|sources?|emoji\w*)\b",
+    re.I,
+)
 _RULE_CONTEXT = re.compile(
-    r"\b(?:when(?:ever)? I (?:ask|request|need|discuss)|for questions?)\s+(?:about\s+)?(.+)", re.I)
+    r"\b(?:when(?:ever)? I (?:ask|request|need|discuss)|for questions?)\s+(?:about\s+)?(.+)", re.I
+)
 _RULE_FRAME = _stems("please show give tell explain include provide respond answer ask example common help")
 
 
-def _instruction_lines(store: Store, limit: int, question: str = "", *,
-                       facts: list[dict] | None = None,
-                       emissions: dict[tuple[str, int], _EmittedText] | None = None,
-                       ranks: Mapping[int, int] | None = None) -> list[tuple[str, int]]:
+def _instruction_lines(
+    store: Store,
+    limit: int,
+    question: str = "",
+    *,
+    facts: list[dict] | None = None,
+    emissions: dict[tuple[str, int], _EmittedText] | None = None,
+    ranks: Mapping[int, int] | None = None,
+) -> list[tuple[str, int]]:
     """Standing instructions the user gave the assistant: they apply to every answer, so
     they are shown whatever the question, the ones touching its subject and the rules
     about how to answer (format, length, tone, units, code) first.
@@ -1268,8 +1508,10 @@ def _instruction_lines(store: Store, limit: int, question: str = "", *,
     if limit <= 0:
         return []
     # instructions are addressed to an assistant: a chat between two people has none
-    addressed = store.db.execute("SELECT 1 FROM turns WHERE role='assistant' LIMIT 1").fetchone() is not None or \
-        store.db.execute("SELECT COUNT(DISTINCT speaker) FROM turns").fetchone()[0] <= 1
+    addressed = (
+        store.db.execute("SELECT 1 FROM turns WHERE role='assistant' LIMIT 1").fetchone() is not None
+        or store.db.execute("SELECT COUNT(DISTINCT speaker) FROM turns").fetchone()[0] <= 1
+    )
     if not addressed:
         return []
     asked = _stems(question) - _RULE_FRAME
@@ -1281,7 +1523,7 @@ def _instruction_lines(store: Store, limit: int, question: str = "", *,
         if key in seen:
             continue
         seen.add(key)
-        overlap = len(asked & _stems(f["statement"])) + (1 if _GLOBAL_RULE.search(f["statement"]) else 0)
+        overlap = float(len(asked & _stems(f["statement"])) + (1 if _GLOBAL_RULE.search(f["statement"]) else 0))
         condition = _RULE_CONTEXT.search(f["statement"])
         if condition:
             overlap += 4 * len(asked & _stems(condition.group(1)))
@@ -1300,9 +1542,14 @@ def _instruction_lines(store: Store, limit: int, question: str = "", *,
     return out
 
 
-def _profile_lines(store: Store, question: str, limit: int, *,
-                   facts: list[dict] | None = None,
-                   emissions: dict[tuple[str, int], _EmittedText] | None = None) -> list[tuple[str, int]]:
+def _profile_lines(
+    store: Store,
+    question: str,
+    limit: int,
+    *,
+    facts: list[dict] | None = None,
+    emissions: dict[tuple[str, int], _EmittedText] | None = None,
+) -> list[tuple[str, int]]:
     if limit <= 0:
         return []
     facts = [f for f in (facts if facts is not None else store.facts()) if f["kind"] != "instruction"]
@@ -1353,17 +1600,32 @@ def _bridge(store, turn, chosen: dict, span: int) -> list[int]:
     placed = [around[w].idx for w in window if w in chosen and w in around]
     below = max((i for i in placed if i < turn.idx), default=None)
     above = min((i for i in placed if i > turn.idx), default=None)
-    return [w for w in window if w in around and w not in chosen and (
-        (below is not None and below < around[w].idx < turn.idx)
-        or (above is not None and turn.idx < around[w].idx < above))]
+    return [
+        w
+        for w in window
+        if w in around
+        and w not in chosen
+        and (
+            (below is not None and below < around[w].idx < turn.idx)
+            or (above is not None and turn.idx < around[w].idx < above)
+        )
+    ]
 
 
-def assemble(store: Store, question: str, ranked: list[int], opts: Options,
-             withheld: list[int] | None = None, allowed: set[int] | None = None,
-             now: dt.datetime | None = None, as_of=None,
-             current_instructions: bool = False, evidence_paths=(),
-             emitted: list[_EmittedText] | None = None,
-             selection: dict | None = None) -> tuple[str, list[int], int]:
+def assemble(
+    store: Store,
+    question: str,
+    ranked: list[int],
+    opts: Options,
+    withheld: list[int] | None = None,
+    allowed: set[int] | None = None,
+    now: dt.datetime | None = None,
+    as_of=None,
+    current_instructions: bool = False,
+    evidence_paths=(),
+    emitted: list[_EmittedText] | None = None,
+    selection: dict | None = None,
+) -> tuple[str, list[int], int]:
     """Fill the budget best-first, each hit with its neighbours, then render by time.
     A turn the injection screen flags is never shown; its id goes to `withheld`."""
     strategy = _context_strategy(opts.context_strategy)
@@ -1378,41 +1640,63 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
     if emitted is not None:
         emitted.clear()
     budget = max(0, opts.budget)
-    facts = store.recall_facts(question, as_of=as_of, allowed=allowed,
-                              instructions=bool(opts.instructions), profile_facts=bool(opts.profile_facts)) \
-        if opts.instructions or opts.profile_facts else []
+    facts = (
+        store.recall_facts(
+            question,
+            as_of=as_of,
+            allowed=allowed,
+            instructions=bool(opts.instructions),
+            profile_facts=bool(opts.profile_facts),
+        )
+        if opts.instructions or opts.profile_facts
+        else []
+    )
     if current_instructions and opts.instructions:
         facts = [f for f in facts if f["kind"] != "instruction"] + [
-            f for f in store.recall_facts(question, allowed=allowed, profile_facts=False)
-            if f["kind"] == "instruction"]
+            f for f in store.recall_facts(question, allowed=allowed, profile_facts=False) if f["kind"] == "instruction"
+        ]
     # The same eligibility and injection checks apply to every memory layer.
     sources = store.fact_source_ids(f["id"] for f in facts)
     fact_turns = store.turns(t for ids in sources.values() for t in ids)
     flagged = {tid for tid, turn in fact_turns.items() if _flagged(turn)}
     withheld.extend(sorted(flagged))
-    facts = [f for f in facts if sources.get(f["id"]) and not flagged.intersection(sources[f["id"]])
-             and not injection_guard.injection_labels({"text": f["statement"]})
-             and _normalize_text(f["statement"]) != _normalize_text(question)]
+    facts = [
+        f
+        for f in facts
+        if sources.get(f["id"])
+        and not flagged.intersection(sources[f["id"]])
+        and not injection_guard.injection_labels({"text": f["statement"]})
+        and _normalize_text(f["statement"]) != _normalize_text(question)
+    ]
     profile_emissions: dict[tuple[str, int], _EmittedText] = {}
-    instruction_lines = _instruction_lines(store, opts.instructions, question, facts=facts,
-                                           emissions=profile_emissions,
-                                           ranks={tid: i for i, tid in enumerate(ranked[:INSTRUCTION_RANK_DEPTH])})
-    instruction_block = ("[Standing instructions from the user]\n" + "\n".join(t for t, _ in instruction_lines)
-                         + "\n\n") if instruction_lines else ""
+    instruction_lines = _instruction_lines(
+        store,
+        opts.instructions,
+        question,
+        facts=facts,
+        emissions=profile_emissions,
+        ranks={tid: i for i, tid in enumerate(ranked[:INSTRUCTION_RANK_DEPTH])},
+    )
+    instruction_block = (
+        ("[Standing instructions from the user]\n" + "\n".join(t for t, _ in instruction_lines) + "\n\n")
+        if instruction_lines
+        else ""
+    )
     while instruction_lines and tokens(instruction_block) > budget // 6:
         instruction_lines.pop()
-        instruction_block = ("[Standing instructions from the user]\n" + "\n".join(t for t, _ in instruction_lines)
-                             + "\n\n") if instruction_lines else ""
-    profile_lines = _profile_lines(store, question, opts.profile_facts, facts=facts,
-                                   emissions=profile_emissions)
+        instruction_block = (
+            ("[Standing instructions from the user]\n" + "\n".join(t for t, _ in instruction_lines) + "\n\n")
+            if instruction_lines
+            else ""
+        )
+    profile_lines = _profile_lines(store, question, opts.profile_facts, facts=facts, emissions=profile_emissions)
     profile_title = "What the user has said about themselves"
     if as_of is not None:
         profile_at = timeparse.parse_moment(as_of)
         if profile_at is None:
             raise ConversationError("unrecognised belief date")
         profile_title += f"; beliefs as of {profile_at.isoformat()}"
-    profile_block = (f"[{profile_title}]\n" + "\n".join(t for t, _ in profile_lines)
-                     + "\n\n") if profile_lines else ""
+    profile_block = (f"[{profile_title}]\n" + "\n".join(t for t, _ in profile_lines) + "\n\n") if profile_lines else ""
     if tokens(profile_block) > budget // 4:
         profile_block, profile_lines = "", []
     profile_block = instruction_block + profile_block
@@ -1422,9 +1706,11 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
     sessions_seen: set[str] = set()
     # A session summary may include filtered, expired or future turns. In a
     # restricted view use exact eligible evidence rather than a wider summary.
-    summaries = {s: f for s, f in store.summaries().items()
-                 if not injection_guard.injection_labels({"text": f["text"]})} \
-        if opts.summaries and allowed is None and as_of is None else {}
+    summaries = (
+        {s: f for s, f in store.summaries().items() if not injection_guard.injection_labels({"text": f["text"]})}
+        if opts.summaries and allowed is None and as_of is None
+        else {}
+    )
 
     def header_cost(session: str, at) -> int:
         cost = tokens(_header(session, at, now)) + 1
@@ -1439,19 +1725,30 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
     summary = broad and bool(_SUMMARY.search(question or ""))
     if summary and not opts.excerpt_tokens:
         cap = max(SUMMARY_EXCERPT, budget // 60)  # many short exchanges over a few long ones
-    about_user_only = broad and bool(re.search(
-        r"\b(?:i (?:brought up|raised|mentioned|asked|said|wanted)|my questions?|"
-        r"(?:did|have|do) i (?:ever )?(?:mention|bring up|raise|ask about|talk about))\b", question or "", re.I
-    ))
+    about_user_only = broad and bool(
+        re.search(
+            r"\b(?:i (?:brought up|raised|mentioned|asked|said|wanted)|my questions?|"
+            r"(?:did|have|do) i (?:ever )?(?:mention|bring up|raise|ask about|talk about))\b",
+            question or "",
+            re.I,
+        )
+    )
     # "In what order did I bring up X": the answer is the user's own turns, in order. Every
     # one is a candidate, after the ranked ones, each cut to its passage nearest the
     # question so the whole sequence fits; similarity alone misses the later aspects.
     raised: list[int] = []
-    if about_user_only and (_ORDERING.search(question or "") or _COUNTING.search(question or "")) \
-            and not opts.excerpt_tokens:
-        raised = [r[0] for r in store.db.execute(
-            "SELECT id FROM turns WHERE role IN ('user', '') ORDER BY at, id LIMIT ?", (ORDERING_TURNS,))
-            if allowed is None or r[0] in allowed]
+    if (
+        about_user_only
+        and (_ORDERING.search(question or "") or _COUNTING.search(question or ""))
+        and not opts.excerpt_tokens
+    ):
+        raised = [
+            r[0]
+            for r in store.db.execute(
+                "SELECT id FROM turns WHERE role IN ('user', '') ORDER BY at, id LIMIT ?", (ORDERING_TURNS,)
+            )
+            if allowed is None or r[0] in allowed
+        ]
         if raised:
             cap = min(cap, max(ORDERING_EXCERPT, int(budget * 0.9) // len(raised)))
     rendered: dict[int, str] = {}
@@ -1514,6 +1811,7 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
     stream = list(ranked)
     if broad and ranked:
         from collections import defaultdict
+
         session_to_tids: dict[str, list[int]] = defaultdict(list)
         all_head = store.turns(ranked[:200])
         for tid in ranked[:200]:
@@ -1523,7 +1821,7 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
         for sess in session_to_tids:
             preferred_role = "assistant" if _ABOUT_ASSISTANT.search(question) and not about_user_only else "user"
             session_to_tids[sess].sort(
-                key=lambda tid: (0 if all_head.get(tid) and all_head[tid].role in (preferred_role, "") else 1)
+                key=lambda tid: 0 if all_head.get(tid) and all_head[tid].role in (preferred_role, "") else 1
             )
         diversified = []
         max_depth = max((len(tids) for tids in session_to_tids.values()), default=0)
@@ -1590,8 +1888,8 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
     primary: set[int] = set()
     primary_hits = opts.primary_hits if opts.primary_hits is not None else 3
     primary_hits = max(primary_hits, priority_quota)
-    head = store.turns(stream[:primary_hits * 3])
-    for tid in stream[:primary_hits * 3]:
+    head = store.turns(stream[: primary_hits * 3])
+    for tid in stream[: primary_hits * 3]:
         turn = head.get(tid)
         if turn is None or len(primary) >= primary_hits:
             continue
@@ -1613,13 +1911,12 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
         spent += cost
     hits = 0
     for start in range(0, len(stream), 50):
-        batch = stream[start:start + 50]
+        batch = stream[start : start + 50]
         turns = store.turns(batch)
         full = False
         for tid in batch:
             turn = turns.get(tid)
-            if turn is None or (allowed is not None and tid not in allowed) \
-                    or (tid in chosen and tid not in primary):
+            if turn is None or (allowed is not None and tid not in allowed) or (tid in chosen and tid not in primary):
                 continue
             first = tid in primary
             primary.discard(tid)
@@ -1640,28 +1937,42 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
                 user_req = summary and turn.role in ("user", "") and hits <= with_context
                 near = store.neighbours(turn, 0, 1) if user_req else []
             else:
-                near = store.neighbours(turn, opts.neighbours_before, opts.neighbours_after) \
-                    if hits <= with_context else []
+                near = (
+                    store.neighbours(turn, opts.neighbours_before, opts.neighbours_after)
+                    if hits <= with_context
+                    else []
+                )
             group = [tid] + [n for n in near if allowed is None or n in allowed]
             if opts.bridge_turns > 0 and hits <= with_context and not broad:
-                group += [b for b in _bridge(store, turn, chosen, opts.bridge_turns)
-                          if b not in group and (allowed is None or b in allowed)]
+                group += [
+                    b
+                    for b in _bridge(store, turn, chosen, opts.bridge_turns)
+                    if b not in group and (allowed is None or b in allowed)
+                ]
             # A graph discovery enters through its complete evidence group,
             # rather than as an incidental neighbour with missing ancestors.
             group = [g for g in group if g == tid or g not in parents or g in chosen]
             group_turns = store.turns(group)
             # anti-recursion holds for neighbours too: a turn restating the
             # question is never context for its own answer, however adjacent.
-            group = [g for g in group
-                     if g == tid or g not in group_turns
-                     or _normalize_text(group_turns[g].text) != question_norm]
+            group = [
+                g
+                for g in group
+                if g == tid or g not in group_turns or _normalize_text(group_turns[g].text) != question_norm
+            ]
             if opts.neighbour_minutes is not None and turn.at is not None:
                 # a neighbour is context only when it was said close to the hit: turns of one
                 # dialogue share a moment, separate notes made hours apart on one day do not
                 gap = dt.timedelta(minutes=opts.neighbour_minutes)
                 anchor_at: dt.datetime = turn.at
-                group = [g for g in group if g == tid or g not in group_turns
-                         or (neighbour_at := group_turns[g].at) is None or abs(neighbour_at - anchor_at) <= gap]
+                group = [
+                    g
+                    for g in group
+                    if g == tid
+                    or g not in group_turns
+                    or (neighbour_at := group_turns[g].at) is None
+                    or abs(neighbour_at - anchor_at) <= gap
+                ]
             for g in list(group):
                 if g in group_turns and _is_flagged(group_turns[g]):
                     group.remove(g)
@@ -1675,8 +1986,11 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
             if spent + cost > budget:
                 if first:
                     continue  # already placed; its neighbours do not fit
-                solo = tokens(line_of(turn)) + 1 + (0 if turn.session in sessions_seen else
-                                                  header_cost(turn.session, turn.at))
+                solo = (
+                    tokens(line_of(turn))
+                    + 1
+                    + (0 if turn.session in sessions_seen else header_cost(turn.session, turn.at))
+                )
                 if spent + solo > budget:
                     full = spent >= budget * 0.97
                     continue
@@ -1703,8 +2017,13 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
             if previous is not None and displayed_turn.idx > previous + 1:
                 lines.append("…")
             lines.append(line_of(displayed_turn))
-            delivered.append(_EmittedText(line_of(displayed_turn).removeprefix(displayed_turn.speaker + ": "),
-                                          displayed_turn.speaker, displayed_turn.id))
+            delivered.append(
+                _EmittedText(
+                    line_of(displayed_turn).removeprefix(displayed_turn.speaker + ": "),
+                    displayed_turn.speaker,
+                    displayed_turn.id,
+                )
+            )
             previous = displayed_turn.idx
         blocks.append("\n".join(lines))
     context = profile_block + "\n\n".join(blocks)
@@ -1718,7 +2037,7 @@ def assemble(store: Store, question: str, ranked: list[int], opts: Options,
             if tokens(snippet) > budget:
                 snippet = snippet.removeprefix(prefix)
                 displayed_speaker = ""
-            snippet = snippet[:budget * 4]
+            snippet = snippet[: budget * 4]
             chosen[ranked[0]] = top[ranked[0]]
             context = snippet
             pinned = []

@@ -92,8 +92,7 @@ class TestEveryToolDeclaresAScope:
         registered = {tool.name for tool in await mcp.list_tools()}
         declared = set(mcp.unimem_tool_scopes)
         assert registered == declared, (
-            "every registered tool must declare a scope; missing: "
-            f"{sorted(registered - declared)}"
+            f"every registered tool must declare a scope; missing: {sorted(registered - declared)}"
         )
 
     async def test_every_declared_scope_is_a_real_scope(self, mcp):
@@ -115,8 +114,11 @@ class TestEveryToolDeclaresAScope:
     async def test_the_corpus_mutating_tools_are_write_scoped(self, mcp):
         declared = mcp.unimem_tool_scopes
         for tool in (
-            "contribute_trace", "amend_trace", "vote_trace",
-            "holdout_assign", "record_occasion_outcome",
+            "contribute_trace",
+            "amend_trace",
+            "vote_trace",
+            "holdout_assign",
+            "record_occasion_outcome",
         ):
             assert declared[tool] == scopes.SCOPE_WRITE, tool
 
@@ -125,10 +127,17 @@ class TestEveryToolDeclaresAScope:
 class TestANarrowKeyCannotEscalate:
     async def test_a_read_only_key_cannot_contribute(self, mcp, org):
         with _Scoped(org, ("read",)):
-            result = payload(await mcp.call_tool("contribute_trace", {
-                "title": "t", "context_text": "c", "solution_text": "s",
-                "agent_type": "code",
-            }))
+            result = payload(
+                await mcp.call_tool(
+                    "contribute_trace",
+                    {
+                        "title": "t",
+                        "context_text": "c",
+                        "solution_text": "s",
+                        "agent_type": "code",
+                    },
+                )
+            )
         assert result["error"] == "forbidden"
         assert result["required_scope"] == scopes.SCOPE_WRITE
         assert result["granted_scopes"] == ["read"]
@@ -208,18 +217,14 @@ class TestIssuanceRecordsTheGrant:
         from hub.models import ApiKey
 
         async with session_scope(session_factory) as session:
-            before = (await session.execute(
-                select(func.count(ApiKey.id)).where(ApiKey.org_id == org)
-            )).scalar_one()
+            before = (await session.execute(select(func.count(ApiKey.id)).where(ApiKey.org_id == org))).scalar_one()
 
         with pytest.raises(scopes.ScopeError):
             async with session_scope(session_factory) as session:
                 await auth.issue_api_key(session, org, scopes="read,superuser")
 
         async with session_scope(session_factory) as session:
-            after = (await session.execute(
-                select(func.count(ApiKey.id)).where(ApiKey.org_id == org)
-            )).scalar_one()
+            after = (await session.execute(select(func.count(ApiKey.id)).where(ApiKey.org_id == org))).scalar_one()
         assert after == before
 
 

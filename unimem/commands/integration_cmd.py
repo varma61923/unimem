@@ -1,4 +1,5 @@
 """Print native MCP client configuration without modifying application settings."""
+
 from __future__ import annotations
 
 import argparse
@@ -10,9 +11,7 @@ from unimem import paths
 CLIENTS = ("claude-desktop", "cursor", "windsurf", "zed", "vscode", "jetbrains")
 
 
-def configuration(
-    client: str, root: str, *, command: str = "unimem", approval: bool = False
-) -> dict[str, Any]:
+def configuration(client: str, root: str, *, command: str = "unimem", approval: bool = False) -> dict[str, Any]:
     if client not in CLIENTS:
         raise ValueError("unsupported MCP client")
     if not command or len(command) > 4096 or any(char in command for char in "\r\n\x00"):
@@ -38,6 +37,10 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
 
 
 def run(args: argparse.Namespace) -> int:
-    print(json.dumps(configuration(args.client, paths.resolve_root(args.dest),
-                                   command=args.command, approval=args.approval), indent=2))
+    print(
+        json.dumps(
+            configuration(args.client, paths.resolve_root(args.dest), command=args.command, approval=args.approval),
+            indent=2,
+        )
+    )
     return 0

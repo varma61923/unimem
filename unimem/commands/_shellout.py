@@ -12,8 +12,7 @@ from unimem.configuration import getenv as _configuration_getenv
 
 def has_attention_deps() -> bool:
     return (
-        importlib.util.find_spec("numpy") is not None
-        and importlib.util.find_spec("sentence_transformers") is not None
+        importlib.util.find_spec("numpy") is not None and importlib.util.find_spec("sentence_transformers") is not None
     )
 
 
@@ -24,7 +23,10 @@ def packaged_reference_dir() -> str:
 
 def _store_scripts_allowed() -> bool:
     return _configuration_getenv("UNIMEM_ALLOW_STORE_SCRIPTS", "").strip().lower() in {
-        "1", "true", "yes", "on",
+        "1",
+        "true",
+        "yes",
+        "on",
     }
 
 
@@ -51,7 +53,10 @@ def find_reference_script(root: str, relative: str) -> str | None:
 
 @overload
 def run_script(
-    root: str, relative: str, extra_args: list[str], missing_hint: str,
+    root: str,
+    relative: str,
+    extra_args: list[str],
+    missing_hint: str,
     capture: Literal[False] = False,
     extra_env: dict[str, str] | None = None,
 ) -> int: ...
@@ -59,7 +64,10 @@ def run_script(
 
 @overload
 def run_script(
-    root: str, relative: str, extra_args: list[str], missing_hint: str,
+    root: str,
+    relative: str,
+    extra_args: list[str],
+    missing_hint: str,
     capture: Literal[True],
     extra_env: dict[str, str] | None = None,
 ) -> tuple[int, str]: ...
@@ -96,7 +104,10 @@ def run_script(
 
     if not extra_env and warm.enabled(relative):
         answered = warm.run(
-            warm.worker_script(relative, script), extra_args, root, env,
+            warm.worker_script(relative, script),
+            extra_args,
+            root,
+            env,
             build=warm.worker_script(relative, script) != script,
         )
         if answered is not None:
@@ -117,9 +128,13 @@ def run_script(
 
     if capture:
         result = subprocess.run(
-            cmd, env=env,
-            stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+            cmd,
+            env=env,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return result.returncode, result.stdout
-    result = subprocess.run(cmd, env=env)
-    return result.returncode
+    completed = subprocess.run(cmd, env=env)
+    return completed.returncode

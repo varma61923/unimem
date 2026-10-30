@@ -128,8 +128,13 @@ def _proposal_parts(proposal: dict) -> list[dict]:
 
 
 def segment(
-    entries: list[dict], *, max_messages=32, max_tokens=MAX_INPUT_TOKENS, complete=None, count_tokens=None,
-    _case_extraction=False
+    entries: list[dict],
+    *,
+    max_messages=32,
+    max_tokens=MAX_INPUT_TOKENS,
+    complete=None,
+    count_tokens=None,
+    _case_extraction=False,
 ) -> list[list[dict]]:
     """Keep complete captures within bounded serialized input, or leave them retryable.
 
@@ -150,15 +155,13 @@ def segment(
             size = max(size, _input_size(_CASE_PROMPT + json.dumps(_case_payload(batch)), count_tokens))
         return size
 
-    batches, batch = [], []
+    batches: list[list[dict]] = []
+    batch: list[dict] = []
     for entry in entries:
         # Never truncate and then advance past unexamined source evidence.
         if width([entry]) > max_tokens:
             raise ValueError("learner input exceeds its token budget; source work remains unsealed")
-        if batch and (
-            len(batch) >= max_messages
-            or width([*batch, entry]) > max_tokens
-        ):
+        if batch and (len(batch) >= max_messages or width([*batch, entry]) > max_tokens):
             batches.append(batch)
             batch = []
         batch.append(entry)
@@ -176,12 +179,10 @@ def segment(
         if any(len(batch) < 3 and _case_payload(batch)["outcomes"] for batch in batches):
             raise ValueError("supported case input cannot fit the token budget; source work remains unsealed")
     if complete:
-        result = []
+        result: list[list[dict]] = []
         for batch in batches:
             with purpose("session-segmentation"):
-                text, _ = complete(
-                    _prompt(_SEGMENT_PROMPT, batch, max_tokens=max_tokens, count_tokens=count_tokens)
-                )
+                text, _ = complete(_prompt(_SEGMENT_PROMPT, batch, max_tokens=max_tokens, count_tokens=count_tokens))
             boundaries = llm._extract_json_object(text).get("boundaries")
             if not isinstance(boundaries, list) or any(
                 type(i) is not int or not 0 < i < len(batch) for i in boundaries
@@ -212,10 +213,7 @@ def _tool_case(batch: list[dict], complete, *, max_tokens=MAX_INPUT_TOKENS, coun
     if not signals or len(batch) < 3:
         return None
     with purpose("case-extraction"):
-        text, _ = complete(
-            _prompt(_CASE_PROMPT, payload,
-                    max_tokens=max_tokens, count_tokens=count_tokens)
-        )
+        text, _ = complete(_prompt(_CASE_PROMPT, payload, max_tokens=max_tokens, count_tokens=count_tokens))
     case = llm._extract_json_object(text)
     identity = case.get("outcome_message_id")
     if (
@@ -229,8 +227,14 @@ def _tool_case(batch: list[dict], complete, *, max_tokens=MAX_INPUT_TOKENS, coun
 
 
 def learn(
-    root: str, session: str, *, scope: dict, complete=None, semantic_segments=False,
-    max_tokens=MAX_INPUT_TOKENS, count_tokens=None
+    root: str,
+    session: str,
+    *,
+    scope: dict,
+    complete=None,
+    semantic_segments=False,
+    max_tokens=MAX_INPUT_TOKENS,
+    count_tokens=None,
 ) -> dict:
     _input_limit(max_tokens)
     journal = Journal(root)
@@ -251,10 +255,15 @@ def learn(
         if not any(entry["event"] in ("PreToolUse", "PostToolUse", "PostToolUseFailure") for entry in entries):
             journal.seal(session, entries[-1]["sequence"], scope=scope)
             return {"operation": "none", "reason": "thin trajectory", "cases": 0}
-        batches = segment(entries, complete=(complete or llm.complete) if semantic_segments else None,
-                          max_tokens=max_tokens, count_tokens=count_tokens,
-                          _case_extraction=(type(boundary["payload"].get("succeeded")) is not bool
-                                            or not boundary["payload"].get("fix")))
+        batches = segment(
+            entries,
+            complete=(complete or llm.complete) if semantic_segments else None,
+            max_tokens=max_tokens,
+            count_tokens=count_tokens,
+            _case_extraction=(
+                type(boundary["payload"].get("succeeded")) is not bool or not boundary["payload"].get("fix")
+            ),
+        )
         final = boundary
         intent = next(
             (entry["payload"].get("prompt", "") for entry in entries if entry["event"] == "UserPromptSubmit"), ""
@@ -271,8 +280,9 @@ def learn(
             conclusion = finals[-1]["payload"]
             outcome_scope = "run"
             if type(conclusion.get("succeeded")) is not bool or not conclusion.get("fix"):
-                conclusion = _tool_case(batch, complete or llm.complete,
-                                        max_tokens=max_tokens, count_tokens=count_tokens)
+                conclusion = _tool_case(
+                    batch, complete or llm.complete, max_tokens=max_tokens, count_tokens=count_tokens
+                )
                 outcome_scope = "tool"
             if conclusion is None:
                 continue
@@ -337,8 +347,9 @@ def learn(
         cases = list(supporting.values())[:9]
         evidence = [record.to_dict() for record in cases]
         context = {"cases": evidence, "prior": [record.to_dict() for record in prior]}
-        _, prompt = _selection_prompt(entries, prefix=_CURATOR_PROMPT, context=context,
-                                      max_tokens=max_tokens, count_tokens=count_tokens)
+        _, prompt = _selection_prompt(
+            entries, prefix=_CURATOR_PROMPT, context=context, max_tokens=max_tokens, count_tokens=count_tokens
+        )
         with purpose("curate"):
             response, _ = call(prompt)
         proposal = llm._extract_json_object(response)
@@ -355,8 +366,12 @@ def learn(
             else:
                 with purpose("write-lesson"):
                     response, _ = call(
-                        _prompt(_WRITER_PROMPT, {"proposal": proposal, **context},
-                                max_tokens=max_tokens, count_tokens=count_tokens)
+                        _prompt(
+                            _WRITER_PROMPT,
+                            {"proposal": proposal, **context},
+                            max_tokens=max_tokens,
+                            count_tokens=count_tokens,
+                        )
                     )
                 decision = llm._extract_json_object(response)
                 if type(decision.get("accept")) is not bool:
@@ -525,14 +540,17 @@ def reconcile(root: str) -> list[dict]:
             identities = record.payload.get("replacement_ids", [])
             if not isinstance(identities, list) or not 2 <= len(set(identities)) <= 4 or identity not in identities:
                 continue
-            peers = [journal.current(peer, scope=record.scope, statuses=("shadow", "active")) for peer in identities]
+            peer_records = [
+                journal.current(peer, scope=record.scope, statuses=("shadow", "active")) for peer in identities
+            ]
             if any(
                 peer is None
                 or peer.payload.get("operation_id") != record.payload.get("operation_id")
                 or peer.payload.get("target_id") != target
-                for peer in peers
+                for peer in peer_records
             ):
                 continue
+            peers = [peer for peer in peer_records if peer is not None]
             if status == "retired":
                 versions = [
                     replace(

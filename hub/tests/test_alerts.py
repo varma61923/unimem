@@ -39,7 +39,10 @@ async def org(session_factory) -> str:
 async def hooked_org(session_factory, org) -> str:
     async with session_scope(session_factory) as session:
         await events.add_endpoint(
-            session, org, URL, events=["alert.triggered", "report.generated"],
+            session,
+            org,
+            URL,
+            events=["alert.triggered", "report.generated"],
             signing_key="test-key",
         )
     return org
@@ -48,17 +51,27 @@ async def hooked_org(session_factory, org) -> str:
 async def _add_traces(session_factory, org_id, n, *, quarantined=0):
     async with session_scope(session_factory) as session:
         for i in range(n):
-            session.add(Trace(
-                org_id=org_id, title=f"t{i}", context_text="c", solution_text="s",
-                agent_type="support", quarantined=i < quarantined,
-            ))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title=f"t{i}",
+                    context_text="c",
+                    solution_text="s",
+                    agent_type="support",
+                    quarantined=i < quarantined,
+                )
+            )
 
 
 class TestCreateRule:
     async def test_creating_a_rule_returns_it(self, session_factory, org):
         async with session_scope(session_factory) as session:
             rule = await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
         assert rule.metric == alerts.METRIC_QUARANTINE_RATE
         assert rule.comparator == alerts.COMPARATOR_GT
@@ -69,22 +82,34 @@ class TestCreateRule:
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="unknown metric"):
                 await alerts.create_rule(
-                    session, org, "trace_vibes", alerts.COMPARATOR_GT, 10.0,
+                    session,
+                    org,
+                    "trace_vibes",
+                    alerts.COMPARATOR_GT,
+                    10.0,
                 )
 
     async def test_an_unknown_comparator_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="unknown comparator"):
                 await alerts.create_rule(
-                    session, org, alerts.METRIC_QUARANTINE_RATE, "roughly", 10.0,
+                    session,
+                    org,
+                    alerts.METRIC_QUARANTINE_RATE,
+                    "roughly",
+                    10.0,
                 )
 
     async def test_a_zero_cooldown_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="cooldown_minutes"):
                 await alerts.create_rule(
-                    session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT,
-                    10.0, cooldown_minutes=0,
+                    session,
+                    org,
+                    alerts.METRIC_QUARANTINE_RATE,
+                    alerts.COMPARATOR_GT,
+                    10.0,
+                    cooldown_minutes=0,
                 )
 
     @pytest.mark.parametrize("cooldown", [alerts.MAX_COOLDOWN_MINUTES + 1, 2**31])
@@ -92,8 +117,12 @@ class TestCreateRule:
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="at most"):
                 await alerts.create_rule(
-                    session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT,
-                    10.0, cooldown_minutes=cooldown,
+                    session,
+                    org,
+                    alerts.METRIC_QUARANTINE_RATE,
+                    alerts.COMPARATOR_GT,
+                    10.0,
+                    cooldown_minutes=cooldown,
                 )
 
     @pytest.mark.parametrize("threshold", [float("nan"), float("inf"), float("-inf")])
@@ -102,15 +131,22 @@ class TestCreateRule:
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="finite"):
                 await alerts.create_rule(
-                    session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, threshold,
+                    session,
+                    org,
+                    alerts.METRIC_QUARANTINE_RATE,
+                    alerts.COMPARATOR_GT,
+                    threshold,
                 )
 
     async def test_an_unknown_org_is_refused(self, session_factory):
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="no such organization"):
                 await alerts.create_rule(
-                    session, "00000000-0000-0000-0000-000000000000",
-                    alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                    session,
+                    "00000000-0000-0000-0000-000000000000",
+                    alerts.METRIC_QUARANTINE_RATE,
+                    alerts.COMPARATOR_GT,
+                    10.0,
                 )
 
 
@@ -118,21 +154,34 @@ class TestListAndDeleteRule:
     async def test_listing_returns_rules_in_creation_order(self, session_factory, org):
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
             await alerts.create_rule(
-                session, org, alerts.METRIC_TRACES_USED_PCT, alerts.COMPARATOR_GT, 90.0,
+                session,
+                org,
+                alerts.METRIC_TRACES_USED_PCT,
+                alerts.COMPARATOR_GT,
+                90.0,
             )
         async with session_scope(session_factory) as session:
             rules = await alerts.list_rules(session, org)
         assert [r.metric for r in rules] == [
-            alerts.METRIC_QUARANTINE_RATE, alerts.METRIC_TRACES_USED_PCT,
+            alerts.METRIC_QUARANTINE_RATE,
+            alerts.METRIC_TRACES_USED_PCT,
         ]
 
     async def test_deleting_a_rule_removes_it(self, session_factory, org):
         async with session_scope(session_factory) as session:
             rule = await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
             rule_id = rule.id
         async with session_scope(session_factory) as session:
@@ -142,36 +191,26 @@ class TestListAndDeleteRule:
 
     async def test_deleting_an_unknown_rule_reports_false(self, session_factory):
         async with session_scope(session_factory) as session:
-            assert await alerts.delete_rule(
-                session, "00000000-0000-0000-0000-000000000000"
-            ) is False
+            assert await alerts.delete_rule(session, "00000000-0000-0000-0000-000000000000") is False
 
 
 class TestComputeMetric:
     async def test_quarantine_rate_is_none_with_no_traces(self, session_factory, org):
         async with session_scope(session_factory) as session:
-            assert await alerts.compute_metric(
-                session, org, alerts.METRIC_QUARANTINE_RATE
-            ) is None
+            assert await alerts.compute_metric(session, org, alerts.METRIC_QUARANTINE_RATE) is None
 
-    async def test_quarantine_rate_reflects_the_fraction_quarantined(
-        self, session_factory, org
-    ):
+    async def test_quarantine_rate_reflects_the_fraction_quarantined(self, session_factory, org):
         await _add_traces(session_factory, org, 4, quarantined=1)
         async with session_scope(session_factory) as session:
             rate = await alerts.compute_metric(session, org, alerts.METRIC_QUARANTINE_RATE)
         assert rate == 25.0
 
-    async def test_commons_queries_used_pct_is_none_for_an_unlimited_plan(
-        self, session_factory, org
-    ):
+    async def test_commons_queries_used_pct_is_none_for_an_unlimited_plan(self, session_factory, org):
         async with session_scope(session_factory) as session:
             o = await session.get(Organization, org)
             o.plan = "operator"
         async with session_scope(session_factory) as session:
-            assert await alerts.compute_metric(
-                session, org, alerts.METRIC_COMMONS_QUERIES_USED_PCT
-            ) is None
+            assert await alerts.compute_metric(session, org, alerts.METRIC_COMMONS_QUERIES_USED_PCT) is None
 
     async def test_an_unknown_metric_raises(self, session_factory, org):
         async with session_scope(session_factory) as session:
@@ -180,14 +219,15 @@ class TestComputeMetric:
 
 
 class TestCheckRules:
-    async def test_a_crossed_threshold_fires_and_queues_a_delivery(
-        self, session_factory, hooked_org
-    ):
+    async def test_a_crossed_threshold_fires_and_queues_a_delivery(self, session_factory, hooked_org):
         await _add_traces(session_factory, hooked_org, 4, quarantined=2)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, hooked_org, alerts.METRIC_QUARANTINE_RATE,
-                alerts.COMPARATOR_GT, 10.0,
+                session,
+                hooked_org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, hooked_org, now=NOW)
@@ -195,11 +235,15 @@ class TestCheckRules:
         assert fired[0]["metric"] == alerts.METRIC_QUARANTINE_RATE
         assert fired[0]["value"] == 50.0
         async with session_scope(session_factory) as session:
-            deliveries = list((await session.execute(
-                select(WebhookDelivery).where(
-                    WebhookDelivery.event_type == "alert.triggered",
-                )
-            )).scalars())
+            deliveries = list(
+                (
+                    await session.execute(
+                        select(WebhookDelivery).where(
+                            WebhookDelivery.event_type == "alert.triggered",
+                        )
+                    )
+                ).scalars()
+            )
         assert len(deliveries) == 1
         assert deliveries[0].payload["metric"] == alerts.METRIC_QUARANTINE_RATE
 
@@ -207,7 +251,11 @@ class TestCheckRules:
         await _add_traces(session_factory, org, 4, quarantined=0)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, org, now=NOW)
@@ -216,7 +264,11 @@ class TestCheckRules:
     async def test_an_incomputable_metric_does_not_fire(self, session_factory, org):
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, -1.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                -1.0,
             )
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, org, now=NOW)
@@ -226,15 +278,21 @@ class TestCheckRules:
         await _add_traces(session_factory, org, 4, quarantined=2)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT,
-                10.0, cooldown_minutes=60,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
+                cooldown_minutes=60,
             )
         async with session_scope(session_factory) as session:
             first = await alerts.check_rules(session, org, now=NOW)
         assert len(first) == 1
         async with session_scope(session_factory) as session:
             second = await alerts.check_rules(
-                session, org, now=NOW + timedelta(minutes=5),
+                session,
+                org,
+                now=NOW + timedelta(minutes=5),
             )
         assert second == []
 
@@ -242,14 +300,20 @@ class TestCheckRules:
         await _add_traces(session_factory, org, 4, quarantined=2)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT,
-                10.0, cooldown_minutes=30,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
+                cooldown_minutes=30,
             )
         async with session_scope(session_factory) as session:
             await alerts.check_rules(session, org, now=NOW)
         async with session_scope(session_factory) as session:
             later = await alerts.check_rules(
-                session, org, now=NOW + timedelta(minutes=31),
+                session,
+                org,
+                now=NOW + timedelta(minutes=31),
             )
         assert len(later) == 1
 
@@ -257,16 +321,18 @@ class TestCheckRules:
         await _add_traces(session_factory, org, 4, quarantined=2)
         async with session_scope(session_factory) as session:
             rule = await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
             rule.enabled = False
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, org, now=NOW)
         assert fired == []
 
-    async def test_checking_one_org_never_fires_another_orgs_rule(
-        self, session_factory, org
-    ):
+    async def test_checking_one_org_never_fires_another_orgs_rule(self, session_factory, org):
         async with session_scope(session_factory) as session:
             other = Organization(name="other-alerts-org")
             session.add(other)
@@ -275,8 +341,11 @@ class TestCheckRules:
         await _add_traces(session_factory, other_id, 4, quarantined=4)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, other_id, alerts.METRIC_QUARANTINE_RATE,
-                alerts.COMPARATOR_GT, 10.0,
+                session,
+                other_id,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, org, now=NOW)
@@ -292,10 +361,18 @@ class TestCheckRules:
         await _add_traces(session_factory, other_id, 4, quarantined=2)
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
             await alerts.create_rule(
-                session, other_id, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 10.0,
+                session,
+                other_id,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                10.0,
             )
         async with session_scope(session_factory) as session:
             fired = await alerts.check_rules(session, None, now=NOW)
@@ -310,9 +387,13 @@ class TestGenerateReport:
         assert report["traces_total"] == 3
         assert report["plan"] == "free"
         async with session_scope(session_factory) as session:
-            deliveries = list((await session.execute(
-                select(WebhookDelivery).where(WebhookDelivery.event_type == "report.generated")
-            )).scalars())
+            deliveries = list(
+                (
+                    await session.execute(
+                        select(WebhookDelivery).where(WebhookDelivery.event_type == "report.generated")
+                    )
+                ).scalars()
+            )
         assert len(deliveries) == 1
         assert deliveries[0].payload["traces_total"] == 3
 
@@ -320,12 +401,11 @@ class TestGenerateReport:
         async with session_scope(session_factory) as session:
             with pytest.raises(alerts.AlertError, match="no such organization"):
                 await alerts.generate_report(
-                    session, "00000000-0000-0000-0000-000000000000",
+                    session,
+                    "00000000-0000-0000-0000-000000000000",
                 )
 
-    async def test_an_unlimited_allowance_is_reported_as_unlimited_not_a_lie(
-        self, session_factory, org
-    ):
+    async def test_an_unlimited_allowance_is_reported_as_unlimited_not_a_lie(self, session_factory, org):
         async with session_scope(session_factory) as session:
             o = await session.get(Organization, org)
             o.plan = "operator"

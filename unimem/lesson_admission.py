@@ -8,6 +8,7 @@ ownership; this cannot defend against the same OS identity reading the key or
 rolling back the entire trusted ledger. Deployment keys can be supplied via
 UNIMEM_APPROVAL_KEY_FILE, keeping producers separate from the approver.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -64,8 +65,9 @@ def _json_value(value: Any, depth: int = 0, budget: list[int] | None = None) -> 
 
 def _wire(value: Mapping[str, Any]) -> bytes:
     try:
-        encoded = json.dumps(_json_value(value), sort_keys=True, ensure_ascii=False,
-                             separators=(",", ":"), allow_nan=False).encode("utf-8")
+        encoded = json.dumps(
+            _json_value(value), sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
     except (UnicodeError, RecursionError, TypeError):
         raise AdmissionError("invalid lesson admission metadata") from None
     if len(encoded) > _MAX_BYTES:
@@ -109,9 +111,14 @@ def _private_file(path: str, *, create: bytes | None = None, inspect_only: bool 
         fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         with os.fdopen(fd, "rb") as stream:
             info = os.fstat(stream.fileno())
-            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                    or hasattr(os, "getuid") and info.st_uid != os.getuid()
-                    or os.name != "nt" and info.st_mode & 0o077):
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_nlink != 1
+                or hasattr(os, "getuid")
+                and info.st_uid != os.getuid()
+                or os.name != "nt"
+                and info.st_mode & 0o077
+            ):
                 raise AdmissionError("lesson admission private files require private owner-only access")
             if inspect_only:
                 return b""
@@ -167,8 +174,12 @@ def _subject(root: str, path: str) -> str:
 
     base = os.path.realpath(paths.lessons_dir(root))
     candidate = os.path.realpath(path)
-    if (os.path.islink(path) or not paths.is_within_directory(root, candidate)
-            or os.path.dirname(candidate) != base or not candidate.endswith(".md")):
+    if (
+        os.path.islink(path)
+        or not paths.is_within_directory(root, candidate)
+        or os.path.dirname(candidate) != base
+        or not candidate.endswith(".md")
+    ):
         raise AdmissionError("lesson admission requires an authoritative local lesson path")
     return canonical_slug(os.path.basename(candidate))
 
@@ -200,11 +211,15 @@ def _open(root: str, *, write: bool = False) -> sqlite3.Connection:
         db = sqlite3.connect(uri, uri=True, timeout=5, isolation_level=None)
     try:
         if write:
-            db.execute("CREATE TABLE IF NOT EXISTS admissions ("
-                       "subject TEXT PRIMARY KEY, payload TEXT NOT NULL, signature TEXT NOT NULL)")
-            db.execute("CREATE TABLE IF NOT EXISTS admission_events ("
-                       "sequence INTEGER PRIMARY KEY, subject TEXT NOT NULL, "
-                       "payload TEXT NOT NULL, signature TEXT NOT NULL)")
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS admissions ("
+                "subject TEXT PRIMARY KEY, payload TEXT NOT NULL, signature TEXT NOT NULL)"
+            )
+            db.execute(
+                "CREATE TABLE IF NOT EXISTS admission_events ("
+                "sequence INTEGER PRIMARY KEY, subject TEXT NOT NULL, "
+                "payload TEXT NOT NULL, signature TEXT NOT NULL)"
+            )
         return db
     except BaseException:
         db.close()
@@ -215,19 +230,29 @@ def _record_state(root: str, path: str, *, action: str, digest: str, actor: str)
     subject = _subject(root, path)
     key_id, keys = _keys(root, create=True)
     payload: dict[str, Any] = {
-        "version": 1, "root": _root_id(root), "subject": subject, "id": uuid.uuid4().hex,
-        "action": action, "digest": digest, "actor": actor,
-        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "key_id": key_id,
+        "version": 1,
+        "root": _root_id(root),
+        "subject": subject,
+        "id": uuid.uuid4().hex,
+        "action": action,
+        "digest": digest,
+        "actor": actor,
+        "at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "key_id": key_id,
     }
     signature = _signature(payload, keys[key_id])
     db = _open(root, write=True)
     try:
         db.execute("BEGIN IMMEDIATE")
-        db.execute("INSERT INTO admissions VALUES(?,?,?) ON CONFLICT(subject) DO UPDATE SET "
-                   "payload=excluded.payload,signature=excluded.signature",
-                   (subject, _wire(payload).decode(), signature))
-        db.execute("INSERT INTO admission_events(subject,payload,signature) VALUES(?,?,?)",
-                   (subject, _wire(payload).decode(), signature))
+        db.execute(
+            "INSERT INTO admissions VALUES(?,?,?) ON CONFLICT(subject) DO UPDATE SET "
+            "payload=excluded.payload,signature=excluded.signature",
+            (subject, _wire(payload).decode(), signature),
+        )
+        db.execute(
+            "INSERT INTO admission_events(subject,payload,signature) VALUES(?,?,?)",
+            (subject, _wire(payload).decode(), signature),
+        )
         db.execute("COMMIT")
     except BaseException:
         if db.in_transaction:
@@ -243,8 +268,9 @@ def _record(root: str, path: str, *, action: str, digest: str, actor: str) -> di
         result = _record_state(root, path, action=action, digest=digest, actor=actor)
         from unimem import transparency_log
 
-        transparency_log.append(root, "lesson-" + action,
-                                {"id": _subject(root, path), "digest": digest, "actor": actor, "receipt": result})
+        transparency_log.append(
+            root, "lesson-" + action, {"id": _subject(root, path), "digest": digest, "actor": actor, "receipt": result}
+        )
         return result
     except (OSError, sqlite3.Error):
         raise AdmissionError("lesson admission state could not be committed") from None
@@ -292,8 +318,9 @@ def eligible(root: str, path: str, fm: Mapping[str, Any], body: str, *, as_of: s
         if capabilities.CURRENT.get() is not None:
             from unimem import capability_io
 
-            if not capability_io.permits(root, {"id": identity, "text": body, "scopes": fm.get("scopes", [])},
-                                         namespace="lessons"):
+            if not capability_io.permits(
+                root, {"id": identity, "text": body, "scopes": fm.get("scopes", [])}, namespace="lessons"
+            ):
                 return False
         strict = approval.load_policy(root).require_integrity
         if fm.get("status", "active") != "active":
@@ -311,8 +338,12 @@ def eligible(root: str, path: str, fm: Mapping[str, Any], body: str, *, as_of: s
                     db.close()
                 return bound is None
             return True
-        if (not isinstance(receipt, dict) or set(receipt) != {"version", "id"}
-                or type(receipt.get("version")) is not int or receipt["version"] != 1):
+        if (
+            not isinstance(receipt, dict)
+            or set(receipt) != {"version", "id"}
+            or type(receipt.get("version")) is not int
+            or receipt["version"] != 1
+        ):
             return False
         _, keys = _keys(root)
         db = _open(root)
@@ -325,10 +356,14 @@ def eligible(root: str, path: str, fm: Mapping[str, Any], body: str, *, as_of: s
         payload = json.loads(row[0])
         key = keys.get(payload.get("key_id"))
         return bool(
-            key and hmac.compare_digest(_signature(payload, key), row[1])
-            and payload.get("root") == _root_id(root) and payload.get("subject") == subject
-            and payload.get("version") == 1 and payload.get("action") == "approved"
-            and payload.get("id") == receipt.get("id") and payload.get("digest") == digest_of(fm, body)
+            key
+            and hmac.compare_digest(_signature(payload, key), row[1])
+            and payload.get("root") == _root_id(root)
+            and payload.get("subject") == subject
+            and payload.get("version") == 1
+            and payload.get("action") == "approved"
+            and payload.get("id") == receipt.get("id")
+            and payload.get("digest") == digest_of(fm, body)
         )
     except (AdmissionError, approval.PolicyError, OSError, sqlite3.Error, ValueError, TypeError, AttributeError):
         return False
@@ -351,8 +386,9 @@ def state_stamp(root: str) -> tuple[tuple[int, int, int, int, int] | str | None,
             out.append(None)
     try:
         _, keys = _keys(root)
-        out.append(hashlib.sha256(_wire({key_id: hashlib.sha256(key).hexdigest()
-                                        for key_id, key in keys.items()})).hexdigest())
+        out.append(
+            hashlib.sha256(_wire({key_id: hashlib.sha256(key).hexdigest() for key_id, key in keys.items()})).hexdigest()
+        )
     except (AdmissionError, OSError):
         out.append("unavailable")
     return tuple(out)

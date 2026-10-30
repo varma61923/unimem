@@ -6,6 +6,7 @@ reads, not undeclared predicate reads. Snapshot mode checks write/write
 conflicts; sequenced mode additionally requires a live fenced work-item lease.
 Contradictions must be tested before dedup (MemClaw, arXiv:2606.24535).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -54,6 +55,10 @@ class StaleGeneration(ValueError):
     """A reviewable conflict, whose public details have already been scoped."""
 
     def __init__(self, superseding: list[dict[str, Any]] | None = None, *, reason: str = "read_set_changed") -> None:
-        self.details: dict[str, Any] = {"code": "STALE_GENERATION", "reason": reason,
-                                      "superseding_facts": superseding or [], "options": ["regenerate", "merge"]}
+        self.details: dict[str, Any] = {
+            "code": "STALE_GENERATION",
+            "reason": reason,
+            "superseding_facts": superseding or [],
+            "options": ["regenerate", "merge"],
+        }
         super().__init__("STALE_GENERATION: regenerate from the current authorized facts or submit a reviewable merge")

@@ -27,8 +27,13 @@ async def pending_submission_id(session_factory, org, config):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         s = await crud.submit_kb_entry(
-            session, org, config, rate_limiter,
-            title="t", context_text="c", solution_text="s",
+            session,
+            org,
+            config,
+            rate_limiter,
+            title="t",
+            context_text="c",
+            solution_text="s",
         )
     return s["id"]
 
@@ -94,12 +99,15 @@ class TestKbReviewQueueLimit:
 
 
 class TestReviewKbSubmissionCredit:
-    async def test_infinite_credit_falls_back_to_the_default_award(
-        self, session_factory, org, pending_submission_id
-    ):
+    async def test_infinite_credit_falls_back_to_the_default_award(self, session_factory, org, pending_submission_id):
         async with session_scope(session_factory) as session:
             result = await crud.review_kb_submission(
-                session, pending_submission_id, "approve", org, reviewer="op", credit=INF,
+                session,
+                pending_submission_id,
+                "approve",
+                org,
+                reviewer="op",
+                credit=INF,
             )
         assert result["credit_awarded"] == crud.plans.SUBMISSION_ACCEPTANCE_CREDIT
 

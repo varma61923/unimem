@@ -107,8 +107,7 @@ def _stop_worker(sock):
 
 
 def _ask_pid(sock):
-    reply = warm._ask(sock, {"protocol": warm.PROTOCOL, "argv": ["--pid", "q"], "root": "/"},
-                      connect_deadline=0.0)
+    reply = warm._ask(sock, {"protocol": warm.PROTOCOL, "argv": ["--pid", "q"], "root": "/"}, connect_deadline=0.0)
     return int(reply["stdout"]) if reply and reply["rc"] == 0 else None
 
 
@@ -161,8 +160,11 @@ def script(tmp_path, monkeypatch):
     path.write_text(FAKE_SCRIPT, encoding="utf-8")
     builder = tmp_path / "build_index.py"
     builder.write_text(FAKE_BUILDER, encoding="utf-8")
-    monkeypatch.setattr(_shellout, "find_reference_script", lambda root, relative: (
-        str(builder) if os.path.basename(relative) == "build_index.py" else str(path)))
+    monkeypatch.setattr(
+        _shellout,
+        "find_reference_script",
+        lambda root, relative: str(builder) if os.path.basename(relative) == "build_index.py" else str(path),
+    )
     return str(path)
 
 
@@ -184,13 +186,16 @@ def _both(root, argv, capfd, monkeypatch):
 
 
 class TestTheWorkerAnswersExactlyAsTheSubprocessWould:
-    @pytest.mark.parametrize("argv", [
-        ["--top-k", "4", "--", "retry the payment"],
-        ["--", "non-ASCII: café — 日本語"],
-        ["--fail", "--", "q"],
-        ["--top-k", "zero", "--", "q"],
-        ["--", "--top-k"],
-    ])
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--top-k", "4", "--", "retry the payment"],
+            ["--", "non-ASCII: café — 日本語"],
+            ["--fail", "--", "q"],
+            ["--top-k", "zero", "--", "q"],
+            ["--", "--top-k"],
+        ],
+    )
     def test_same_rc_stdout_and_stderr(self, tmp_path, env, script, capfd, monkeypatch, argv):
         root = _store(tmp_path, "store")
         cold, hot = _both(root, argv, capfd, monkeypatch)
@@ -213,8 +218,8 @@ class TestTheWorkerAnswersExactlyAsTheSubprocessWould:
         _, out_b = _shellout.run_script(b, QUERY, ["--", "second"], "hint", capture=True)
         assert "index=index-a" in out_a and os.path.join(a, "memory", "lessons") in out_a
         assert "index=index-b" in out_b and os.path.join(b, "memory", "lessons") in out_b
-        assert Path(os.path.join(a, 'memory', 'alpha_telemetry.jsonl')).read_text() == "first\n"
-        assert Path(os.path.join(b, 'memory', 'alpha_telemetry.jsonl')).read_text() == "second\n"
+        assert Path(os.path.join(a, "memory", "alpha_telemetry.jsonl")).read_text() == "first\n"
+        assert Path(os.path.join(b, "memory", "alpha_telemetry.jsonl")).read_text() == "second\n"
 
 
 class TestTheIndexBuilderIsServedToo:
@@ -329,8 +334,10 @@ class TestOnlyThisUserCanReachIt:
             conn.shutdown(socket.SHUT_WR)
             assert conn.recv(10) == b""
             conn.close()
-        assert warm._ask(sock, {"protocol": warm.PROTOCOL, "argv": ["--", "q"], "root": "relative"},
-                         connect_deadline=0.0) is None
+        assert (
+            warm._ask(sock, {"protocol": warm.PROTOCOL, "argv": ["--", "q"], "root": "relative"}, connect_deadline=0.0)
+            is None
+        )
         rc, out = _shellout.run_script(root, QUERY, ["--", "q"], "hint", capture=True)
         assert rc == 0 and "# q" in out
 
@@ -446,8 +453,8 @@ class TestTheWorkerScoresExactlyAsTheRerankerWould:
         _shellout.run_script(_store(tmp_path, "store"), QUERY, ["--", "q"], "hint", capture=True)
         sock = warm.socket_path(script)
         reached, reply = warm._exchange(
-            sock, {"protocol": warm.PROTOCOL, "op": "rerank", "mode": "not-a-mode", "pairs": []},
-            connect_deadline=0.0)
+            sock, {"protocol": warm.PROTOCOL, "op": "rerank", "mode": "not-a-mode", "pairs": []}, connect_deadline=0.0
+        )
         assert reached and "error" in reply
         spawned = []
         monkeypatch.setattr(warm, "packaged_query_script", lambda: script)
@@ -466,8 +473,13 @@ class TestTheWorkerScoresExactlyAsTheRerankerWould:
         assert [slug for slug, _ in page] == ["a", "b"]
 
     def test_a_reply_of_the_wrong_length_is_not_trusted(self, monkeypatch):
-        monkeypatch.setattr(warm, "_call", lambda script, request, root, env, valid: (
-            {"protocol": warm.PROTOCOL, "scores": [1.0]} if valid({"scores": [1.0]}) else None))
+        monkeypatch.setattr(
+            warm,
+            "_call",
+            lambda script, request, root, env, valid: (
+                {"protocol": warm.PROTOCOL, "scores": [1.0]} if valid({"scores": [1.0]}) else None
+            ),
+        )
         monkeypatch.setenv("UNIMEM_WARM", "1")
         assert warm.rerank_scores("cross-encoder", [("a", "b"), ("c", "d")]) is None
 
@@ -476,10 +488,7 @@ def _real_models_cached():
     from unimem import rerank_arm
     from unimem.commands import doctor_cmd
 
-    return (
-        _shellout.has_attention_deps()
-        and doctor_cmd._model_cached(rerank_arm.MODELS["cross-encoder-fast"][0])
-    )
+    return _shellout.has_attention_deps() and doctor_cmd._model_cached(rerank_arm.MODELS["cross-encoder-fast"][0])
 
 
 @pytest.mark.skipif(not _real_models_cached(), reason="needs the attention extra and a cached cross-encoder")
@@ -487,12 +496,15 @@ def test_the_real_model_scores_identically_through_the_worker(env, monkeypatch):
     from unimem import rerank_arm
 
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
-    pairs = [("retry the payment after a timeout", "Send an idempotency key on every payment request."),
-             ("retry the payment after a timeout", "Rotate the API key when an engineer leaves.")]
+    pairs = [
+        ("retry the payment after a timeout", "Send an idempotency key on every payment request."),
+        ("retry the payment after a timeout", "Rotate the API key when an engineer leaves."),
+    ]
     remote = warm.rerank_scores("cross-encoder-fast", pairs)
     assert remote is not None, "the worker did not answer"
-    local = [float(x) for x in rerank_arm._load("cross-encoder-fast").predict(
-        pairs, batch_size=64, show_progress_bar=False)]
+    local = [
+        float(x) for x in rerank_arm._load("cross-encoder-fast").predict(pairs, batch_size=64, show_progress_bar=False)
+    ]
     assert remote == local
 
 
@@ -502,12 +514,22 @@ def _lexical_store(tmp_path, name="cli-store"):
 
     root = str(tmp_path / name)
     main(["init", "--agent-type", "code", "--dest", root])
-    for slug, rule in (("idem", "Send an idempotency key on every payment retry."),
-                       ("pool", "Cap the connection pool before a retry storm.")):
-        frontmatter.write(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"),
-                          {"name": slug, "status": "active", "description": rule, "agent_type": "code",
-                           "importance": 3, "applies_when": "payments are retried"},
-                          f"## Rule\n{rule}\n")
+    for slug, rule in (
+        ("idem", "Send an idempotency key on every payment retry."),
+        ("pool", "Cap the connection pool before a retry storm."),
+    ):
+        frontmatter.write(
+            os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"),
+            {
+                "name": slug,
+                "status": "active",
+                "description": rule,
+                "agent_type": "code",
+                "importance": 3,
+                "applies_when": "payments are retried",
+            },
+            f"## Rule\n{rule}\n",
+        )
     return root
 
 
@@ -584,12 +606,20 @@ def test_the_real_query_command_prints_the_same_through_the_worker(tmp_path, env
 
     root = _lexical_store(tmp_path, "real")
     run_env = dict(os.environ, HF_HUB_OFFLINE="1")
-    subprocess.run([sys.executable, "-m", "unimem", "index", "--dest", root],
-                   env=dict(run_env, UNIMEM_WARM="0"), capture_output=True, check=True)
+    subprocess.run(
+        [sys.executable, "-m", "unimem", "index", "--dest", root],
+        env=dict(run_env, UNIMEM_WARM="0"),
+        capture_output=True,
+        check=True,
+    )
     results = []
     for setting in ("0", "1", "1"):
-        r = subprocess.run([sys.executable, "-m", "unimem", "query", "retrying a payment", "--dest", root],
-                           env=dict(run_env, UNIMEM_WARM=setting), capture_output=True, text=True)
+        r = subprocess.run(
+            [sys.executable, "-m", "unimem", "query", "retrying a payment", "--dest", root],
+            env=dict(run_env, UNIMEM_WARM=setting),
+            capture_output=True,
+            text=True,
+        )
         results.append((r.returncode, r.stdout, r.stderr))
     assert results[0] == results[1] == results[2]
     assert "idem" in results[0][1]

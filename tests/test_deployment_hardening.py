@@ -12,6 +12,7 @@ except NameError:  # pragma: no cover
     try:
         from exceptiongroup import ExceptionGroup as _ExcGroup  # type: ignore[no-redef]
     except ImportError:
+
         class _ExcGroup(Exception):  # type: ignore[no-redef]
             def __init__(self, message, exceptions):
                 super().__init__(message)
@@ -20,8 +21,7 @@ except NameError:  # pragma: no cover
 
 class TestExceptionGroupUnwrapping:
     def _wrapped(self, exc):
-        return _ExcGroup("unhandled errors in a TaskGroup",
-                         [_ExcGroup("unhandled errors in a TaskGroup", [exc])])
+        return _ExcGroup("unhandled errors in a TaskGroup", [_ExcGroup("unhandled errors in a TaskGroup", [exc])])
 
     def test_a_refused_connection_inside_a_task_group_is_retryable(self):
         assert hub_client._is_retryable(self._wrapped(ConnectionRefusedError("refused"))) is True
@@ -48,11 +48,14 @@ class TestStatusDetectionDoesNotFireOnIncidentalDigits:
     def test_a_trace_id_is_not_a_status_code(self):
         assert hub_client._http_status(Exception("no trace with id 93228973-4446-43d1")) is None
 
-    @pytest.mark.parametrize("text,expected", [
-        ("Server returned HTTP 503", 503),
-        ("status code: 429", 429),
-        ("status=401", 401),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("Server returned HTTP 503", 503),
+            ("status code: 429", 429),
+            ("status=401", 401),
+        ],
+    )
     def test_a_status_stated_as_a_status_is_read(self, text, expected):
         assert hub_client._http_status(Exception(text)) == expected
 
@@ -145,6 +148,7 @@ class TestRateLimitGatePacesTheWholeBatch:
             for _ in range(5):
                 gate.succeeded()
             assert gate._min_interval < widened
+
         asyncio.run(go())
 
     def test_the_first_pause_is_announced_once(self):
@@ -155,14 +159,17 @@ class TestRateLimitGatePacesTheWholeBatch:
             gate.pause(1.0)
             gate.pause(1.0)
             return seen
+
         assert len(asyncio.run(go())) == 1
 
 
 class TestUnfilledPlaceholders:
     def test_distills_todo_scaffolding_is_detected(self):
         found = templates.unfilled_placeholders(
-            {"applies_when": "TODO: precise activation condition",
-             "do_not_apply_when": "TODO: explicit counter-condition"},
+            {
+                "applies_when": "TODO: precise activation condition",
+                "do_not_apply_when": "TODO: explicit counter-condition",
+            },
             "## Rule\nTODO: derive the actionable rule from the traces below.\n",
         )
         assert "applies_when" in found and "do_not_apply_when" in found and "## Rule" in found
@@ -171,43 +178,63 @@ class TestUnfilledPlaceholders:
         assert templates.unfilled_placeholders({}, templates.lesson_body())
 
     def test_a_written_lesson_is_clean(self):
-        assert templates.unfilled_placeholders(
-            {"applies_when": "A refund retry returns HTTP 409",
-             "do_not_apply_when": "The charge was never authorized"},
-            "## Rule\nReuse the original idempotency key.\n\n## Why\nSix incidents.\n",
-        ) == []
+        assert (
+            templates.unfilled_placeholders(
+                {
+                    "applies_when": "A refund retry returns HTTP 409",
+                    "do_not_apply_when": "The charge was never authorized",
+                },
+                "## Rule\nReuse the original idempotency key.\n\n## Why\nSix incidents.\n",
+            )
+            == []
+        )
 
     def test_prose_that_merely_mentions_todo_is_not_scaffolding(self):
-        assert templates.unfilled_placeholders(
-            {"applies_when": "the diff adds a TODO: comment with no owner"},
-            "## Rule\nReject a TODO: comment that names no owner.\n",
-        ) == []
+        assert (
+            templates.unfilled_placeholders(
+                {"applies_when": "the diff adds a TODO: comment with no owner"},
+                "## Rule\nReject a TODO: comment that names no owner.\n",
+            )
+            == []
+        )
 
     def test_prose_containing_brackets_is_not_scaffolding(self):
-        assert templates.unfilled_placeholders(
-            {}, "## Rule\nPrefer arr[0] over arr.first() in hot loops.\n"
-        ) == []
+        assert templates.unfilled_placeholders({}, "## Rule\nPrefer arr[0] over arr.first() in hot loops.\n") == []
 
 
 class TestScaffoldingNeverBecomesAnActiveLesson:
     def _candidate(self, store):
         from unimem.cli import main
+
         main(["init", "--agent-type", "support", "--dest", str(store)])
         for i in range(3):
-            main(["capture", "--title", f"Gateway 409 refund {i}",
-                  "--context", f"payment gateway 409 on refund retry {i}",
-                  "--solution", f"reuse idempotency key {i}",
-                  "--tags", "refunds", "--agent-type", "support", "--dest", str(store)])
+            main(
+                [
+                    "capture",
+                    "--title",
+                    f"Gateway 409 refund {i}",
+                    "--context",
+                    f"payment gateway 409 on refund retry {i}",
+                    "--solution",
+                    f"reuse idempotency key {i}",
+                    "--tags",
+                    "refunds",
+                    "--agent-type",
+                    "support",
+                    "--dest",
+                    str(store),
+                ]
+            )
         main(["distill", "--min-cluster", "2", "--dest", str(store)])
         lessons = [
-            p for p in (store / "memory" / "lessons").glob("lesson_candidate_*.md")
-            if p.name != "lesson_template.md"
+            p for p in (store / "memory" / "lessons").glob("lesson_candidate_*.md") if p.name != "lesson_template.md"
         ]
         assert lessons, "distill should have written a candidate"
-        return lessons[0].stem[len("lesson_"):]
+        return lessons[0].stem[len("lesson_") :]
 
     def test_approve_refuses_a_lesson_that_is_still_scaffolding(self, tmp_path, capsys):
         from unimem.cli import main
+
         slug = self._candidate(tmp_path)
         capsys.readouterr()
         assert main(["lesson", "approve", slug, "--dest", str(tmp_path)]) == 1
@@ -215,6 +242,7 @@ class TestScaffoldingNeverBecomesAnActiveLesson:
 
     def test_force_approves_but_says_so(self, tmp_path, capsys):
         from unimem.cli import main
+
         slug = self._candidate(tmp_path)
         capsys.readouterr()
         assert main(["lesson", "approve", slug, "--force", "--dest", str(tmp_path)]) == 0
@@ -222,17 +250,20 @@ class TestScaffoldingNeverBecomesAnActiveLesson:
 
     def test_validate_fails_an_active_lesson_that_is_still_scaffolding(self, tmp_path):
         from unimem.cli import main
+
         slug = self._candidate(tmp_path)
         main(["lesson", "approve", slug, "--force", "--dest", str(tmp_path)])
         assert main(["lesson", "validate", "--dest", str(tmp_path)]) == 1
 
     def test_validate_leaves_a_review_candidate_alone(self, tmp_path):
         from unimem.cli import main
+
         self._candidate(tmp_path)
         assert main(["lesson", "validate", "--dest", str(tmp_path)]) == 0
 
     def test_taxonomy_does_not_count_scaffolding_as_coverage(self, tmp_path, capsys):
         from unimem.cli import main
+
         slug = self._candidate(tmp_path)
         main(["lesson", "approve", slug, "--force", "--dest", str(tmp_path)])
         capsys.readouterr()
@@ -244,15 +275,31 @@ class TestScaffoldingNeverBecomesAnActiveLesson:
     def test_lesson_new_scaffolds_at_review_not_active(self, tmp_path):
         from unimem import frontmatter
         from unimem.cli import main
+
         main(["init", "--agent-type", "code", "--dest", str(tmp_path)])
-        main(["lesson", "new", "--slug", "fresh", "--description", "d",
-              "--agent-type", "code", "--domain", "testing", "--dest", str(tmp_path)])
+        main(
+            [
+                "lesson",
+                "new",
+                "--slug",
+                "fresh",
+                "--description",
+                "d",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
         fm, _ = frontmatter.read(str(tmp_path / "memory" / "lessons" / "lesson_fresh.md"))
         assert fm["status"] == "review"
 
     def test_push_refuses_to_publish_scaffolding(self, tmp_path):
         from unimem import frontmatter
         from unimem.cli import main
+
         slug = self._candidate(tmp_path)
         main(["lesson", "approve", slug, "--force", "--dest", str(tmp_path)])
         path = tmp_path / "memory" / "lessons" / f"lesson_{slug}.md"
@@ -263,6 +310,7 @@ class TestScaffoldingNeverBecomesAnActiveLesson:
             raise AssertionError("scaffolding must not be sent to the Hub")
 
         import unimem.hub_client as hc
+
         original, hc._call_tool = hc._call_tool, explode
         try:
             results = asyncio.run(hc.push_active_lessons("https://hub.example/mcp", "k", str(tmp_path)))
@@ -285,9 +333,7 @@ class TestPulledTracesAreNeverPushedBack:
             with open(os.path.join(tdir, name), "w", encoding="utf-8") as fh:
                 fh.write("---\nid: x\n---\n\n## Context\nc\n\n## Solution\ns\n")
 
-        candidates = sorted(
-            os.path.basename(p) for p in hub_client._iter_captured_trace_paths(str(tmp_path))
-        )
+        candidates = sorted(os.path.basename(p) for p in hub_client._iter_captured_trace_paths(str(tmp_path)))
         assert candidates == ["2026-01-01_local_abc12345.md"]
 
     def test_locally_captured_traces_are_still_pushed(self, tmp_path):
@@ -295,8 +341,21 @@ class TestPulledTracesAreNeverPushedBack:
         from unimem.cli import main
 
         main(["init", "--agent-type", "support", "--dest", str(tmp_path)])
-        main(["capture", "--title", "Real capture", "--context", "c", "--solution", "s",
-              "--agent-type", "support", "--dest", str(tmp_path)])
+        main(
+            [
+                "capture",
+                "--title",
+                "Real capture",
+                "--context",
+                "c",
+                "--solution",
+                "s",
+                "--agent-type",
+                "support",
+                "--dest",
+                str(tmp_path),
+            ]
+        )
         assert len(list(hub_client._iter_captured_trace_paths(str(tmp_path)))) == 1
 
 

@@ -1,6 +1,7 @@
 """Conversation memory behaviours behind specific memory abilities: standing
 instructions, preferences, long turns, broad questions, knowledge updates, abstention
 signals, wall-clock dates, frozen (read-only) stores and time-gated neighbours."""
+
 import sqlite3
 
 import pytest
@@ -21,23 +22,35 @@ def _chat(store, session, at, pairs):
 @pytest.fixture
 def store(tmp_path):
     s = Store(str(tmp_path), "beam")
-    _chat(s, "s1", "2024-03-15", [
-        ("user", "Always format all code snippets with syntax highlighting when I ask about implementation."),
-        ("assistant", "Understood, I will use fenced code blocks."),
-        ("user", "I prefer simple, minimal dependencies to keep the app lightweight."),
-        ("assistant", "Noted."),
-        ("user", "The dashboard API averages 400ms right now."),
-        ("assistant", "Let's profile it."),
-    ])
+    _chat(
+        s,
+        "s1",
+        "2024-03-15",
+        [
+            ("user", "Always format all code snippets with syntax highlighting when I ask about implementation."),
+            ("assistant", "Understood, I will use fenced code blocks."),
+            ("user", "I prefer simple, minimal dependencies to keep the app lightweight."),
+            ("assistant", "Noted."),
+            ("user", "The dashboard API averages 400ms right now."),
+            ("assistant", "Let's profile it."),
+        ],
+    )
     filler = []
     for i in range(40):
-        filler += [("user", f"Unrelated note number {i} about gardening tomatoes and watering schedules."),
-                   ("assistant", f"Sure, gardening tip {i}: water early in the morning.")]
+        filler += [
+            ("user", f"Unrelated note number {i} about gardening tomatoes and watering schedules."),
+            ("assistant", f"Sure, gardening tip {i}: water early in the morning."),
+        ]
     _chat(s, "s2", "2024-04-01", filler)
-    _chat(s, "s3", "2024-04-20", [
-        ("user", "Update: after caching tweaks the dashboard API now averages around 250ms."),
-        ("assistant", "Great improvement."),
-    ])
+    _chat(
+        s,
+        "s3",
+        "2024-04-20",
+        [
+            ("user", "Update: after caching tweaks the dashboard API now averages around 250ms."),
+            ("assistant", "Great improvement."),
+        ],
+    )
     yield s
     s.close()
 
@@ -63,8 +76,13 @@ def test_a_paraphrased_instruction_is_chosen_by_its_retrieval_rank(tmp_path):
 
     with Store(str(tmp_path), "beam") as s:
         rules = [f"Always mention widget number {i} when I ask about widgets." for i in range(8)]
-        _chat(s, "s1", "2024-01-01", [("user", rule) for rule in rules] + [
-            ("user", "Always include latency statistics when I ask about query performance.")])
+        _chat(
+            s,
+            "s1",
+            "2024-01-01",
+            [("user", rule) for rule in rules]
+            + [("user", "Always include latency statistics when I ask about query performance.")],
+        )
         question = "How can I make my widgets load faster?"
         plain = _instruction_lines(s, 2, question)
         assert all("latency" not in line for line, _turn in plain)
@@ -76,8 +94,14 @@ def test_a_paraphrased_instruction_is_chosen_by_its_retrieval_rank(tmp_path):
 
 def test_instructions_are_not_pinned_between_two_people(tmp_path):
     with Store(str(tmp_path), "friends") as s:
-        s.add("s1", [{"speaker": "Ana", "text": "Always make time for family, that's my rule."},
-                     {"speaker": "Ben", "text": "Agreed, and we should plan a trip."}], session_at="2023-01-01")
+        s.add(
+            "s1",
+            [
+                {"speaker": "Ana", "text": "Always make time for family, that's my rule."},
+                {"speaker": "Ben", "text": "Agreed, and we should plan a trip."},
+            ],
+            session_at="2023-01-01",
+        )
         r = recall(s, "what about a trip?", options=Options(budget=400, **LEX))
         assert "[Standing instructions" not in r.context
 
@@ -99,8 +123,11 @@ def test_long_turns_are_excerpted_not_dropped(tmp_path):
         pasted = " ".join(f"Line {i} of the build log is unremarkable." for i in range(600))
         pasted += " The failing step was the alembic migration 0042 on the orders table. "
         pasted += " ".join(f"Trailing line {i} is unremarkable." for i in range(600))
-        s.add("x", [{"role": "user", "text": pasted}, {"role": "assistant", "text": "Look at the migration."}],
-              session_at="2024-01-01")
+        s.add(
+            "x",
+            [{"role": "user", "text": pasted}, {"role": "assistant", "text": "Look at the migration."}],
+            session_at="2024-01-01",
+        )
         r = recall(s, "which migration failed on the orders table?", options=Options(budget=500, **LEX))
         assert "alembic migration 0042" in r.context
         assert r.tokens <= 520 and "…" in r.context
@@ -110,8 +137,11 @@ def test_broad_questions_cover_what_the_user_raised(store):
     assert is_broad("Can you summarise how my project progressed?")
     assert is_broad("In what order did I bring up these topics?")
     assert not is_broad("What is my dashboard API latency?")
-    r = recall(store, "Give me a summary of everything about the dashboard API throughout our conversations",
-               options=Options(budget=500, **LEX))
+    r = recall(
+        store,
+        "Give me a summary of everything about the dashboard API throughout our conversations",
+        options=Options(budget=500, **LEX),
+    )
     refs = {t.ref for t in store.turns(r.turns).values()}
     assert {"s1-4", "s3-0"} <= refs
 
@@ -146,20 +176,33 @@ def test_frozen_store_recalls_but_refuses_writes(tmp_path):
 
 def test_neighbours_are_time_gated(tmp_path):
     with Store(str(tmp_path), "notes") as s:
-        s.add("2024-01-01", [
-            {"id": "a", "role": "user", "text": "Morning: dentist moved to Friday.", "at": "2024-01-01T08:00"},
-            {"id": "b", "role": "user", "text": "Evening: thinking about the quarterly offsite.", "at": "2024-01-01T21:00"},
-        ])
-        r = recall(s, "when is the dentist?", options=Options(budget=400, neighbours_before=2, neighbours_after=2,
-                                                            profile_facts=0, **LEX))
+        s.add(
+            "2024-01-01",
+            [
+                {"id": "a", "role": "user", "text": "Morning: dentist moved to Friday.", "at": "2024-01-01T08:00"},
+                {
+                    "id": "b",
+                    "role": "user",
+                    "text": "Evening: thinking about the quarterly offsite.",
+                    "at": "2024-01-01T21:00",
+                },
+            ],
+        )
+        r = recall(
+            s,
+            "when is the dentist?",
+            options=Options(budget=400, neighbours_before=2, neighbours_after=2, profile_facts=0, **LEX),
+        )
         assert "dentist" in r.context and "offsite" not in r.context
 
 
 def test_list_questions_search_each_aspect():
     from unimem.conversation.search import subqueries
 
-    subs = subqueries("Can you give a comprehensive summary of my budget tracker project, including the key "
-                      "features implemented, security enhancements, and documentation efforts?")
+    subs = subqueries(
+        "Can you give a comprehensive summary of my budget tracker project, including the key "
+        "features implemented, security enhancements, and documentation efforts?"
+    )
     assert "budget tracker project security enhancements" in subs
     assert "budget tracker project documentation efforts" in subs
     assert subqueries("Where did I go last week?") == ["Where did I go last week?"]
@@ -169,8 +212,14 @@ def test_self_introductions_are_identity_and_answer_profession_questions(tmp_pat
     facts = profile.extract("I'm Craig, a 44-year-old colour technologist, and I'm learning probability.")
     assert [(f.kind, f.subject) for f in facts] == [("identity", "44-year-old colour technologist")]
     with Store(str(tmp_path), "s") as s:
-        s.add("a", [{"role": "user", "text": "I'm Craig, a colour technologist, and I want help with charts."},
-                    {"role": "assistant", "text": "Happy to help with charts."}], session_at="2024-01-01")
+        s.add(
+            "a",
+            [
+                {"role": "user", "text": "I'm Craig, a colour technologist, and I want help with charts."},
+                {"role": "assistant", "text": "Happy to help with charts."},
+            ],
+            session_at="2024-01-01",
+        )
         r = recall(s, "What profession did I mention?", options=Options(budget=300, **LEX))
         assert "colour technologist" in r.context
 
@@ -182,12 +231,14 @@ def test_cross_encoder_blends_with_the_fused_rank(monkeypatch):
     class FakeStore:
         def turns(self, ids):
             from unimem.conversation.store import Turn
+
             return {i: Turn(i, "s", i, None, "user", "user", f"turn {i}", ()) for i in ids}
 
     monkeypatch.setattr(rerank_arm, "ready", lambda mode: "")
     # the cross-encoder puts the fused last first; blended, the fused first keeps a high place
-    monkeypatch.setattr(rerank_arm, "rerank", lambda q, ids, text, n, mode: ([(i, 10 - k) for k, i in
-                                                                               enumerate(reversed(ids))], []))
+    monkeypatch.setattr(
+        rerank_arm, "rerank", lambda q, ids, text, n, mode: ([(i, 10 - k) for k, i in enumerate(reversed(ids))], [])
+    )
     replaced = search._rerank(FakeStore(), "q", [1, 2, 3, 4], "cross-encoder", 4, None, 0.0)
     blended = search._rerank(FakeStore(), "q", [1, 2, 3, 4], "cross-encoder", 4, None, 1.0)
     assert replaced[0] == 4
@@ -197,10 +248,14 @@ def test_cross_encoder_blends_with_the_fused_rank(monkeypatch):
 
 def test_asks_when_boosts_dated_turns(tmp_path):
     with Store(str(tmp_path), "s") as s:
-        s.add("sess1", [
-            {"role": "user", "text": "We discussed the project budget."},
-            {"role": "user", "text": "We finalized the contract yesterday and signed it."},
-        ], session_at="2023-05-08")
+        s.add(
+            "sess1",
+            [
+                {"role": "user", "text": "We discussed the project budget."},
+                {"role": "user", "text": "We finalized the contract yesterday and signed it."},
+            ],
+            session_at="2023-05-08",
+        )
         r = recall(s, "When did we sign the contract?", options=Options(budget=300, **LEX))
         assert r.explain.get("asks_when") is True
         assert "yesterday [7 May 2023]" in r.context
@@ -208,21 +263,28 @@ def test_asks_when_boosts_dated_turns(tmp_path):
 
 def test_preference_questions_boost_preference_facts(tmp_path):
     with Store(str(tmp_path), "s") as s:
-        s.add("sess1", [
-            {"role": "user", "text": "I usually drink black coffee with oat milk every morning."},
-            {"role": "user", "text": "I work from home as a programmer."},
-        ], session_at="2023-05-08")
+        s.add(
+            "sess1",
+            [
+                {"role": "user", "text": "I usually drink black coffee with oat milk every morning."},
+                {"role": "user", "text": "I work from home as a programmer."},
+            ],
+            session_at="2023-05-08",
+        )
         r = recall(s, "What coffee do you prefer?", options=Options(budget=300, **LEX))
         assert "black coffee" in r.context
 
 
 def test_abstention_detection_zeros_confidence_for_unmentioned_salient_entities(tmp_path):
     with Store(str(tmp_path), "s") as s:
-        s.add("sess1", [
-            {"role": "user", "text": "We adopted a beagle named Biscuit yesterday!"},
-            {"role": "assistant", "text": "Congrats! How is he settling in?"},
-        ], session_at="2023-05-08")
+        s.add(
+            "sess1",
+            [
+                {"role": "user", "text": "We adopted a beagle named Biscuit yesterday!"},
+                {"role": "assistant", "text": "Congrats! How is he settling in?"},
+            ],
+            session_at="2023-05-08",
+        )
         r = recall(s, "What is my favourite saxophone brand?", options=Options(budget=300, **LEX))
         assert r.explain.get("abstain") is True
         assert r.explain.get("confidence") == 0.0
-

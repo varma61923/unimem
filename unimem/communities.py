@@ -18,6 +18,7 @@ link (entity_store.rebuild_entity_index maps both kinds of id). Storage:
 memory/communities/*.md frontmatter plus a member list, like the rest of
 the store, written atomically via unimem.frontmatter.
 """
+
 from __future__ import annotations
 
 import collections
@@ -117,7 +118,7 @@ def _build_adjacency(root: str, nodes: dict[str, dict[str, Any]]) -> dict[str, l
             return
         seen_groups.add(unique)
         for i, source in enumerate(unique):
-            for target in unique[i + 1:]:
+            for target in unique[i + 1 :]:
                 adj[source].add(target)
                 adj[target].add(source)
 
@@ -166,9 +167,7 @@ def _summary(nodes: dict[str, dict[str, Any]], members: list[str]) -> dict[str, 
         title = node["title"]
         titles.append(title if len(title) <= 80 else title[:77] + "...")
         terms.extend(
-            tok
-            for tok in _TOKEN_RE.findall(str(node["text"]).lower())
-            if tok not in _STOPWORDS and len(tok) > 2
+            tok for tok in _TOKEN_RE.findall(str(node["text"]).lower()) if tok not in _STOPWORDS and len(tok) > 2
         )
     counts: collections.Counter = collections.Counter(terms)
     top = [term for term, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:5]]

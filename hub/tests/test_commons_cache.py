@@ -45,10 +45,17 @@ def _fresh_cache():
 async def _seed(session_factory, org_id, title, *, context="", agent_type="code", **kw):
     async with session_scope(session_factory) as session:
         t = Trace(
-            org_id=org_id, title=title, context_text=context, solution_text="fix: " + title,
-            tags=[], agent_type=agent_type, shared_with_commons=True,
-            shared_at=datetime.now(timezone.utc), shared_rationale="seed",
-            commons_source="seed", commons_signature=commons.signature_for(title, context, []),
+            org_id=org_id,
+            title=title,
+            context_text=context,
+            solution_text="fix: " + title,
+            tags=[],
+            agent_type=agent_type,
+            shared_with_commons=True,
+            shared_at=datetime.now(timezone.utc),
+            shared_rationale="seed",
+            commons_source="seed",
+            commons_signature=commons.signature_for(title, context, []),
             **kw,
         )
         session.add(t)
@@ -70,7 +77,9 @@ class TestTheTriggersTheDatabaseRuns:
     async def test_the_migration_installs_exactly_what_the_models_do(self):
         path = (
             pathlib.Path(__file__).resolve().parents[1]
-            / "alembic" / "versions" / "c3e8a1f05b92_commons_corpus_version.py"
+            / "alembic"
+            / "versions"
+            / "c3e8a1f05b92_commons_corpus_version.py"
         )
         spec = importlib.util.spec_from_file_location("commons_corpus_migration", path)
         mod = importlib.util.module_from_spec(spec)
@@ -123,13 +132,15 @@ class TestTheVersionMovesExactlyWhenTheCorpusDoes:
 
     @pytest.mark.parametrize(
         "change",
-        [{"commons_hits": 41}, {"trust": 0.9, "commons_votes": 7}, {"retrievals": 3},
-         {"solution_text": "a better fix"}],
+        [
+            {"commons_hits": 41},
+            {"trust": 0.9, "commons_votes": 7},
+            {"retrievals": 3},
+            {"solution_text": "a better fix"},
+        ],
         ids=lambda c: next(iter(c)),
     )
-    async def test_not_on_the_counters_that_change_on_every_query_and_vote(
-        self, session_factory, orgs, change
-    ):
+    async def test_not_on_the_counters_that_change_on_every_query_and_vote(self, session_factory, orgs, change):
         tid = await _seed(session_factory, orgs["operator"], "redis lock deadlock")
         before = await _key(session_factory)
         await _set(session_factory, tid, **change)
@@ -138,8 +149,16 @@ class TestTheVersionMovesExactlyWhenTheCorpusDoes:
     async def test_not_on_ordinary_customer_traces(self, session_factory, orgs):
         before = await _key(session_factory)
         async with session_scope(session_factory) as session:
-            session.add(Trace(org_id=orgs["reader"], title="private", context_text="x", solution_text="y",
-                              tags=[], agent_type="code"))
+            session.add(
+                Trace(
+                    org_id=orgs["reader"],
+                    title="private",
+                    context_text="x",
+                    solution_text="y",
+                    tags=[],
+                    agent_type="code",
+                )
+            )
         assert await _key(session_factory) == before
 
     async def test_a_no_op_update_does_not_count(self, session_factory, orgs):
@@ -170,8 +189,11 @@ class TestTheSnapshot:
         await _set(session_factory, tid, commons_retracted_at=datetime.now(timezone.utc))
         key_now = await _key(session_factory)
         commons_cache._snapshot = commons_cache.Snapshot(
-            key=key_now, ids=stale.ids, org_ids=stale.org_ids,
-            agent_types=stale.agent_types, signatures=stale.signatures,
+            key=key_now,
+            ids=stale.ids,
+            org_ids=stale.org_ids,
+            agent_types=stale.agent_types,
+            signatures=stale.signatures,
         )
         failure = {"label": "f", "signature": commons.signature_for(title, ctx, [])}
         async with session_scope(session_factory) as session:
@@ -188,6 +210,7 @@ def _strip_volatile(result):
         if isinstance(obj, list):
             return [scrub(v) for v in obj]
         return obj
+
     return scrub(result)
 
 
@@ -201,14 +224,25 @@ class TestTheCachedPathMatchesTheDirectPathExactly:
 
         owners = [orgs["operator"], orgs["operator"], orgs["operator"], orgs["reader"], orgs["other"]]
         for _ in range(60):
-            extra = rng.choice([
-                {}, {}, {}, {},
-                {"commons_retracted_at": datetime.now(timezone.utc)},
-                {"quarantined": True},
-                {"superseded_at": datetime.now(timezone.utc)},
-            ])
-            tid = await _seed(session_factory, rng.choice(owners), text(), context=text(),
-                              agent_type=rng.choice(["code", "code", "support"]), **extra)
+            extra = rng.choice(
+                [
+                    {},
+                    {},
+                    {},
+                    {},
+                    {"commons_retracted_at": datetime.now(timezone.utc)},
+                    {"quarantined": True},
+                    {"superseded_at": datetime.now(timezone.utc)},
+                ]
+            )
+            tid = await _seed(
+                session_factory,
+                rng.choice(owners),
+                text(),
+                context=text(),
+                agent_type=rng.choice(["code", "code", "support"]),
+                **extra,
+            )
             if rng.random() < 0.1:
                 await _set(session_factory, tid, commons_source="org")
 
@@ -222,11 +256,15 @@ class TestTheCachedPathMatchesTheDirectPathExactly:
             out = []
             for agent_type in ("", "code"):
                 async with session_scope(session_factory) as session:
-                    out.append(await crud.commons_overlap(
-                        session, orgs["reader"], failures, threshold=0.05, agent_type=agent_type))
+                    out.append(
+                        await crud.commons_overlap(
+                            session, orgs["reader"], failures, threshold=0.05, agent_type=agent_type
+                        )
+                    )
                 async with session_scope(session_factory) as session:
-                    out.append(await crud.commons_search(
-                        session, orgs["reader"], query, limit=10, agent_type=agent_type))
+                    out.append(
+                        await crud.commons_search(session, orgs["reader"], query, limit=10, agent_type=agent_type)
+                    )
             return _strip_volatile(out)
 
         direct = await run(cached=False)

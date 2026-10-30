@@ -28,6 +28,7 @@ acts as an agent confined to its own ``agent:<id>`` scope, exactly like a key
 from ``unimem init --agent``. The verification primitives need the optional
 ``cryptography`` package (``pip install 'unimem[security]'``).
 """
+
 from __future__ import annotations
 
 import base64
@@ -54,7 +55,7 @@ MAX_JWKS_BYTES = 256 * 1024
 JWKS_TTL_SECONDS = 600.0
 JWKS_MIN_REFRESH_SECONDS = 60.0
 JWKS_MAX_STALE_SECONDS = 24 * 3600.0  # keys served while the issuer is unreachable
-JWKS_RETRY_SECONDS = (1.0, 60.0)      # backoff between failed fetches: first, maximum
+JWKS_RETRY_SECONDS = (1.0, 60.0)  # backoff between failed fetches: first, maximum
 DEFAULT_LEEWAY = 60
 _SEGMENT = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -97,9 +98,13 @@ class OAuthConfig:
 
     def metadata(self) -> dict:
         """RFC 9728 protected-resource metadata."""
-        return {"resource": self.audience, "authorization_servers": [self.issuer],
-                "bearer_methods_supported": ["header"], "scopes_supported": list(self.scopes_supported),
-                "resource_signing_alg_values_supported": list(self.algorithms)}
+        return {
+            "resource": self.audience,
+            "authorization_servers": [self.issuer],
+            "bearer_methods_supported": ["header"],
+            "scopes_supported": list(self.scopes_supported),
+            "resource_signing_alg_values_supported": list(self.algorithms),
+        }
 
 
 @dataclass(frozen=True)
@@ -144,9 +149,14 @@ def load_config(root: str | None = None) -> OAuthConfig | None:
             if not isinstance(loaded, dict):
                 raise ConfigurationError("memory/oauth.json must be a JSON object")
             values.update(loaded)
-    env = {"issuer": "UNIMEM_OAUTH_ISSUER", "audience": "UNIMEM_OAUTH_AUDIENCE",
-           "jwks_url": "UNIMEM_OAUTH_JWKS_URL", "jwks_file": "UNIMEM_OAUTH_JWKS_FILE",
-           "algorithms": "UNIMEM_OAUTH_ALGORITHMS", "leeway": "UNIMEM_OAUTH_LEEWAY"}
+    env = {
+        "issuer": "UNIMEM_OAUTH_ISSUER",
+        "audience": "UNIMEM_OAUTH_AUDIENCE",
+        "jwks_url": "UNIMEM_OAUTH_JWKS_URL",
+        "jwks_file": "UNIMEM_OAUTH_JWKS_FILE",
+        "algorithms": "UNIMEM_OAUTH_ALGORITHMS",
+        "leeway": "UNIMEM_OAUTH_LEEWAY",
+    }
     for key, name in env.items():
         value = _configuration_getenv(name)
         if value:
@@ -160,9 +170,14 @@ def load_config(root: str | None = None) -> OAuthConfig | None:
         leeway = int(values.get("leeway", DEFAULT_LEEWAY))
     except (TypeError, ValueError):
         raise ConfigurationError("OAuth leeway must be an integer number of seconds") from None
-    return OAuthConfig(issuer=str(values["issuer"]), audience=str(values.get("audience", "")),
-                       jwks_url=str(values.get("jwks_url", "")), jwks_file=str(values.get("jwks_file", "")),
-                       algorithms=tuple(algorithms), leeway=leeway)
+    return OAuthConfig(
+        issuer=str(values["issuer"]),
+        audience=str(values.get("audience", "")),
+        jwks_url=str(values.get("jwks_url", "")),
+        jwks_file=str(values.get("jwks_file", "")),
+        algorithms=tuple(algorithms),
+        leeway=leeway,
+    )
 
 
 def _b64decode(segment: str) -> bytes:
@@ -203,8 +218,7 @@ class JWKSCache:
                 return None
 
         opener = urllib.request.build_opener(NoRedirect)
-        with opener.open(urllib.request.Request(url, headers={"Accept": "application/json"}),
-                         timeout=10) as response:  # nosec B310 - https (or loopback) checked in OAuthConfig
+        with opener.open(urllib.request.Request(url, headers={"Accept": "application/json"}), timeout=10) as response:  # nosec B310 - https (or loopback) checked in OAuthConfig
             raw = response.read(MAX_JWKS_BYTES + 1)
         if len(raw) > MAX_JWKS_BYTES:
             raise InvalidToken("JWKS document is too large")
@@ -247,8 +261,7 @@ class JWKSCache:
             self._next_attempt = now + delay
             if self._keys and now - self._loaded_at <= JWKS_MAX_STALE_SECONDS:
                 return
-            raise KeysUnavailable(f"the issuer's signing keys are unavailable ({type(exc).__name__})",
-                                  delay) from None
+            raise KeysUnavailable(f"the issuer's signing keys are unavailable ({type(exc).__name__})", delay) from None
         self._keys, self._loaded_at, self._failures, self._next_attempt = keys, now, 0, 0.0
 
     def key_for(self, kid: str | None, alg: str) -> dict:
@@ -279,28 +292,34 @@ def _verify_signature(alg: str, jwk: dict, signing_input: bytes, signature: byte
         from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
         from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
     except ImportError:
-        raise CapabilityError("OAuth token verification needs the security extra",
-                              remediation="pip install 'unimem[security]'") from None
+        raise CapabilityError(
+            "OAuth token verification needs the security extra", remediation="pip install 'unimem[security]'"
+        ) from None
     try:
         if alg in ("RS256", "PS256"):
             key = rsa.RSAPublicNumbers(_b64int(jwk.get("e")), _b64int(jwk.get("n"))).public_key()
             if key.key_size < 2048:
                 raise InvalidToken("RSA signing keys must be at least 2048 bits")
-            pad = padding.PKCS1v15() if alg == "RS256" else padding.PSS(
-                mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH)
+            pad = (
+                padding.PKCS1v15()
+                if alg == "RS256"
+                else padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH)
+            )
             key.verify(signature, signing_input, pad, hashes.SHA256())
         elif alg == "ES256":
             if jwk.get("crv") != "P-256" or len(signature) != 64:
                 raise InvalidToken("ES256 needs a P-256 key and a 64-byte signature")
-            key = ec.EllipticCurvePublicNumbers(_b64int(jwk.get("x")), _b64int(jwk.get("y")),
-                                                ec.SECP256R1()).public_key()
+            ec_key = ec.EllipticCurvePublicNumbers(
+                _b64int(jwk.get("x")), _b64int(jwk.get("y")), ec.SECP256R1()
+            ).public_key()
             der = encode_dss_signature(int.from_bytes(signature[:32], "big"), int.from_bytes(signature[32:], "big"))
-            key.verify(der, signing_input, ec.ECDSA(hashes.SHA256()))
+            ec_key.verify(der, signing_input, ec.ECDSA(hashes.SHA256()))
         elif alg == "EdDSA":
             if jwk.get("crv") != "Ed25519":
                 raise InvalidToken("EdDSA tokens must use Ed25519")
             ed25519.Ed25519PublicKey.from_public_bytes(_b64decode(str(jwk.get("x", "")))).verify(
-                signature, signing_input)
+                signature, signing_input
+            )
         else:  # pragma: no cover - guarded by the algorithm allowlist
             raise InvalidToken("unsupported algorithm")
     except InvalidSignature:
@@ -363,8 +382,7 @@ class ResourceServer:
             if value is not None and (not _numeric_date(value) or value - leeway > now):
                 raise InvalidToken(f"token {claim} is in the future")
         subject = payload.get("sub")
-        if not isinstance(subject, str) or not subject or len(subject) > 256 or \
-                any(ord(c) < 32 for c in subject):
+        if not isinstance(subject, str) or not subject or len(subject) > 256 or any(ord(c) < 32 for c in subject):
             raise InvalidToken("token subject is missing or malformed")
         raw_scope = payload.get("scope", payload.get("scp", ""))
         if isinstance(raw_scope, str):

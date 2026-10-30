@@ -9,6 +9,7 @@ A `dedupe_key` keeps one pending job per key (re-enqueueing the same work is fre
 
 `run_batch` is the batch API: try the whole batch in one call, and when that is
 unavailable or fails, fall back to one call per item so one bad item costs only itself."""
+
 from __future__ import annotations
 
 import json
@@ -80,9 +81,24 @@ class Job:
     lease_token: str | None = None
 
     def to_dict(self) -> dict:
-        return {k: getattr(self, k) for k in ("id", "kind", "payload", "status", "attempts", "max_attempts",
-                                              "priority", "run_after", "created", "updated", "result", "error",
-                                              "dedupe_key")}
+        return {
+            k: getattr(self, k)
+            for k in (
+                "id",
+                "kind",
+                "payload",
+                "status",
+                "attempts",
+                "max_attempts",
+                "priority",
+                "run_after",
+                "created",
+                "updated",
+                "result",
+                "error",
+                "dedupe_key",
+            )
+        }
 
 
 def db_path(root: str) -> str:
@@ -114,14 +130,34 @@ def _write(db: sqlite3.Connection):
 
 
 def _job(row: sqlite3.Row) -> Job:
-    return Job(row["id"], row["kind"], json.loads(row["payload"]), row["status"], row["attempts"],
-               row["max_attempts"], row["priority"], row["run_after"], row["created"], row["updated"],
-               json.loads(row["result"]) if row["result"] else None, row["error"], row["dedupe_key"],
-               row["lease_token"])
+    return Job(
+        row["id"],
+        row["kind"],
+        json.loads(row["payload"]),
+        row["status"],
+        row["attempts"],
+        row["max_attempts"],
+        row["priority"],
+        row["run_after"],
+        row["created"],
+        row["updated"],
+        json.loads(row["result"]) if row["result"] else None,
+        row["error"],
+        row["dedupe_key"],
+        row["lease_token"],
+    )
 
 
-def enqueue(root: str, kind: str, payload: dict | None = None, *, dedupe_key: str | None = None,
-            delay: float = 0.0, max_attempts: int = 3, priority: int = 0) -> Job:
+def enqueue(
+    root: str,
+    kind: str,
+    payload: dict | None = None,
+    *,
+    dedupe_key: str | None = None,
+    delay: float = 0.0,
+    max_attempts: int = 3,
+    priority: int = 0,
+) -> Job:
     """Queue a job; with a `dedupe_key` already pending, return that job instead."""
     if kind not in HANDLERS:
         raise JobError(f"unknown job kind {kind!r}; known: {', '.join(sorted(HANDLERS))}")
@@ -137,15 +173,28 @@ def enqueue(root: str, kind: str, payload: dict | None = None, *, dedupe_key: st
         with _write(db):
             now = time.time()
             if dedupe_key:
-                row = db.execute("SELECT * FROM jobs WHERE dedupe_key = ? AND status IN "
-                                 "('queued', 'running', 'failed')", (dedupe_key,)).fetchone()
+                row = db.execute(
+                    "SELECT * FROM jobs WHERE dedupe_key = ? AND status IN ('queued', 'running', 'failed')",
+                    (dedupe_key,),
+                ).fetchone()
                 if row is not None:
                     return _job(row)
             job_id = uuid.uuid4().hex[:16]
-            db.execute("INSERT INTO jobs (id, kind, payload, max_attempts, priority, run_after, dedupe_key, "
-                       "created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                       (job_id, kind, body, max(1, min(int(max_attempts), 20)), int(priority), now + max(0.0, delay),
-                        dedupe_key, now, now))
+            db.execute(
+                "INSERT INTO jobs (id, kind, payload, max_attempts, priority, run_after, dedupe_key, "
+                "created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    job_id,
+                    kind,
+                    body,
+                    max(1, min(int(max_attempts), 20)),
+                    int(priority),
+                    now + max(0.0, delay),
+                    dedupe_key,
+                    now,
+                    now,
+                ),
+            )
             row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         telemetry.count("unimem_jobs_enqueued", kind=kind)
         return _job(row)
@@ -161,11 +210,15 @@ def claim(root: str, *, kinds: Sequence[str] | None = None, lease: float = DEFAU
     try:
         with _write(db):
             now = time.time()
-            db.execute("UPDATE jobs SET status = 'dead', error = ?, lease_until = NULL, lease_token = NULL, "
-                       "updated = ? WHERE status = 'running' AND lease_until <= ? AND attempts >= max_attempts",
-                       ("worker lease expired after maximum attempts", now, now))
-            sql = ("SELECT * FROM jobs WHERE ((status IN ('queued', 'failed') AND run_after <= ?) OR "
-                   "(status = 'running' AND lease_until <= ?)) AND attempts < max_attempts")
+            db.execute(
+                "UPDATE jobs SET status = 'dead', error = ?, lease_until = NULL, lease_token = NULL, "
+                "updated = ? WHERE status = 'running' AND lease_until <= ? AND attempts >= max_attempts",
+                ("worker lease expired after maximum attempts", now, now),
+            )
+            sql = (
+                "SELECT * FROM jobs WHERE ((status IN ('queued', 'failed') AND run_after <= ?) OR "
+                "(status = 'running' AND lease_until <= ?)) AND attempts < max_attempts"
+            )
             args: list = [now, now]
             if kinds:
                 sql += " AND kind IN (SELECT value FROM json_each(?))"
@@ -173,8 +226,11 @@ def claim(root: str, *, kinds: Sequence[str] | None = None, lease: float = DEFAU
             row = db.execute(sql + " ORDER BY priority DESC, run_after, created LIMIT 1", args).fetchone()
             if row is None:
                 return None
-            db.execute("UPDATE jobs SET status = 'running', attempts = attempts + 1, lease_until = ?, "
-                       "lease_token = ?, updated = ? WHERE id = ?", (now + lease, uuid.uuid4().hex, now, row["id"]))
+            db.execute(
+                "UPDATE jobs SET status = 'running', attempts = attempts + 1, lease_until = ?, "
+                "lease_token = ?, updated = ? WHERE id = ?",
+                (now + lease, uuid.uuid4().hex, now, row["id"]),
+            )
             return _job(db.execute("SELECT * FROM jobs WHERE id = ?", (row["id"],)).fetchone())
     finally:
         db.close()
@@ -194,8 +250,10 @@ def complete(root: str, job_id: str, result: Any = None, *, lease_token: str | N
     try:
         with _write(db):
             now = time.time()
-            sql = ("UPDATE jobs SET status = 'done', result = ?, error = NULL, lease_until = NULL, "
-                   "lease_token = NULL, updated = ? WHERE id = ?")
+            sql = (
+                "UPDATE jobs SET status = 'done', result = ?, error = NULL, lease_until = NULL, "
+                "lease_token = NULL, updated = ? WHERE id = ?"
+            )
             args: list = [body, now, job_id]
             if lease_token is not None:
                 sql += " AND status = 'running' AND lease_token = ? AND lease_until > ?"
@@ -213,19 +271,24 @@ def fail(root: str, job_id: str, error: str, *, lease_token: str | None = None) 
     try:
         with _write(db):
             now = time.time()
-            row = db.execute("SELECT attempts, max_attempts, status, lease_token, lease_until FROM jobs WHERE id = ?",
-                             (job_id,)).fetchone()
+            row = db.execute(
+                "SELECT attempts, max_attempts, status, lease_token, lease_until FROM jobs WHERE id = ?", (job_id,)
+            ).fetchone()
             if row is None:
                 raise JobError(f"no job {job_id}")
-            if lease_token is not None and (row["status"] != "running" or row["lease_token"] != lease_token
-                                            or (row["lease_until"] or 0) <= now):
+            if lease_token is not None and (
+                row["status"] != "running" or row["lease_token"] != lease_token or (row["lease_until"] or 0) <= now
+            ):
                 raise LeaseLost(f"job {job_id} claim expired or was replaced")
             dead = row["attempts"] >= row["max_attempts"]
             delay = min(BACKOFF_MAX, BACKOFF_BASE * (2 ** max(0, row["attempts"] - 1)))
             status = "dead" if dead else "failed"
-            db.execute("UPDATE jobs SET status = ?, error = ?, run_after = ?, lease_until = NULL, "
-                       "lease_token = NULL, updated = ? "
-                       "WHERE id = ?", (status, error[:4000], now + delay, now, job_id))
+            db.execute(
+                "UPDATE jobs SET status = ?, error = ?, run_after = ?, lease_until = NULL, "
+                "lease_token = NULL, updated = ? "
+                "WHERE id = ?",
+                (status, error[:4000], now + delay, now, job_id),
+            )
         return status
     finally:
         db.close()
@@ -279,13 +342,19 @@ def retry(root: str, job_id: str | None = None) -> int:
         with _write(db):
             now = time.time()
             if job_id:
-                cur = db.execute("UPDATE jobs SET status = 'queued', attempts = 0, run_after = ?, lease_until = NULL, "
-                                 "lease_token = NULL, updated = ? "
-                                 "WHERE id = ? AND status IN ('dead', 'failed')", (now, now, job_id))
+                cur = db.execute(
+                    "UPDATE jobs SET status = 'queued', attempts = 0, run_after = ?, lease_until = NULL, "
+                    "lease_token = NULL, updated = ? "
+                    "WHERE id = ? AND status IN ('dead', 'failed')",
+                    (now, now, job_id),
+                )
             else:
-                cur = db.execute("UPDATE jobs SET status = 'queued', attempts = 0, run_after = ?, lease_until = NULL, "
-                                 "lease_token = NULL, updated = ? "
-                                 "WHERE status = 'dead'", (now, now))
+                cur = db.execute(
+                    "UPDATE jobs SET status = 'queued', attempts = 0, run_after = ?, lease_until = NULL, "
+                    "lease_token = NULL, updated = ? "
+                    "WHERE status = 'dead'",
+                    (now, now),
+                )
             return cur.rowcount
     finally:
         db.close()
@@ -335,15 +404,22 @@ def purge(root: str, *, older_than_days: float = 7.0) -> int:
     db = _connect(root)
     try:
         with _write(db):
-            cur = db.execute("DELETE FROM jobs WHERE status = 'done' AND updated < ?",
-                             (time.time() - older_than_days * 86400,))
+            cur = db.execute(
+                "DELETE FROM jobs WHERE status = 'done' AND updated < ?", (time.time() - older_than_days * 86400,)
+            )
             return cur.rowcount
     finally:
         db.close()
 
 
-def run_pending(root: str, *, limit: int = 20, kinds: Sequence[str] | None = None,
-                time_budget: float | None = None, lease: float = DEFAULT_LEASE) -> dict:
+def run_pending(
+    root: str,
+    *,
+    limit: int = 20,
+    kinds: Sequence[str] | None = None,
+    time_budget: float | None = None,
+    lease: float = DEFAULT_LEASE,
+) -> dict:
     """Process ready jobs until none is left, `limit` is reached, or time runs out."""
     if not math.isfinite(lease) or lease <= 0:
         raise JobError("worker lease must be finite and positive")
@@ -386,15 +462,20 @@ def run_pending(root: str, *, limit: int = 20, kinds: Sequence[str] | None = Non
 
 # --- batch API ---------------------------------------------------------------------------
 
-def run_batch(items: Sequence[Any], single: Callable[[Any], Any],
-              batch: Callable[[Sequence[Any]], Sequence[Any]] | None = None, *,
-              chunk: int = 32) -> list[dict]:
+
+def run_batch(
+    items: Sequence[Any],
+    single: Callable[[Any], Any],
+    batch: Callable[[Sequence[Any]], Sequence[Any]] | None = None,
+    *,
+    chunk: int = 32,
+) -> list[dict]:
     """Process items in chunks with `batch` when given (one call per chunk); a chunk whose
     batch call fails or returns the wrong number of results falls back to `single`
     per item. Each item reports {"ok", "result"} or {"ok": False, "error"}."""
     out: list[dict] = []
     for start in range(0, len(items), max(1, chunk)):
-        part = list(items[start:start + max(1, chunk)])
+        part = list(items[start : start + max(1, chunk)])
         if batch is not None:
             try:
                 results = list(batch(part))
@@ -414,15 +495,21 @@ def run_batch(items: Sequence[Any], single: Callable[[Any], Any],
 
 # --- handlers ---------------------------------------------------------------------------
 
+
 def _ingest(root: str, payload: dict) -> dict:
     from unimem.ingest.pipeline import create_document_pipeline
 
     source = payload.get("source")
     if not source or not os.path.exists(source):
         raise JobError(f"ingest source does not exist: {source!r}")
-    pipeline = create_document_pipeline(source, root, scope=payload.get("scope", ""), space=payload.get("space"),
-                                        contextualize=payload.get("contextualize", "heuristic"),
-                                        force=bool(payload.get("force")))
+    pipeline = create_document_pipeline(
+        source,
+        root,
+        scope=payload.get("scope", ""),
+        space=payload.get("space"),
+        contextualize=payload.get("contextualize", "heuristic"),
+        force=bool(payload.get("force")),
+    )
     result = pipeline.run()
     errors = [e for e in result.errors if e not in pipeline.last_warnings]
     if errors:
@@ -474,8 +561,9 @@ def _distill(root: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 HANDLERS: dict[str, Callable[[str, dict], Any]] = {
     "wiki": lambda root, payload: __import__("unimem.wiki", fromlist=["refresh"]).refresh(root, payload["id"]),
-    "mental-model": lambda root, payload: __import__(
-        "unimem.memory_control", fromlist=["refresh_model"]).refresh_model(root, payload["id"]),
+    "mental-model": lambda root, payload: __import__("unimem.memory_control", fromlist=["refresh_model"]).refresh_model(
+        root, payload["id"]
+    ),
     "ingest": _ingest,
     "extract": lambda root, p: _conversation(root, p, "extract"),
     "summarize": lambda root, p: _conversation(root, p, "summarize"),
@@ -484,6 +572,8 @@ HANDLERS: dict[str, Callable[[str, dict], Any]] = {
     "commit": _commit,
     "distill": _distill,
 }
+
+
 def _learn_session(root: str, payload: dict) -> dict:
     from unimem.llm_runtime import LLMRuntime
     from unimem.session_learning import learn

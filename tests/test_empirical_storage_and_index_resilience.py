@@ -11,6 +11,7 @@ import pytest
 
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -38,13 +39,16 @@ def attention_modules():
         except ImportError:
             mock_st = types.ModuleType("sentence_transformers")
             mock_st.__spec__ = importlib.machinery.ModuleSpec("sentence_transformers", None)
+
             class DummySentenceTransformer:
                 def __init__(self, model_name=None):
                     self.model_name = model_name
+
                 def encode(self, texts, **kwargs):
                     if isinstance(texts, str):
                         return np.zeros(384, dtype=np.float32)
                     return np.zeros((len(texts), 384), dtype=np.float32)
+
             mock_st.SentenceTransformer = DummySentenceTransformer
             sys.modules["sentence_transformers"] = mock_st
 
@@ -94,7 +98,7 @@ class TestUtf8BomHandling:
         raw_bytes = (
             b"\xef\xbb\xbf---\r\n"
             b"name: lesson_unicode_bom\r\n"
-            b"description: \"\xe2\x9c\xa8 Unicode test: \xe4\xb8\xad\xe6\x96\x87 & \xc3\xa9l\xc3\xa9phant\"\r\n"
+            b'description: "\xe2\x9c\xa8 Unicode test: \xe4\xb8\xad\xe6\x96\x87 & \xc3\xa9l\xc3\xa9phant"\r\n'
             b"agent_type: code\r\n"
             b"domain: testing\r\n"
             b"importance: 5\r\n"
@@ -246,8 +250,9 @@ class TestAtomicWritingAndCleanup:
 
     def test_build_index_atomic_write_and_cleanup(self, tmp_path, monkeypatch, attention_modules):
         build_index, _ = attention_modules
-        encoder = types.SimpleNamespace(encode=lambda texts, **kwargs:
-                                        np.zeros((len(texts), build_index.EMBEDDING_DIM), dtype=np.float32))
+        encoder = types.SimpleNamespace(
+            encode=lambda texts, **kwargs: np.zeros((len(texts), build_index.EMBEDDING_DIM), dtype=np.float32)
+        )
         monkeypatch.setattr(build_index, "SentenceTransformer", lambda *args, **kwargs: encoder)
         index_path = tmp_path / "index.npz"
 
@@ -306,7 +311,7 @@ class TestBatchValidationResilience:
 
         make_lesson(
             "lesson_04_scalar.md",
-            "---\n\"just a raw scalar string\"\n---\n\nbody\n",
+            '---\n"just a raw scalar string"\n---\n\nbody\n',
         )
 
         make_lesson(
@@ -406,12 +411,18 @@ class TestLessonSlugNormalizationAndIndexing:
     def test_lesson_new_without_prefix_creates_prefixed_file(self, clean_store):
         rc = cli_main(
             [
-                "lesson", "new",
-                "--slug", "my_custom_slug",
-                "--description", "Testing slug normalization",
-                "--agent-type", "code",
-                "--domain", "testing",
-                "--dest", str(clean_store),
+                "lesson",
+                "new",
+                "--slug",
+                "my_custom_slug",
+                "--description",
+                "Testing slug normalization",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(clean_store),
             ]
         )
         assert rc == 0
@@ -425,12 +436,18 @@ class TestLessonSlugNormalizationAndIndexing:
     def test_lesson_new_with_prefix_avoids_double_prefix(self, clean_store):
         rc = cli_main(
             [
-                "lesson", "new",
-                "--slug", "lesson_already_prefixed",
-                "--description", "Testing slug already prefixed",
-                "--agent-type", "code",
-                "--domain", "testing",
-                "--dest", str(clean_store),
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_already_prefixed",
+                "--description",
+                "Testing slug already prefixed",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(clean_store),
             ]
         )
         assert rc == 0
@@ -443,12 +460,18 @@ class TestLessonSlugNormalizationAndIndexing:
     def test_slug_resolution_and_approval_workflow(self, clean_store, capsys):
         cli_main(
             [
-                "lesson", "new",
-                "--slug", "review_candidate",
-                "--description", "Candidate for approval",
-                "--agent-type", "code",
-                "--domain", "testing",
-                "--dest", str(clean_store),
+                "lesson",
+                "new",
+                "--slug",
+                "review_candidate",
+                "--description",
+                "Candidate for approval",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(clean_store),
             ]
         )
         ldir = paths.lessons_dir(str(clean_store))
@@ -466,9 +489,17 @@ class TestLessonSlugNormalizationAndIndexing:
         )
         frontmatter.write(lesson_file, fm, body)
 
-        rc = cli_main([
-            "lesson", "approve", "review_candidate", "--rationale", "Looks good", "--dest", str(clean_store),
-        ])
+        rc = cli_main(
+            [
+                "lesson",
+                "approve",
+                "review_candidate",
+                "--rationale",
+                "Looks good",
+                "--dest",
+                str(clean_store),
+            ]
+        )
         assert rc == 0
         fm, body = frontmatter.read(lesson_file)
         assert fm["status"] == "active"
@@ -476,9 +507,17 @@ class TestLessonSlugNormalizationAndIndexing:
 
         fm["status"] = "review"
         frontmatter.write(lesson_file, fm, body)
-        rc = cli_main([
-            "lesson", "reject", "lesson_review_candidate", "--reason", "Not ready", "--dest", str(clean_store),
-        ])
+        rc = cli_main(
+            [
+                "lesson",
+                "reject",
+                "lesson_review_candidate",
+                "--reason",
+                "Not ready",
+                "--dest",
+                str(clean_store),
+            ]
+        )
         assert rc == 0
         fm, body = frontmatter.read(lesson_file)
         assert fm["status"] == "archived"
@@ -488,22 +527,34 @@ class TestLessonSlugNormalizationAndIndexing:
         build_index, _ = attention_modules
         cli_main(
             [
-                "lesson", "new",
-                "--slug", "auto_norm_1",
-                "--description", "Auto norm 1",
-                "--agent-type", "code",
-                "--domain", "testing",
-                "--dest", str(clean_store),
+                "lesson",
+                "new",
+                "--slug",
+                "auto_norm_1",
+                "--description",
+                "Auto norm 1",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(clean_store),
             ]
         )
         cli_main(
             [
-                "lesson", "new",
-                "--slug", "lesson_auto_norm_2",
-                "--description", "Auto norm 2",
-                "--agent-type", "code",
-                "--domain", "testing",
-                "--dest", str(clean_store),
+                "lesson",
+                "new",
+                "--slug",
+                "lesson_auto_norm_2",
+                "--description",
+                "Auto norm 2",
+                "--agent-type",
+                "code",
+                "--domain",
+                "testing",
+                "--dest",
+                str(clean_store),
             ]
         )
 

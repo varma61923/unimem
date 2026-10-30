@@ -34,14 +34,30 @@ async def other_org(session_factory):
 
 
 async def _contribute(
-    session_factory, config, org_id, title, context, solution, tags=None, actor="test", outcome=None,
+    session_factory,
+    config,
+    org_id,
+    title,
+    context,
+    solution,
+    tags=None,
+    actor="test",
+    outcome=None,
 ):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text=context, solution_text=solution,
-            tags=tags or [], agent_type="code", actor=actor, outcome=outcome,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            tags=tags or [],
+            agent_type="code",
+            actor=actor,
+            outcome=outcome,
         )
 
 
@@ -49,8 +65,11 @@ async def _seed_kb(session_factory, operator_org_id, title, context="c", solutio
     async with session_scope(session_factory) as session:
         trace = Trace(
             org_id=operator_org_id,
-            title=title, context_text=context, solution_text=solution,
-            tags=[], agent_type="code",
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            tags=[],
+            agent_type="code",
             shared_with_commons=True,
             shared_at=datetime.now(timezone.utc),
             shared_rationale="test fixture",
@@ -112,8 +131,12 @@ class TestPagination:
 class TestFullTextSearch:
     async def test_matches_on_word(self, session_factory, config, org):
         await _contribute(
-            session_factory, config, org,
-            "Kubernetes rollout stalled", "the readiness probe timed out", "raised the probe threshold",
+            session_factory,
+            config,
+            org,
+            "Kubernetes rollout stalled",
+            "the readiness probe timed out",
+            "raised the probe threshold",
         )
         await _contribute(session_factory, config, org, "Billing question", "invoice query", "explained line items")
 
@@ -123,9 +146,7 @@ class TestFullTextSearch:
         assert "Kubernetes" in page["traces"][0]["title"]
 
     async def test_stemming_matches_word_variants(self, session_factory, config, org):
-        await _contribute(
-            session_factory, config, org, "Release notes", "we deployed on friday", "rolled back safely"
-        )
+        await _contribute(session_factory, config, org, "Release notes", "we deployed on friday", "rolled back safely")
         async with session_scope(session_factory) as session:
             page = await crud.search_traces(session, org, query="deploy")
         assert len(page["traces"]) == 1
@@ -144,35 +165,45 @@ class TestFullTextSearch:
 
 
 class TestRelevanceTieOrdering:
-    async def test_the_original_wins_a_relevance_tie_against_its_own_retellings(
-        self, session_factory, config, org
-    ):
+    async def test_the_original_wins_a_relevance_tie_against_its_own_retellings(self, session_factory, config, org):
         original = await _contribute(
-            session_factory, config, org, "pool exhausted",
-            "connection pool exhausted running the suite", "dispose the engine",
+            session_factory,
+            config,
+            org,
+            "pool exhausted",
+            "connection pool exhausted running the suite",
+            "dispose the engine",
         )
         for _ in range(4):
             await _contribute(
-                session_factory, config, org, "pool exhausted",
-                "connection pool exhausted running the suite", "dispose the engine",
+                session_factory,
+                config,
+                org,
+                "pool exhausted",
+                "connection pool exhausted running the suite",
+                "dispose the engine",
             )
         async with session_scope(session_factory) as session:
-            page = await crud.search_traces(
-                session, org, query="connection pool exhausted running the suite", limit=3
-            )
+            page = await crud.search_traces(session, org, query="connection pool exhausted running the suite", limit=3)
         assert page["traces"][0]["id"] == original["id"]
 
-    async def test_the_original_stays_on_page_one_as_retellings_accumulate(
-        self, session_factory, config, org
-    ):
+    async def test_the_original_stays_on_page_one_as_retellings_accumulate(self, session_factory, config, org):
         original = await _contribute(
-            session_factory, config, org, "pool exhausted",
-            "connection pool exhausted running the suite", "dispose the engine",
+            session_factory,
+            config,
+            org,
+            "pool exhausted",
+            "connection pool exhausted running the suite",
+            "dispose the engine",
         )
         for _ in range(12):
             await _contribute(
-                session_factory, config, org, "pool exhausted",
-                "connection pool exhausted running the suite", "dispose the engine",
+                session_factory,
+                config,
+                org,
+                "pool exhausted",
+                "connection pool exhausted running the suite",
+                "dispose the engine",
             )
             async with session_scope(session_factory) as session:
                 page = await crud.search_traces(
@@ -180,9 +211,7 @@ class TestRelevanceTieOrdering:
                 )
             assert original["id"] in {t["id"] for t in page["traces"]}
 
-    async def test_recency_still_orders_the_no_query_browse_path(
-        self, session_factory, config, org
-    ):
+    async def test_recency_still_orders_the_no_query_browse_path(self, session_factory, config, org):
         await _contribute(session_factory, config, org, "first", "c", "s")
         newest = await _contribute(session_factory, config, org, "second", "c", "s")
         async with session_scope(session_factory) as session:
@@ -191,17 +220,23 @@ class TestRelevanceTieOrdering:
 
 
 class TestFailedOutcomeRanking:
-    async def test_a_failed_occasion_sorts_after_an_otherwise_equal_result(
-        self, session_factory, config, org
-    ):
+    async def test_a_failed_occasion_sorts_after_an_otherwise_equal_result(self, session_factory, config, org):
         await _contribute(
-            session_factory, config, org, "escalated attempt",
-            "connection pool exhausted running tests", "gave up, escalated",
+            session_factory,
+            config,
+            org,
+            "escalated attempt",
+            "connection pool exhausted running tests",
+            "gave up, escalated",
             outcome={"resolved": False, "escalated": True},
         )
         await _contribute(
-            session_factory, config, org, "the actual fix",
-            "connection pool exhausted running tests", "dispose the engine in teardown",
+            session_factory,
+            config,
+            org,
+            "the actual fix",
+            "connection pool exhausted running tests",
+            "dispose the engine in teardown",
         )
         async with session_scope(session_factory) as session:
             page = await crud.search_traces(session, org, query="connection pool exhausted tests")
@@ -210,13 +245,21 @@ class TestFailedOutcomeRanking:
 
     async def test_a_resolved_occasion_is_not_demoted(self, session_factory, config, org):
         await _contribute(
-            session_factory, config, org, "resolved once",
-            "connection pool exhausted running tests", "dispose the engine",
+            session_factory,
+            config,
+            org,
+            "resolved once",
+            "connection pool exhausted running tests",
+            "dispose the engine",
             outcome={"resolved": True},
         )
         await _contribute(
-            session_factory, config, org, "no outcome recorded",
-            "connection pool exhausted running tests", "dispose the engine",
+            session_factory,
+            config,
+            org,
+            "no outcome recorded",
+            "connection pool exhausted running tests",
+            "dispose the engine",
         )
         async with session_scope(session_factory) as session:
             page = await crud.search_traces(session, org, query="connection pool exhausted tests")
@@ -224,7 +267,12 @@ class TestFailedOutcomeRanking:
 
     async def test_the_floor_also_applies_with_no_query(self, session_factory, config, org):
         await _contribute(
-            session_factory, config, org, "failed", "c", "unresolved",
+            session_factory,
+            config,
+            org,
+            "failed",
+            "c",
+            "unresolved",
             outcome={"resolved": False},
         )
         await _contribute(session_factory, config, org, "clean", "c", "s")
@@ -232,12 +280,14 @@ class TestFailedOutcomeRanking:
             page = await crud.search_traces(session, org, query="")
         assert page["traces"][-1]["title"] == "failed"
 
-    async def test_a_failed_result_is_still_returned_not_dropped(
-        self, session_factory, config, org
-    ):
+    async def test_a_failed_result_is_still_returned_not_dropped(self, session_factory, config, org):
         await _contribute(
-            session_factory, config, org, "only match",
-            "extremely specific unmatched vocabulary here", "unresolved",
+            session_factory,
+            config,
+            org,
+            "only match",
+            "extremely specific unmatched vocabulary here",
+            "unresolved",
             outcome={"resolved": False},
         )
         async with session_scope(session_factory) as session:
@@ -283,9 +333,7 @@ class TestBriefMode:
         assert body == "" or body.split()[-1] == "alpha"
 
     async def test_ids_titles_and_tags_are_unaffected_by_brief(self, session_factory, config, org):
-        await _contribute(
-            session_factory, config, org, "unaffected title", "c" * 1000, "s" * 1000, tags=["x", "y"]
-        )
+        await _contribute(session_factory, config, org, "unaffected title", "c" * 1000, "s" * 1000, tags=["x", "y"])
         async with session_scope(session_factory) as session:
             full = await crud.search_traces(session, org, brief=False)
             brief = await crud.search_traces(session, org, brief=True)
@@ -301,42 +349,62 @@ class TestBriefMode:
         assert trace["context_text"] == long_context
         assert "brief" not in trace
 
-    async def test_default_valued_operational_fields_are_omitted_in_brief_mode(
-        self, session_factory, config, org
-    ):
+    async def test_default_valued_operational_fields_are_omitted_in_brief_mode(self, session_factory, config, org):
         await _contribute(session_factory, config, org, "t", "some context", "some solution")
         async with session_scope(session_factory) as session:
             page = await crud.search_traces(session, org, brief=True)
         trace = page["traces"][0]
         for field in (
-            "agent_id", "profile", "extensions", "watch_condition", "review_after",
-            "supersedes_trace_id", "contributor", "depth", "votes",
-            "related", "outcome", "shared_with_commons", "quarantine_reason",
+            "agent_id",
+            "profile",
+            "extensions",
+            "watch_condition",
+            "review_after",
+            "supersedes_trace_id",
+            "contributor",
+            "depth",
+            "votes",
+            "related",
+            "outcome",
+            "shared_with_commons",
+            "quarantine_reason",
         ):
             assert field not in trace, f"{field!r} should be omitted at its default in brief mode"
         assert trace["retrievals"] == 1
-        for field in ("id", "title", "context_text", "solution_text", "tags",
-                      "agent_type", "created_at", "trust", "quarantined", "brief"):
+        for field in (
+            "id",
+            "title",
+            "context_text",
+            "solution_text",
+            "tags",
+            "agent_type",
+            "created_at",
+            "trust",
+            "quarantined",
+            "brief",
+        ):
             assert field in trace
 
-    async def test_a_populated_operational_field_still_ships_in_brief_mode(
-        self, session_factory, config, org
-    ):
+    async def test_a_populated_operational_field_still_ships_in_brief_mode(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="some context", solution_text="some solution",
-                tags=[], agent_type="code",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="some context",
+                solution_text="some solution",
+                tags=[],
+                agent_type="code",
                 outcome={"resolved": True, "tokens_used": 42},
             )
             page = await crud.search_traces(session, org, brief=True)
         trace = page["traces"][0]
         assert trace["outcome"] == {"resolved": True, "tokens_used": 42}
 
-    async def test_full_mode_still_ships_every_field_at_its_default(
-        self, session_factory, config, org
-    ):
+    async def test_full_mode_still_ships_every_field_at_its_default(self, session_factory, config, org):
         await _contribute(session_factory, config, org, "t", "some context", "some solution")
         async with session_scope(session_factory) as session:
             page = await crud.search_traces(session, org, brief=False)
@@ -390,8 +458,13 @@ class TestAuditLog:
             await crud.vote_trace(session, org, trace["id"], "up", actor="a")
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, org, trace["id"], config, make_rate_limiter(config),
-                title="new title", actor="a",
+                session,
+                org,
+                trace["id"],
+                config,
+                make_rate_limiter(config),
+                title="new title",
+                actor="a",
             )
 
         async with session_scope(session_factory) as session:
@@ -404,9 +477,16 @@ class TestAuditLog:
         with pytest.raises(RuntimeError):
             async with session_scope(session_factory) as session:
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="doomed", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="a",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="doomed",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="a",
                 )
                 raise RuntimeError("simulated failure after the write")
 
@@ -458,9 +538,7 @@ class TestApiKeyExpiry:
             with pytest.raises(ValueError):
                 await auth.issue_api_key(session, org, expires_days=0)
 
-    async def test_revocation_during_verification_is_honored_not_missed(
-        self, session_factory, org, monkeypatch
-    ):
+    async def test_revocation_during_verification_is_honored_not_missed(self, session_factory, org, monkeypatch):
         import asyncio as asyncio_module
 
         from sqlalchemy import update
@@ -470,9 +548,7 @@ class TestApiKeyExpiry:
         async with session_scope(session_factory) as session:
             issued = await auth.issue_api_key(session, org)
         async with session_scope(session_factory) as session:
-            await session.execute(
-                update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None)
-            )
+            await session.execute(update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None))
 
         real_to_thread = asyncio_module.to_thread
         revoked_once = False
@@ -494,9 +570,7 @@ class TestApiKeyExpiry:
 
 
 class TestLastUsedAtIsThrottled:
-    async def test_a_fresh_last_used_at_is_not_rewritten_on_the_next_call(
-        self, session_factory, org
-    ):
+    async def test_a_fresh_last_used_at_is_not_rewritten_on_the_next_call(self, session_factory, org):
         async with session_scope(session_factory) as session:
             issued = await auth.issue_api_key(session, org)
         async with session_scope(session_factory) as session:
@@ -528,9 +602,7 @@ class TestLastUsedAtIsThrottled:
 
         assert refreshed > stale
 
-    async def test_a_never_used_key_gets_last_used_at_set_on_first_call(
-        self, session_factory, org
-    ):
+    async def test_a_never_used_key_gets_last_used_at_set_on_first_call(self, session_factory, org):
         async with session_scope(session_factory) as session:
             issued = await auth.issue_api_key(session, org)
         async with session_scope(session_factory) as session:
@@ -544,9 +616,7 @@ class TestLastUsedAtIsThrottled:
 
 
 class TestVoteTrustAggregate:
-    async def test_changing_a_vote_recomputes_trust_not_double_counts_it(
-        self, session_factory, config, org
-    ):
+    async def test_changing_a_vote_recomputes_trust_not_double_counts_it(self, session_factory, config, org):
         trace = await _contribute(session_factory, config, org, "t", "c", "s")
         async with session_scope(session_factory) as session:
             result = await crud.vote_trace(session, org, trace["id"], "up")
@@ -558,9 +628,7 @@ class TestVoteTrustAggregate:
 
 
 class TestVoteInputValidation:
-    async def test_invalid_feedback_tag_is_a_clean_value_error_not_a_db_crash(
-        self, session_factory, config, org
-    ):
+    async def test_invalid_feedback_tag_is_a_clean_value_error_not_a_db_crash(self, session_factory, config, org):
         trace = await _contribute(session_factory, config, org, "t", "c", "s")
         with pytest.raises(ValueError):
             async with session_scope(session_factory) as session:
@@ -590,9 +658,7 @@ class TestVoteInputValidation:
 
 
 class TestCrossOrgVoting:
-    async def test_another_org_can_vote_on_a_kb_entry(
-        self, session_factory, org, other_org, establish_orgs
-    ):
+    async def test_another_org_can_vote_on_a_kb_entry(self, session_factory, org, other_org, establish_orgs):
         trace_id = await _seed_kb(session_factory, org, "t")
         await establish_orgs(other_org)
         async with session_scope(session_factory) as session:
@@ -600,9 +666,7 @@ class TestCrossOrgVoting:
         assert result is not None
         assert result["trust"] == pytest.approx(1.0)
 
-    async def test_another_org_cannot_vote_on_a_private_trace(
-        self, session_factory, config, org, other_org
-    ):
+    async def test_another_org_cannot_vote_on_a_private_trace(self, session_factory, config, org, other_org):
         trace = await _contribute(session_factory, config, org, "t", "c", "s")
         async with session_scope(session_factory) as session:
             result = await crud.vote_trace(session, other_org, trace["id"], "up")
@@ -622,9 +686,7 @@ class TestCrossOrgVoting:
         for private_field in ("contributor", "extensions", "outcome", "votes", "related"):
             assert private_field not in result
 
-    async def test_owner_voting_on_its_own_trace_still_gets_the_full_view(
-        self, session_factory, config, org
-    ):
+    async def test_owner_voting_on_its_own_trace_still_gets_the_full_view(self, session_factory, config, org):
         trace = await _contribute(session_factory, config, org, "t", "c", "s")
         async with session_scope(session_factory) as session:
             result = await crud.vote_trace(session, org, trace["id"], "up")
@@ -663,9 +725,7 @@ class TestCrossOrgVoting:
 
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, trace_id)
-            stored = (
-                await session.execute(select(Vote).where(Vote.trace_id == trace_id))
-            ).scalars().all()
+            stored = (await session.execute(select(Vote).where(Vote.trace_id == trace_id))).scalars().all()
 
         assert trace.commons_votes == 1
         assert trace.trust == pytest.approx(1.0)
@@ -673,27 +733,27 @@ class TestCrossOrgVoting:
 
 
 class TestMalformedIdsAreCleanNotFoundNot500s:
-    async def test_get_trace_with_a_non_uuid_id_returns_none_not_raises(
-        self, session_factory, config, org
-    ):
+    async def test_get_trace_with_a_non_uuid_id_returns_none_not_raises(self, session_factory, config, org):
         async with session_scope(session_factory) as session:
             result = await crud.get_trace(session, org, "not-a-uuid-at-all")
         assert result is None
 
-    async def test_vote_trace_with_a_non_uuid_id_returns_none_not_raises(
-        self, session_factory, config, org
-    ):
+    async def test_vote_trace_with_a_non_uuid_id_returns_none_not_raises(self, session_factory, config, org):
         async with session_scope(session_factory) as session:
             result = await crud.vote_trace(session, org, "not-a-uuid-at-all", "up")
         assert result is None
 
-    async def test_amend_trace_with_a_non_uuid_id_returns_none_not_raises(
-        self, session_factory, config, org
-    ):
+    async def test_amend_trace_with_a_non_uuid_id_returns_none_not_raises(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.amend_trace(
-                session, org, "not-a-uuid-at-all", config, rate_limiter, title="x", actor="test",
+                session,
+                org,
+                "not-a-uuid-at-all",
+                config,
+                rate_limiter,
+                title="x",
+                actor="test",
             )
         assert result is None
 
@@ -706,9 +766,16 @@ class TestOversizedIdempotencyKeyIsRejectedCleanly:
         async with session_scope(session_factory) as session:
             with pytest.raises(TraceRejected):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     idempotency_key="x" * 129,
                 )
 
@@ -718,8 +785,14 @@ class TestOversizedIdempotencyKeyIsRejectedCleanly:
         async with session_scope(session_factory) as session:
             with pytest.raises(TraceRejected):
                 await crud.amend_trace(
-                    session, org, trace["id"], config, rate_limiter,
-                    title="new", actor="test", idempotency_key="x" * 129,
+                    session,
+                    org,
+                    trace["id"],
+                    config,
+                    rate_limiter,
+                    title="new",
+                    actor="test",
+                    idempotency_key="x" * 129,
                 )
 
     async def test_submit_kb_entry_oversized_idempotency_key_is_rejected(self, session_factory, config, org):
@@ -727,7 +800,12 @@ class TestOversizedIdempotencyKeyIsRejectedCleanly:
         async with session_scope(session_factory) as session:
             with pytest.raises(TraceRejected):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
                     idempotency_key="x" * 129,
                 )

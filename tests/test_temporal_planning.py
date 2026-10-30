@@ -1,4 +1,5 @@
 """A retrieval plan cannot mix historical snapshots across its evidence arms."""
+
 from __future__ import annotations
 
 import json
@@ -15,27 +16,40 @@ NOW = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
 def test_open_domain_grounded_date_windows_use_a_persistent_range_index(tmp_path):
     with Store(str(tmp_path), "temporal-index") as store:
         store.add("s", [{"text": "The team met last Thursday.", "at": "2026-10-13"}])
-        plan = " ".join(str(row[3]) for row in store.db.execute(
-            "EXPLAIN QUERY PLAN SELECT id FROM turns WHERE lo < ? AND hi >= ?",
-            ("2026-10-14", "2026-10-01"),
-        ))
+        plan = " ".join(
+            str(row[3])
+            for row in store.db.execute(
+                "EXPLAIN QUERY PLAN SELECT id FROM turns WHERE lo < ? AND hi >= ?",
+                ("2026-10-14", "2026-10-01"),
+            )
+        )
         assert "turns_grounded_dates" in plan
 
 
-@pytest.mark.parametrize("query, expected", [
-    ("office as of 2025-01-01T18:30:00+05:30", "2025-01-01T13:00:00+00:00"),
-    ("office as of 2025-01-01T18:30:00+0530", "2025-01-01T13:00:00+00:00"),
-    ("office at 2025-01-01T23:59:59.123Z", "2025-01-01T23:59:59.123000+00:00"),
-    ("office on 2025-01-01", "2025-01-01T00:00:00+00:00"),
-    ("office as of 2025-01-01 and at 2025-01-01T00:00Z", "2025-01-01T00:00:00+00:00"),
-])
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("office as of 2025-01-01T18:30:00+05:30", "2025-01-01T13:00:00+00:00"),
+        ("office as of 2025-01-01T18:30:00+0530", "2025-01-01T13:00:00+00:00"),
+        ("office at 2025-01-01T23:59:59.123Z", "2025-01-01T23:59:59.123000+00:00"),
+        ("office on 2025-01-01", "2025-01-01T00:00:00+00:00"),
+        ("office as of 2025-01-01 and at 2025-01-01T00:00Z", "2025-01-01T00:00:00+00:00"),
+    ],
+)
 def test_complete_iso_instants_preserve_offsets_and_precision(query, expected):
     assert temporal_intent.resolve(query, now=NOW) == {"mode": "historical", "as_of": expected}
 
 
-@pytest.mark.parametrize("query", ["compare yesterday and tomorrow", "compare last week and yesterday",
-                                   "compare today and yesterday", "compare now and tomorrow",
-                                   "office as of 2024-01-01 and on 2025-01-01"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "compare yesterday and tomorrow",
+        "compare last week and yesterday",
+        "compare today and yesterday",
+        "compare now and tomorrow",
+        "office as of 2024-01-01 and on 2025-01-01",
+    ],
+)
 def test_multiple_distinct_instants_never_silently_select_one(query):
     assert temporal_intent.resolve(query, now=NOW) == {"mode": "unspecified", "as_of": None}
 
@@ -71,10 +85,15 @@ def test_plan_graph_category_and_subqueries_share_original_snapshot(tmp_path, mo
 
     monkeypatch.setattr(hierarchical, "list_facts", list_facts)
     monkeypatch.setattr(search_recipes, "search", search)
-    planned = {"subqueries": ["office location", "office personnel"], "category": "general",
-               "hops": 1, "entity_ids": ["office"]}
-    query_plan.retrieve(str(tmp_path), "office as of 2025-01-01", backend=Backend(),
-                        complete=lambda prompt: json.dumps(planned))
+    planned = {
+        "subqueries": ["office location", "office personnel"],
+        "category": "general",
+        "hops": 1,
+        "entity_ids": ["office"],
+    }
+    query_plan.retrieve(
+        str(tmp_path), "office as of 2025-01-01", backend=Backend(), complete=lambda prompt: json.dumps(planned)
+    )
     assert {moment for _, moment in seen} == {"2025-01-01T00:00:00+00:00"}
     assert [kind for kind, _ in seen] == ["category", "search", "search"]
 
@@ -85,9 +104,14 @@ def test_explicit_caller_snapshot_wins_over_query_and_model_dates(tmp_path, monk
         return []
 
     monkeypatch.setattr(search_recipes, "search", search)
-    query_plan.retrieve(str(tmp_path), "office as of 2025-01-01", as_of="2023-01-01",
-                        complete=lambda _: json.dumps({"subqueries": ["office as of 2020-01-01"],
-                                                        "category": "", "hops": 0, "entity_ids": []}))
+    query_plan.retrieve(
+        str(tmp_path),
+        "office as of 2025-01-01",
+        as_of="2023-01-01",
+        complete=lambda _: json.dumps(
+            {"subqueries": ["office as of 2020-01-01"], "category": "", "hops": 0, "entity_ids": []}
+        ),
+    )
 
 
 def test_direct_search_caller_snapshot_bypasses_invalid_textual_hint(tmp_path, monkeypatch):
@@ -110,23 +134,30 @@ def test_model_followup_date_cannot_turn_current_recall_into_historical_recall(t
         return []
 
     monkeypatch.setattr(search_recipes, "search", search)
-    decisions = iter([{"grade": "PARTIAL", "queries": ["office as of 2020-01-01"]},
-                      {"grade": "COMPLETE", "queries": []}])
-    search_recipes.multi_round(str(tmp_path), "office location",
-                               complete=lambda _: (json.dumps(next(decisions)), {}))
+    decisions = iter(
+        [{"grade": "PARTIAL", "queries": ["office as of 2020-01-01"]}, {"grade": "COMPLETE", "queries": []}]
+    )
+    search_recipes.multi_round(str(tmp_path), "office location", complete=lambda _: (json.dumps(next(decisions)), {}))
     assert seen == [("office location", None, False), ("office as of 2020-01-01", None, False)]
 
 
 @pytest.mark.parametrize("indexed", [False, True])
 def test_decomposed_historical_retrieval_returns_old_category_fact_in_both_stores(tmp_path, indexed):
     root = str(tmp_path)
-    old = hierarchical.add_fact(root, "Office is located in Paris", category="general",
-                                valid_from="2024-01-01", valid_until="2025-01-01")[0]
+    old = hierarchical.add_fact(
+        root, "Office is located in Paris", category="general", valid_from="2024-01-01", valid_until="2025-01-01"
+    )[0]
     new = hierarchical.add_fact(root, "Office is located in Tokyo", category="general", valid_from="2025-01-01")[0]
     if indexed:
         fact_store.migrate(root)
-    rows = query_plan.retrieve(root, "Office as of 2024-06-01", embedder="none", reranker="none",
-                               complete=lambda _: json.dumps({"subqueries": ["Office location"],
-                                                               "category": "general", "hops": 0, "entity_ids": []}))
+    rows = query_plan.retrieve(
+        root,
+        "Office as of 2024-06-01",
+        embedder="none",
+        reranker="none",
+        complete=lambda _: json.dumps(
+            {"subqueries": ["Office location"], "category": "general", "hops": 0, "entity_ids": []}
+        ),
+    )
     assert [row["id"] for row in rows] == [old.id]
     assert new.id not in {row["id"] for row in rows}

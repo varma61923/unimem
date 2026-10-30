@@ -1,4 +1,5 @@
 """Image captioning for multimodal ingestion (default OFF)."""
+
 from __future__ import annotations
 
 import mimetypes

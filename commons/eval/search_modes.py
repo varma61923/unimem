@@ -1,4 +1,5 @@
 """Can the commons be SEARCHED, and what does each way of searching cost?"""
+
 from __future__ import annotations
 
 import json
@@ -40,13 +41,16 @@ def _corpus_signatures(corpus: list[dict]) -> list[tuple[str, list[int]]]:
 
 def _as_lessons(corpus: list[dict]) -> list[tuple[str, dict]]:
     return [
-        (r["title"], {
-            "name": r["title"],
-            "description": r["title"],
-            "applies_when": r.get("context_text", ""),
-            "tags": r.get("tags") or [],
-            "domain": "",
-        })
+        (
+            r["title"],
+            {
+                "name": r["title"],
+                "description": r["title"],
+                "applies_when": r.get("context_text", ""),
+                "tags": r.get("tags") or [],
+                "domain": "",
+            },
+        )
         for r in corpus
     ]
 
@@ -85,15 +89,13 @@ def evaluate() -> dict:
         return fp / len(neg) if neg else 0.0
 
     def sig_recall_at(k: int) -> float:
-        hits = sum(
-            1 for p in pos
-            if any(title == p["target"] for title, _ in sig_rank(p, corpus_sigs, k))
-        )
+        hits = sum(1 for p in pos if any(title == p["target"] for title, _ in sig_rank(p, corpus_sigs, k)))
         return hits / len(pos) if pos else 0.0
 
     def text_recall_at(k: int) -> float:
         hits = sum(
-            1 for p in pos
+            1
+            for p in pos
             if any(r.slug == p["target"] for r in retrieval.rank_lessons(_query_text(p), lessons, top_k=k))
         )
         return hits / len(pos) if pos else 0.0
@@ -131,8 +133,7 @@ def _fmt_range(vals: list[float]) -> str:
 
 def main() -> int:
     r = evaluate()
-    print(f"corpus {r['n_corpus']} records | {r['n_pos']} held-out positives, "
-          f"{r['n_neg']} negative controls")
+    print(f"corpus {r['n_corpus']} records | {r['n_pos']} held-out positives, {r['n_neg']} negative controls")
     print()
     print(f"1. THRESHOLD (what ships: coverage %, cutoff {r['threshold']})")
     print(f"   recall on positives          {r['threshold_recall']:>7.1%}")
@@ -157,8 +158,10 @@ def main() -> int:
         print(f"   recall@{k:<3}                  {r['text_recall'][k]:>7.1%}")
     print()
     best_sig = max(r["sig_recall"].values())
-    print(f"Signature ranking recovers {best_sig:.1%} at its best k, against "
-          f"{r['threshold_recall']:.1%} for the shipped threshold")
+    print(
+        f"Signature ranking recovers {best_sig:.1%} at its best k, against "
+        f"{r['threshold_recall']:.1%} for the shipped threshold"
+    )
     print(f"and {max(r['text_recall'].values()):.1%} for text ranking, which the commons cannot use")
     print("without retracting 'failure text never leaves your fleet'.")
     return 0

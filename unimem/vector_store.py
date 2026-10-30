@@ -5,6 +5,7 @@ an explicitly configured asyncpg pool and pgvector, with opt-in HNSW approximate
 search. Engines retain vector IDs, not untrusted instruction text. The caller
 owns engine lifetime; applications authenticate before choosing a tenant.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -59,13 +60,25 @@ class VectorIndex(Protocol):
     async def bind_source(self, identity: str) -> None: ...
     async def delete(self, keys: Iterable[str]) -> int: ...
     async def prune(self, generation: str) -> int: ...
-    async def search(self, vector: Sequence[float], *, top_k: int = 10,
-                     generation: str | None = None, allowed_ids: Sequence[str] | None = None) -> list[VectorHit]: ...
+    async def search(
+        self,
+        vector: Sequence[float],
+        *,
+        top_k: int = 10,
+        generation: str | None = None,
+        allowed_ids: Sequence[str] | None = None,
+    ) -> list[VectorHit]: ...
     async def close(self) -> None: ...
 
 
-async def _published_search(snapshots: SnapshotBackend, vector: Sequence[float], *, top_k: int,
-                            generation: str | None, allowed_ids: Sequence[str] | None) -> list[VectorHit] | None:
+async def _published_search(
+    snapshots: SnapshotBackend,
+    vector: Sequence[float],
+    *,
+    top_k: int,
+    generation: str | None,
+    allowed_ids: Sequence[str] | None,
+) -> list[VectorHit] | None:
     """Read published MVCC data when present; preserve independent legacy CRUD."""
     from unimem.vector_snapshots import SnapshotConflict
 
@@ -112,8 +125,11 @@ class _Scope:
     def __post_init__(self) -> None:
         for name in ("tenant", "namespace", "model"):
             _label(getattr(self, name), name)
-        if isinstance(self.dimension, bool) or not isinstance(self.dimension, int) \
-                or not 1 <= self.dimension <= MAX_DIMENSION:
+        if (
+            isinstance(self.dimension, bool)
+            or not isinstance(self.dimension, int)
+            or not 1 <= self.dimension <= MAX_DIMENSION
+        ):
             raise ValueError(f"dimension must be an integer from 1 to {MAX_DIMENSION}")
 
     def sql(self) -> tuple[str, str, str, int]:
@@ -209,11 +225,11 @@ class SQLiteVectorIndex(_Scoped):
             with self._lock:
                 self._check()
                 return function()
+
         return await self._run(execute)
 
     @classmethod
-    async def open(cls, path: str, *, tenant: str, namespace: str, model: str,
-                   dimension: int) -> SQLiteVectorIndex:
+    async def open(cls, path: str, *, tenant: str, namespace: str, model: str, dimension: int) -> SQLiteVectorIndex:
         scope = _Scope(tenant, namespace, model, dimension)
 
         def opening() -> SQLiteVectorIndex:
@@ -221,17 +237,23 @@ class SQLiteVectorIndex(_Scoped):
                 os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
             db = connect(path)
             try:
-                db.execute("CREATE TABLE IF NOT EXISTS unimem_vectors ("
-                           "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
-                           "dimension INTEGER NOT NULL, key TEXT NOT NULL, generation TEXT NOT NULL, "
-                           "embedding BLOB NOT NULL, "
-                           "PRIMARY KEY(tenant, namespace, model, dimension, key)) WITHOUT ROWID")
-                db.execute("CREATE INDEX IF NOT EXISTS unimem_vectors_generation ON unimem_vectors "
-                           "(tenant, namespace, model, dimension, generation)")
-                db.execute("CREATE TABLE IF NOT EXISTS unimem_vector_sources ("
-                           "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
-                           "dimension INTEGER NOT NULL, source TEXT NOT NULL, "
-                           "PRIMARY KEY(tenant, namespace, model, dimension)) WITHOUT ROWID")
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS unimem_vectors ("
+                    "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
+                    "dimension INTEGER NOT NULL, key TEXT NOT NULL, generation TEXT NOT NULL, "
+                    "embedding BLOB NOT NULL, "
+                    "PRIMARY KEY(tenant, namespace, model, dimension, key)) WITHOUT ROWID"
+                )
+                db.execute(
+                    "CREATE INDEX IF NOT EXISTS unimem_vectors_generation ON unimem_vectors "
+                    "(tenant, namespace, model, dimension, generation)"
+                )
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS unimem_vector_sources ("
+                    "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
+                    "dimension INTEGER NOT NULL, source TEXT NOT NULL, "
+                    "PRIMARY KEY(tenant, namespace, model, dimension)) WITHOUT ROWID"
+                )
                 return cls(db, scope)
             except BaseException:
                 db.close()
@@ -241,11 +263,13 @@ class SQLiteVectorIndex(_Scoped):
         try:
             index = await asyncio.shield(task)
         except asyncio.CancelledError:
+
             def dispose(future: asyncio.Task[SQLiteVectorIndex]) -> None:
                 if not future.cancelled() and future.exception() is None:
                     index = future.result()
                     # Initialization is finished; no request can own this connection.
                     index._db.close()
+
             task.add_done_callback(dispose)
             raise
         try:
@@ -265,6 +289,7 @@ class SQLiteVectorIndex(_Scoped):
                 raise RuntimeError("vector index is closing or closed")
             self._pending += 1
         finished = False
+
         def finish() -> None:
             nonlocal finished
             with self._activity:
@@ -272,11 +297,13 @@ class SQLiteVectorIndex(_Scoped):
                     finished = True
                     self._pending -= 1
                     self._activity.notify_all()
+
         def execute() -> T:
             try:
                 return function()
             finally:
                 finish()
+
         try:
             return await STORE_WORKERS.run(execute)
         except asyncio.CancelledError:
@@ -290,17 +317,22 @@ class SQLiteVectorIndex(_Scoped):
     async def bind_source(self, identity: str) -> None:
         """Atomically pin this scope to one canonical source-store identity."""
         source = _label(identity, "source")
+
         def execute() -> None:
             with self._lock:
                 self._check()
                 with write_txn(self._db):
-                    self._db.execute("INSERT OR IGNORE INTO unimem_vector_sources VALUES(?,?,?,?,?)",
-                                     (*self._scope.sql(), source))
-                    stored = self._db.execute("SELECT source FROM unimem_vector_sources WHERE tenant=? "
-                                              "AND namespace=? AND model=? AND dimension=?",
-                                              self._scope.sql()).fetchone()[0]
+                    self._db.execute(
+                        "INSERT OR IGNORE INTO unimem_vector_sources VALUES(?,?,?,?,?)", (*self._scope.sql(), source)
+                    )
+                    stored = self._db.execute(
+                        "SELECT source FROM unimem_vector_sources WHERE tenant=? "
+                        "AND namespace=? AND model=? AND dimension=?",
+                        self._scope.sql(),
+                    ).fetchone()[0]
                     if stored != source:
                         raise ValueError("vector namespace is bound to a different canonical source store")
+
         await self._run(execute)
 
     async def upsert(self, records: Iterable[VectorRecord]) -> int:
@@ -309,13 +341,17 @@ class SQLiteVectorIndex(_Scoped):
             with self._lock:
                 self._check()
                 with write_txn(self._db):
-                    self._db.executemany("INSERT INTO unimem_vectors VALUES (?,?,?,?,?,?,?) "
-                                         "ON CONFLICT(tenant,namespace,model,dimension,key) DO UPDATE SET "
-                                         "generation=excluded.generation, embedding=excluded.embedding",
-                                         [(*self._scope.sql(), key, generation,
-                                           struct.pack(f"<{self.dimension}f", *vector))
-                                          for key, vector, generation in rows])
+                    self._db.executemany(
+                        "INSERT INTO unimem_vectors VALUES (?,?,?,?,?,?,?) "
+                        "ON CONFLICT(tenant,namespace,model,dimension,key) DO UPDATE SET "
+                        "generation=excluded.generation, embedding=excluded.embedding",
+                        [
+                            (*self._scope.sql(), key, generation, struct.pack(f"<{self.dimension}f", *vector))
+                            for key, vector, generation in rows
+                        ],
+                    )
             return len(rows)
+
         return await self._run(execute)
 
     async def prune(self, generation: str) -> int:
@@ -325,13 +361,17 @@ class SQLiteVectorIndex(_Scoped):
         not a distributed generation publication or compare-and-swap operation.
         """
         wanted = _generation(generation)
+
         def execute() -> int:
             with self._lock:
                 self._check()
                 with write_txn(self._db):
                     return self._db.execute(
                         "DELETE FROM unimem_vectors WHERE tenant=? AND namespace=? AND model=? "
-                        "AND dimension=? AND generation<>?", (*self._scope.sql(), wanted)).rowcount
+                        "AND dimension=? AND generation<>?",
+                        (*self._scope.sql(), wanted),
+                    ).rowcount
+
         return await self._run(execute)
 
     async def delete(self, keys: Iterable[str]) -> int:
@@ -341,18 +381,29 @@ class SQLiteVectorIndex(_Scoped):
                 self._check()
                 with write_txn(self._db):
                     before = self._db.total_changes
-                    self._db.executemany("DELETE FROM unimem_vectors WHERE tenant=? AND namespace=? "
-                                         "AND model=? AND dimension=? AND key=?",
-                                         [(*self._scope.sql(), key) for key in ids])
+                    self._db.executemany(
+                        "DELETE FROM unimem_vectors WHERE tenant=? AND namespace=? "
+                        "AND model=? AND dimension=? AND key=?",
+                        [(*self._scope.sql(), key) for key in ids],
+                    )
                     return self._db.total_changes - before
+
         return await self._run(execute)
 
-    async def search(self, vector: Sequence[float], *, top_k: int = 10,
-                     generation: str | None = None, allowed_ids: Sequence[str] | None = None) -> list[VectorHit]:
-        published = await _published_search(self.snapshots, vector, top_k=top_k,
-                                            generation=generation, allowed_ids=allowed_ids)
+    async def search(
+        self,
+        vector: Sequence[float],
+        *,
+        top_k: int = 10,
+        generation: str | None = None,
+        allowed_ids: Sequence[str] | None = None,
+    ) -> list[VectorHit]:
+        published = await _published_search(
+            self.snapshots, vector, top_k=top_k, generation=generation, allowed_ids=allowed_ids
+        )
         if published is not None:
             return published
+
         def execute() -> list[VectorHit]:
             import json
 
@@ -361,8 +412,9 @@ class SQLiteVectorIndex(_Scoped):
             _limit(top_k)
             query = _vector(vector, self.dimension)
             ids = _keys(allowed_ids) if allowed_ids is not None else None
-            statement = "SELECT key, embedding FROM unimem_vectors WHERE tenant=? AND namespace=? " \
-                "AND model=? AND dimension=?"
+            statement = (
+                "SELECT key, embedding FROM unimem_vectors WHERE tenant=? AND namespace=? AND model=? AND dimension=?"
+            )
             params: list[Any] = list(self._scope.sql())
             if generation is not None:
                 statement += " AND generation=?"
@@ -375,20 +427,26 @@ class SQLiteVectorIndex(_Scoped):
                 if not top_k or ids == []:
                     return []
                 cursor = self._db.execute(statement, params)
+
                 def vector_rows() -> Iterator[tuple[str, bytes]]:
                     while rows := cursor.fetchmany(256):
                         for key, blob in rows:
                             yield key, blob
+
                 try:
-                    return [VectorHit(key, score) for key, score in cosine_topk(
-                        vector_rows(), query, dimension=self.dimension, top_k=top_k)]
+                    return [
+                        VectorHit(key, score)
+                        for key, score in cosine_topk(vector_rows(), query, dimension=self.dimension, top_k=top_k)
+                    ]
                 finally:
                     cursor.close()
+
         return await self._run(execute)
 
     async def close(self) -> None:
         with self._activity:
             self._closing = True
+
         def closing() -> None:
             with self._activity:
                 self._activity.wait_for(lambda: self._pending == 0)
@@ -396,6 +454,7 @@ class SQLiteVectorIndex(_Scoped):
                 if not self._closed:
                     self._closed = True
                     self._db.close()
+
         # Closing must remain possible when the shared admission budget is full.
         await asyncio.to_thread(closing)
 
@@ -420,8 +479,9 @@ class PostgresVectorIndex(_Scoped):
         self._pool, self._approximate, self._ef_search = pool, approximate, ef_search
         from unimem.postgres_vector_snapshots import PostgresSnapshots
 
-        self._snapshots: SnapshotBackend = PostgresSnapshots(pool, scope.sql(), approximate=approximate,
-                                                             ef_search=ef_search)
+        self._snapshots: SnapshotBackend = PostgresSnapshots(
+            pool, scope.sql(), approximate=approximate, ef_search=ef_search
+        )
 
     @property
     def snapshots(self) -> SnapshotBackend:
@@ -429,18 +489,35 @@ class PostgresVectorIndex(_Scoped):
         return self._snapshots
 
     @classmethod
-    async def open(cls, dsn: str, *, tenant: str, namespace: str, model: str,
-                   dimension: int, min_size: int = 1, max_size: int = 8,
-                   approximate: bool = False, command_timeout: float = 30,
-                   ef_search: int | None = None) -> PostgresVectorIndex:
+    async def open(
+        cls,
+        dsn: str,
+        *,
+        tenant: str,
+        namespace: str,
+        model: str,
+        dimension: int,
+        min_size: int = 1,
+        max_size: int = 8,
+        approximate: bool = False,
+        command_timeout: float = 30,
+        ef_search: int | None = None,
+    ) -> PostgresVectorIndex:
         """``ef_search`` sets HNSW's candidate list per approximate search (pgvector's
         default is 40): larger finds more true neighbours and costs latency."""
         scope = _Scope(tenant, namespace, model, dimension)
-        if ef_search is not None and (isinstance(ef_search, bool) or not isinstance(ef_search, int)
-                                      or not 1 <= ef_search <= 1000):
+        if ef_search is not None and (
+            isinstance(ef_search, bool) or not isinstance(ef_search, int) or not 1 <= ef_search <= 1000
+        ):
             raise ValueError("ef_search must be an integer from 1 to 1000")
-        if isinstance(min_size, bool) or isinstance(max_size, bool) or not isinstance(min_size, int) \
-                or not isinstance(max_size, int) or not 0 <= min_size <= max_size or max_size < 1:
+        if (
+            isinstance(min_size, bool)
+            or isinstance(max_size, bool)
+            or not isinstance(min_size, int)
+            or not isinstance(max_size, int)
+            or not 0 <= min_size <= max_size
+            or max_size < 1
+        ):
             raise ValueError("pool sizes must be integers with 0 <= min_size <= max_size and max_size >= 1")
         if not math.isfinite(command_timeout) or command_timeout <= 0:
             raise ValueError("command_timeout must be finite and positive")
@@ -464,23 +541,31 @@ class PostgresVectorIndex(_Scoped):
             async with pool.acquire() as db, db.transaction():
                 if not await db.fetchval("SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname='vector')"):
                     raise RuntimeError("pgvector extension is not installed; ask the database administrator")
-                await db.execute("CREATE TABLE IF NOT EXISTS unimem_vectors ("
-                                 "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
-                                 "dimension INTEGER NOT NULL, key TEXT NOT NULL, generation TEXT NOT NULL, "
-                                 "embedding vector NOT NULL, CHECK(vector_dims(embedding)=dimension), "
-                                 "PRIMARY KEY(tenant,namespace,model,dimension,key))")
-                await db.execute("CREATE INDEX IF NOT EXISTS unimem_vectors_generation ON "
-                                 "unimem_vectors(tenant,namespace,model,dimension,generation)")
-                await db.execute("CREATE TABLE IF NOT EXISTS unimem_vector_sources ("
-                                 "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
-                                 "dimension INTEGER NOT NULL, source TEXT NOT NULL, "
-                                 "PRIMARY KEY(tenant,namespace,model,dimension))")
+                await db.execute(
+                    "CREATE TABLE IF NOT EXISTS unimem_vectors ("
+                    "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
+                    "dimension INTEGER NOT NULL, key TEXT NOT NULL, generation TEXT NOT NULL, "
+                    "embedding vector NOT NULL, CHECK(vector_dims(embedding)=dimension), "
+                    "PRIMARY KEY(tenant,namespace,model,dimension,key))"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS unimem_vectors_generation ON "
+                    "unimem_vectors(tenant,namespace,model,dimension,generation)"
+                )
+                await db.execute(
+                    "CREATE TABLE IF NOT EXISTS unimem_vector_sources ("
+                    "tenant TEXT NOT NULL, namespace TEXT NOT NULL, model TEXT NOT NULL, "
+                    "dimension INTEGER NOT NULL, source TEXT NOT NULL, "
+                    "PRIMARY KEY(tenant,namespace,model,dimension))"
+                )
                 if approximate:
                     # The literal is a validated integer; never interpolate owner labels.
                     digest = hashlib.sha256(str(dimension).encode()).hexdigest()[:16]
-                    await db.execute(f"CREATE INDEX IF NOT EXISTS unimem_vectors_hnsw_{digest} "
-                                     f"ON unimem_vectors USING hnsw ((embedding::vector({dimension})) "
-                                     f"vector_cosine_ops) WHERE dimension={dimension}")
+                    await db.execute(
+                        f"CREATE INDEX IF NOT EXISTS unimem_vectors_hnsw_{digest} "
+                        f"ON unimem_vectors USING hnsw ((embedding::vector({dimension})) "
+                        f"vector_cosine_ops) WHERE dimension={dimension}"
+                    )
         except BaseException:
             await pool.close()
             raise
@@ -496,10 +581,17 @@ class PostgresVectorIndex(_Scoped):
         """Atomically bind a shared namespace to one canonical source identity."""
         source = _label(identity, "source")
         async with self._pool.acquire() as db, db.transaction():
-            await db.execute("INSERT INTO unimem_vector_sources VALUES($1,$2,$3,$4,$5) "
-                             "ON CONFLICT(tenant,namespace,model,dimension) DO NOTHING", *self._scope.sql(), source)
-            stored = await db.fetchval("SELECT source FROM unimem_vector_sources WHERE tenant=$1 "
-                                       "AND namespace=$2 AND model=$3 AND dimension=$4", *self._scope.sql())
+            await db.execute(
+                "INSERT INTO unimem_vector_sources VALUES($1,$2,$3,$4,$5) "
+                "ON CONFLICT(tenant,namespace,model,dimension) DO NOTHING",
+                *self._scope.sql(),
+                source,
+            )
+            stored = await db.fetchval(
+                "SELECT source FROM unimem_vector_sources WHERE tenant=$1 "
+                "AND namespace=$2 AND model=$3 AND dimension=$4",
+                *self._scope.sql(),
+            )
             if stored != source:
                 raise ValueError("vector namespace is bound to a different canonical source store")
 
@@ -507,25 +599,39 @@ class PostgresVectorIndex(_Scoped):
         rows = await STORE_WORKERS.run(lambda: _records(records, self.dimension))
         async with self._pool.acquire() as db, db.transaction():
             for start in range(0, len(rows), 256):
-                await db.executemany("INSERT INTO unimem_vectors VALUES($1,$2,$3,$4,$5,$6,$7::text::vector) "
-                                     "ON CONFLICT(tenant,namespace,model,dimension,key) DO UPDATE SET "
-                                     "generation=excluded.generation, embedding=excluded.embedding",
-                                     [(*self._scope.sql(), key, generation, _pg_vector(vector))
-                                      for key, vector, generation in rows[start:start + 256]])
+                await db.executemany(
+                    "INSERT INTO unimem_vectors VALUES($1,$2,$3,$4,$5,$6,$7::text::vector) "
+                    "ON CONFLICT(tenant,namespace,model,dimension,key) DO UPDATE SET "
+                    "generation=excluded.generation, embedding=excluded.embedding",
+                    [
+                        (*self._scope.sql(), key, generation, _pg_vector(vector))
+                        for key, vector, generation in rows[start : start + 256]
+                    ],
+                )
         return len(rows)
 
     async def delete(self, keys: Iterable[str]) -> int:
         ids = await STORE_WORKERS.run(lambda: _keys(keys))
         async with self._pool.acquire() as db, db.transaction():
-            status = await db.execute("DELETE FROM unimem_vectors WHERE tenant=$1 AND namespace=$2 "
-                                      "AND model=$3 AND dimension=$4 AND key=ANY($5::text[])",
-                                      *self._scope.sql(), ids)
+            status = await db.execute(
+                "DELETE FROM unimem_vectors WHERE tenant=$1 AND namespace=$2 "
+                "AND model=$3 AND dimension=$4 AND key=ANY($5::text[])",
+                *self._scope.sql(),
+                ids,
+            )
         return int(status.split()[-1])
 
-    async def search(self, vector: Sequence[float], *, top_k: int = 10,
-                     generation: str | None = None, allowed_ids: Sequence[str] | None = None) -> list[VectorHit]:
-        published = await _published_search(self.snapshots, vector, top_k=top_k,
-                                            generation=generation, allowed_ids=allowed_ids)
+    async def search(
+        self,
+        vector: Sequence[float],
+        *,
+        top_k: int = 10,
+        generation: str | None = None,
+        allowed_ids: Sequence[str] | None = None,
+    ) -> list[VectorHit]:
+        published = await _published_search(
+            self.snapshots, vector, top_k=top_k, generation=generation, allowed_ids=allowed_ids
+        )
         if published is not None:
             return published
         _limit(top_k)
@@ -562,7 +668,12 @@ class PostgresVectorIndex(_Scoped):
                 f"WHERE tenant=$1 AND namespace=$2 AND model=$3 AND {dimension} "
                 "AND ($6::text IS NULL OR generation=$6) AND ($7::text[] IS NULL OR key=ANY($7)) "
                 f"ORDER BY {ordering} LIMIT $8) nearest ORDER BY score DESC,key",
-                *self._scope.sql(), _pg_vector(query), generation, ids, top_k)
+                *self._scope.sql(),
+                _pg_vector(query),
+                generation,
+                ids,
+                top_k,
+            )
         return [VectorHit(row["key"], min(1.0, max(-1.0, float(row["score"])))) for row in rows]
 
     async def prune(self, generation: str) -> int:
@@ -573,8 +684,12 @@ class PostgresVectorIndex(_Scoped):
         """
         wanted = _generation(generation)
         async with self._pool.acquire() as db, db.transaction():
-            status = await db.execute("DELETE FROM unimem_vectors WHERE tenant=$1 AND namespace=$2 "
-                                      "AND model=$3 AND dimension=$4 AND generation<>$5", *self._scope.sql(), wanted)
+            status = await db.execute(
+                "DELETE FROM unimem_vectors WHERE tenant=$1 AND namespace=$2 "
+                "AND model=$3 AND dimension=$4 AND generation<>$5",
+                *self._scope.sql(),
+                wanted,
+            )
         return int(status.split()[-1])
 
     async def close(self) -> None:

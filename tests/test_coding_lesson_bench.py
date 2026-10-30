@@ -61,9 +61,9 @@ def _heterogeneous_task_fixture(tmp_path):
         )
     runner = tmp_path / "runner.py"
     runner.write_text(
-        'import json, sys\nr=json.load(sys.stdin)\n'
+        "import json, sys\nr=json.load(sys.stdin)\n"
         'helpful=(r["task_id"] == "parser") == bool(r["lesson"])\n'
-        'v=1 if helpful else 2\n'
+        "v=1 if helpful else 2\n"
         'patch="diff --git a/solution.py b/solution.py\\n--- a/solution.py\\n+++ b/solution.py\\n@@ -1 +1 @@\\n-answer = 0\\n+answer = "+str(v)+"\\n"\n'
         'print(json.dumps({"patch":patch}))\n'
     )
@@ -96,12 +96,8 @@ def test_multi_task_effects_report_weighted_stratified_uplift_with_simultaneous_
     assert aggregate["effect"] == round(
         (41 / 81) * effects["parser"]["effect"] + (40 / 81) * effects["formatter"]["effect"], 4
     )
-    displayed_ci_low = (
-        (41 / 81) * effects["parser"]["ci_low"] + (40 / 81) * effects["formatter"]["ci_low"]
-    )
-    displayed_ci_high = (
-        (41 / 81) * effects["parser"]["ci_high"] + (40 / 81) * effects["formatter"]["ci_high"]
-    )
+    displayed_ci_low = (41 / 81) * effects["parser"]["ci_low"] + (40 / 81) * effects["formatter"]["ci_low"]
+    displayed_ci_high = (41 / 81) * effects["parser"]["ci_high"] + (40 / 81) * effects["formatter"]["ci_high"]
     assert aggregate["ci_low"] <= displayed_ci_low
     assert displayed_ci_low - aggregate["ci_low"] <= 0.0002
     assert aggregate["ci_high"] >= displayed_ci_high
@@ -111,7 +107,8 @@ def test_multi_task_effects_report_weighted_stratified_uplift_with_simultaneous_
     assert aggregate["ci_low"] <= 0 <= aggregate["ci_high"]
     for task_id, target_n in (("parser", 21), ("formatter", 20)):
         task_rows = [
-            row for row in result["rows"]
+            row
+            for row in result["rows"]
             if row["task"] == task_id and row["randomized"] and row["succeeded"] is not None
         ]
         injected = [row for row in task_rows if row["injected"]]
@@ -168,10 +165,7 @@ def test_benchmark_reports_the_preplanned_horizon_when_outcome_rate_changes(tmp_
         return run([task], [sys.executable, "fixture-runner"], occasions=400, seed=912)
 
     results = [run_at_rate(2), run_at_rate(10)]
-    observed_rates = [
-        sum(row["succeeded"] for row in result["rows"]) / len(result["rows"])
-        for result in results
-    ]
+    observed_rates = [sum(row["succeeded"] for row in result["rows"]) / len(result["rows"]) for result in results]
     assert observed_rates[0] > 0.4 and observed_rates[1] < 0.15
 
     for result in results:
@@ -181,7 +175,9 @@ def test_benchmark_reports_the_preplanned_horizon_when_outcome_rate_changes(tmp_
         injected_n = sum(row["randomized"] and row["injected"] for row in result["rows"])
         injected_successes = sum(row["randomized"] and row["injected"] and row["succeeded"] for row in result["rows"])
         withheld_n = sum(row["randomized"] and not row["injected"] for row in result["rows"])
-        withheld_successes = sum(row["randomized"] and not row["injected"] and row["succeeded"] for row in result["rows"])
+        withheld_successes = sum(
+            row["randomized"] and not row["injected"] and row["succeeded"] for row in result["rows"]
+        )
         raw_low, raw_high = experiment.anytime_confidence_interval(
             injected_successes,
             injected_n,
@@ -199,13 +195,15 @@ def test_round_robin_with_more_tasks_than_occasions_keeps_zero_weight_strata(tmp
     for task_id in ("a", "b", "c"):
         repo = tmp_path / task_id
         repo.mkdir()
-        tasks.append({
-            "id": task_id,
-            "repo": str(repo),
-            "prompt": "run task",
-            "test_command": ["fixture-test"],
-            "lesson": f"lesson {task_id}",
-        })
+        tasks.append(
+            {
+                "id": task_id,
+                "repo": str(repo),
+                "prompt": "run task",
+                "test_command": ["fixture-test"],
+                "lesson": f"lesson {task_id}",
+            }
+        )
 
     def fake_copytree(_source, destination, **_kwargs):
         os.makedirs(destination)
@@ -247,9 +245,7 @@ def test_explicit_task_weights_define_the_reported_target_population(tmp_path):
     aggregate = result["causal_effect_aggregate"]
     assert aggregate["weighting"] == "explicit_task_weights"
     assert aggregate["task_weights"] == {"parser": 0.75, "formatter": 0.25}
-    assert aggregate["effect"] == round(
-        0.75 * effects["parser"]["effect"] + 0.25 * effects["formatter"]["effect"], 4
-    )
+    assert aggregate["effect"] == round(0.75 * effects["parser"]["effect"] + 0.25 * effects["formatter"]["effect"], 4)
     displayed_ci_low = 0.75 * effects["parser"]["ci_low"] + 0.25 * effects["formatter"]["ci_low"]
     displayed_ci_high = 0.75 * effects["parser"]["ci_high"] + 0.25 * effects["formatter"]["ci_high"]
     assert aggregate["ci_low"] <= displayed_ci_low + 1e-12
@@ -285,13 +281,15 @@ def test_multi_task_gate_fails_closed_on_unresolved_randomized_outcome(tmp_path,
     for task_id in ("parser", "formatter"):
         repo = tmp_path / task_id
         repo.mkdir()
-        tasks.append({
-            "id": task_id,
-            "repo": str(repo),
-            "prompt": "run the task",
-            "test_command": ["fixture-test"],
-            "lesson": f"repair {task_id}",
-        })
+        tasks.append(
+            {
+                "id": task_id,
+                "repo": str(repo),
+                "prompt": "run the task",
+                "test_command": ["fixture-test"],
+                "lesson": f"repair {task_id}",
+            }
+        )
 
     def fake_copytree(_source, destination, **_kwargs):
         os.makedirs(destination)

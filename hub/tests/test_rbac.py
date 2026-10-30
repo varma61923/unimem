@@ -29,8 +29,10 @@ class TestEveryRegisteredToolHasACapability:
 
     async def test_the_destructive_tools_need_security(self, mcp):
         for tool in (
-            "delete_trace", "request_account_deletion",
-            "cancel_account_deletion", "confirm_account_deletion",
+            "delete_trace",
+            "request_account_deletion",
+            "cancel_account_deletion",
+            "confirm_account_deletion",
         ):
             assert rbac.TOOL_CAPABILITY[tool] == rbac.CAP_SECURITY, tool
 
@@ -44,9 +46,7 @@ class TestEveryRegisteredToolHasACapability:
 
 @pytest.mark.asyncio
 class TestScopeNeverUnderShootsCapability:
-    async def test_every_role_derived_scope_covers_every_tool_its_capabilities_reach(
-        self, mcp
-    ):
+    async def test_every_role_derived_scope_covers_every_tool_its_capabilities_reach(self, mcp):
         declared = mcp.unimem_tool_scopes
         for role in rbac.ROLES:
             granted = rbac.capabilities_of(role)

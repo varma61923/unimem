@@ -9,9 +9,17 @@ CONTEXT = {"tenant": "acme", "site": "depot", "robot": "r7"}
 
 
 def delta(position, timestamp):
-    return {"object_id": "crate", "class": "box", "pose": position, "frame": "map", "robot_id": "r7",
-            "timestamp": timestamp, "confidence": .9, "relations": {"located_in": ["depot"]},
-            "keyframe": "sha256:abc"}
+    return {
+        "object_id": "crate",
+        "class": "box",
+        "pose": position,
+        "frame": "map",
+        "robot_id": "r7",
+        "timestamp": timestamp,
+        "confidence": 0.9,
+        "relations": {"located_in": ["depot"]},
+        "keyframe": "sha256:abc",
+    }
 
 
 def test_moves_corrections_and_record_time_beliefs(tmp_path):
@@ -32,17 +40,23 @@ def test_moves_corrections_and_record_time_beliefs(tmp_path):
 
 def test_bounded_updates_and_planner_tools(tmp_path):
     from unimem.mcp_server import build_server
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import call
+
     root = str(tmp_path)
     spatial.update(root, delta([1, 2, 3], "2026-01-01T00:00:00Z"), context=CONTEXT)
-    assert call(build_server(root), "spatial_where", object_id="crate", context=CONTEXT)["object"]["keyframe"] == "sha256:abc"
+    assert (
+        call(build_server(root), "spatial_where", object_id="crate", context=CONTEXT)["object"]["keyframe"]
+        == "sha256:abc"
+    )
     with pytest.raises(ValueError):
         spatial.update(root, {**delta([1, 2, 3], fp.now()), "embedding_ref": "x" * 5000}, context=CONTEXT)
 
 
 def test_scene_objects_obey_canonical_forgetting_and_validity(tmp_path):
     from unimem import hierarchical
+
     root = str(tmp_path)
     item = spatial.update(root, delta([1, 2, 3], "2026-01-01T00:00:00Z"), context=CONTEXT)
     hierarchical.invalidate_fact(root, item["fact_id"], at="2026-02-01T00:00:00Z")
@@ -80,8 +94,15 @@ def test_optional_robot_context_reuses_stationary_placement_fact(tmp_path):
     assert second["fact_id"] == first["fact_id"]
 
 
-@pytest.mark.parametrize("bad", [{"relations": {"near": "not-a-list"}}, {"media": "sha256:x"},
-                                 {"pose": [1, 2, float("nan")]}, {"confidence": float("inf")}])
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"relations": {"near": "not-a-list"}},
+        {"media": "sha256:x"},
+        {"pose": [1, 2, float("nan")]},
+        {"confidence": float("inf")},
+    ],
+)
 def test_malformed_deltas_are_refused(tmp_path, bad):
     with pytest.raises(ValueError):
         spatial.update(str(tmp_path), {**delta([1, 2, 3], fp.now()), **bad}, context=CONTEXT)

@@ -9,8 +9,7 @@ from unimem import decay, experiment, integrity, value
 NOW = datetime.datetime(2026, 9, 12, tzinfo=datetime.timezone.utc)
 HORIZON = 180
 
-DISJOINT = value.OccasionOverlap(
-    shared_pairs=frozenset(), unique_injected_occasions=400)
+DISJOINT = value.OccasionOverlap(shared_pairs=frozenset(), unique_injected_occasions=400)
 
 
 def _ago(days: float) -> str:
@@ -19,22 +18,34 @@ def _ago(days: float) -> str:
 
 def _effect(slug, verdict, effect, n_injected=200, half_width=0.02):
     return experiment.CausalEffect(
-        lesson_slug=slug, n_injected=n_injected, n_withheld=n_injected,
-        rate_injected=0.8, rate_withheld=0.8 - effect, effect=effect,
-        ci_low=effect - half_width, ci_high=effect + half_width, p_value=0.001,
+        lesson_slug=slug,
+        n_injected=n_injected,
+        n_withheld=n_injected,
+        rate_injected=0.8,
+        rate_withheld=0.8 - effect,
+        effect=effect,
+        ci_low=effect - half_width,
+        ci_high=effect + half_width,
+        p_value=0.001,
         significant=verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS),
-        min_detectable_effect=0.02, verdict=verdict,
+        min_detectable_effect=0.02,
+        verdict=verdict,
     )
 
 
 def _clean_audit():
-    return integrity.audit([
-        integrity.Assignment(
-            lesson="L", occasion_id=f"o{i}", injected=i % 2 == 0,
-            rate=0.5, succeeded=(i % 3 != 0),
-        )
-        for i in range(400)
-    ])
+    return integrity.audit(
+        [
+            integrity.Assignment(
+                lesson="L",
+                occasion_id=f"o{i}",
+                injected=i % 2 == 0,
+                rate=0.5,
+                succeeded=(i % 3 != 0),
+            )
+            for i in range(400)
+        ]
+    )
 
 
 class TestFreshness:
@@ -51,8 +62,7 @@ class TestFreshness:
         assert "past the 180-day evidence horizon" in f.describe()
 
     def test_the_boundary_is_inclusive(self):
-        assert decay.freshness(
-            _ago(HORIZON), now=NOW, horizon_days=HORIZON).is_current
+        assert decay.freshness(_ago(HORIZON), now=NOW, horizon_days=HORIZON).is_current
 
     def test_undated_evidence_is_not_current(self):
         for missing in (None, "", "   ", 42, [], "not-a-date"):
@@ -83,8 +93,10 @@ class TestStaleResolvesAgainstTheVendor:
 
     def _counts(self, verdict, days):
         return decay.still_counts(
-            verdict, self._f(days),
-            helps=experiment.VERDICT_HELPS, hurts=experiment.VERDICT_HURTS,
+            verdict,
+            self._f(days),
+            helps=experiment.VERDICT_HELPS,
+            hurts=experiment.VERDICT_HURTS,
         )
 
     def test_a_fresh_helps_counts(self):
@@ -122,8 +134,12 @@ class TestValueReport:
 
     def _with_horizon(self, **kwargs):
         return value.compute(
-            self.EFFECTS, _clean_audit(), last_measured=self.DATES,
-            evidence_horizon_days=HORIZON, now=NOW, **kwargs,
+            self.EFFECTS,
+            _clean_audit(),
+            last_measured=self.DATES,
+            evidence_horizon_days=HORIZON,
+            now=NOW,
+            **kwargs,
         )
 
     def test_no_horizon_is_exactly_the_historical_behaviour(self):
@@ -154,8 +170,7 @@ class TestValueReport:
         assert "400 days ago" in stale.why_not
 
     def test_the_withheld_memory_leaves_the_signed_ledger_too(self):
-        report = self._with_horizon(
-            value_per_occasion=25.0, overlap=DISJOINT)
+        report = self._with_horizon(value_per_occasion=25.0, overlap=DISJOINT)
         entries = report.ledger()
         assert entries
         slugs = {e.slug for e in entries}
@@ -170,9 +185,11 @@ class TestValueReport:
 
     def test_an_undated_effect_is_withheld_like_an_expired_one(self):
         report = value.compute(
-            self.EFFECTS, _clean_audit(),
+            self.EFFECTS,
+            _clean_audit(),
             last_measured={"fresh-helps": _ago(10)},
-            evidence_horizon_days=HORIZON, now=NOW,
+            evidence_horizon_days=HORIZON,
+            now=NOW,
         )
         counted = {m.slug for m in report.memories if m.counted}
         assert "stale-helps" not in counted
@@ -182,21 +199,25 @@ class TestValueReport:
         fresh = {slug: _ago(5) for slug in self.DATES}
         without = value.compute(self.EFFECTS, _clean_audit())
         with_horizon = value.compute(
-            self.EFFECTS, _clean_audit(), last_measured=fresh,
-            evidence_horizon_days=HORIZON, now=NOW,
+            self.EFFECTS,
+            _clean_audit(),
+            last_measured=fresh,
+            evidence_horizon_days=HORIZON,
+            now=NOW,
         )
         assert with_horizon.n_counted == without.n_counted
-        assert with_horizon.occasions_improved == pytest.approx(
-            without.occasions_improved)
+        assert with_horizon.occasions_improved == pytest.approx(without.occasions_improved)
         assert with_horizon.decay.stale == ()
 
 
 class TestDecayReport:
     def _report(self):
         return value.compute(
-            TestValueReport.EFFECTS, _clean_audit(),
+            TestValueReport.EFFECTS,
+            _clean_audit(),
             last_measured=TestValueReport.DATES,
-            evidence_horizon_days=HORIZON, now=NOW,
+            evidence_horizon_days=HORIZON,
+            now=NOW,
         ).decay
 
     def test_it_lists_what_to_re_measure_oldest_first(self):
@@ -213,8 +234,10 @@ class TestDecayReport:
 
     def test_a_clean_run_says_everything_is_inside_the_horizon(self):
         report = value.compute(
-            TestValueReport.EFFECTS, _clean_audit(),
+            TestValueReport.EFFECTS,
+            _clean_audit(),
             last_measured={s: _ago(5) for s in TestValueReport.DATES},
-            evidence_horizon_days=HORIZON, now=NOW,
+            evidence_horizon_days=HORIZON,
+            now=NOW,
         ).decay
         assert "All evidence is inside the horizon" in report.render()

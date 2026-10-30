@@ -1,4 +1,5 @@
 """Disk-mapped exact recall remains source-generation-safe and expendable."""
+
 import os
 import stat
 
@@ -178,7 +179,10 @@ def test_disk_cache_prunes_old_files_without_invalidating_active_readers(setup_i
                 store.add("s", [{"text": "passage 2"}])
                 embed.search(store, encoder, q, 1)
         directory = os.path.dirname(first.path)
-        assert len([entry for entry in os.listdir(directory) if entry.startswith("dense-") and entry.endswith(".npy")]) == 2
+        assert (
+            len([entry for entry in os.listdir(directory) if entry.startswith("dense-") and entry.endswith(".npy")])
+            == 2
+        )
         assert embed.search(first, encoder, q, 1) == expected
 
 

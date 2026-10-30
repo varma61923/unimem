@@ -11,6 +11,7 @@ Adapted from Hindsight and Supermemory architecture:
 Portions adapted from Hindsight's memory_defense extension (MIT, Copyright (c) 2025
 Vectorize AI, Inc.); see THIRD_PARTY_NOTICES.md for the license text.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,7 @@ class PolicyRule:
 @dataclass(frozen=True)
 class DefensePolicy:
     enabled: bool = True
-    rules: tuple[PolicyRule, ...] = (
-        PolicyRule(on="sensitive_data", action=DefenseAction.REDACT),
-    )
+    rules: tuple[PolicyRule, ...] = (PolicyRule(on="sensitive_data", action=DefenseAction.REDACT),)
 
 
 @dataclass
@@ -176,9 +175,11 @@ _REDACTION_PATTERNS: list[tuple[str, str]] = [
     ("db_url_mysql", r"mysql://[^\s:/@]+:[^\s/@]+@[^\s]+"),
     ("db_url_mongodb", r"mongodb(?:\+srv)?://[^\s:/@]+:[^\s/@]+@[^\s]+"),
     # Private keys & generic tokens
-    ("private_key_pem",
-     r"-----BEGIN (?P<pem_kind>(?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?)-----"
-     r"(?:[ \t]*\r?\n[\s\S]*?(?:-----END (?P=pem_kind)-----|\Z))?"),
+    (
+        "private_key_pem",
+        r"-----BEGIN (?P<pem_kind>(?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?)-----"
+        r"(?:[ \t]*\r?\n[\s\S]*?(?:-----END (?P=pem_kind)-----|\Z))?",
+    ),
     ("jwt", _ascii_token_pattern(r"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
     # PII
     (
@@ -235,7 +236,7 @@ def apply_redaction(content: str) -> RedactionResult:
                 if "credit_card" not in matched:
                     matched.append("credit_card")
                 hits.append({"detector": "credit_card", "preview": _fingerprint_value(value)})
-                parts.extend((content[copied_until:match.start()], "[REDACTED:credit_card]"))
+                parts.extend((content[copied_until : match.start()], "[REDACTED:credit_card]"))
                 copied_until = match.end()
                 search_start = match.end()
 

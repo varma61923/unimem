@@ -69,10 +69,12 @@ def test_setup_auto_detection_writes_project_hooks_and_skips_kimi_global_config(
     # home history is never scanned as a side effect of hook setup.
     history = root / ".unimem" / "history" / "codex" / "session.jsonl"
     history.parent.mkdir(parents=True)
-    row = json.dumps({
-        "type": "response_item",
-        "payload": {"type": "message", "role": "user", "content": [{"text": "Use parser.py for parsing."}]},
-    })
+    row = json.dumps(
+        {
+            "type": "response_item",
+            "payload": {"type": "message", "role": "user", "content": [{"text": "Use parser.py for parsing."}]},
+        }
+    )
     history.write_text(row, encoding="utf-8")
     private_history = home / ".codex" / "sessions" / "private.jsonl"
     private_history.parent.mkdir(parents=True)
@@ -126,9 +128,18 @@ def test_global_config_flag_can_opt_in_to_detected_kimi(tmp_path, monkeypatch, c
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("KIMI_CODE_HOME", raising=False)
 
-    assert main([
-        "up", "--dest", str(root), "--setup-only", "--allow-global-agent-config",
-    ]) == 0
+    assert (
+        main(
+            [
+                "up",
+                "--dest",
+                str(root),
+                "--setup-only",
+                "--allow-global-agent-config",
+            ]
+        )
+        == 0
+    )
     output = capsys.readouterr().out
     result_start = output.rfind('{\n  "first_lesson"')
     assert result_start >= 0

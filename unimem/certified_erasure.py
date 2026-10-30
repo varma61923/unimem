@@ -7,6 +7,7 @@ destroyed across all vault replicas. It cannot retroactively encrypt plaintext
 backups. The filesystem vault is a reference backend; production deployments
 must enforce the same destruction boundary in their KMS.
 """
+
 from __future__ import annotations
 
 import os
@@ -77,8 +78,9 @@ class SubjectVault:
                 raise ValueError("invalid subject wrapping key")
             return key
 
-    def seal(self, subject: str, record_id: str, plaintext: str, *,
-             key_wrapper: Callable[[str], str] | None = None) -> dict[str, Any]:
+    def seal(
+        self, subject: str, record_id: str, plaintext: str, *, key_wrapper: Callable[[str], str] | None = None
+    ) -> dict[str, Any]:
         fp.text(record_id)
         fp.text(plaintext, "subject content", 64_000)
         key = self._key(subject, create=True)
@@ -86,28 +88,39 @@ class SubjectVault:
         reference = self.reference(subject)
         aad = fp.wire({"reference": reference, "record_id": record_id})
         encoded_key = key_wrapper(dek.hex()) if key_wrapper else dek.hex()
-        return {"schema": "subject-envelope-v1", "reference": reference, "record_id": record_id,
-                "ciphertext": _aes()(dek).encrypt(nonce, plaintext.encode(), aad).hex(), "nonce": nonce.hex(),
-                "wrapped_key": _aes()(key).encrypt(wrap_nonce, encoded_key.encode(), aad).hex(),
-                "wrap_nonce": wrap_nonce.hex(), "outer_wrapped": key_wrapper is not None}
+        return {
+            "schema": "subject-envelope-v1",
+            "reference": reference,
+            "record_id": record_id,
+            "ciphertext": _aes()(dek).encrypt(nonce, plaintext.encode(), aad).hex(),
+            "nonce": nonce.hex(),
+            "wrapped_key": _aes()(key).encrypt(wrap_nonce, encoded_key.encode(), aad).hex(),
+            "wrap_nonce": wrap_nonce.hex(),
+            "outer_wrapped": key_wrapper is not None,
+        }
 
-    def open(self, subject: str, envelope: dict[str, Any], *,
-             key_unwrapper: Callable[[str], str] | None = None) -> str:
+    def open(self, subject: str, envelope: dict[str, Any], *, key_unwrapper: Callable[[str], str] | None = None) -> str:
         fp.wire(envelope)
         if envelope.get("schema") != "subject-envelope-v1" or envelope.get("reference") != self.reference(subject):
             raise PermissionError("subject envelope reference mismatch")
         key = self._key(subject)
         aad = fp.wire({"reference": envelope["reference"], "record_id": envelope["record_id"]})
         try:
-            encoded_key = _aes()(key).decrypt(bytes.fromhex(envelope["wrap_nonce"]),
-                                             bytes.fromhex(envelope["wrapped_key"]), aad).decode()
+            encoded_key = (
+                _aes()(key)
+                .decrypt(bytes.fromhex(envelope["wrap_nonce"]), bytes.fromhex(envelope["wrapped_key"]), aad)
+                .decode()
+            )
             if envelope.get("outer_wrapped"):
                 if key_unwrapper is None:
                     raise ValueError("configured outer envelope key is required")
                 encoded_key = key_unwrapper(encoded_key)
             dek = bytes.fromhex(encoded_key)
-            return str(_aes()(dek).decrypt(bytes.fromhex(envelope["nonce"]),
-                                           bytes.fromhex(envelope["ciphertext"]), aad).decode())
+            return str(
+                _aes()(dek)
+                .decrypt(bytes.fromhex(envelope["nonce"]), bytes.fromhex(envelope["ciphertext"]), aad)
+                .decode()
+            )
         except Exception as exc:
             raise ValueError("subject envelope authentication failed") from exc
 
@@ -120,8 +133,11 @@ class SubjectVault:
                 raise ValueError("subject key must not be a symlink")
             if not prior and not os.path.exists(path):
                 raise ValueError("cannot attest destruction of an unknown subject key")
-            tombstone = prior[0] if prior else {
-                "reference": reference, "destroyed_at": fp.now(), "kind": "filesystem-vault-key-destruction"}
+            tombstone = (
+                prior[0]
+                if prior
+                else {"reference": reference, "destroyed_at": fp.now(), "kind": "filesystem-vault-key-destruction"}
+            )
             if not prior:
                 # Commit non-reuse before deleting. A crash cannot recreate the
                 # same reference; retry completes unlink before returning proof.
@@ -136,10 +152,19 @@ class SubjectVault:
             return tombstone
 
 
-def probe(retrieve: Callable[[str], Sequence[dict[str, Any]]], queries: Sequence[str], *,
-          forbidden: Sequence[str], threshold: float = 0) -> dict[str, Any]:
-    if (not isinstance(queries, Sequence) or isinstance(queries, (str, bytes))
-            or not isinstance(forbidden, Sequence) or isinstance(forbidden, (str, bytes))):
+def probe(
+    retrieve: Callable[[str], Sequence[dict[str, Any]]],
+    queries: Sequence[str],
+    *,
+    forbidden: Sequence[str],
+    threshold: float = 0,
+) -> dict[str, Any]:
+    if (
+        not isinstance(queries, Sequence)
+        or isinstance(queries, (str, bytes))
+        or not isinstance(forbidden, Sequence)
+        or isinstance(forbidden, (str, bytes))
+    ):
         raise ValueError("probe queries and forbidden tokens must be sequences of strings")
     fp.count(len(queries), 1, 128)
     fp.count(len(forbidden), 1, 256)
@@ -151,12 +176,24 @@ def probe(retrieve: Callable[[str], Sequence[dict[str, Any]]], queries: Sequence
         fp.count(len(rows), 0, 1000)
         hits += any(needle in str(row.get("text", "")).casefold() for row in rows for needle in needles)
     rate = hits / len(queries)
-    return {"passed": rate <= threshold, "hit_rate": rate, "queries": len(queries), "threshold": threshold,
-            "kind": "bounded live retrieval diagnostic; not a universal membership-inference guarantee"}
+    return {
+        "passed": rate <= threshold,
+        "hit_rate": rate,
+        "queries": len(queries),
+        "threshold": threshold,
+        "kind": "bounded live retrieval diagnostic; not a universal membership-inference guarantee",
+    }
 
 
-def erase(root: str, subject: str, identities: Sequence[str], vault: SubjectVault, *, reason: str,
-          retrieval_probe: Callable[[], dict[str, Any]] | None = None) -> dict[str, Any]:
+def erase(
+    root: str,
+    subject: str,
+    identities: Sequence[str],
+    vault: SubjectVault,
+    *,
+    reason: str,
+    retrieval_probe: Callable[[], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Revoke descendants, purge canonical facts and shred the subject wrapping key.
 
     Certificates explicitly scope backup claims to pre-encrypted envelopes.
@@ -194,19 +231,27 @@ def erase(root: str, subject: str, identities: Sequence[str], vault: SubjectVaul
         history_path = lesson_io.revisions_log_path(root)
         with _jsonl.locked(history_path):
             history = fp.rows(history_path)
-            _jsonl.write_rows(history_path, [row for row in history
-                              if lesson_io.canonical_slug(str(row.get("lesson", ""))) not in deleted])
+            _jsonl.write_rows(
+                history_path,
+                [row for row in history if lesson_io.canonical_slug(str(row.get("lesson", ""))) not in deleted],
+            )
         privacy_erasure._purge_mirrors(root, deleted)
         from unimem import nextwave_store
 
         managed_deleted = nextwave_store.erase(root, sorted(deleted))
         destruction = vault.destroy(subject)
         result = retrieval_probe() if retrieval_probe else {"passed": False, "status": "not_run"}
-        body = {"subject_tombstone": vault.reference(subject), "deleted_ids": sorted(deleted),
-                "key_destruction": destruction, "probe": result, "issued_at": fp.now(),
-                "backup_scope": "pre-encrypted subject envelopes; vault keys and plaintext backups excluded",
-                "remote_erasure": False, "reason_hash": fp.digest(fp.text(reason)),
-                "kind": "conditional crypto-erasure certificate; probe status is explicit"}
+        body = {
+            "subject_tombstone": vault.reference(subject),
+            "deleted_ids": sorted(deleted),
+            "key_destruction": destruction,
+            "probe": result,
+            "issued_at": fp.now(),
+            "backup_scope": "pre-encrypted subject envelopes; vault keys and plaintext backups excluded",
+            "remote_erasure": False,
+            "reason_hash": fp.digest(fp.text(reason)),
+            "kind": "conditional crypto-erasure certificate; probe status is explicit",
+        }
         if managed_deleted:
             body["deleted_managed_artifacts"] = managed_deleted
         signed = fp.sign(root, body)
@@ -217,16 +262,24 @@ def erase(root: str, subject: str, identities: Sequence[str], vault: SubjectVaul
 
 def verify(root: str, certificate: dict[str, Any]) -> bool:
     try:
-        return (fp.verify(root, certificate["certificate"]) and log.verify(root, certificate["anchor"])
-                and certificate["anchor"]["statement"]["record"]["statement"]["certificate_digest"]
-                == fp.digest(certificate["certificate"]))
+        return (
+            fp.verify(root, certificate["certificate"])
+            and log.verify(root, certificate["anchor"])
+            and certificate["anchor"]["statement"]["record"]["statement"]["certificate_digest"]
+            == fp.digest(certificate["certificate"])
+        )
     except (ValueError, KeyError, TypeError):
         return False
 
 
 def verify_bytes(
-    root: str, identities: Sequence[str], *, strings: Sequence[str], embeddings: Sequence[str] = (),
-    ngram: int = 32, vacuum: bool = True,
+    root: str,
+    identities: Sequence[str],
+    *,
+    strings: Sequence[str],
+    embeddings: Sequence[str] = (),
+    ngram: int = 32,
+    vacuum: bool = True,
 ) -> dict[str, Any]:
     """Issue a separate conditional byte receipt after canonical erasure.
 

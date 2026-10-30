@@ -1,19 +1,32 @@
 """AMA-Bench loader: trajectory turns as messages, step-referenced turns as derived evidence."""
+
 import json
 
 from benchmarks import conversation_bench as cb
 
 
 def _row(episode, domain="WEB"):
-    return {"episode_id": episode, "task": "find the price", "task_type": "web", "domain": domain,
-            "success": True, "num_turns": 3, "total_tokens": 10,
-            "trajectory": [{"turn_idx": i, "action": f"click {i}", "observation": f"page {i}"} for i in range(4)],
-            "qa_pairs": [
-                {"question": "What did the agent click at Step 2?", "answer": "click 2", "question_uuid": "q1", "type": "A"},
-                {"question": "Why did steps 1-3 repeat?", "answer": "a loop", "question_uuid": "q2", "type": "B"},
-                {"question": "What was the overall goal?", "answer": "the price", "question_uuid": "q3", "type": "D"},
-                {"question": "What happened at Step 99?", "answer": "nothing", "question_uuid": "q4", "type": "C"},
-            ]}
+    return {
+        "episode_id": episode,
+        "task": "find the price",
+        "task_type": "web",
+        "domain": domain,
+        "success": True,
+        "num_turns": 3,
+        "total_tokens": 10,
+        "trajectory": [{"turn_idx": i, "action": f"click {i}", "observation": f"page {i}"} for i in range(4)],
+        "qa_pairs": [
+            {
+                "question": "What did the agent click at Step 2?",
+                "answer": "click 2",
+                "question_uuid": "q1",
+                "type": "A",
+            },
+            {"question": "Why did steps 1-3 repeat?", "answer": "a loop", "question_uuid": "q2", "type": "B"},
+            {"question": "What was the overall goal?", "answer": "the price", "question_uuid": "q3", "type": "D"},
+            {"question": "What happened at Step 99?", "answer": "nothing", "question_uuid": "q4", "type": "C"},
+        ],
+    }
 
 
 def test_ama_cases_map_steps_to_action_and_observation_ids(tmp_path):

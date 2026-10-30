@@ -6,6 +6,7 @@ loop. Adjacent append requests share a commit, with a savepoint for each caller.
 Use ``async with await AsyncStore.open(root, space)`` to drain accepted work and
 close the connection. Cancellation after admission does not retract a write.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -25,8 +26,9 @@ if TYPE_CHECKING:
     from unimem.vector_snapshots import BuildLease, ReadLease, SnapshotBackend
     from unimem.vector_store import VectorIndex
 
-Operation = Literal["add", "recall", "stats", "vector_plan", "vector_batch", "vector_ids",
-                    "vector_delta", "vector_check"]
+Operation = Literal[
+    "add", "recall", "stats", "vector_plan", "vector_batch", "vector_ids", "vector_delta", "vector_check"
+]
 VECTOR_HEARTBEAT_SECONDS = 20
 VECTOR_BUILD_TIMEOUT_SECONDS = 900
 
@@ -49,9 +51,17 @@ class AsyncStore:
     Reads retain FIFO ordering with writes and use the ordinary recall guards.
     """
 
-    def __init__(self, executor: ThreadPoolExecutor, store: Store, *, max_pending: int,
-                 batch_size: int, max_messages: int, max_chars: int,
-                 vector_index: VectorIndex | None = None) -> None:
+    def __init__(
+        self,
+        executor: ThreadPoolExecutor,
+        store: Store,
+        *,
+        max_pending: int,
+        batch_size: int,
+        max_messages: int,
+        max_chars: int,
+        vector_index: VectorIndex | None = None,
+    ) -> None:
         self._loop = asyncio.get_running_loop()
         self._executor, self._store = executor, store
         self._admission = asyncio.Semaphore(max_pending)
@@ -86,17 +96,31 @@ class AsyncStore:
         return self._indexed_generation
 
     @classmethod
-    async def open(cls, root: str, space: str, *, create: bool = True, read_only: bool = False,
-                   max_pending: int = 64, batch_size: int = 16,
-                   max_messages: int = 2048, max_chars: int = 8 * 1024 * 1024,
-                   vector_index: VectorIndex | None = None, tenant: str | None = None) -> AsyncStore:
+    async def open(
+        cls,
+        root: str,
+        space: str,
+        *,
+        create: bool = True,
+        read_only: bool = False,
+        max_pending: int = 64,
+        batch_size: int = 16,
+        max_messages: int = 2048,
+        max_chars: int = 8 * 1024 * 1024,
+        vector_index: VectorIndex | None = None,
+        tenant: str | None = None,
+    ) -> AsyncStore:
         """Open off-loop; defaults retain at most 64 requests of 8 MiB each.
 
         Set smaller limits for a fleet with many independent spaces. The limits
         are admission budgets rather than SQLite or process RSS limits.
         """
-        for name, value in (("max_pending", max_pending), ("batch_size", batch_size),
-                            ("max_messages", max_messages), ("max_chars", max_chars)):
+        for name, value in (
+            ("max_pending", max_pending),
+            ("batch_size", batch_size),
+            ("max_messages", max_messages),
+            ("max_chars", max_chars),
+        ):
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
                 raise ValueError(f"{name} must be a positive integer")
         owner = tenant or hashlib.sha256(os.path.realpath(root).encode("utf-8")).hexdigest()
@@ -117,8 +141,15 @@ class AsyncStore:
 
             opening.add_done_callback(dispose)
             raise
-        return cls(executor, store, max_pending=max_pending, batch_size=batch_size,
-                   max_messages=max_messages, max_chars=max_chars, vector_index=vector_index)
+        return cls(
+            executor,
+            store,
+            max_pending=max_pending,
+            batch_size=batch_size,
+            max_messages=max_messages,
+            max_chars=max_chars,
+            vector_index=vector_index,
+        )
 
     def _check_open(self) -> None:
         if asyncio.get_running_loop() is not self._loop:
@@ -135,8 +166,7 @@ class AsyncStore:
             self._admission.release()
             raise
 
-    async def _enqueue(self, operation: Operation,
-                       args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    async def _enqueue(self, operation: Operation, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         result = self._loop.create_future()
         # A cancelled caller no longer observes an admitted operation's error.
         # Retrieve it to avoid unhandled-Future warnings while preserving normal
@@ -145,8 +175,15 @@ class AsyncStore:
         self._queue.put_nowait(_Request(operation, args, kwargs, result))
         return await asyncio.shield(result)
 
-    async def add(self, session: str, messages: Iterable[Mapping[str, Any]], *, session_at: Any = None,
-                  user_speakers: Iterable[str] = (), extract_profile: bool = True) -> dict[str, Any]:
+    async def add(
+        self,
+        session: str,
+        messages: Iterable[Mapping[str, Any]],
+        *,
+        session_at: Any = None,
+        user_speakers: Iterable[str] = (),
+        extract_profile: bool = True,
+    ) -> dict[str, Any]:
         """Append atomically; backpressure precedes input consumption/copying."""
         await self._admit()
         try:
@@ -159,8 +196,11 @@ class AsyncStore:
                 if chars > self._max_chars:
                     raise ConversationError(f"append exceeds {self._max_chars} text characters")
                 copied.append(copy.deepcopy(dict(message)))
-            kwargs = {"session_at": session_at, "user_speakers": tuple(user_speakers),
-                      "extract_profile": extract_profile}
+            kwargs = {
+                "session_at": session_at,
+                "user_speakers": tuple(user_speakers),
+                "extract_profile": extract_profile,
+            }
         except BaseException:
             self._admission.release()
             raise
@@ -174,8 +214,10 @@ class AsyncStore:
         must match exactly; concurrent mutation can require the caller to retry.
         Engine ownership/lifetime remains with its configuring application.
         """
-        if self._vector_index is not None and question.strip() and (
-            options is None or options.embedder is not None and options.pool > 0
+        if (
+            self._vector_index is not None
+            and question.strip()
+            and (options is None or options.embedder is not None and options.pool > 0)
         ):
             self._check_open()
             async with self._vector_calls:
@@ -208,25 +250,39 @@ class AsyncStore:
                 raise ConversationError("external vector retrieval requires an upgraded conversation store")
             stamp = self._store.unit_stamp()
             identity = self._store._units_identity or self._store.cache_identity
-            generation = hashlib.sha256(json.dumps([str(identity), stamp, index.model, index.dimension,
-                                                     embed.MAX_SEQ], sort_keys=True).encode()).hexdigest()
+            generation = hashlib.sha256(
+                json.dumps([str(identity), stamp, index.model, index.dimension, embed.MAX_SEQ], sort_keys=True).encode()
+            ).hexdigest()
             queries = list(dict.fromkeys(subqueries(question.strip())))
             vectors = encoder.encode(queries, query=True) if queries else []
-            allowed = self._store.allowed(sessions=options.sessions, speakers=options.speakers,
-                                         since=options.since, until=options.until)
-            return {"stamp": stamp, "identity": identity, "generation": generation, "queries": queries,
-                    "vectors": vectors, "allowed": None if allowed is None else json.dumps(sorted(allowed)),
-                    "choice": encoder.tag, "revision": int(stamp[0]),
-                    "floor": self._store.unit_journal_floor()}
+            allowed = self._store.allowed(
+                sessions=options.sessions, speakers=options.speakers, since=options.since, until=options.until
+            )
+            return {
+                "stamp": stamp,
+                "identity": identity,
+                "generation": generation,
+                "queries": queries,
+                "vectors": vectors,
+                "allowed": None if allowed is None else json.dumps(sorted(allowed)),
+                "choice": encoder.tag,
+                "revision": int(stamp[0]),
+                "floor": self._store.unit_journal_floor(),
+            }
 
     def _vector_ids(self, plan: dict[str, Any], after: int) -> list[str]:
         """Keyset pages bound the filter payload even for very large sessions."""
         with self._store.read_snapshot():
             if self._store.unit_stamp() != plan["stamp"]:
                 raise ConversationError("conversation changed while querying the vector index; retry recall")
-            return [str(row[0]) for row in self._store.db.execute(
-                "SELECT id FROM units WHERE id>? AND turn IN (SELECT value FROM json_each(?)) "
-                "ORDER BY id LIMIT 10000", (after, plan["allowed"]))]
+            return [
+                str(row[0])
+                for row in self._store.db.execute(
+                    "SELECT id FROM units WHERE id>? AND turn IN (SELECT value FROM json_each(?)) "
+                    "ORDER BY id LIMIT 10000",
+                    (after, plan["allowed"]),
+                )
+            ]
 
     def _vector_batch(self, plan: dict[str, Any], after: int) -> list[Any]:
         from unimem.vector_store import VectorRecord
@@ -239,15 +295,18 @@ class AsyncStore:
             assert encoder is not None
             checksums = [self._vector_checksum(row[3]) for row in rows]
             vectors = encoder.vectors(list(zip(checksums, (row[2] for row in rows))))
-            return [VectorRecord(str(row[0]), vector, plan["generation"], checksum)
-                    for row, vector, checksum in zip(rows, vectors, checksums)]
+            return [
+                VectorRecord(str(row[0]), vector, plan["generation"], checksum)
+                for row, vector, checksum in zip(rows, vectors, checksums)
+            ]
 
     def _vector_checksum(self, checksum: str) -> str:
         from unimem.conversation import embed
 
         assert self._vector_index is not None
-        return hashlib.sha256(json.dumps([self._vector_index.model, self._vector_index.dimension,
-                                          embed.MAX_SEQ, checksum]).encode()).hexdigest()
+        return hashlib.sha256(
+            json.dumps([self._vector_index.model, self._vector_index.dimension, embed.MAX_SEQ, checksum]).encode()
+        ).hexdigest()
 
     def _vector_check(self, plan: dict[str, Any]) -> None:
         if self._store.unit_stamp() != plan["stamp"]:
@@ -269,8 +328,10 @@ class AsyncStore:
             encoder = _embedder(self._store, plan["choice"])
             assert encoder is not None
             vectors = encoder.vectors([(checksum, str(change.body)) for checksum, change in zip(checksums, live)])
-            records = [VectorRecord(str(change.unit), vector, plan["generation"], checksum)
-                       for change, vector, checksum in zip(live, vectors, checksums)]
+            records = [
+                VectorRecord(str(change.unit), vector, plan["generation"], checksum)
+                for change, vector, checksum in zip(live, vectors, checksums)
+            ]
             deleted = [str(change.unit) for change in current.values() if change.body is None]
             return changes[-1].revision, records, deleted
 
@@ -286,8 +347,7 @@ class AsyncStore:
                 return await snapshots.pin(plan["generation"])
             if head.revision > plan["revision"]:
                 raise ConversationError("conversation vector plan is stale; retry recall")
-            lease = await snapshots.begin(plan["revision"], plan["generation"],
-                                          full=head.revision < plan["floor"])
+            lease = await snapshots.begin(plan["revision"], plan["generation"], full=head.revision < plan["floor"])
             if lease is None:
                 continue
             published = False
@@ -312,6 +372,7 @@ class AsyncStore:
         the 60-second idle lease through slow inference; a 15-minute total limit
         stops renewal of stalled builds. Admitted CPU work still drains safely.
         """
+
         async def pulse() -> None:
             while True:
                 await asyncio.sleep(VECTOR_HEARTBEAT_SECONDS)
@@ -333,8 +394,9 @@ class AsyncStore:
         heartbeat = self._loop.create_task(pulse(), name="unimem-vector-build-lease")
         work = self._loop.create_task(populate(), name="unimem-vector-build")
         try:
-            done, _pending = await asyncio.wait((work, heartbeat), timeout=VECTOR_BUILD_TIMEOUT_SECONDS,
-                                               return_when=asyncio.FIRST_COMPLETED)
+            done, _pending = await asyncio.wait(
+                (work, heartbeat), timeout=VECTOR_BUILD_TIMEOUT_SECONDS, return_when=asyncio.FIRST_COMPLETED
+            )
             if not done:
                 raise ConversationError("vector snapshot build exceeded its 15-minute budget; retry recall")
             for task in done:
@@ -354,8 +416,9 @@ class AsyncStore:
                 return cast(Recall, await self._request("recall", (question,), {"options": options}))
             # A copied SQLite database preserves its UUID but is a distinct
             # authoritative source. Bind both its canonical locator and UUID.
-            source = hashlib.sha256(json.dumps([os.path.realpath(self._store.path), str(plan["identity"])])
-                                    .encode()).hexdigest()
+            source = hashlib.sha256(
+                json.dumps([os.path.realpath(self._store.path), str(plan["identity"])]).encode()
+            ).hexdigest()
             await index.bind_source(source)
             snapshots = cast("SnapshotBackend | None", getattr(index, "snapshots", None))
             read = await self._prepare_snapshot(snapshots, plan) if snapshots is not None else None
@@ -379,9 +442,12 @@ class AsyncStore:
                         if snapshots is not None and read is not None:
                             hits = await snapshots.search(read, vector, top_k=options.pool, allowed_ids=ids)
                         else:
-                            hits = await index.search(vector, top_k=options.pool, generation=plan["generation"],
-                                                      allowed_ids=ids)
-                        pages[query] = sorted(pages[query] + hits, key=lambda hit: (-hit.score, hit.key))[:options.pool]
+                            hits = await index.search(
+                                vector, top_k=options.pool, generation=plan["generation"], allowed_ids=ids
+                            )
+                        pages[query] = sorted(pages[query] + hits, key=lambda hit: (-hit.score, hit.key))[
+                            : options.pool
+                        ]
                     if ids is None:
                         break
                     after = int(ids[-1])
@@ -392,12 +458,15 @@ class AsyncStore:
             for query, hits in pages.items():
                 # Never trust provider metadata or text. IDs are rejoined to
                 # canonical units and rechecked against eligibility by recall.
-                rankings[query] = tuple(int(hit.key) for hit in hits
-                                        if hit.key.isascii() and hit.key.isdecimal() and len(hit.key) <= 19
-                                        and 0 < int(hit.key) < 2**63)
+                rankings[query] = tuple(
+                    int(hit.key)
+                    for hit in hits
+                    if hit.key.isascii() and hit.key.isdecimal() and len(hit.key) <= 19 and 0 < int(hit.key) < 2**63
+                )
             dense = DenseCandidates(plan["identity"], plan["stamp"], index.model, rankings)
-            return cast(Recall, await self._request("recall", (question,),
-                                                   {"options": options, "dense_candidates": dense}))
+            return cast(
+                Recall, await self._request("recall", (question,), {"options": options, "dense_candidates": dense})
+            )
 
     async def stats(self) -> dict[str, Any]:
         """Read durable store counts after all previously admitted operations."""

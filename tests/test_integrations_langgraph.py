@@ -120,7 +120,9 @@ class TestWithLessons:
             return {"resolved": True}
 
         wrapped = unimem_langgraph.with_lessons(
-            node, memory, state_query=lambda state: state["input"].upper(),
+            node,
+            memory,
+            state_query=lambda state: state["input"].upper(),
         )
         compiled = _build_graph(wrapped)
         compiled.invoke({"input": "hello"}, config={"configurable": {"thread_id": "conv-2"}})
@@ -139,7 +141,8 @@ class TestWithLessons:
 
         compiled = _build_graph(unimem_langgraph.with_lessons(node, memory))
         result = compiled.invoke(
-            {"input": "q"}, config={"configurable": {"thread_id": "conv-3"}},
+            {"input": "q"},
+            config={"configurable": {"thread_id": "conv-3"}},
         )
         assert seen["lessons"] == []
         assert result["resolved"] is True

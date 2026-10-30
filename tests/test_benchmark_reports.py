@@ -9,6 +9,7 @@ import pytest
 
 try:
     import numpy as np
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
@@ -37,8 +38,11 @@ class TestUnimodalAlert:
             "transfer_gap": {"value": 0.0, "n": 1, "untraceable": 0},
             "n_lessons": sum(importance_lessons.values()),
             "extras": {
-                "never_hit": [], "top5": [], "proposed_not_validated": [],
-                "importance_lessons": importance_lessons, "importance_episodes": {},
+                "never_hit": [],
+                "top5": [],
+                "proposed_not_validated": [],
+                "importance_lessons": importance_lessons,
+                "importance_episodes": {},
                 "domain_coverage": {},
             },
         }
@@ -101,6 +105,7 @@ class TestPersistReport:
 
     def test_persist_report_filename_pattern(self, tmp_memory):
         import datetime
+
         old_base = bm.BASE_DIR
         bm.BASE_DIR = str(tmp_memory)
         try:
@@ -112,6 +117,7 @@ class TestPersistReport:
 
     def test_persist_report_does_not_collide_within_the_same_second(self, tmp_memory):
         import datetime
+
         old_base = bm.BASE_DIR
         bm.BASE_DIR = str(tmp_memory)
         try:
@@ -316,11 +322,14 @@ class TestSemanticDuplicates:
     @pytest.mark.skipif(not HAS_NUMPY, reason="numpy not installed")
     def test_finds_near_duplicate_pair_above_threshold(self, tmp_path):
         index_path = tmp_path / "index.npz"
-        embeddings = np.array([
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ], dtype=np.float32)
+        embeddings = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ],
+            dtype=np.float32,
+        )
         np.savez(
             str(index_path),
             slugs=np.array(["lesson_a", "lesson_b", "lesson_c"]),

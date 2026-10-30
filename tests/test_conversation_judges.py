@@ -8,6 +8,7 @@ Verifies:
 5. LoCoMo category 5 (adversarial) exclusion from overall accuracy.
 6. Memory lift calculation between reference modes.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -135,11 +136,47 @@ class TestSummarizeAndProtocolExclusions:
             neighbours=1,
         )
         rows = [
-            {"type": "single-hop", "correct": True, "score": 1.0, "evidence": 1.0, "complete": True, "session": 1.0, "answer_in_context": True, "tokens": 100},
-            {"type": "temporal", "correct": True, "score": 1.0, "evidence": 1.0, "complete": True, "session": 1.0, "answer_in_context": True, "tokens": 100},
-            {"type": "multi-hop", "correct": False, "score": 0.0, "evidence": 0.5, "complete": False, "session": 1.0, "answer_in_context": False, "tokens": 100},
+            {
+                "type": "single-hop",
+                "correct": True,
+                "score": 1.0,
+                "evidence": 1.0,
+                "complete": True,
+                "session": 1.0,
+                "answer_in_context": True,
+                "tokens": 100,
+            },
+            {
+                "type": "temporal",
+                "correct": True,
+                "score": 1.0,
+                "evidence": 1.0,
+                "complete": True,
+                "session": 1.0,
+                "answer_in_context": True,
+                "tokens": 100,
+            },
+            {
+                "type": "multi-hop",
+                "correct": False,
+                "score": 0.0,
+                "evidence": 0.5,
+                "complete": False,
+                "session": 1.0,
+                "answer_in_context": False,
+                "tokens": 100,
+            },
             # Category 5 / adversarial: incorrect answer, should be excluded from overall accuracy
-            {"type": "adversarial", "correct": False, "score": 0.0, "evidence": 0.0, "complete": False, "session": 1.0, "answer_in_context": False, "tokens": 100},
+            {
+                "type": "adversarial",
+                "correct": False,
+                "score": 0.0,
+                "evidence": 0.0,
+                "complete": False,
+                "session": 1.0,
+                "answer_in_context": False,
+                "tokens": 100,
+            },
         ]
 
         summary = summarize(rows, args, budget=1500, ingest_s=1.0, recall_s=0.01, full_tokens=[500])

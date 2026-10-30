@@ -12,6 +12,7 @@ an empirical confidence interval; it is reported as unavailable.
 JSON is emitted to stdout. Inputs must be saved with per-question rows; legacy
 outputs lacking content provenance and gold identities cannot be compared safely.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,9 +27,14 @@ from dataclasses import dataclass
 from typing import cast
 
 _SCALARS = {
-    "evidence": "evidence", "complete": "complete", "session": "session",
-    "answer_in_context": "answer_in_context", "tokens": "tokens",
-    "completeness_score": "completeness_score", "accuracy": "correct", "score": "score",
+    "evidence": "evidence",
+    "complete": "complete",
+    "session": "session",
+    "answer_in_context": "answer_in_context",
+    "tokens": "tokens",
+    "completeness_score": "completeness_score",
+    "accuracy": "correct",
+    "score": "score",
 }
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -143,7 +149,9 @@ def _run(raw: Mapping[str, object]) -> _Run:
         raise ValueError("provenance must contain finite JSON values") from exc
     evaluation = json.dumps(
         {key: raw[key] for key in ("judge", "judge_profile", "judge_model", "answer_model") if key in raw},
-        sort_keys=True, allow_nan=False, separators=(",", ":"),
+        sort_keys=True,
+        allow_nan=False,
+        separators=(",", ":"),
     )
     dataset = _string(raw.get("dataset"), "dataset")
     budget = _integer(raw.get("budget"), "budget", 1)
@@ -175,18 +183,31 @@ def _run(raw: Mapping[str, object]) -> _Run:
         metric_fields = fields
         values = {key: _scalar(row[_SCALARS[key]], f"{identity}.{key}") for key in fields}
         for key, value in values.items():
-            if value is None and key not in ("evidence", "complete", "session", "answer_in_context", "completeness_score"):
+            if value is None and key not in (
+                "evidence",
+                "complete",
+                "session",
+                "answer_in_context",
+                "completeness_score",
+            ):
                 raise ValueError(f"missing measured value: {identity}.{key}")
             if key == "tokens" and (isinstance(row["tokens"], bool) or not isinstance(row["tokens"], int)):
                 raise ValueError(f"{identity}.tokens must be a nonnegative integer")
             if value is not None and (value < 0 or (key not in ("tokens", "score") and value > 1)):
                 raise ValueError(f"metric out of range: {identity}.{key}")
         for level, ranking, gold in (("turn", ranked_turns, turns), ("session", ranked_sessions, sessions)):
-            values.update({f"{level}_{key}": value if mode == "memory" else None
-                           for key, value in ranking_metrics(ranking, gold).items()})
-        rubric = json.dumps({"rubric": row["rubric"]} if "rubric" in row else {},
-                            sort_keys=True, allow_nan=False, separators=(",", ":"))
-        rows[identity] = _Row(identity, category, cluster, digest, rubric, frozenset(turns), frozenset(sessions), values)
+            values.update(
+                {
+                    f"{level}_{key}": value if mode == "memory" else None
+                    for key, value in ranking_metrics(ranking, gold).items()
+                }
+            )
+        rubric = json.dumps(
+            {"rubric": row["rubric"]} if "rubric" in row else {}, sort_keys=True, allow_nan=False, separators=(",", ":")
+        )
+        rows[identity] = _Row(
+            identity, category, cluster, digest, rubric, frozenset(turns), frozenset(sessions), values
+        )
     assert metric_fields is not None
     return _Run(dataset, budget, mode, canonical, evaluation, rows, tuple(next(iter(rows.values())).values))
 
@@ -199,7 +220,10 @@ def _percentile(ordered: Sequence[float], quantile: float) -> float:
 
 def _estimate(
     pairs: Sequence[tuple[str, float | None, float | None]],
-    *, n_resamples: int, seed: int, confidence_level: float,
+    *,
+    n_resamples: int,
+    seed: int,
+    confidence_level: float,
 ) -> dict[str, object]:
     groups: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for cluster, baseline, candidate in pairs:
@@ -207,9 +231,15 @@ def _estimate(
             groups[cluster].append((baseline, candidate))
     n = sum(map(len, groups.values()))
     result: dict[str, object] = {
-        "n_questions": n, "n_clusters": len(groups), "excluded_questions": len(pairs) - n,
-        "baseline_mean": None, "candidate_mean": None, "delta": None,
-        "ci_lower": None, "ci_upper": None, "significant": False,
+        "n_questions": n,
+        "n_clusters": len(groups),
+        "excluded_questions": len(pairs) - n,
+        "baseline_mean": None,
+        "candidate_mean": None,
+        "delta": None,
+        "ci_lower": None,
+        "ci_upper": None,
+        "significant": False,
         "ci_status": "no_scored_questions" if not n else "insufficient_clusters",
     }
     if not n:
@@ -219,9 +249,7 @@ def _estimate(
     result.update(baseline_mean=base, candidate_mean=candidate, delta=candidate - base)
     if len(groups) < 2:
         return result
-    totals = [
-        (len(groups[cluster]), math.fsum(t - b for b, t in groups[cluster])) for cluster in sorted(groups)
-    ]
+    totals = [(len(groups[cluster]), math.fsum(t - b for b, t in groups[cluster])) for cluster in sorted(groups)]
     rng = random.Random(seed)
     deltas: list[float] = []
     for _ in range(n_resamples):
@@ -235,8 +263,12 @@ def _estimate(
 
 
 def compare_runs(
-    baseline: Mapping[str, object], candidate: Mapping[str, object], *, n_resamples: int = 2000,
-    seed: int = 42, confidence_level: float = 0.95,
+    baseline: Mapping[str, object],
+    candidate: Mapping[str, object],
+    *,
+    n_resamples: int = 2000,
+    seed: int = 42,
+    confidence_level: float = 0.95,
 ) -> dict[str, object]:
     """Compare exactly matched questions; invalid pairs raise rather than vanish.
 
@@ -268,27 +300,45 @@ def compare_runs(
     def block(question_ids: Sequence[str]) -> dict[str, object]:
         return {
             metric: _estimate(
-                [(before.rows[q].cluster, before.rows[q].values[metric], after.rows[q].values[metric])
-                 for q in question_ids],
-                n_resamples=n_resamples, seed=seed, confidence_level=confidence_level,
-            ) for metric in before.metrics
+                [
+                    (before.rows[q].cluster, before.rows[q].values[metric], after.rows[q].values[metric])
+                    for q in question_ids
+                ],
+                n_resamples=n_resamples,
+                seed=seed,
+                confidence_level=confidence_level,
+            )
+            for metric in before.metrics
         }
 
     categories = sorted({row.category for row in before.rows.values()})
     return {
-        "comparison_schema": 1, "dataset": before.dataset, "budget": before.budget, "mode": before.mode,
-        "n_questions": len(ids), "n_clusters": len({row.cluster for row in before.rows.values()}),
-        "confidence_level": confidence_level, "n_resamples": n_resamples, "seed": seed,
-        "sample_unit": "conversation", "mean_weighting": "question",
-        "interval_method": "paired_cluster_percentile_bootstrap", "interval_scope": "marginal",
+        "comparison_schema": 1,
+        "dataset": before.dataset,
+        "budget": before.budget,
+        "mode": before.mode,
+        "n_questions": len(ids),
+        "n_clusters": len({row.cluster for row in before.rows.values()}),
+        "confidence_level": confidence_level,
+        "n_resamples": n_resamples,
+        "seed": seed,
+        "sample_unit": "conversation",
+        "mean_weighting": "question",
+        "interval_method": "paired_cluster_percentile_bootstrap",
+        "interval_scope": "marginal",
         "overall": block(ids),
-        "by_type": {category: block([q for q in ids if before.rows[q].category == category]) for category in categories},
+        "by_type": {
+            category: block([q for q in ids if before.rows[q].category == category]) for category in categories
+        },
     }
 
 
 def clustered_estimates(
-    run: Mapping[str, object], *, n_resamples: int = 2000,
-    seed: int = 42, confidence_level: float = 0.95,
+    run: Mapping[str, object],
+    *,
+    n_resamples: int = 2000,
+    seed: int = 42,
+    confidence_level: float = 0.95,
 ) -> dict[str, object]:
     """Absolute question-weighted means with conversation-cluster intervals.
 
@@ -308,24 +358,37 @@ def clustered_estimates(
     def block(question_ids: Sequence[str]) -> dict[str, object]:
         estimates: dict[str, object] = {}
         for metric in source.metrics:
-            pairs = [(source.rows[q].cluster, 0.0 if source.rows[q].values[metric] is not None else None,
-                      source.rows[q].values[metric]) for q in question_ids]
+            pairs = [
+                (
+                    source.rows[q].cluster,
+                    0.0 if source.rows[q].values[metric] is not None else None,
+                    source.rows[q].values[metric],
+                )
+                for q in question_ids
+            ]
             estimate = _estimate(pairs, n_resamples=n_resamples, seed=seed, confidence_level=confidence_level)
             estimates[metric] = {
                 "mean": estimate["candidate_mean"],
-                **{key: estimate[key] for key in ("ci_lower", "ci_upper", "ci_status", "n_questions",
-                                                  "n_clusters", "excluded_questions")},
+                **{
+                    key: estimate[key]
+                    for key in ("ci_lower", "ci_upper", "ci_status", "n_questions", "n_clusters", "excluded_questions")
+                },
             }
         return estimates
 
     categories = sorted({row.category for row in source.rows.values()})
     return {
-        "sample_unit": "conversation", "mean_weighting": "question",
-        "interval_method": "cluster_percentile_bootstrap", "interval_scope": "marginal",
-        "confidence_level": confidence_level, "n_resamples": n_resamples, "seed": seed,
+        "sample_unit": "conversation",
+        "mean_weighting": "question",
+        "interval_method": "cluster_percentile_bootstrap",
+        "interval_scope": "marginal",
+        "confidence_level": confidence_level,
+        "n_resamples": n_resamples,
+        "seed": seed,
         "overall": block(ids),
-        "by_type": {category: block([q for q in ids if source.rows[q].category == category])
-                    for category in categories},
+        "by_type": {
+            category: block([q for q in ids if source.rows[q].category == category]) for category in categories
+        },
     }
 
 
@@ -407,8 +470,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         budgets = [str(args.budget)] if args.budget is not None else sorted(baseline, key=int)
         if any(budget not in baseline for budget in budgets):
             raise ValueError("requested budget missing")
-        output = {budget: compare_runs(baseline[budget], candidate[budget],
-                                      n_resamples=args.resamples, seed=args.seed) for budget in budgets}
+        output = {
+            budget: compare_runs(baseline[budget], candidate[budget], n_resamples=args.resamples, seed=args.seed)
+            for budget in budgets
+        }
         failures = {budget: check_regressions(run) for budget, run in output.items()} if args.check else {}
         print(json.dumps({"comparisons": output, "gate_failures": failures}, allow_nan=False, sort_keys=True))
         return 1 if any(failures.values()) else 0

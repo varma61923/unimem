@@ -70,9 +70,7 @@ def time_to_reported_fraction(curve: list[Step], fraction: float) -> float | Non
     return None
 
 
-def log_rank_test(
-    group_a: list[Observation], group_b: list[Observation]
-) -> tuple[float, float]:
+def log_rank_test(group_a: list[Observation], group_b: list[Observation]) -> tuple[float, float]:
     """Do these two arms report on the same schedule? Returns (z, p)."""
     if not group_a or not group_b:
         return 0.0, 1.0

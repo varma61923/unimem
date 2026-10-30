@@ -44,7 +44,8 @@ class TestTheCorpusItself:
 class TestTheGate:
     def test_no_field_is_polluted_beyond_the_ceiling(self, report):
         over = {
-            f["field"]: f["pollution_ratio"] for f in report["fields"]
+            f["field"]: f["pollution_ratio"]
+            for f in report["fields"]
             if f["pollution_ratio"] and f["pollution_ratio"] > MAX_POLLUTION
         }
         assert not over, (
@@ -55,8 +56,7 @@ class TestTheGate:
 
     def test_no_field_is_much_worse_than_the_best(self, report):
         assert report["pollution_spread"] <= MAX_SPREAD, (
-            f"retrieval is {report['pollution_spread']:.2f}x worse in "
-            f"{report['worst_field']!r} than in the best field"
+            f"retrieval is {report['pollution_spread']:.2f}x worse in {report['worst_field']!r} than in the best field"
         )
 
     def test_quality_holds_in_every_field(self, report):
@@ -68,19 +68,18 @@ class TestTheGate:
 
 class TestTheGateActuallyCatchesTheRegressionItExistsFor:
     def test_the_historical_scorer_fails_the_ceiling(self):
-        old = measure_retrieval.compute(
-            FIXTURES, floor=0.0, scorer=retrieval.SCORER_COUNT)
+        old = measure_retrieval.compute(FIXTURES, floor=0.0, scorer=retrieval.SCORER_COUNT)
         worst = max(f["pollution_ratio"] for f in old["fields"])
         assert worst > MAX_POLLUTION, (
-            "the pre-IDF scorer should exceed the pollution ceiling; a gate that "
-            "passes it is measuring nothing"
+            "the pre-IDF scorer should exceed the pollution ceiling; a gate that passes it is measuring nothing"
         )
 
     def test_the_current_scorer_beats_it_in_every_single_field(self):
-        old = {f["field"]: f["pollution_ratio"] for f in measure_retrieval.compute(
-            FIXTURES, floor=0.0, scorer=retrieval.SCORER_COUNT)["fields"]}
-        new = {f["field"]: f["pollution_ratio"] for f in measure_retrieval.compute(
-            FIXTURES)["fields"]}
+        old = {
+            f["field"]: f["pollution_ratio"]
+            for f in measure_retrieval.compute(FIXTURES, floor=0.0, scorer=retrieval.SCORER_COUNT)["fields"]
+        }
+        new = {f["field"]: f["pollution_ratio"] for f in measure_retrieval.compute(FIXTURES)["fields"]}
         regressed = {k: (old[k], new[k]) for k in old if new[k] > old[k]}
         assert not regressed, f"fields regressed (old, new): {regressed}"
 
@@ -95,9 +94,10 @@ class TestTheGateActuallyCatchesTheRegressionItExistsFor:
 class TestItRunsAsACommand:
     def test_bench_retrieval_emits_parseable_json(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, "-m", "unimem", "bench", "--retrieval", "--json",
-             "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem", "bench", "--retrieval", "--json", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, result.stderr
         payload = json.loads(result.stdout)
@@ -106,18 +106,20 @@ class TestItRunsAsACommand:
 
     def test_the_gate_flags_are_honoured_by_the_exit_code(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, "-m", "unimem", "bench", "--retrieval",
-             "--max-pollution", "0.5", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem", "bench", "--retrieval", "--max-pollution", "0.5", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode != 0
         assert "pollution exceeds" in result.stderr
 
     def test_retrieval_and_pilot_are_not_silently_combined(self, tmp_path):
         result = subprocess.run(
-            [sys.executable, "-m", "unimem", "bench", "--retrieval", "--pilot",
-             "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem", "bench", "--retrieval", "--pilot", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 2
         assert "measure different things" in result.stderr

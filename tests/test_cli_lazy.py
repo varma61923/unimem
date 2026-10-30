@@ -7,7 +7,9 @@ import sys
 def _run(script: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-c", script],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
 
 

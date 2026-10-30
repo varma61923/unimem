@@ -21,12 +21,24 @@ from unimem import mcp_server  # noqa: E402
 def store(tmp_path):
     root = str(tmp_path / "fleet")
     assert cli("init", "--dest", root).returncode == 0
-    _write_lesson(root, "suppression-list", body="Check the suppression list first.",
-                  description="password reset email suppression failures")
-    _write_lesson(root, "refund-threshold", body="Escalate refunds above the threshold.",
-                  description="refunds above the manager approval threshold")
-    _write_lesson(root, "unsubscribe-sync", body="Resync the unsubscribe list nightly.",
-                  description="opt-out roster drifts from the mailing vendor")
+    _write_lesson(
+        root,
+        "suppression-list",
+        body="Check the suppression list first.",
+        description="password reset email suppression failures",
+    )
+    _write_lesson(
+        root,
+        "refund-threshold",
+        body="Escalate refunds above the threshold.",
+        description="refunds above the manager approval threshold",
+    )
+    _write_lesson(
+        root,
+        "unsubscribe-sync",
+        body="Resync the unsubscribe list nightly.",
+        description="opt-out roster drifts from the mailing vendor",
+    )
     _write_lesson(root, "unrelated", body="Rotate keys.", description="rotate api keys quarterly")
     retrieval_io.configure(root, fusion=retrieval_io.FUSION_RRF)
     holdout_io.configure(root, rate=0.5)
@@ -44,13 +56,18 @@ def _stub_both(monkeypatch, slugs=SEMANTIC, rc=0, model=MPNET):
     monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: True)
     monkeypatch.setattr(query_cmd, "_index_is_unusable", lambda root: "")
     monkeypatch.setattr(
-        semantic_arm, "ranked_slugs",
+        semantic_arm,
+        "ranked_slugs",
         lambda root, query, top_k, agent_type=None: (rc, list(slugs)[:top_k], []),
     )
     monkeypatch.setattr(
-        query_cmd, "_semantic_slugs",
+        query_cmd,
+        "_semantic_slugs",
         lambda args, root, hint, extra=0: (
-            rc, list(slugs)[: args.top_k + extra], f"# Index: 4 lessons, model={model}\n"),
+            rc,
+            list(slugs)[: args.top_k + extra],
+            f"# Index: 4 lessons, model={model}\n",
+        ),
     )
 
 
@@ -94,15 +111,22 @@ def test_the_receipt_records_the_fused_label(store, monkeypatch):
     assert receipt.scorer == "rrf(adaptive-v1+semantic)"
 
 
-@pytest.mark.parametrize("why,setup", [
-    ("attention extra", lambda mp: mp.setattr(semantic_arm, "available", lambda: False)),
-    ("index", lambda mp: mp.setattr(semantic_arm, "ensure_fresh",
-                                    lambda root: "no semantic index has been built yet")),
-    ("failed", lambda mp: mp.setattr(semantic_arm, "ranked_slugs",
-                                     lambda *a, **k: (1, [], ["corrupt index"]))),
-])
+@pytest.mark.parametrize(
+    "why,setup",
+    [
+        ("attention extra", lambda mp: mp.setattr(semantic_arm, "available", lambda: False)),
+        (
+            "index",
+            lambda mp: mp.setattr(semantic_arm, "ensure_fresh", lambda root: "no semantic index has been built yet"),
+        ),
+        ("failed", lambda mp: mp.setattr(semantic_arm, "ranked_slugs", lambda *a, **k: (1, [], ["corrupt index"]))),
+    ],
+)
 def test_when_fusion_cannot_run_it_falls_back_to_lexical_and_says_why(
-    store, monkeypatch, why, setup,
+    store,
+    monkeypatch,
+    why,
+    setup,
 ):
     _stub_both(monkeypatch)
     setup(monkeypatch)
@@ -117,8 +141,7 @@ def test_exclude_shown_applies_to_the_semantic_arm_too(store, monkeypatch):
     server = mcp_server.build_server(store)
     first = call(server, "retrieve", task=TASK, occasion_id="long-task")
     shown = _slugs(first, "lessons") - {item["slug"] for item in first.get("withheld") or []}
-    second = call(server, "retrieve", task=TASK, occasion_id="long-task-2",
-                  exclude_shown="long-task")
+    second = call(server, "retrieve", task=TASK, occasion_id="long-task-2", exclude_shown="long-task")
     assert not (_slugs(second, "lessons", "withheld") & shown)
 
 
@@ -126,9 +149,13 @@ def test_a_withdrawn_lesson_is_kept_out_of_the_semantic_arm_too(store, monkeypat
     _stub_both(monkeypatch)
     from unimem import evidence
 
-    monkeypatch.setattr(evidence, "withdrawn", lambda root, policy: {
-        "unsubscribe-sync": {"verdict": "HURTS", "effect": -0.3},
-    })
+    monkeypatch.setattr(
+        evidence,
+        "withdrawn",
+        lambda root, policy: {
+            "unsubscribe-sync": {"verdict": "HURTS", "effect": -0.3},
+        },
+    )
     out = call(mcp_server.build_server(store), "retrieve", task=TASK)
     assert "unsubscribe-sync" not in _slugs(out, "lessons", "withheld")
     assert "unsubscribe-sync" in {w["slug"] for w in out["withdrawn"]}
@@ -151,17 +178,13 @@ def test_a_store_without_fusion_never_touches_the_semantic_arm(tmp_path, monkeyp
 def test_exclude_shown_leaves_both_surfaces_logging_the_same_relevance(store, monkeypatch):
     _stub_both(monkeypatch)
     config = holdout_io.load_config(store)
-    holdout_io.assign_and_log(store, ["refund-threshold"], occasion_id="seed",
-                              rate=0.0, salt=config.salt)
-    rc = query_cmd.run(_args(store, TASK, experiment=True, occasion_id="cli-x",
-                             exclude_shown="seed"))
+    holdout_io.assign_and_log(store, ["refund-threshold"], occasion_id="seed", rate=0.0, salt=config.salt)
+    rc = query_cmd.run(_args(store, TASK, experiment=True, occasion_id="cli-x", exclude_shown="seed"))
     assert rc == 0
-    call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="mcp-x",
-         exclude_shown="seed")
+    call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="mcp-x", exclude_shown="seed")
     cli_rows, mcp_rows = _logged(store, "cli-x"), _logged(store, "mcp-x")
     assert "refund-threshold" not in cli_rows and cli_rows
-    assert {s: r["relevance"] for s, r in cli_rows.items()} == {
-        s: r["relevance"] for s, r in mcp_rows.items()}
+    assert {s: r["relevance"] for s, r in cli_rows.items()} == {s: r["relevance"] for s, r in mcp_rows.items()}
 
 
 def test_both_surfaces_refresh_the_index_before_the_arm_ranks(store, monkeypatch):
@@ -183,8 +206,9 @@ def test_both_surfaces_refresh_the_index_before_the_arm_ranks(store, monkeypatch
 
     events.clear()
     monkeypatch.setattr(query_cmd, "_refresh_stale_index", refresh)
-    monkeypatch.setattr(query_cmd, "_semantic_slugs",
-                        lambda args, root, hint, extra=0: rank(root, "", args.top_k + extra)[:2] + ("",))
+    monkeypatch.setattr(
+        query_cmd, "_semantic_slugs", lambda args, root, hint, extra=0: rank(root, "", args.top_k + extra)[:2] + ("",)
+    )
     assert query_cmd.run(_args(store, TASK)) == 0
     assert events == ["refresh", "rank"]
 

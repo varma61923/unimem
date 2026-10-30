@@ -1,4 +1,5 @@
 """Query vectors may be reused; mutable results, model changes and expired entries must not cross calls."""
+
 import concurrent.futures
 import threading
 

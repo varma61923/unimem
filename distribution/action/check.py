@@ -1,4 +1,5 @@
 """Bound GitHub Action inputs and dispatch real CLI commands without a shell."""
+
 from __future__ import annotations
 
 import os
@@ -16,10 +17,10 @@ def main() -> int:
     if initialize not in ("true", "false"):
         raise ValueError("initialize must be true or false")
     if initialize == "true":
-        subprocess.run([sys.executable, "-m", "unimem", "--offline", "init", "--dest", root],
-                       check=True, timeout=60)
-    return subprocess.run([sys.executable, "-m", "unimem", "--offline", "doctor", "--dest", root],
-                          timeout=60).returncode
+        subprocess.run([sys.executable, "-m", "unimem", "--offline", "init", "--dest", root], check=True, timeout=60)
+    return subprocess.run(
+        [sys.executable, "-m", "unimem", "--offline", "doctor", "--dest", root], timeout=60
+    ).returncode
 
 
 if __name__ == "__main__":

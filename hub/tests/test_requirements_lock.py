@@ -35,15 +35,10 @@ def test_every_direct_pin_agrees_with_the_lock():
 
     missing = sorted(set(direct) - set(locked))
     assert not missing, (
-        f"direct pin(s) {missing} have no entry in requirements-lock.txt -- "
-        "regenerate the lock (see its own header)"
+        f"direct pin(s) {missing} have no entry in requirements-lock.txt -- regenerate the lock (see its own header)"
     )
 
-    mismatched = {
-        name: (direct[name], locked[name])
-        for name in direct
-        if direct[name] != locked[name]
-    }
+    mismatched = {name: (direct[name], locked[name]) for name in direct if direct[name] != locked[name]}
     assert not mismatched, (
         f"direct pin(s) disagree with the lock (requirements.txt, lock): {mismatched} -- "
         "the lock is stale; regenerate it (see its own header)"

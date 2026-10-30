@@ -18,7 +18,9 @@ def add_parser(subparsers):
         help="Allow detected agents such as Kimi to update their host-global hook config.",
     )
     parser.add_argument(
-        "--project-rule", metavar="FILE", help="Stage an explicit project rule for review before activation.",
+        "--project-rule",
+        metavar="FILE",
+        help="Stage an explicit project rule for review before activation.",
     )
     parser.add_argument(
         "--import-agent-history",

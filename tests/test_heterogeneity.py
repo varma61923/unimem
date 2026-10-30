@@ -1,4 +1,5 @@
 """Subgroup (heterogeneous) lesson effects from the randomized holdout."""
+
 import json
 import random
 
@@ -8,10 +9,17 @@ from unimem import experiment, heterogeneity, holdout_io, trace_io
 from unimem.cli import main
 
 
-@pytest.mark.parametrize("x,df,expected", [
-    (3.841458820694124, 1, 0.05), (5.991464547107979, 2, 0.05), (11.070497693516351, 5, 0.05),
-    (0.0, 3, 1.0), (1.0, 1, 0.31731050786291404), (30.0, 10, 0.0008566412),
-])
+@pytest.mark.parametrize(
+    "x,df,expected",
+    [
+        (3.841458820694124, 1, 0.05),
+        (5.991464547107979, 2, 0.05),
+        (11.070497693516351, 5, 0.05),
+        (0.0, 3, 1.0),
+        (1.0, 1, 0.31731050786291404),
+        (30.0, 10, 0.0008566412),
+    ],
+)
 def test_chi2_sf_matches_reference_values(x, df, expected):
     assert heterogeneity.chi2_sf(x, df) == pytest.approx(expected, rel=1e-6, abs=1e-9)
 
@@ -85,8 +93,7 @@ def test_cli_by_agent_type_end_to_end(tmp_path, capsys):
         for i in range(160):
             occ = f"{agent_type}-{i}"
             withheld = holdout_io.assign_and_log(root, ["L"], occasion_id=occ, rate=0.5, salt=config.salt)
-            trace_io.write_new(root, title="t", context="c", solution="s", tags=[], agent_type=agent_type,
-                               trace_id=occ)
+            trace_io.write_new(root, title="t", context="c", solution="s", tags=[], agent_type=agent_type, trace_id=occ)
             p = base if "L" in withheld else base + effect
             holdout_io.record_outcome(root, occ, rng.random() < p)
     capsys.readouterr()

@@ -12,7 +12,10 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from asyncpg import Pool
 
 from hub.config import HubConfig
 from unimem import memory_guard
@@ -219,7 +222,7 @@ class RateLimiterBackend(Protocol):
 def _to_asyncpg_dsn(database_url: str) -> str:
     prefix = "postgresql+asyncpg://"
     if database_url.startswith(prefix):
-        return "postgresql://" + database_url[len(prefix):]
+        return "postgresql://" + database_url[len(prefix) :]
     return database_url
 
 
@@ -277,20 +280,20 @@ class _SharedPgPool:
 
     def __init__(self, dsn: str):
         self.loop = asyncio.new_event_loop()
-        self.pool = None
+        self.pool: Pool | None = None
         self._init_error: BaseException | None = None
         self._stop_event = threading.Event()
         ready = threading.Event()
-        self._thread = threading.Thread(
-            target=self._run, args=(dsn, ready), name="hub-ratelimit-pg", daemon=True
-        )
+        self._thread = threading.Thread(target=self._run, args=(dsn, ready), name="hub-ratelimit-pg", daemon=True)
         self._thread.start()
         if not ready.wait(timeout=_POOL_STARTUP_TIMEOUT_SECONDS):
             self._stop_event.set()
+
             def _cancel_and_stop():
                 for task in asyncio.all_tasks(self.loop):
                     task.cancel()
                 self.loop.stop()
+
             try:
                 self.loop.call_soon_threadsafe(_cancel_and_stop)
             except RuntimeError:
@@ -301,6 +304,13 @@ class _SharedPgPool:
             )
         if self._init_error is not None:
             raise self._init_error
+
+    @property
+    def connected_pool(self) -> Pool:
+        pool = self.pool
+        if pool is None:
+            raise RuntimeError("rate-limit connection pool is not initialized")
+        return pool
 
     def _run(self, dsn: str, ready: threading.Event) -> None:
         asyncio.set_event_loop(self.loop)
@@ -392,10 +402,8 @@ class PostgresRateLimiter:
         return False, (1.0 - tokens) / self._rate_per_sec
 
     async def _refill_and_maybe_decrement(self, key: str) -> tuple[bool, float]:
-        async with self._shared.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                _RATE_LIMIT_TAKE_SQL, self._limiter_name, key, self._capacity, self._rate_per_sec
-            )
+        async with self._shared.connected_pool.acquire() as conn:
+            row = await conn.fetchrow(_RATE_LIMIT_TAKE_SQL, self._limiter_name, key, self._capacity, self._rate_per_sec)
         self._maybe_sweep()
         return bool(row["allowed"]), float(row["tokens"])
 
@@ -404,7 +412,7 @@ class PostgresRateLimiter:
         future.add_done_callback(self._log_refund_failure)
 
     async def _refund_async(self, key: str) -> None:
-        await self._shared.pool.execute(_RATE_LIMIT_REFUND_SQL, self._limiter_name, key, self._capacity)
+        await self._shared.connected_pool.execute(_RATE_LIMIT_REFUND_SQL, self._limiter_name, key, self._capacity)
 
     @staticmethod
     def _log_refund_failure(future: concurrent.futures.Future) -> None:
@@ -429,18 +437,15 @@ class PostgresRateLimiter:
             logger.warning("hub_rate_limit_buckets sweep failed: %r", exc)
 
     async def _sweep_idle_rows(self) -> None:
-        await self._shared.pool.execute(_RATE_LIMIT_SWEEP_SQL, self._limiter_name, self._IDLE_TTL_SECONDS)
+        await self._shared.connected_pool.execute(_RATE_LIMIT_SWEEP_SQL, self._limiter_name, self._IDLE_TTL_SECONDS)
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
     def __repr__(self) -> str:
         return f"PostgresRateLimiter(limiter_name={self._limiter_name!r}, capacity={self._capacity!r})"
 
 
-def make_named_limiter(
-    config: HubConfig | None, per_minute: int, burst: int, limiter_name: str
-) -> RateLimiterBackend:
+def make_named_limiter(config: HubConfig | None, per_minute: int, burst: int, limiter_name: str) -> RateLimiterBackend:
     """A limiter on the deployment's configured backend, under its own name."""
     if config is not None and config.rate_limit_backend == "postgres":
         return PostgresRateLimiter(

@@ -10,6 +10,7 @@ import os
 import tempfile
 import threading
 from collections import OrderedDict
+from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
@@ -21,9 +22,20 @@ CACHE_DIR = ".cache"
 FORMAT_VERSION = 5
 
 PROJECTED_FIELDS = (
-    "name", "description", "applies_when", "tags",
-    "domain", "importance", "uses", "status", "agent_type",
-    "core", "scopes", "valid_from", "valid_until", "expires",
+    "name",
+    "description",
+    "applies_when",
+    "tags",
+    "domain",
+    "importance",
+    "uses",
+    "status",
+    "agent_type",
+    "core",
+    "scopes",
+    "valid_from",
+    "valid_until",
+    "expires",
 )
 
 
@@ -63,16 +75,17 @@ def parse_moment(value: str | datetime.date | datetime.datetime) -> datetime.dat
         try:
             parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError as exc:
-            raise ValueError(
-                f"could not parse {value!r} as a date/time; use YYYY-MM-DD or ISO 8601"
-            ) from exc
+            raise ValueError(f"could not parse {value!r} as a date/time; use YYYY-MM-DD or ISO 8601") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=datetime.timezone.utc)
     return parsed.astimezone(datetime.timezone.utc)
 
 
 def filter_eligible(
-    lessons: list[tuple[str, dict]], *, scope: str = "", as_of: str | datetime.datetime | None = None,
+    lessons: list[tuple[str, dict]],
+    *,
+    scope: str = "",
+    as_of: str | datetime.datetime | None = None,
     show_expired: bool = False,
 ) -> list[tuple[str, dict]]:
     moment = parse_moment(as_of) if as_of else datetime.datetime.now(datetime.timezone.utc)
@@ -84,7 +97,9 @@ def filter_eligible(
         scopes = (
             {str(item).strip() for item in raw_scopes if str(item).strip()}
             if isinstance(raw_scopes, (list, tuple, set))
-            else {str(raw_scopes).strip()} if raw_scopes else set()
+            else {str(raw_scopes).strip()}
+            if raw_scopes
+            else set()
         )
         if requested_scope and scopes and requested_scope not in scopes:
             continue
@@ -104,9 +119,15 @@ def filter_eligible(
 
 
 def _fresh_metadata_eligible(
-    path: str, fm: dict[str, Any], slug: str, *, scope: str = "",
-    as_of: str | datetime.datetime | None = None, agent_type: str | None = None,
-    expected_core: bool | None = None, show_expired: bool = False,
+    path: str,
+    fm: dict[str, Any],
+    slug: str,
+    *,
+    scope: str = "",
+    as_of: str | datetime.datetime | None = None,
+    agent_type: str | None = None,
+    expected_core: bool | None = None,
+    show_expired: bool = False,
 ) -> bool:
     """Routing checks for safe diagnostics; content admission remains mandatory."""
     from unimem import dosage
@@ -121,10 +142,17 @@ def _fresh_metadata_eligible(
 
 
 def fresh_eligible(
-    path: str, fm: dict[str, Any], slug: str, *, scope: str = "",
-    as_of: str | datetime.datetime | None = None, agent_type: str | None = None,
-    expected_core: bool | None = None, show_expired: bool = False,
-    body: str | None = None, root: str | None = None,
+    path: str,
+    fm: dict[str, Any],
+    slug: str,
+    *,
+    scope: str = "",
+    as_of: str | datetime.datetime | None = None,
+    agent_type: str | None = None,
+    expected_core: bool | None = None,
+    show_expired: bool = False,
+    body: str | None = None,
+    root: str | None = None,
 ) -> bool:
     """Recheck eligibility on the authoritative body read after cached ranking.
 
@@ -141,11 +169,16 @@ def fresh_eligible(
             return False
     store_root = root if root is not None else os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(path))))
 
-    return (
-        _fresh_metadata_eligible(path, fm, slug, scope=scope, as_of=as_of,
-                                 agent_type=agent_type, expected_core=expected_core, show_expired=show_expired)
-        and lesson_admission.eligible(store_root, path, fm, body)
-    )
+    return _fresh_metadata_eligible(
+        path,
+        fm,
+        slug,
+        scope=scope,
+        as_of=as_of,
+        agent_type=agent_type,
+        expected_core=expected_core,
+        show_expired=show_expired,
+    ) and lesson_admission.eligible(store_root, path, fm, body)
 
 
 _SCAN_SCOPE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("unimem_scan_scope", default=None)
@@ -186,6 +219,9 @@ def listing(root: str) -> tuple:
 class _Listing(tuple):
     """Keep the public three-field listing while carrying stronger identities."""
 
+    identities: Mapping[str, tuple[int, ...]]
+    fingerprint: tuple
+
     def __new__(cls, entries, identities):
         value = super().__new__(cls, entries)
         object.__setattr__(value, "identities", MappingProxyType(identities))
@@ -206,7 +242,7 @@ def mtime_seconds(mtime_ns: int) -> float:
     return sec + nsec * 1e-9
 
 
-def _listing(root: str) -> tuple:
+def _listing(root: str) -> _Listing:
     ldir = paths.lessons_dir(root)
     scope = _SCAN_SCOPE.get()
     if scope is not None and ldir in scope:
@@ -217,7 +253,7 @@ def _listing(root: str) -> tuple:
     return result
 
 
-def _scan_listing(ldir: str) -> tuple:
+def _scan_listing(ldir: str) -> _Listing:
     """Verify every source; reuse immutable sorted generations only if equal."""
     with _LISTINGS_LOCK:
         prior = _LISTINGS.get(ldir)
@@ -236,14 +272,18 @@ def _scan_listing(ldir: str) -> tuple:
                 continue
             path = prefix + name
             old = previous.get(path)
-            if old is not None and (st.st_dev == old[0] and st.st_ino == old[1]
-                                    and st.st_mtime_ns == old[2] and st.st_ctime_ns == old[3]
-                                    and st.st_size == old[4]):
+            if old is not None and (
+                st.st_dev == old[0]
+                and st.st_ino == old[1]
+                and st.st_mtime_ns == old[2]
+                and st.st_ctime_ns == old[3]
+                and st.st_size == old[4]
+            ):
                 identities[path] = old
             else:
                 identities[path] = _identity(st)
                 unchanged = False
-    if unchanged and len(identities) == len(previous):
+    if prior is not None and unchanged and len(identities) == len(previous):
         with _LISTINGS_LOCK:
             if _LISTINGS.get(ldir) is prior:
                 _LISTINGS.move_to_end(ldir)
@@ -256,9 +296,11 @@ def _scan_listing(ldir: str) -> tuple:
         _LISTINGS.pop(ldir, None)
         if len(result) <= _LISTING_FILES_MAX and path_bytes <= _LISTING_PATH_BYTES_MAX:
             _LISTINGS[ldir] = (result, path_bytes)
-            while (len(_LISTINGS) > _LISTING_ROOTS_MAX
-                   or sum(len(item[0]) for item in _LISTINGS.values()) > _LISTING_FILES_MAX
-                   or sum(item[1] for item in _LISTINGS.values()) > _LISTING_PATH_BYTES_MAX):
+            while (
+                len(_LISTINGS) > _LISTING_ROOTS_MAX
+                or sum(len(item[0]) for item in _LISTINGS.values()) > _LISTING_FILES_MAX
+                or sum(item[1] for item in _LISTINGS.values()) > _LISTING_PATH_BYTES_MAX
+            ):
                 _LISTINGS.popitem(last=False)
     return result
 
@@ -298,8 +340,7 @@ def _read_cache(path: str) -> dict:
 def _write_cache(path: str, entries: dict) -> tuple | None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        fd, tmp = tempfile.mkstemp(
-            dir=os.path.dirname(path), prefix=CACHE_NAME + ".", suffix=".tmp")
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=CACHE_NAME + ".", suffix=".tmp")
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
                 json.dump({"format_version": FORMAT_VERSION, "entries": entries}, fh)
@@ -320,8 +361,7 @@ def _write_cache(path: str, entries: dict) -> tuple | None:
 def _valid_terms(terms: object) -> bool:
     if not isinstance(terms, list) or len(terms) != 4:
         return False
-    return all(isinstance(field, list) and all(isinstance(t, str) for t in field)
-               for field in terms)
+    return all(isinstance(field, list) and all(isinstance(t, str) for t in field) for field in terms)
 
 
 def _stamps_differ(cached: dict, entries: dict) -> bool:
@@ -349,6 +389,7 @@ def _load_entries(root: str, reader=None) -> tuple[dict[str, dict], list[str]]:
 
 def _load_entries_keyed(root: str, reader) -> tuple[dict[str, dict], list[str], tuple]:
     if reader is None:
+
         def reader(p):  # noqa: E306
             try:
                 return frontmatter.read(p)
@@ -386,10 +427,10 @@ def _load_entries_keyed(root: str, reader) -> tuple[dict[str, dict], list[str], 
             and prior.get("source_identity") == list(listing.identities[path])
             and isinstance(prior.get("fm"), dict)
         )
-        if stamp_and_fm_match and (path in validated or _valid_terms(prior.get("terms"))):
+        if isinstance(prior, dict) and stamp_and_fm_match and (path in validated or _valid_terms(prior.get("terms"))):
             entries[path] = prior
             continue
-        if stamp_and_fm_match:
+        if isinstance(prior, dict) and stamp_and_fm_match:
             entries[path] = {**prior, "terms": field_terms(prior["fm"])}
             repaired = True
             continue
@@ -402,9 +443,11 @@ def _load_entries_keyed(root: str, reader) -> tuple[dict[str, dict], list[str], 
             continue
         projected = project(fm)
         entries[path] = {
-            "mtime_ns": stamp[0], "size": stamp[1],
+            "mtime_ns": stamp[0],
+            "size": stamp[1],
             "source_identity": list(listing.identities[path]),
-            "fm": projected, "terms": field_terms(projected),
+            "fm": projected,
+            "terms": field_terms(projected),
         }
 
     if repaired or _stamps_differ(cached, entries):
@@ -430,8 +473,7 @@ def load_projected(root: str, reader=None) -> list[tuple[str, dict]]:
     return [(p, entries[p]["fm"]) for p in ordered if p in entries]
 
 
-def load_active(root: str, agent_type: str | None = None,
-                reader=None) -> list[tuple[str, dict]]:
+def load_active(root: str, agent_type: str | None = None, reader=None) -> list[tuple[str, dict]]:
     """Active lessons, filtered exactly as `_iter_active_lessons` filters them."""
     out = []
     for path, fm in load_projected(root, reader=reader):
@@ -468,8 +510,10 @@ _SNAPSHOTS: dict[tuple, tuple[tuple, list, TermCache]] = {}
 
 
 def load_active_with_terms(
-    root: str, agent_type: str | None = None, reader=None,
-) -> tuple[list[tuple[str, dict]], dict[str, list[list[str]]]]:
+    root: str,
+    agent_type: str | None = None,
+    reader=None,
+) -> tuple[list[tuple[str, dict]], TermCache]:
     entries, ordered, snap_key = _load_entries_keyed(root, reader)
     memo_key = (os.path.abspath(root), agent_type)
     prior = _SNAPSHOTS.get(memo_key)

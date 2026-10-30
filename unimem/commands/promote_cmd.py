@@ -1,4 +1,5 @@
 """Preregister, evaluate and certify a memory policy change."""
+
 from __future__ import annotations
 
 import argparse

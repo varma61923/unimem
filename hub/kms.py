@@ -1,4 +1,5 @@
 """Bring your own key: the Hub's at-rest key held by the customer's KMS, not by the Hub."""
+
 from __future__ import annotations
 
 import base64
@@ -34,7 +35,8 @@ def _client(region: str | None):
     except ImportError:
         raise EncryptionError(
             "HUB_ENCRYPTION_KEY_KMS_WRAPPED is set but boto3 is not installed; install it in the image "
-            "that runs the Hub") from None
+            "that runs the Hub"
+        ) from None
     return boto3.client("kms", region_name=region or None)
 
 
@@ -53,7 +55,8 @@ def unwrap(wrapped: str, *, key_id: str | None = None, region: str | None = None
     except Exception as exc:  # noqa: BLE001 - every KMS failure means the same thing here
         raise EncryptionError(
             f"the KMS refused to unwrap the encryption key ({type(exc).__name__}). If the customer revoked "
-            "access, that is working as intended: the Hub cannot decrypt until it is granted again.") from None
+            "access, that is working as intended: the Hub cannot decrypt until it is granted again."
+        ) from None
     if len(plaintext) != 32:
         raise EncryptionError(f"the unwrapped key is {len(plaintext)} bytes, expected 32")
     return base64.urlsafe_b64encode(plaintext).decode("ascii")
@@ -76,6 +79,7 @@ class TenantKeyProvider:
     Provision each envelope using this exact context and an appropriate KMS IAM
     policy before enabling attested release.
     """
+
     def __init__(self, tenants: Mapping[str, Mapping[str, str]], *, client: Any = None, region: str | None = None):
         self.tenants, self.client, self.region = dict(tenants), client, region
 
@@ -85,8 +89,11 @@ class TenantKeyProvider:
             raise RuntimeError("UniMem tenant attested key is not provisioned")
         try:
             blob = base64.b64decode(entry["ciphertext"], validate=True)
-            result = (self.client or _client(self.region)).decrypt(CiphertextBlob=blob, KeyId=entry["key_id"],
-                EncryptionContext={"purpose": "unimem-attested-tenant-key-v1", "tenant": tenant})
+            result = (self.client or _client(self.region)).decrypt(
+                CiphertextBlob=blob,
+                KeyId=entry["key_id"],
+                EncryptionContext={"purpose": "unimem-attested-tenant-key-v1", "tenant": tenant},
+            )
             key = result["Plaintext"]
         except Exception:
             raise RuntimeError("UniMem tenant KMS refused the attested data-key unwrap") from None
@@ -106,6 +113,9 @@ def resolve(env: dict, secret) -> tuple[str, str]:
         return plain, plain_prev
     key_id, region = env.get("HUB_KMS_KEY_ID", "").strip() or None, env.get("HUB_KMS_REGION", "").strip() or None
     current = unwrap(wrapped, key_id=key_id, region=region) if wrapped else plain
-    previous = ",".join(unwrap(item, key_id=key_id, region=region)
-                        for item in wrapped_prev.split(",") if item.strip()) if wrapped_prev else plain_prev
+    previous = (
+        ",".join(unwrap(item, key_id=key_id, region=region) for item in wrapped_prev.split(",") if item.strip())
+        if wrapped_prev
+        else plain_prev
+    )
     return current, previous

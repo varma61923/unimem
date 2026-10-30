@@ -7,6 +7,7 @@ unmeasured unless a separately labeled, model-backed corpus is supplied.
 
 Run with ``python -m benchmarks.graph_quality_eval --json``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,12 @@ def load_fixture(path: str) -> dict[str, Any]:
     for key in required:
         if not isinstance(data[key], list):
             raise ValueError(f"graph quality fixture field {key!r} must be a list")
-    if not data["entity_pairs"] or not data["classifications"] or not data["relation_extraction"] or not data["edge_pairs"]:
+    if (
+        not data["entity_pairs"]
+        or not data["classifications"]
+        or not data["relation_extraction"]
+        or not data["edge_pairs"]
+    ):
         raise ValueError("each graph quality fixture task needs at least one labeled example")
     return data
 
@@ -86,9 +92,10 @@ def _entity_signals(rows: list[dict]) -> list[dict[str, Any]]:
 
 
 def _resolve_signals(signals: list[dict[str, Any]], *, entropy: float, minhash: float, jaccard: float) -> list[bool]:
-    return [bool(row["exact"] or (
-        row["entropy"] >= entropy and row["minhash"] >= minhash and row["jaccard"] >= jaccard
-    )) for row in signals]
+    return [
+        bool(row["exact"] or (row["entropy"] >= entropy and row["minhash"] >= minhash and row["jaccard"] >= jaccard))
+        for row in signals
+    ]
 
 
 def _entity_report(rows: list[dict]) -> dict[str, Any]:
@@ -96,30 +103,45 @@ def _entity_report(rows: list[dict]) -> dict[str, Any]:
     labels = [row["duplicate"] for row in signals]
     defaults = entity_resolution.TIERED_THRESHOLDS
     predictions = _resolve_signals(
-        signals, entropy=defaults["entropy"], minhash=defaults["minhash"], jaccard=defaults["jaccard"],
+        signals,
+        entropy=defaults["entropy"],
+        minhash=defaults["minhash"],
+        jaccard=defaults["jaccard"],
     )
     base = binary_metrics(labels, predictions)
     errors = []
     for row, predicted in zip(signals, predictions):
         if predicted != row["duplicate"]:
-            errors.append({key: row[key] for key in ("id", "duplicate", "stratum", "exact", "entropy",
-                                                       "minhash", "jaccard")})
+            errors.append(
+                {key: row[key] for key in ("id", "duplicate", "stratum", "exact", "entropy", "minhash", "jaccard")}
+            )
     strata = {}
     for stratum in sorted({row["stratum"] for row in signals}):
         subset = [row for row in signals if row["stratum"] == stratum]
-        strata[stratum] = binary_metrics([row["duplicate"] for row in subset], _resolve_signals(
-            subset, entropy=defaults["entropy"], minhash=defaults["minhash"], jaccard=defaults["jaccard"],
-        ))
+        strata[stratum] = binary_metrics(
+            [row["duplicate"] for row in subset],
+            _resolve_signals(
+                subset,
+                entropy=defaults["entropy"],
+                minhash=defaults["minhash"],
+                jaccard=defaults["jaccard"],
+            ),
+        )
 
     def sweep(name: str, values: tuple[float, ...]) -> dict[str, dict]:
         out = {}
         for value in values:
-            params = {"entropy": defaults["entropy"], "minhash": defaults["minhash"],
-                      "jaccard": defaults["jaccard"]}
+            params = {"entropy": defaults["entropy"], "minhash": defaults["minhash"], "jaccard": defaults["jaccard"]}
             params[name] = value
-            out[f"{value:.2f}"] = binary_metrics(labels, _resolve_signals(
-                signals, entropy=params["entropy"], minhash=params["minhash"], jaccard=params["jaccard"],
-            ))
+            out[f"{value:.2f}"] = binary_metrics(
+                labels,
+                _resolve_signals(
+                    signals,
+                    entropy=params["entropy"],
+                    minhash=params["minhash"],
+                    jaccard=params["jaccard"],
+                ),
+            )
         return out
 
     return {
@@ -183,9 +205,16 @@ def _legacy_ngram_report(rows: list[dict]) -> dict[str, Any]:
 def _classification_metrics(rows: list[dict], threshold: float) -> dict[str, Any]:
     onto = ontology.Ontology.default()
     expected = [row["expected"] for row in rows]
-    predicted = [ontology_classify.classify(
-        row["name"], row.get("context", ""), onto=onto, threshold=threshold, methods=("keyword",),
-    ).type for row in rows]
+    predicted = [
+        ontology_classify.classify(
+            row["name"],
+            row.get("context", ""),
+            onto=onto,
+            threshold=threshold,
+            methods=("keyword",),
+        ).type
+        for row in rows
+    ]
     true_positive = sum(want is not None and got == want for want, got in zip(expected, predicted))
     false_positive = sum(got is not None and got != want for want, got in zip(expected, predicted))
     false_negative = sum(want is not None and got != want for want, got in zip(expected, predicted))
@@ -219,13 +248,11 @@ def _classification_metrics(rows: list[dict], threshold: float) -> dict[str, Any
 def _classification_report(rows: list[dict]) -> dict[str, Any]:
     return {
         "methods": ["keyword"],
-        "thresholds": {"keyword": ontology_classify.THRESHOLD,
-                        "embedding": ontology_classify.EMBEDDING_THRESHOLD},
+        "thresholds": {"keyword": ontology_classify.THRESHOLD, "embedding": ontology_classify.EMBEDDING_THRESHOLD},
         "default_threshold": ontology_classify.THRESHOLD,
         "metrics": _classification_metrics(rows, ontology_classify.THRESHOLD),
         "threshold_sweep": {
-            f"{threshold:.2f}": _classification_metrics(rows, threshold)
-            for threshold in CLASSIFICATION_SWEEP
+            f"{threshold:.2f}": _classification_metrics(rows, threshold) for threshold in CLASSIFICATION_SWEEP
         },
         "embedding": "unmeasured",
         "llm": "unmeasured",
@@ -238,10 +265,13 @@ def _relation_report(rows: list[dict]) -> dict[str, Any]:
     tp = fp = fn = 0
     by_relation: dict[str, dict[str, int]] = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
     for row in rows:
-        expected = {(item["subject"].casefold(), item["relation"], item["object"].casefold())
-                    for item in row["triples"]}
-        predicted = {(item.subject.casefold(), item.relation, item.object.casefold())
-                     for item in relation_extraction.extract_patterns(row["text"], onto)}
+        expected = {
+            (item["subject"].casefold(), item["relation"], item["object"].casefold()) for item in row["triples"]
+        }
+        predicted = {
+            (item.subject.casefold(), item.relation, item.object.casefold())
+            for item in relation_extraction.extract_patterns(row["text"], onto)
+        }
         for item in predicted - expected:
             fp += 1
             by_relation[item[1]]["fp"] += 1
@@ -275,8 +305,11 @@ def _endpoint_pair(row: dict[str, Any], side: str) -> tuple[str, str] | None:
     endpoints = row.get(f"{side}_endpoints")
     if endpoints is None:
         return None
-    if (not isinstance(endpoints, list) or len(endpoints) != 2
-            or any(not isinstance(value, str) or not value.strip() for value in endpoints)):
+    if (
+        not isinstance(endpoints, list)
+        or len(endpoints) != 2
+        or any(not isinstance(value, str) or not value.strip() for value in endpoints)
+    ):
         raise ValueError(f"edge pair {row.get('id', '<unknown>')} has invalid {side}_endpoints")
     # Graphiti's duplicate-candidate search accepts either endpoint orientation.
     # Endpoint IDs are opaque, so compare them exactly rather than case-folding.
@@ -324,14 +357,16 @@ def _edge_pair_report(rows: list[dict]) -> dict[str, Any]:
         if expected not in matrix:
             raise ValueError(f"edge pair {row.get('id', '<unknown>')} has an unsupported expected label")
         matrix[expected][predicted] += 1
-        details.append({
-            "id": row["id"],
-            "stratum": row.get("stratum", "unspecified"),
-            "expected": expected,
-            "predicted": predicted,
-            "reason": reason,
-            "source_ref": row.get("source_ref"),
-        })
+        details.append(
+            {
+                "id": row["id"],
+                "stratum": row.get("stratum", "unspecified"),
+                "expected": expected,
+                "predicted": predicted,
+                "reason": reason,
+                "source_ref": row.get("source_ref"),
+            }
+        )
 
     predicted_counts = {label: sum(item["predicted"] == label for item in details) for label in labels}
     resolved = [item for item in details if item["predicted"] != "unknown"]
@@ -391,8 +426,12 @@ def evaluate(fixture: str) -> dict[str, Any]:
 
 
 def render(report: dict[str, Any]) -> str:
-    er, legacy, classification, relation = (report["entity_resolution"], report["legacy_ngram_resolution"],
-                                           report["classification"], report["relation_extraction"])
+    er, legacy, classification, relation = (
+        report["entity_resolution"],
+        report["legacy_ngram_resolution"],
+        report["classification"],
+        report["relation_extraction"],
+    )
     lines = [
         "# Graph quality fixture evaluation",
         "",
@@ -402,53 +441,68 @@ def render(report: dict[str, Any]) -> str:
         "| Task | Examples | TP | FP | FN | Precision | Recall | F1 |",
         "|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for label, metrics in (("Legacy n-gram at report threshold", legacy["report_threshold_metrics"]),
-                           ("Legacy n-gram at apply threshold", legacy["apply_threshold_metrics"]),
-                           ("Exact + MinHash entity candidates", er["metrics"]),
-                           ("Keyword ontology classification", classification["metrics"]),
-                           ("Offline relation patterns", relation)):
-        lines.append(f"| {label} | {metrics['examples']} | {metrics['tp']} | {metrics['fp']} | {metrics['fn']} | "
-                     f"{metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |")
+    for label, metrics in (
+        ("Legacy n-gram at report threshold", legacy["report_threshold_metrics"]),
+        ("Legacy n-gram at apply threshold", legacy["apply_threshold_metrics"]),
+        ("Exact + MinHash entity candidates", er["metrics"]),
+        ("Keyword ontology classification", classification["metrics"]),
+        ("Offline relation patterns", relation),
+    ):
+        lines.append(
+            f"| {label} | {metrics['examples']} | {metrics['tp']} | {metrics['fp']} | {metrics['fn']} | "
+            f"{metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |"
+        )
     edge_pairs = report["edge_pair_resolution"]
-    lines.extend([
-        "",
-        "## Edge-pair duplicate and contradiction decisions",
-        "",
-        f"The endpoint-aware deterministic path resolved {edge_pairs['resolved_examples']} of "
-        f"{edge_pairs['examples']} pairs ({edge_pairs['coverage']:.4f} coverage); "
-        f"resolved accuracy was {edge_pairs['resolved_accuracy']!s}. Unknown cases are abstentions.",
-        "",
-        "| Expected | Duplicate | Contradiction | Independent | Unknown |",
-        "|---|---:|---:|---:|---:|",
-    ])
+    lines.extend(
+        [
+            "",
+            "## Edge-pair duplicate and contradiction decisions",
+            "",
+            f"The endpoint-aware deterministic path resolved {edge_pairs['resolved_examples']} of "
+            f"{edge_pairs['examples']} pairs ({edge_pairs['coverage']:.4f} coverage); "
+            f"resolved accuracy was {edge_pairs['resolved_accuracy']!s}. Unknown cases are abstentions.",
+            "",
+            "| Expected | Duplicate | Contradiction | Independent | Unknown |",
+            "|---|---:|---:|---:|---:|",
+        ]
+    )
     for expected, counts in edge_pairs["confusion_matrix"].items():
-        lines.append(f"| {expected} | {counts['duplicate']} | {counts['contradiction']} | "
-                     f"{counts['independent']} | {counts['unknown']} |")
-    lines.extend([
-        "",
-        "Embedding and LLM tiers are marked unmeasured. The entity-resolution and classification sweeps are diagnostic;",
-        "no production threshold was changed because this synthetic fixture does not establish generalization.",
-        "",
-        "Legacy n-gram thresholds (report 0.60, apply 0.85) are evaluated separately from the opt-in tiered cascade.",
-        "Apply-floor scores evaluate labeled pairs only; they do not represent ontology gates or graph merges.",
-        "",
-        "Entity resolution threshold sweep (one threshold at a time; all others at default):",
-        "",
-        "| Signal | Threshold | TP | FP | FN | Precision | Recall | F1 |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|",
-    ])
+        lines.append(
+            f"| {expected} | {counts['duplicate']} | {counts['contradiction']} | "
+            f"{counts['independent']} | {counts['unknown']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Embedding and LLM tiers are marked unmeasured. The entity-resolution and classification sweeps are diagnostic;",
+            "no production threshold was changed because this synthetic fixture does not establish generalization.",
+            "",
+            "Legacy n-gram thresholds (report 0.60, apply 0.85) are evaluated separately from the opt-in tiered cascade.",
+            "Apply-floor scores evaluate labeled pairs only; they do not represent ontology gates or graph merges.",
+            "",
+            "Entity resolution threshold sweep (one threshold at a time; all others at default):",
+            "",
+            "| Signal | Threshold | TP | FP | FN | Precision | Recall | F1 |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+    )
     for signal, rows in er["threshold_sweep"].items():
         for value, metrics in rows.items():
-            lines.append(f"| {signal} | {value} | {metrics['tp']} | {metrics['fp']} | {metrics['fn']} | "
-                         f"{metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |")
+            lines.append(
+                f"| {signal} | {value} | {metrics['tp']} | {metrics['fp']} | {metrics['fn']} | "
+                f"{metrics['precision']:.4f} | {metrics['recall']:.4f} | {metrics['f1']:.4f} |"
+            )
     lines.append("")
     return "\n".join(lines)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--fixture", required=True,
-                        help="labeled graph-quality data (JSON, schema_version 1.0.0); none ships with the repository")
+    parser.add_argument(
+        "--fixture",
+        required=True,
+        help="labeled graph-quality data (JSON, schema_version 1.0.0); none ships with the repository",
+    )
     parser.add_argument("--json", action="store_true", help="emit reproducible JSON instead of a Markdown summary")
     parser.add_argument("--out", help="write the report to this file instead of stdout")
     args = parser.parse_args(argv)

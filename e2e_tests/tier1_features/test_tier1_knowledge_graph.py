@@ -9,26 +9,38 @@ from unimem import graph
 
 def test_t1_graph_add_nodes(isolated_store: str):
     res_node1 = run_cli(
-        "graph", "node", "service:billing",
-        "--type", "service",
-        "--name", "Stripe Payment Gateway",
+        "graph",
+        "node",
+        "service:billing",
+        "--type",
+        "service",
+        "--name",
+        "Stripe Payment Gateway",
         dest=isolated_store,
     )
     res_node1.assert_success()
     assert "Saved node 'service:billing'" in res_node1.stdout
 
     res_node2 = run_cli(
-        "graph", "node", "error:timeout",
-        "--type", "error",
-        "--name", "HTTP 504 Gateway Timeout",
+        "graph",
+        "node",
+        "error:timeout",
+        "--type",
+        "error",
+        "--name",
+        "HTTP 504 Gateway Timeout",
         dest=isolated_store,
     )
     res_node2.assert_success()
 
     res_node3 = run_cli(
-        "graph", "node", "lesson:retry-backoff",
-        "--type", "lesson",
-        "--name", "Exponential Backoff on Gateway Timeout",
+        "graph",
+        "node",
+        "lesson:retry-backoff",
+        "--type",
+        "lesson",
+        "--name",
+        "Exponential Backoff on Gateway Timeout",
         dest=isolated_store,
     )
     res_node3.assert_success()
@@ -49,8 +61,13 @@ def test_t1_graph_add_edges(isolated_store: str):
     run_cli("graph", "node", "service:redis", "--type", "service", dest=isolated_store).assert_success()
 
     res_edge = run_cli(
-        "graph", "edge", "service:auth", "depends_on", "service:redis",
-        "--weight", "0.95",
+        "graph",
+        "edge",
+        "service:auth",
+        "depends_on",
+        "service:redis",
+        "--weight",
+        "0.95",
         dest=isolated_store,
     )
     res_edge.assert_success()

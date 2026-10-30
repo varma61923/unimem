@@ -33,10 +33,14 @@ def model_runtime(monkeypatch):
         return SimpleNamespace(eval=lambda: None)
 
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(float32="float32"))
-    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(
-        AutoTokenizer=SimpleNamespace(from_pretrained=tokenizer),
-        AutoModelForCausalLM=SimpleNamespace(from_pretrained=network),
-    ))
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            AutoTokenizer=SimpleNamespace(from_pretrained=tokenizer),
+            AutoModelForCausalLM=SimpleNamespace(from_pretrained=network),
+        ),
+    )
     monkeypatch.setattr(local_llm, "_LOADED", {})
     monkeypatch.setattr(offline, "enabled", lambda: True)
     return calls
@@ -51,7 +55,8 @@ def test_model_cache_distinguishes_pinned_revisions(monkeypatch, model_runtime):
     assert local_llm._load("example/model") is first
     assert second is not first
     assert [kwargs["revision"] for kind, _model, kwargs in model_runtime if kind == "network"] == [
-        "revision-a", "revision-b",
+        "revision-a",
+        "revision-b",
     ]
     assert all(kwargs["local_files_only"] for _kind, _model, kwargs in model_runtime)
 
@@ -95,6 +100,7 @@ def test_zero_is_a_valid_padding_token_id(monkeypatch):
     runtime = Tokenizer(), SimpleNamespace(generate=generate), SimpleNamespace(inference_mode=nullcontext)
     monkeypatch.setattr(local_llm, "_load", lambda model: runtime)
     assert local_llm.complete(SimpleNamespace(model="unused"), "prompt", max_new_tokens=5) == (
-        "answer", {"input_tokens": 3, "output_tokens": 2},
+        "answer",
+        {"input_tokens": 3, "output_tokens": 2},
     )
     assert options[0]["pad_token_id"] == 0

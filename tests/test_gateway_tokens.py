@@ -33,8 +33,10 @@ def test_rotation_revocation_and_expiry_reach_an_existing_gateway(tmp_path, monk
     root = str(tmp_path)
     first = tokens.load_or_create_token(root, ttl=10)
     app = gateway.Gateway(root, token=first, token_provider=tokens.FileTokenProvider(root))
+
     def auth(value):
         return app._authorised({"Authorization": f"Bearer {value}"})
+
     assert auth(first)
     second = tokens.rotate_token(root, ttl=20)
     assert not auth(first) and auth(second)

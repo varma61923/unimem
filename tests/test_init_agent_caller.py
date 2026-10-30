@@ -1,4 +1,5 @@
 """`unimem init --agent-caller NAME`: one-command, no-dashboard agent signup."""
+
 import json
 
 from unimem import agent_registry

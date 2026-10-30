@@ -114,7 +114,9 @@ class TestFindNearDuplicates:
             return 1.0
 
         pairs = redundancy.find_near_duplicates(
-            [("a", "x"), ("b", "y")], threshold=0.5, similarity=always_similar,
+            [("a", "x"), ("b", "y")],
+            threshold=0.5,
+            similarity=always_similar,
         )
         assert len(pairs) == 1
         assert calls
@@ -153,17 +155,21 @@ class TestCalibration:
 
         fixtures_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "unimem", "fixtures", "fields",
+            "unimem",
+            "fixtures",
+            "fields",
         )
         items = []
         for path in sorted(glob.glob(os.path.join(fixtures_dir, "*.json"))):
             with open(path, encoding="utf-8") as fh:
                 field = json.load(fh)
             for lesson in field.get("lessons", []):
-                items.append((
-                    f"{field['field']}/{lesson['name']}",
-                    redundancy.comparable_text(lesson),
-                ))
+                items.append(
+                    (
+                        f"{field['field']}/{lesson['name']}",
+                        redundancy.comparable_text(lesson),
+                    )
+                )
         pairs = redundancy.find_near_duplicates(items, threshold=redundancy.DEFAULT_THRESHOLD)
         assert pairs == [], (
             f"default threshold {redundancy.DEFAULT_THRESHOLD} flags genuinely distinct "

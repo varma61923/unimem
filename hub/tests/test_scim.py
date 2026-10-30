@@ -34,7 +34,8 @@ async def other_org(session_factory) -> str:
 def _app(session_factory) -> Starlette:
     app = Starlette()
     scim.add_scim_routes(
-        app, session_factory,
+        app,
+        session_factory,
         auth_rate_limiter=RateLimiter(per_minute=1_000_000, burst=1_000_000),
     )
     return app
@@ -106,7 +107,10 @@ class TestCoreLifecycle:
     async def test_create_then_get(self, session_factory, org):
         async with session_scope(session_factory) as session:
             user = await scim.create_user(
-                session, org, {"userName": "a@example.com", "displayName": "A"}, actor="test",
+                session,
+                org,
+                {"userName": "a@example.com", "displayName": "A"},
+                actor="test",
             )
             user_id = user.id
         async with session_scope(session_factory) as session:
@@ -119,7 +123,10 @@ class TestCoreLifecycle:
     async def test_created_row_has_no_sso_identity_linked(self, session_factory, org):
         async with session_scope(session_factory) as session:
             user = await scim.create_user(
-                session, org, {"userName": "b@example.com"}, actor="test",
+                session,
+                org,
+                {"userName": "b@example.com"},
+                actor="test",
             )
         assert user.issuer == ""
         assert user.external_subject == ""
@@ -153,7 +160,11 @@ class TestCoreLifecycle:
             user_id = user.id
         async with session_scope(session_factory) as session:
             updated = await scim.replace_user(
-                session, org, user_id, {"active": False}, actor="test",
+                session,
+                org,
+                user_id,
+                {"active": False},
+                actor="test",
             )
         assert updated.disabled_at is not None
 
@@ -163,7 +174,9 @@ class TestCoreLifecycle:
             user_id = user.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_user(
-                session, org, user_id,
+                session,
+                org,
+                user_id,
                 {"Operations": [{"op": "replace", "path": "active", "value": False}]},
                 actor="test",
             )
@@ -175,7 +188,9 @@ class TestCoreLifecycle:
             user_id = user.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_user(
-                session, org, user_id,
+                session,
+                org,
+                user_id,
                 {"Operations": [{"op": "Replace", "path": "active", "value": "False"}]},
                 actor="test",
             )
@@ -192,16 +207,23 @@ class TestCoreLifecycle:
     async def test_patch_leaves_unsupported_attributes_untouched(self, session_factory, org):
         async with session_scope(session_factory) as session:
             user = await scim.create_user(
-                session, org, {"userName": "g@example.com", "displayName": "Before"}, actor="test",
+                session,
+                org,
+                {"userName": "g@example.com", "displayName": "Before"},
+                actor="test",
             )
             user_id = user.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_user(
-                session, org, user_id,
-                {"Operations": [
-                    {"op": "replace", "path": "title", "value": "VP of Something"},
-                    {"op": "replace", "path": "active", "value": False},
-                ]},
+                session,
+                org,
+                user_id,
+                {
+                    "Operations": [
+                        {"op": "replace", "path": "title", "value": "VP of Something"},
+                        {"op": "replace", "path": "active", "value": False},
+                    ]
+                },
                 actor="test",
             )
         assert updated.disabled_at is not None
@@ -223,7 +245,10 @@ class TestCoreLifecycle:
     async def test_reactivating_clears_disabled_at(self, session_factory, org):
         async with session_scope(session_factory) as session:
             user = await scim.create_user(
-                session, org, {"userName": "i@example.com", "active": False}, actor="test",
+                session,
+                org,
+                {"userName": "i@example.com", "active": False},
+                actor="test",
             )
             user_id = user.id
         async with session_scope(session_factory) as session:
@@ -249,7 +274,8 @@ class TestRoutesEndToEnd:
         headers = _auth(raw_key)
         async with _client(_app(session_factory)) as client:
             created = await client.post(
-                "/scim/v2/Users", headers=headers,
+                "/scim/v2/Users",
+                headers=headers,
                 json={"userName": "k@example.com", "displayName": "K"},
             )
             assert created.status_code == 201
@@ -260,7 +286,8 @@ class TestRoutesEndToEnd:
             assert fetched.json()["active"] is True
 
             patched = await client.patch(
-                f"/scim/v2/Users/{user_id}", headers=headers,
+                f"/scim/v2/Users/{user_id}",
+                headers=headers,
                 json={"Operations": [{"op": "replace", "path": "active", "value": False}]},
             )
             assert patched.status_code == 200
@@ -276,7 +303,8 @@ class TestRoutesEndToEnd:
             await client.post("/scim/v2/Users", headers=headers, json={"userName": "m@example.com"})
             await client.post("/scim/v2/Users", headers=headers, json={"userName": "n@example.com"})
             resp = await client.get(
-                "/scim/v2/Users", headers=headers,
+                "/scim/v2/Users",
+                headers=headers,
                 params={"filter": 'userName eq "n@example.com"'},
             )
         assert resp.status_code == 200
@@ -288,7 +316,8 @@ class TestRoutesEndToEnd:
         raw_key = await _issue(session_factory, org, ["scim"])
         async with _client(_app(session_factory)) as client:
             resp = await client.get(
-                "/scim/v2/Users", headers=_auth(raw_key),
+                "/scim/v2/Users",
+                headers=_auth(raw_key),
                 params={"filter": 'displayName eq "whatever"'},
             )
         assert resp.status_code == 400
@@ -306,7 +335,8 @@ class TestRoutesEndToEnd:
         raw_key = await _issue(session_factory, org, ["scim"])
         async with _client(_app(session_factory)) as client:
             resp = await client.get(
-                "/scim/v2/Users/00000000-0000-0000-0000-000000000000", headers=_auth(raw_key),
+                "/scim/v2/Users/00000000-0000-0000-0000-000000000000",
+                headers=_auth(raw_key),
             )
         assert resp.status_code == 404
 
@@ -321,7 +351,9 @@ class TestRoutesEndToEnd:
         other_key = await _issue(session_factory, other_org, ["scim"])
         async with _client(_app(session_factory)) as client:
             created = await client.post(
-                "/scim/v2/Users", headers=_auth(org_key), json={"userName": "o@example.com"},
+                "/scim/v2/Users",
+                headers=_auth(org_key),
+                json={"userName": "o@example.com"},
             )
             user_id = created.json()["id"]
             cross_org = await client.get(f"/scim/v2/Users/{user_id}", headers=_auth(other_key))
@@ -333,6 +365,7 @@ class TestGroupsAreMembershipOnly:
         import inspect
 
         from hub import rbac
+
         source = inspect.getsource(rbac)
         assert "ScimGroup" not in source
         assert "scim_group" not in source.lower()
@@ -340,7 +373,10 @@ class TestGroupsAreMembershipOnly:
     async def test_create_then_get(self, session_factory, org):
         async with session_scope(session_factory) as session:
             group = await scim.create_group(
-                session, org, {"displayName": "Engineering"}, actor="test",
+                session,
+                org,
+                {"displayName": "Engineering"},
+                actor="test",
             )
             group_id = group.id
         async with session_scope(session_factory) as session:
@@ -354,7 +390,8 @@ class TestGroupsAreMembershipOnly:
             user_id = user.id
         async with session_scope(session_factory) as session:
             group = await scim.create_group(
-                session, org,
+                session,
+                org,
                 {"displayName": "With Members", "members": [{"value": user_id}]},
                 actor="test",
             )
@@ -370,12 +407,16 @@ class TestGroupsAreMembershipOnly:
     ):
         async with session_scope(session_factory) as session:
             outsider = await scim.create_user(
-                session, other_org, {"userName": "outsider@example.com"}, actor="test",
+                session,
+                other_org,
+                {"userName": "outsider@example.com"},
+                actor="test",
             )
             outsider_id = outsider.id
         async with session_scope(session_factory) as session:
             group = await scim.create_group(
-                session, org,
+                session,
+                org,
                 {"displayName": "Cross Org Attempt", "members": [{"value": outsider_id}]},
                 actor="test",
             )
@@ -415,12 +456,17 @@ class TestGroupsAreMembershipOnly:
             u1_id, u2_id = u1.id, u2.id
         async with session_scope(session_factory) as session:
             group = await scim.create_group(
-                session, org, {"displayName": "Replaced", "members": [{"value": u1_id}]}, actor="test",
+                session,
+                org,
+                {"displayName": "Replaced", "members": [{"value": u1_id}]},
+                actor="test",
             )
             group_id = group.id
         async with session_scope(session_factory) as session:
             await scim.replace_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"displayName": "Replaced", "members": [{"value": u2_id}]},
                 actor="test",
             )
@@ -437,7 +483,9 @@ class TestGroupsAreMembershipOnly:
             group_id = group.id
         async with session_scope(session_factory) as session:
             await scim.patch_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"Operations": [{"op": "add", "path": "members", "value": [{"value": user_id}]}]},
                 actor="test",
             )
@@ -451,13 +499,17 @@ class TestGroupsAreMembershipOnly:
             user = await scim.create_user(session, org, {"userName": "rm@example.com"}, actor="test")
             user_id = user.id
             group = await scim.create_group(
-                session, org, {"displayName": "Remove Target", "members": [{"value": user_id}]},
+                session,
+                org,
+                {"displayName": "Remove Target", "members": [{"value": user_id}]},
                 actor="test",
             )
             group_id = group.id
         async with session_scope(session_factory) as session:
             await scim.patch_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"Operations": [{"op": "remove", "path": f'members[value eq "{user_id}"]'}]},
                 actor="test",
             )
@@ -471,14 +523,17 @@ class TestGroupsAreMembershipOnly:
             u1 = await scim.create_user(session, org, {"userName": "clear1@example.com"}, actor="test")
             u2 = await scim.create_user(session, org, {"userName": "clear2@example.com"}, actor="test")
             group = await scim.create_group(
-                session, org,
+                session,
+                org,
                 {"displayName": "Clear All", "members": [{"value": u1.id}, {"value": u2.id}]},
                 actor="test",
             )
             group_id = group.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"Operations": [{"op": "remove", "path": "members"}]},
                 actor="test",
             )
@@ -494,7 +549,9 @@ class TestGroupsAreMembershipOnly:
             group_id = group.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"Operations": [{"op": "replace", "path": "displayName", "value": "New Name"}]},
                 actor="test",
             )
@@ -506,7 +563,9 @@ class TestGroupsAreMembershipOnly:
             group_id = group.id
         async with session_scope(session_factory) as session:
             updated = await scim.patch_group(
-                session, org, group_id,
+                session,
+                org,
+                group_id,
                 {"Operations": [{"op": "replace", "path": "somethingElse", "value": "whatever"}]},
                 actor="test",
             )
@@ -514,6 +573,7 @@ class TestGroupsAreMembershipOnly:
 
     async def test_delete_actually_removes_the_row(self, session_factory, org):
         from hub.models import ScimGroup
+
         async with session_scope(session_factory) as session:
             group = await scim.create_group(session, org, {"displayName": "Doomed"}, actor="test")
             group_id = group.id
@@ -528,7 +588,10 @@ class TestGroupsAreMembershipOnly:
             user = await scim.create_user(session, org, {"userName": "survivor@example.com"}, actor="test")
             user_id = user.id
             group = await scim.create_group(
-                session, org, {"displayName": "Temp", "members": [{"value": user_id}]}, actor="test",
+                session,
+                org,
+                {"displayName": "Temp", "members": [{"value": user_id}]},
+                actor="test",
             )
             group_id = group.id
         async with session_scope(session_factory) as session:
@@ -556,7 +619,9 @@ class TestGroupsRoutesEndToEnd:
         headers = _auth(raw_key)
         async with _client(_app(session_factory)) as client:
             created = await client.post(
-                "/scim/v2/Groups", headers=headers, json={"displayName": "Route Group"},
+                "/scim/v2/Groups",
+                headers=headers,
+                json={"displayName": "Route Group"},
             )
             assert created.status_code == 201
             group_id = created.json()["id"]
@@ -567,7 +632,8 @@ class TestGroupsRoutesEndToEnd:
             assert fetched.json()["displayName"] == "Route Group"
 
             patched = await client.patch(
-                f"/scim/v2/Groups/{group_id}", headers=headers,
+                f"/scim/v2/Groups/{group_id}",
+                headers=headers,
                 json={"Operations": [{"op": "replace", "path": "displayName", "value": "Renamed"}]},
             )
             assert patched.status_code == 200
@@ -586,7 +652,8 @@ class TestGroupsRoutesEndToEnd:
             await client.post("/scim/v2/Groups", headers=headers, json={"displayName": "First"})
             await client.post("/scim/v2/Groups", headers=headers, json={"displayName": "Second"})
             resp = await client.get(
-                "/scim/v2/Groups", headers=headers,
+                "/scim/v2/Groups",
+                headers=headers,
                 params={"filter": 'displayName eq "Second"'},
             )
         assert resp.status_code == 200
@@ -598,7 +665,8 @@ class TestGroupsRoutesEndToEnd:
         raw_key = await _issue(session_factory, org, ["scim"])
         async with _client(_app(session_factory)) as client:
             resp = await client.get(
-                "/scim/v2/Groups", headers=_auth(raw_key),
+                "/scim/v2/Groups",
+                headers=_auth(raw_key),
                 params={"filter": 'userName eq "whatever"'},
             )
         assert resp.status_code == 400
@@ -616,7 +684,8 @@ class TestGroupsRoutesEndToEnd:
         raw_key = await _issue(session_factory, org, ["scim"])
         async with _client(_app(session_factory)) as client:
             resp = await client.get(
-                "/scim/v2/Groups/00000000-0000-0000-0000-000000000000", headers=_auth(raw_key),
+                "/scim/v2/Groups/00000000-0000-0000-0000-000000000000",
+                headers=_auth(raw_key),
             )
         assert resp.status_code == 404
 
@@ -631,7 +700,9 @@ class TestGroupsRoutesEndToEnd:
         other_key = await _issue(session_factory, other_org, ["scim"])
         async with _client(_app(session_factory)) as client:
             created = await client.post(
-                "/scim/v2/Groups", headers=_auth(org_key), json={"displayName": "Private"},
+                "/scim/v2/Groups",
+                headers=_auth(org_key),
+                json={"displayName": "Private"},
             )
             group_id = created.json()["id"]
             cross_org = await client.get(f"/scim/v2/Groups/{group_id}", headers=_auth(other_key))
@@ -642,26 +713,34 @@ class TestGroupsRoutesEndToEnd:
         headers = _auth(raw_key)
         async with _client(_app(session_factory)) as client:
             user_resp = await client.post(
-                "/scim/v2/Users", headers=headers, json={"userName": "route-member@example.com"},
+                "/scim/v2/Users",
+                headers=headers,
+                json={"userName": "route-member@example.com"},
             )
             user_id = user_resp.json()["id"]
             group_resp = await client.post(
-                "/scim/v2/Groups", headers=headers, json={"displayName": "Route Members"},
+                "/scim/v2/Groups",
+                headers=headers,
+                json={"displayName": "Route Members"},
             )
             group_id = group_resp.json()["id"]
 
             added = await client.patch(
-                f"/scim/v2/Groups/{group_id}", headers=headers,
+                f"/scim/v2/Groups/{group_id}",
+                headers=headers,
                 json={"Operations": [{"op": "add", "path": "members", "value": [{"value": user_id}]}]},
             )
             assert added.status_code == 200
             assert [m["value"] for m in added.json()["members"]] == [user_id]
 
             removed = await client.patch(
-                f"/scim/v2/Groups/{group_id}", headers=headers,
-                json={"Operations": [
-                    {"op": "remove", "path": f'members[value eq "{user_id}"]'},
-                ]},
+                f"/scim/v2/Groups/{group_id}",
+                headers=headers,
+                json={
+                    "Operations": [
+                        {"op": "remove", "path": f'members[value eq "{user_id}"]'},
+                    ]
+                },
             )
             assert removed.status_code == 200
             assert removed.json()["members"] == []
@@ -671,11 +750,14 @@ class TestHostileInputIsA400NotA500:
     """Values Postgres refuses must be rejected before the database sees them;
     an unhandled 500 makes the identity provider retry the same call forever."""
 
-    @pytest.mark.parametrize("body", [
-        {"userName": "x" * 321 + "@example.com"},
-        {"userName": "nul\x00@example.com"},
-        {"userName": "ok@example.com", "displayName": "d" * 201},
-    ])
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"userName": "x" * 321 + "@example.com"},
+            {"userName": "nul\x00@example.com"},
+            {"userName": "ok@example.com", "displayName": "d" * 201},
+        ],
+    )
     async def test_an_unstorable_user_is_refused(self, session_factory, org, body):
         headers = _auth(await _issue(session_factory, org, ["scim"]))
         async with _client(_app(session_factory)) as client:
@@ -688,7 +770,9 @@ class TestHostileInputIsA400NotA500:
         async with _client(_app(session_factory)) as client:
             created = await client.post("/scim/v2/Users", headers=headers, json={"userName": "p@example.com"})
             resp = await client.put(
-                f"/scim/v2/Users/{created.json()['id']}", headers=headers, json={"displayName": "d" * 201},
+                f"/scim/v2/Users/{created.json()['id']}",
+                headers=headers,
+                json={"displayName": "d" * 201},
             )
         assert resp.status_code == 400
 
@@ -697,10 +781,16 @@ class TestHostileInputIsA400NotA500:
         async with _client(_app(session_factory)) as client:
             user = (await client.post("/scim/v2/Users", headers=headers, json={"userName": "m@example.com"})).json()
             group = (await client.post("/scim/v2/Groups", headers=headers, json={"displayName": "eng"})).json()
-            resp = await client.patch(f"/scim/v2/Groups/{group['id']}", headers=headers, json={"Operations": [
-                {"op": "add", "path": "members", "value": [{"value": user["id"]}]},
-                {"op": "replace", "path": "displayName", "value": "n" * 201},
-            ]})
+            resp = await client.patch(
+                f"/scim/v2/Groups/{group['id']}",
+                headers=headers,
+                json={
+                    "Operations": [
+                        {"op": "add", "path": "members", "value": [{"value": user["id"]}]},
+                        {"op": "replace", "path": "displayName", "value": "n" * 201},
+                    ]
+                },
+            )
             assert resp.status_code == 400
             after = await client.get(f"/scim/v2/Groups/{group['id']}", headers=headers)
         assert after.json()["displayName"] == "eng"
@@ -728,15 +818,19 @@ class TestGroupMemberRemovalTolerance:
         async with _client(_app(session_factory)) as client:
             user = await client.post("/scim/v2/Users", headers=headers, json={"userName": "m@x.test"})
             user_id = user.json()["id"]
-            group = await client.post("/scim/v2/Groups", headers=headers, json={
-                "displayName": "Engineers", "members": [{"value": user_id}]})
+            group = await client.post(
+                "/scim/v2/Groups", headers=headers, json={"displayName": "Engineers", "members": [{"value": user_id}]}
+            )
             group_id = group.json()["id"]
             for operation in (
                 {"op": "remove", "path": 'members[value eq "okta-00u1abc"]'},
                 {"op": "remove", "path": "members", "value": [{"value": "okta-00u1abc"}]},
             ):
-                resp = await client.patch(f"/scim/v2/Groups/{group_id}", headers=headers, json={
-                    "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [operation]})
+                resp = await client.patch(
+                    f"/scim/v2/Groups/{group_id}",
+                    headers=headers,
+                    json={"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"], "Operations": [operation]},
+                )
                 assert resp.status_code == 200, resp.text
             fetched = await client.get(f"/scim/v2/Groups/{group_id}", headers=headers)
         assert [m["value"] for m in fetched.json()["members"]] == [user_id]

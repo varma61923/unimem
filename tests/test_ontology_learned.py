@@ -1,16 +1,19 @@
 """The learned typer: deterministic training, a shipped model that loads, an off
 switch, and a fallback that only speaks when the other evidence is undecided."""
+
 import json
 
 from benchmarks import train_ontology_typing
 from unimem import ontology, ontology_classify, ontology_learned
 
 ONTO = ontology.Ontology.default()
-ROWS = [("Brannigan", "Brannigan approved the change.", "person"),
-        ("Tarnhold", "She moved to Tarnhold last spring.", "place"),
-        ("Velkor", "Velkor approved the budget.", "person"),
-        ("Ostmark", "They moved to Ostmark in May.", "place"),
-        ("Latency", "Latency matters a lot.", "none")] * 4
+ROWS = [
+    ("Brannigan", "Brannigan approved the change.", "person"),
+    ("Tarnhold", "She moved to Tarnhold last spring.", "place"),
+    ("Velkor", "Velkor approved the budget.", "person"),
+    ("Ostmark", "They moved to Ostmark in May.", "place"),
+    ("Latency", "Latency matters a lot.", "none"),
+] * 4
 
 
 def test_training_is_deterministic_and_round_trips():
@@ -31,18 +34,22 @@ def test_the_shipped_model_loads_and_names_its_training_data():
 def test_the_learned_typer_is_a_fallback_and_can_be_switched_off(monkeypatch):
     decided = ontology_classify.classify("src/app/main.py", "Edit src/app/main.py.", onto=ONTO, methods=("keyword",))
     assert "learned" not in {s for s, _t, _c in decided.evidence}  # the rules already decided
-    found = ontology_classify.classify("Quorandel", "We met Quorandel at the offsite and she said yes.",
-                                       onto=ONTO, methods=("keyword",))
+    found = ontology_classify.classify(
+        "Quorandel", "We met Quorandel at the offsite and she said yes.", onto=ONTO, methods=("keyword",)
+    )
     assert found.type == "person"
     monkeypatch.setenv("UNIMEM_TYPING_MODEL", "off")
-    off = ontology_classify.classify("Quorandel", "We met Quorandel at the offsite and she said yes.",
-                                     onto=ONTO, methods=("keyword",))
+    off = ontology_classify.classify(
+        "Quorandel", "We met Quorandel at the offsite and she said yes.", onto=ONTO, methods=("keyword",)
+    )
     assert "learned" not in {s for s, _t, _c in off.evidence}
 
 
 def test_the_trainer_cli_writes_a_loadable_model(tmp_path):
-    rows = [{"id": f"r{i}", "name": n, "context": c, "expected": label, "slice": "generated"}
-            for i, (n, c, label) in enumerate(ROWS)]
+    rows = [
+        {"id": f"r{i}", "name": n, "context": c, "expected": label, "slice": "generated"}
+        for i, (n, c, label) in enumerate(ROWS)
+    ]
     fixture = tmp_path / "rows.json"
     fixture.write_text(json.dumps({"schema_version": "1.0.0", "examples": rows}), encoding="utf-8")
     out = tmp_path / "model.json"

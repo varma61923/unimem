@@ -3,6 +3,7 @@
 DPV 2.1 terms describe purpose and processing. The receipt records an operator's
 assertion of consent; it does not prove that a person consented or certify law.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -20,8 +21,15 @@ from unimem import _jsonl
 from unimem import frontier_protocol as fp
 
 DPV = "https://w3id.org/dpv#"
-PURPOSES = ("AccountManagement", "CustomerCare", "ImproveHealthcare", "PaymentManagement",
-            "Personalisation", "ServicePersonalisation", "ServiceProvision")
+PURPOSES = (
+    "AccountManagement",
+    "CustomerCare",
+    "ImproveHealthcare",
+    "PaymentManagement",
+    "Personalisation",
+    "ServicePersonalisation",
+    "ServiceProvision",
+)
 PROCESSING = ("Collect", "Store", "Retrieve", "Use", "Infer", "Disclose", "Erase")
 _REQUEST: ContextVar[str] = ContextVar("unimem_processing_purpose", default="")
 _OWNER_VIEW: ContextVar[bool] = ContextVar("unimem_consent_owner_view", default=False)
@@ -33,9 +41,12 @@ def enabled(root: str) -> bool:
 
 
 def purposes(root: str) -> dict[str, Any]:
-    return {"vocabulary": "https://w3id.org/dpv/2.1", "purposes": [DPV+name for name in PURPOSES],
-            "processing": [DPV+name for name in PROCESSING],
-            "profile": "bounded DPV subset; exact purposes, no implicit superclass grants"}
+    return {
+        "vocabulary": "https://w3id.org/dpv/2.1",
+        "purposes": [DPV + name for name in PURPOSES],
+        "processing": [DPV + name for name in PROCESSING],
+        "profile": "bounded DPV subset; exact purposes, no implicit superclass grants",
+    }
 
 
 def _state(root: str) -> dict[str, Any]:
@@ -47,7 +58,7 @@ def _state(root: str) -> dict[str, Any]:
 def _load_state(root: str, path: str, stamp: Any, pins: Any) -> dict[str, Any]:
     try:
         with open(path, "rb") as stream:
-            raw = stream.read(fp.MAX_BYTES+1)
+            raw = stream.read(fp.MAX_BYTES + 1)
     except FileNotFoundError:
         return {"type": TYPE, "receipts": {}, "resources": {}}
     if len(raw) > fp.MAX_BYTES:
@@ -73,8 +84,12 @@ def _subject(root: str, subject: str) -> str:
     key = memory_authority._key(root, create=True)
     if key is None:
         raise PermissionError("UniMem subject pseudonym key is unavailable")
-    return "urn:unimem:subject:"+hmac.new(key, b"unimem-consent-subject-v1\x00"+
-        fp.text(subject, "subject", 1024).encode(), hashlib.sha256).hexdigest()
+    return (
+        "urn:unimem:subject:"
+        + hmac.new(
+            key, b"unimem-consent-subject-v1\x00" + fp.text(subject, "subject", 1024).encode(), hashlib.sha256
+        ).hexdigest()
+    )
 
 
 def current(root: str) -> str:
@@ -149,8 +164,9 @@ def _bindings(root: str, record: Mapping[str, Any], state: dict[str, Any]) -> li
 
 
 def live(receipt: Mapping[str, Any]) -> bool:
-    return (receipt["status"] == "given"
-            and fp.moment(receipt["issued_at"]) <= fp.now() < fp.moment(receipt["expires_at"]))
+    return receipt["status"] == "given" and fp.moment(receipt["issued_at"]) <= fp.now() < fp.moment(
+        receipt["expires_at"]
+    )
 
 
 def permits(root: str, record: Mapping[str, Any], *, action: str = "read") -> bool:
@@ -163,11 +179,16 @@ def permits(root: str, record: Mapping[str, Any], *, action: str = "read") -> bo
         return True
     operation = {"read": "Retrieve", "write": "Store", "export": "Disclose"}.get(action, "Use")
     selected = current(root)
-    inferred = action == "write" and (bool(record.get("source_traces")) or bool(record.get("sources"))
-                                     or bool(record.get("relations")))
-    return all((not inferred or DPV+"Infer" in row["processing"]) and live(row)
-               and selected in row["purposes"] and DPV+operation in row["processing"]
-               for row in receipts)
+    inferred = action == "write" and (
+        bool(record.get("source_traces")) or bool(record.get("sources")) or bool(record.get("relations"))
+    )
+    return all(
+        (not inferred or DPV + "Infer" in row["processing"])
+        and live(row)
+        and selected in row["purposes"]
+        and DPV + operation in row["processing"]
+        for row in receipts
+    )
 
 
 def scope(root: str, identity: str) -> dict[str, Any]:
@@ -176,26 +197,48 @@ def scope(root: str, identity: str) -> dict[str, Any]:
     if key is None:
         return {"status": "not-configured", "purposes": []}
     receipt = state["receipts"][key]
-    return {"status": "given" if live(receipt) else "expired-or-withdrawn", "purposes": receipt["purposes"],
-            "processing": receipt["processing"], "expires_at": receipt["expires_at"],
-            "receipt": fp.sign(root, {key: value for key, value in receipt.items() if key != "vault_directory"})}
+    return {
+        "status": "given" if live(receipt) else "expired-or-withdrawn",
+        "purposes": receipt["purposes"],
+        "processing": receipt["processing"],
+        "expires_at": receipt["expires_at"],
+        "receipt": fp.sign(root, {key: value for key, value in receipt.items() if key != "vault_directory"}),
+    }
 
 
-def consent(root: str, subject: str, identities: list[str], purposes: list[str], *, controller: str,
-            expires_at: str, collection_method: str, context: Sequence[str] = (),
-            processing: list[str] | None = None, inferred: list[str] | None = None,
-            vault_directory: str | None = None) -> dict[str, Any]:
+def consent(
+    root: str,
+    subject: str,
+    identities: list[str],
+    purposes: list[str],
+    *,
+    controller: str,
+    expires_at: str,
+    collection_method: str,
+    context: Sequence[str] = (),
+    processing: list[str] | None = None,
+    inferred: list[str] | None = None,
+    vault_directory: str | None = None,
+) -> dict[str, Any]:
     from unimem import incident, nextwave_store, person_io, transparency_log
 
     nextwave_store.operator()
     fp.count(len(identities), 1, 64)
     if len(set(identities)) != len(identities):
         raise ValueError("UniMem consent sources must be distinct")
-    if not purposes or len(purposes) > 16 or len(set(purposes)) != len(purposes) or not set(purposes) <= {
-            DPV+name for name in PURPOSES}:
+    if (
+        not purposes
+        or len(purposes) > 16
+        or len(set(purposes)) != len(purposes)
+        or not set(purposes) <= {DPV + name for name in PURPOSES}
+    ):
         raise ValueError("UniMem consent requires explicit supported DPV purposes")
-    operations = processing if processing is not None else [DPV+name for name in PROCESSING]
-    if not operations or len(set(operations)) != len(operations) or not set(operations) <= {DPV+v for v in PROCESSING}:
+    operations = processing if processing is not None else [DPV + name for name in PROCESSING]
+    if (
+        not operations
+        or len(set(operations)) != len(operations)
+        or not set(operations) <= {DPV + v for v in PROCESSING}
+    ):
         raise ValueError("UniMem consent processing must use the supported DPV subset")
     expires_at = fp.moment(expires_at)
     if expires_at <= fp.now():
@@ -204,7 +247,7 @@ def consent(root: str, subject: str, identities: list[str], purposes: list[str],
     fp.text(collection_method, "consent collection method", 512)
     if not set(inferred or []) <= set(identities):
         raise ValueError("UniMem inferred entries must identify selected canonical sources")
-    if inferred and DPV+"Infer" not in operations:
+    if inferred and DPV + "Infer" not in operations:
         raise PermissionError("UniMem inferred memories require consent for inference")
     filename = fp.filename(root, "consent-state.json")
     with incident.protect(root), _jsonl.locked(filename), _owner_view():
@@ -216,20 +259,34 @@ def consent(root: str, subject: str, identities: list[str], purposes: list[str],
         # by overwriting a receipt. Withdrawal/expiry never falls back to legacy.
         if set(canonical) & set(state["resources"]):
             raise PermissionError("UniMem consent-bound memory cannot be rebound; create a reviewed new memory")
-        fp.count(len(state["resources"])+len(canonical), 1, 4096)
+        fp.count(len(state["resources"]) + len(canonical), 1, 4096)
         fp.count(len(state["receipts"]), 0, 1023)
         snapshots = {identity: person_io._snapshot(root, identity) for identity in canonical}
         from unimem import memory_authority
 
-        receipt: dict[str, Any] = {"schema": "unimem.consent.v1", "vocabulary": "https://w3id.org/dpv/2.1",
+        receipt: dict[str, Any] = {
+            "schema": "unimem.consent.v1",
+            "vocabulary": "https://w3id.org/dpv/2.1",
             "recorded_by": list(memory_authority.bound_writer()),
-            "subject": _subject(root, subject), "controller": controller, "purposes": sorted(purposes),
-            "processing": sorted(operations), "collection_method": collection_method, "issued_at": fp.now(),
-            "expires_at": expires_at, "status": "given",
+            "subject": _subject(root, subject),
+            "controller": controller,
+            "purposes": sorted(purposes),
+            "processing": sorted(operations),
+            "collection_method": collection_method,
+            "issued_at": fp.now(),
+            "expires_at": expires_at,
+            "status": "given",
             "assertion": "operator-recorded consent; not person authentication",
-            "sources": {identity: {"digest": fp.digest(content), "namespace": meta["namespace"],
-                "scopes": meta["labels"], "inferred": identity in {aliases[v] for v in inferred or []}}
-                for identity, (_, content, meta) in snapshots.items()}}
+            "sources": {
+                identity: {
+                    "digest": fp.digest(content),
+                    "namespace": meta["namespace"],
+                    "scopes": meta["labels"],
+                    "inferred": identity in {aliases[v] for v in inferred or []},
+                }
+                for identity, (_, content, meta) in snapshots.items()
+            },
+        }
         identity = fp.digest(receipt)
         receipt["id"] = identity
         receipt["vault_directory"] = os.path.realpath(vault_directory) if vault_directory else None
@@ -241,10 +298,17 @@ def consent(root: str, subject: str, identities: list[str], purposes: list[str],
             # Canonical plaintext and older plaintext backups remain excluded.
             receipt["envelopes"] = {}
             for source_id, (_, content, meta) in snapshots.items():
-                capsule_id = identity+"-"+fp.digest(source_id)[:16]
-                envelope = vault.seal("consent:"+identity, source_id, fp.wire(content).decode())
-                nextwave_store.put(root, "consent-envelopes", capsule_id, {"envelope": envelope},
-                    scopes=meta["labels"], sources=[source_id], immutable=True)
+                capsule_id = identity + "-" + fp.digest(source_id)[:16]
+                envelope = vault.seal("consent:" + identity, source_id, fp.wire(content).decode())
+                nextwave_store.put(
+                    root,
+                    "consent-envelopes",
+                    capsule_id,
+                    {"envelope": envelope},
+                    scopes=meta["labels"],
+                    sources=[source_id],
+                    immutable=True,
+                )
                 receipt["envelopes"][source_id] = nextwave_store.reference("consent-envelopes", capsule_id)
         state["receipts"][identity] = receipt
         state["resources"].update({key: identity for key in canonical})
@@ -284,10 +348,21 @@ def explain(root: str, subject: str, *, context: Sequence[str] = ()) -> dict[str
                 if identity not in nextwave_store.admit(root, [identity], context=context):
                     continue
                 _, content, _ = person_io._snapshot(root, identity)
-                items.append({"id": identity, "memory": content, "inferred": source["inferred"],
-                    "purposes": receipt["purposes"], "processing": receipt["processing"],
-                    "consent": {"id": receipt["id"], "status": receipt["status"], "live": live(receipt),
-                                "expires_at": receipt["expires_at"]}})
+                items.append(
+                    {
+                        "id": identity,
+                        "memory": content,
+                        "inferred": source["inferred"],
+                        "purposes": receipt["purposes"],
+                        "processing": receipt["processing"],
+                        "consent": {
+                            "id": receipt["id"],
+                            "status": receipt["status"],
+                            "live": live(receipt),
+                            "expires_at": receipt["expires_at"],
+                        },
+                    }
+                )
     return {"subject": pseudonym, "memories": items, "coverage": "explicitly enrolled subject bindings only"}
 
 
@@ -300,5 +375,8 @@ def reap(root: str) -> dict[str, Any]:
         for receipt in _state(root)["receipts"].values():
             if not live(receipt):
                 results.append(retention.expire_consent(root, receipt))
-    return {"expired": results, "regulated_retention": subject_policy.reap(root),
-            "read_filter": "expiry enforced independently of cleanup"}
+    return {
+        "expired": results,
+        "regulated_retention": subject_policy.reap(root),
+        "read_filter": "expiry enforced independently of cleanup",
+    }

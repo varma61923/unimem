@@ -23,32 +23,56 @@ class TestInjectedSlugsForOccasion:
 
     def test_returns_only_slugs_actually_injected_not_withheld(self, store):
         holdout_io.assign_and_log(
-            str(store), ["a", "b"], occasion_id="occ-1", rate=1.0, salt="s",
+            str(store),
+            ["a", "b"],
+            occasion_id="occ-1",
+            rate=1.0,
+            salt="s",
         )
         assert holdout_io.injected_slugs_for_occasion(str(store), "occ-1") == set()
 
     def test_returns_injected_slugs_for_the_named_occasion(self, store):
         holdout_io.assign_and_log(
-            str(store), ["a", "b"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["a", "b"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         assert holdout_io.injected_slugs_for_occasion(str(store), "occ-1") == {"a", "b"}
 
     def test_does_not_leak_across_occasions(self, store):
         holdout_io.assign_and_log(
-            str(store), ["a"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["a"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         holdout_io.assign_and_log(
-            str(store), ["b"], occasion_id="occ-2", rate=0.0, salt="s",
+            str(store),
+            ["b"],
+            occasion_id="occ-2",
+            rate=0.0,
+            salt="s",
         )
         assert holdout_io.injected_slugs_for_occasion(str(store), "occ-1") == {"a"}
         assert holdout_io.injected_slugs_for_occasion(str(store), "occ-2") == {"b"}
 
     def test_accumulates_across_multiple_calls_for_the_same_occasion(self, store):
         holdout_io.assign_and_log(
-            str(store), ["a"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["a"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         holdout_io.assign_and_log(
-            str(store), ["b"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["b"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         assert holdout_io.injected_slugs_for_occasion(str(store), "occ-1") == {"a", "b"}
 
@@ -56,8 +80,7 @@ class TestInjectedSlugsForOccasion:
 def _lesson(root: str, slug: str, description: str, **fm_extra) -> None:
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    fm = {"name": slug, "description": description, "status": "active",
-          "importance": 3, "tags": []}
+    fm = {"name": slug, "description": description, "status": "active", "importance": 3, "tags": []}
     fm.update(fm_extra)
     lesson_io.write_lesson(path, fm, "body", root=root, actor="test", reason="fixture")
 
@@ -67,10 +90,18 @@ class TestExcludeShownThroughTheCliQueryCommand:
         import argparse
 
         base = dict(
-            task=task, top_k=10, dest=root, agent_type=None, lexical=True,
-            relevance_floor=None, include_importance_floor=None,
-            experiment=False, occasion_id=None, holdout_rate=None,
-            experiment_salt=None, exclude_shown=None,
+            task=task,
+            top_k=10,
+            dest=root,
+            agent_type=None,
+            lexical=True,
+            relevance_floor=None,
+            include_importance_floor=None,
+            experiment=False,
+            occasion_id=None,
+            holdout_rate=None,
+            experiment_salt=None,
+            exclude_shown=None,
         )
         base.update(extra)
         return argparse.Namespace(**base)
@@ -79,19 +110,27 @@ class TestExcludeShownThroughTheCliQueryCommand:
         from unimem.commands import query_cmd
 
         _lesson(str(store), "shown", "refund policy for enterprise accounts")
-        rc = query_cmd.run(self._args(
-            str(store), "refund policy for enterprise accounts",
-            experiment=True, occasion_id="occ-1", holdout_rate=0.0,
-            experiment_salt="s",
-        ))
+        rc = query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy for enterprise accounts",
+                experiment=True,
+                occasion_id="occ-1",
+                holdout_rate=0.0,
+                experiment_salt="s",
+            )
+        )
         assert rc == 0
         capsys.readouterr()
 
         _lesson(str(store), "not_yet", "refund policy for enterprise accounts")
-        rc = query_cmd.run(self._args(
-            str(store), "refund policy for enterprise accounts",
-            exclude_shown="occ-1",
-        ))
+        rc = query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy for enterprise accounts",
+                exclude_shown="occ-1",
+            )
+        )
         assert rc == 0
         out = capsys.readouterr().out
         slugs = {line.split()[0] for line in out.splitlines() if "rel=" in line}
@@ -103,13 +142,20 @@ class TestExcludeShownThroughTheCliQueryCommand:
         _lesson(str(store), "always_on", "refund policy for enterprise accounts", core=True)
         _lesson(str(store), "matched", "refund policy for enterprise accounts")
         holdout_io.assign_and_log(
-            str(store), ["always_on", "matched"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["always_on", "matched"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
 
-        rc = query_cmd.run(self._args(
-            str(store), "refund policy for enterprise accounts",
-            exclude_shown="occ-1",
-        ))
+        rc = query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy for enterprise accounts",
+                exclude_shown="occ-1",
+            )
+        )
         assert rc == 0
         out = capsys.readouterr().out
         slugs = {line.split()[0] for line in out.splitlines() if "rel=" in line or "[core]" in line}
@@ -119,16 +165,22 @@ class TestExcludeShownThroughTheCliQueryCommand:
         from unimem.commands import query_cmd
 
         _lesson(str(store), "shown", "refund policy enterprise accounts")
-        rc = query_cmd.run(self._args(
-            str(store), "refund policy enterprise accounts",
-        ))
+        rc = query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy enterprise accounts",
+            )
+        )
         assert rc == 0
         capsys.readouterr()
 
-        rc = query_cmd.run(self._args(
-            str(store), "refund policy enterprise accounts",
-            exclude_shown="occ-1",
-        ))
+        rc = query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy enterprise accounts",
+                exclude_shown="occ-1",
+            )
+        )
         assert rc == 0
         out = capsys.readouterr().out
         assert "shown" in out
@@ -137,11 +189,16 @@ class TestExcludeShownThroughTheCliQueryCommand:
         from unimem.commands import query_cmd
 
         _lesson(str(store), "shown", "refund policy enterprise accounts")
-        query_cmd.run(self._args(
-            str(store), "refund policy enterprise accounts",
-            experiment=True, occasion_id="occ-1", holdout_rate=0.0,
-            experiment_salt="s",
-        ))
+        query_cmd.run(
+            self._args(
+                str(store),
+                "refund policy enterprise accounts",
+                experiment=True,
+                occasion_id="occ-1",
+                holdout_rate=0.0,
+                experiment_salt="s",
+            )
+        )
         capsys.readouterr()
         rc = query_cmd.run(self._args(str(store), "refund policy enterprise accounts"))
         assert rc == 0

@@ -1,4 +1,5 @@
 """Google AI (Gemini/Gemma) provider: thinking is dropped from answers but billed, and only error statuses retry."""
+
 import io
 import json
 import urllib.error
@@ -14,8 +15,10 @@ PRICES = {"gemma-4-31b-it": {"input_per_mtok": 1.0, "output_per_mtok": 2.0}}
 
 def _reply(text="Paris", thought="Let me think.", finish="STOP"):
     parts = ([{"text": thought, "thought": True}] if thought else []) + ([{"text": text}] if text else [])
-    return {"candidates": [{"content": {"parts": parts}, "finishReason": finish}],
-            "usageMetadata": {"promptTokenCount": 12, "candidatesTokenCount": 3, "thoughtsTokenCount": 40}}
+    return {
+        "candidates": [{"content": {"parts": parts}, "finishReason": finish}],
+        "usageMetadata": {"promptTokenCount": 12, "candidatesTokenCount": 3, "thoughtsTokenCount": 40},
+    }
 
 
 def test_parse_drops_thoughts_and_bills_them():
@@ -63,8 +66,9 @@ def _bounded(monkeypatch, outcomes):
 
 def test_bounded_call_retries_only_error_statuses_and_settles_cost(monkeypatch):
     opener, guard, cfg = _bounded(monkeypatch, [500, 429, 503, _reply()])
-    text, usage, cost = bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0,
-                                                       sleep=lambda _s: None)
+    text, usage, cost = bench_requests._gemini_complete(
+        "q", cfg, guard, output_limit=4096, temperature=0.0, sleep=lambda _s: None
+    )
     assert text == "Paris" and opener.calls == 4
     assert cost == pytest.approx((12 * 1.0 + 43 * 2.0) / 1_000_000) and guard.uncertain_calls == 0
 
@@ -78,11 +82,14 @@ def test_an_http_error_answer_charges_nothing_and_later_calls_still_run(monkeypa
     # Exhausted retries on an outage are refusals too; the guard still admits the next question.
     opener.outcomes = [500, 500]
     with pytest.raises(llm.LLMUnavailable, match="HTTP 500"):
-        bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0, attempts=2,
-                                        sleep=lambda _s: None)
+        bench_requests._gemini_complete(
+            "q", cfg, guard, output_limit=4096, temperature=0.0, attempts=2, sleep=lambda _s: None
+        )
     opener.outcomes = [_reply()]
-    assert bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0,
-                                           sleep=lambda _s: None)[0] == "Paris"
+    assert (
+        bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0, sleep=lambda _s: None)[0]
+        == "Paris"
+    )
 
 
 def test_a_lost_connection_or_bad_usage_stops_the_run_with_an_uncertain_charge(monkeypatch):
@@ -104,8 +111,14 @@ def test_a_lost_connection_or_bad_usage_stops_the_run_with_an_uncertain_charge(m
 
 
 def test_quota_errors_wait_the_suggested_delay():
-    body = json.dumps({"error": {"code": 429, "details": [
-        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "22.9s"}]}}).encode()
+    body = json.dumps(
+        {
+            "error": {
+                "code": 429,
+                "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "22.9s"}],
+            }
+        }
+    ).encode()
     assert bench_requests._retry_delay(body) == pytest.approx(22.9)
     assert bench_requests._retry_delay(b"not json") is None
     assert bench_requests._retry_delay(b'{"error": {}}') is None
@@ -190,5 +203,7 @@ def test_a_lost_connection_on_a_zero_priced_model_cannot_overspend_and_does_not_
     with pytest.raises(llm.LLMUnavailable):
         bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0, sleep=lambda _s: None)
     assert guard.uncertain_calls == 0 and guard.free_uncertain_calls == 1
-    assert bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0,
-                                           sleep=lambda _s: None)[0] == "Paris"
+    assert (
+        bench_requests._gemini_complete("q", cfg, guard, output_limit=4096, temperature=0.0, sleep=lambda _s: None)[0]
+        == "Paris"
+    )

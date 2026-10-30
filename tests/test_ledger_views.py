@@ -1,4 +1,5 @@
 """Learning Ledger API: value, releases with text diffs, experiment designer, forensics, digest."""
+
 import json
 import os
 
@@ -9,9 +10,18 @@ TOKEN = "l" * 40
 
 def _lesson(root, slug, body, status="active"):
     fm = templates.lesson_frontmatter(
-        slug=slug, description="Use idempotency keys", agent_type="coder", domain="payments", tags=["pay"],
-        applies_when="retrying a payment", do_not_apply_when="the call is naturally idempotent", importance=3,
-        importance_rationale="prevents duplicate charges", source_traces=[], status=status)
+        slug=slug,
+        description="Use idempotency keys",
+        agent_type="coder",
+        domain="payments",
+        tags=["pay"],
+        applies_when="retrying a payment",
+        do_not_apply_when="the call is naturally idempotent",
+        importance=3,
+        importance_rationale="prevents duplicate charges",
+        source_traces=[],
+        status=status,
+    )
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     lesson_io.write_lesson(path, fm, body, root=root, actor="t", reason="t")
     return path
@@ -27,8 +37,9 @@ def seeded_store(root):
     holdout_io.configure(root, rate=0.5, salt="ledger")
     for i in range(800):
         occasion = f"o{i}"
-        withheld = holdout_io.assign_and_log(root, ["keys", "noise"], occasion_id=occasion, rate=0.5,
-                                             salt="ledger", durable=False)
+        withheld = holdout_io.assign_and_log(
+            root, ["keys", "noise"], occasion_id=occasion, rate=0.5, salt="ledger", durable=False
+        )
         holdout_io.record_outcome(root, occasion, (i % 10) < (4 if "keys" in withheld else 8), durable=False)
     return first, second
 

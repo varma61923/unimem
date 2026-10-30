@@ -10,6 +10,7 @@ Quotes are data, never instructions. Current trust checks still apply to valid-
 time queries. Empty scope retains the trusted local store's legacy routing;
 deployments must supply their authenticated scope for tenant-routed reads.
 """
+
 from __future__ import annotations
 
 import json
@@ -99,11 +100,20 @@ class EvidenceContext:
         return _tokens(self.context)
 
     def to_dict(self) -> dict[str, object]:
-        return {"fact_id": self.fact_id, "statement": self.statement, "claim_revision": self.claim_revision,
-                "assessment": self.assessment.to_dict(), "nodes": [n.to_dict() for n in self.nodes],
-                "edges": [e.to_dict() for e in self.edges], "omissions": list(self.omissions),
-                "context": self.context, "tokens": self.tokens, "budget": self.budget,
-                "scope": self.scope, "as_of": self.as_of}
+        return {
+            "fact_id": self.fact_id,
+            "statement": self.statement,
+            "claim_revision": self.claim_revision,
+            "assessment": self.assessment.to_dict(),
+            "nodes": [n.to_dict() for n in self.nodes],
+            "edges": [e.to_dict() for e in self.edges],
+            "omissions": list(self.omissions),
+            "context": self.context,
+            "tokens": self.tokens,
+            "budget": self.budget,
+            "scope": self.scope,
+            "as_of": self.as_of,
+        }
 
 
 def _authorized(scopes: list[str], scope: str) -> bool:
@@ -117,7 +127,9 @@ def _quote_line(node: EvidenceNode, quote: str, polarities: set[EvidencePolarity
 
 
 def _fit_quote(
-    node: EvidenceNode, polarities: set[EvidencePolarity], remaining_chars: int,
+    node: EvidenceNode,
+    polarities: set[EvidencePolarity],
+    remaining_chars: int,
 ) -> tuple[EvidenceNode, str] | None:
     line = _quote_line(node, node.quote, polarities, False)
     if len(line) <= remaining_chars:
@@ -138,8 +150,14 @@ def _fit_quote(
 
 
 def explain_fact(
-    root: str, fact_id: str, *, budget: int = 512, max_sources: int = 16,
-    max_depth: int = 4, as_of: str | None = None, scope: str = "",
+    root: str,
+    fact_id: str,
+    *,
+    budget: int = 512,
+    max_sources: int = 16,
+    max_depth: int = 4,
+    as_of: str | None = None,
+    scope: str = "",
 ) -> EvidenceContext:
     """Read a fact's current proof graph with bounded, source-attributed quotes.
 
@@ -151,13 +169,19 @@ def explain_fact(
     """
     _validate_options(budget, max_sources, max_depth, scope)
     resolver = EvidenceResolver(root, hierarchical.load_facts(root), as_of=as_of)
-    return _explain_snapshot(resolver, fact_id, budget=budget, max_sources=max_sources,
-                             max_depth=max_depth, scope=scope)
+    return _explain_snapshot(
+        resolver, fact_id, budget=budget, max_sources=max_sources, max_depth=max_depth, scope=scope
+    )
 
 
 def _explain_snapshot(
-    resolver: EvidenceResolver, fact_id: str, *, budget: int = 512,
-    max_sources: int = 16, max_depth: int = 4, scope: str = "",
+    resolver: EvidenceResolver,
+    fact_id: str,
+    *,
+    budget: int = 512,
+    max_sources: int = 16,
+    max_depth: int = 4,
+    scope: str = "",
 ) -> EvidenceContext:
     """Expand one request snapshot without reloading the whole fact store per hit."""
     _validate_options(budget, max_sources, max_depth, scope)
@@ -200,20 +224,28 @@ def _explain_snapshot(
             quote = resolver.source_quote(receipt)
             if quote is None:
                 omitted.add("source changed while its quote was read")
-                assessment = EvidenceAssessment("stale", assessment.supports, assessment.refutes,
-                                                (*assessment.reasons, "source changed while its quote was read"))
+                assessment = EvidenceAssessment(
+                    "stale",
+                    assessment.supports,
+                    assessment.refutes,
+                    (*assessment.reasons, "source changed while its quote was read"),
+                )
                 continue
             source_fact = facts.get(receipt.source_id) if receipt.kind == "fact" else None
             nodes[identity] = EvidenceNode(
-                identity, receipt.kind, receipt.source_id, receipt.revision, quote,
-                tuple(current[1]), depth,
+                identity,
+                receipt.kind,
+                receipt.source_id,
+                receipt.revision,
+                quote,
+                tuple(current[1]),
+                depth,
                 source_fact.valid_from if source_fact is not None else None,
                 source_fact.valid_until if source_fact is not None else None,
             )
             if source_fact is not None and source_fact.evidence_bound:
                 if resolver.assess(source_fact.id).eligible:
-                    queue.extend((identity, child, depth + 1, (*ancestors, identity))
-                                 for child in source_fact.evidence)
+                    queue.extend((identity, child, depth + 1, (*ancestors, identity)) for child in source_fact.evidence)
                 else:
                     omitted.add("source claim has ineligible dependencies")
         edge = EvidenceEdge(parent, identity, receipt.polarity, receipt.recorded_at)
@@ -244,5 +276,16 @@ def _explain_snapshot(
     present = {node.id for node in included}
     retained_edges = tuple(edge for edge in edges if edge.source in present and edge.parent in reachable)
     context = _HEADER + "\n" + "\n".join(lines) if lines else ""
-    return EvidenceContext(fact.id, fact.statement, claim_revision(fact), assessment, tuple(included), retained_edges,
-                           tuple(sorted(omitted)), context, budget, scope, resolver.as_of)
+    return EvidenceContext(
+        fact.id,
+        fact.statement,
+        claim_revision(fact),
+        assessment,
+        tuple(included),
+        retained_edges,
+        tuple(sorted(omitted)),
+        context,
+        budget,
+        scope,
+        resolver.as_of,
+    )

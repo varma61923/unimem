@@ -9,26 +9,34 @@ from unimem import frontmatter
 def test_t4_fleet_incident_postmortem_to_governance_loop(isolated_store: str):
     res_cap = run_cli(
         "capture",
-        "--title", "Cascading outage due to PostgreSQL client connection starvation",
-        "--context", (
+        "--title",
+        "Cascading outage due to PostgreSQL client connection starvation",
+        "--context",
+        (
             "During flash sale traffic spike, microservices opened 500 connections without pooling, "
             "exhausting PostgreSQL max_connections and dropping all incoming customer requests."
         ),
-        "--solution", (
+        "--solution",
+        (
             "Deploy PgBouncer transaction-level connection pooler in front of primary database "
             "and enforce max_connections per service pod to 10."
         ),
-        "--agent-type", "coding",
+        "--agent-type",
+        "coding",
         dest=isolated_store,
     )
     res_cap.assert_success()
 
     res_fact = run_cli(
-        "fact", "add",
+        "fact",
+        "add",
         "All production database clients must route queries through PgBouncer connection pooler.",
-        "--category", "constraint",
-        "--scope", "database",
-        "--confidence", "0.95",
+        "--category",
+        "constraint",
+        "--scope",
+        "database",
+        "--confidence",
+        "0.95",
         dest=isolated_store,
     )
     res_fact.assert_success()

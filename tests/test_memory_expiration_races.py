@@ -9,9 +9,18 @@ from unimem.memory_record import MemoryRecord
 @pytest.mark.parametrize("scope", [{}, {"agent": "new-owner"}])
 def test_expiration_cannot_erase_a_reused_identity_at_the_same_version(tmp_path, monkeypatch, scope):
     journal = Journal(str(tmp_path))
-    journal.put(MemoryRecord("due", "observation", 1, {
-        "text": "Expired content.", "forget_after": "2000-01-01T00:00:00Z", "forget_reason": "expired",
-    }))
+    journal.put(
+        MemoryRecord(
+            "due",
+            "observation",
+            1,
+            {
+                "text": "Expired content.",
+                "forget_after": "2000-01-01T00:00:00Z",
+                "forget_reason": "expired",
+            },
+        )
+    )
     original = journal.forget
 
     def reuse_before_expiration(identity, **kwargs):
@@ -26,9 +35,18 @@ def test_expiration_cannot_erase_a_reused_identity_at_the_same_version(tmp_path,
 
 def test_expiration_binds_the_stored_legacy_envelope_without_adding_defaults(tmp_path):
     journal = Journal(str(tmp_path))
-    record = journal.put(MemoryRecord("due", "observation", 1, {
-        "text": "Expired legacy content.", "forget_after": "2000-01-01T00:00:00Z", "forget_reason": "expired",
-    }))
+    record = journal.put(
+        MemoryRecord(
+            "due",
+            "observation",
+            1,
+            {
+                "text": "Expired legacy content.",
+                "forget_after": "2000-01-01T00:00:00Z",
+                "forget_reason": "expired",
+            },
+        )
+    )
     body = record.to_dict()
     body.pop("created_at")  # Older envelopes can omit optional fields.
     with journal.connect(write=True) as db:

@@ -116,8 +116,7 @@ def test_entity_store_links_form_edges(store):
 def test_update_community_for_lesson_is_incremental(store):
     _seed_two_clusters(store)
     communities.build_communities(store)
-    _write_lesson(store, "alpha-three", "Alpha cluster lesson three", tags=["alpha"],
-                  source_traces=["trace-alpha-1"])
+    _write_lesson(store, "alpha-three", "Alpha cluster lesson three", tags=["alpha"], source_traces=["trace-alpha-1"])
     name = communities.update_community_for_lesson(store, "lesson_alpha-three")
     assert name == _group_of(communities.build_communities(store), "alpha-one")
     members = communities.get_community(store, name)["members"]

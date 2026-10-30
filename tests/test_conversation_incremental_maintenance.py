@@ -1,4 +1,5 @@
 """Incremental memory maintenance preserves history and only reads new evidence."""
+
 import json
 
 import pytest
@@ -9,14 +10,18 @@ from unimem.conversation.store import Store, write_txn
 
 def test_deletion_repairs_only_affected_owner_slots(tmp_path):
     with Store(str(tmp_path), "memory") as store:
-        for session, date, home in [("old", "2023-01-01", "Oslo"),
-                                    ("new", "2025-01-01", "Paris"),
-                                    ("middle", "2024-01-01", "Rome")]:
+        for session, date, home in [
+            ("old", "2023-01-01", "Oslo"),
+            ("new", "2025-01-01", "Paris"),
+            ("middle", "2024-01-01", "Rome"),
+        ]:
             store.add(session, [{"speaker": "Ana", "text": f"I live in {home}."}], session_at=date)
         store.add("unrelated", [{"speaker": "Ben", "text": "I live in London."}], session_at="2023-01-01")
         unrelated = next(f for f in store.facts() if f["owner"] == "ben")
-        store.db.execute("CREATE TEMP TRIGGER preserve_unrelated BEFORE UPDATE ON facts "
-                         "WHEN old.owner='ben' BEGIN SELECT RAISE(ABORT, 'unrelated belief written'); END")
+        store.db.execute(
+            "CREATE TEMP TRIGGER preserve_unrelated BEFORE UPDATE ON facts "
+            "WHEN old.owner='ben' BEGIN SELECT RAISE(ABORT, 'unrelated belief written'); END"
+        )
         assert store.delete_session("middle") == 1
         old = next(f for f in store.facts(history=True) if f["owner"] == "ana" and "Oslo" in f["statement"])
         assert old["valid_until"] == "2025-01-01T00:00"
@@ -30,12 +35,29 @@ def test_deletion_repairs_only_affected_owner_slots(tmp_path):
 def test_purge_non_anchor_premise_repairs_chain_and_preserves_other_sources(tmp_path):
     with Store(str(tmp_path), "memory") as store:
         store.add("previous", [{"speaker": "Ana", "text": "I live in Oslo."}], session_at="2022-01-01")
-        store.add("derived", [{"text": "Move confirmed", "at": "2023-01-01", "expires": "2024-01-01"},
-                              {"text": "Residence is Paris", "at": "2023-02-01"}], extract_profile=False)
+        store.add(
+            "derived",
+            [
+                {"text": "Move confirmed", "at": "2023-01-01", "expires": "2024-01-01"},
+                {"text": "Residence is Paris", "at": "2023-02-01"},
+            ],
+            extract_profile=False,
+        )
         ids = [t.id for t in store.session_turns("derived")]
-        store.add_memories("derived", [{"text": "Ana lives in Paris.", "kind": "identity", "owner": "ana",
-                                         "slot": "home", "source_turn_ids": ids},
-                                        {"text": "The house is blue.", "source_turn_ids": [ids[1]]}], source="model")
+        store.add_memories(
+            "derived",
+            [
+                {
+                    "text": "Ana lives in Paris.",
+                    "kind": "identity",
+                    "owner": "ana",
+                    "slot": "home",
+                    "source_turn_ids": ids,
+                },
+                {"text": "The house is blue.", "source_turn_ids": [ids[1]]},
+            ],
+            source="model",
+        )
         latest = next(f for f in store.facts() if f["slot"] == "home")
         assert latest["turn"] == ids[1]
         assert store.purge(expired_at="2024-06-01") == 1
@@ -114,7 +136,10 @@ def test_purged_session_tail_rewinds_checkpoint_before_index_reuse(tmp_path):
         assert store.get_meta("extracted:s") == "0"
         store.add("s", [{"text": "Replacement tail"}])
         prompts = []
-        assert extract(store, sessions=["s"], complete=lambda p: (prompts.append(p) or '{"memories": []}', {}))["calls"] == 1
+        assert (
+            extract(store, sessions=["s"], complete=lambda p: (prompts.append(p) or '{"memories": []}', {}))["calls"]
+            == 1
+        )
         assert "Replacement tail" in prompts[0] and "Keep observation" not in prompts[0]
 
 
@@ -124,20 +149,31 @@ def test_extraction_rejects_recycled_source_id_even_with_same_external_ref(tmp_p
     from unimem.conversation.store import ConversationError
 
     with Store(str(tmp_path), "memory") as store:
-        store.add("s", [{"id": "source-reference", "text": "Ana lives in London.", "expires": "2025-01-01"}],
-                  session_at="2023-01-01", extract_profile=False)
+        store.add(
+            "s",
+            [{"id": "source-reference", "text": "Ana lives in London.", "expires": "2025-01-01"}],
+            session_at="2023-01-01",
+            extract_profile=False,
+        )
         old = store.session_turns("s")[0]
 
         def complete(prompt):
             assert "Ana lives in London." in prompt
             with Store(str(tmp_path), "memory") as writer:
                 writer.delete_session("s") if operation == "session" else writer.purge(expired_at="2026-01-01")
-                writer.add("s", [{"id": "source-reference", "text": "Ana lives in Paris."}],
-                           session_at="2023-01-01", extract_profile=False)
+                writer.add(
+                    "s",
+                    [{"id": "source-reference", "text": "Ana lives in Paris."}],
+                    session_at="2023-01-01",
+                    extract_profile=False,
+                )
                 replacement = writer.session_turns("s")[0]
                 assert replacement.id == old.id and replacement.ref == old.ref
-            memories = [{"text": "Ana lives in London.", "owner": "ana", "slot": "home",
-                         "source_turn_ids": [old.id]}] if emit_memory else []
+            memories = (
+                [{"text": "Ana lives in London.", "owner": "ana", "slot": "home", "source_turn_ids": [old.id]}]
+                if emit_memory
+                else []
+            )
             return json.dumps({"memories": memories}), {}
 
         with pytest.raises(ConversationError, match="source evidence changed during extraction; retry"):

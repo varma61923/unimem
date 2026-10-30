@@ -13,8 +13,7 @@ _FIELD_SEP = "\x1f"
 _FINGERPRINT_DOMAIN = "unimem-prereg-v1"
 
 
-class PreregError(ValueError):
-    ...
+class PreregError(ValueError): ...
 
 
 @dataclass(frozen=True)
@@ -36,8 +35,7 @@ class Preregistration:
             )
         if not 0.0 < self.minimum_practical_effect < 1.0:
             raise PreregError(
-                "minimum_practical_effect must be a proportion in (0, 1), got "
-                f"{self.minimum_practical_effect!r}"
+                f"minimum_practical_effect must be a proportion in (0, 1), got {self.minimum_practical_effect!r}"
             )
         if not 0.0 < self.holdout_rate < 1.0:
             raise PreregError(
@@ -46,27 +44,26 @@ class Preregistration:
                 "injected and there is no treatment"
             )
         if self.planned_occasions <= 0:
-            raise PreregError(
-                f"planned_occasions must be positive, got {self.planned_occasions!r}"
-            )
+            raise PreregError(f"planned_occasions must be positive, got {self.planned_occasions!r}")
         if self.stopping_rule not in STOPPING_RULES:
             raise PreregError(
-                f"unknown stopping rule {self.stopping_rule!r}; expected one of "
-                f"{', '.join(STOPPING_RULES)}"
+                f"unknown stopping rule {self.stopping_rule!r}; expected one of {', '.join(STOPPING_RULES)}"
             )
 
     def fingerprint(self) -> str:
         """A stable digest of every commitment."""
-        row = _FIELD_SEP.join((
-            _FINGERPRINT_DOMAIN,
-            self.primary_outcome,
-            f"{self.minimum_practical_effect:.6f}",
-            f"{self.holdout_rate:.6f}",
-            str(self.planned_occasions),
-            self.stopping_rule,
-            self.salt,
-            self.registered_at,
-        ))
+        row = _FIELD_SEP.join(
+            (
+                _FINGERPRINT_DOMAIN,
+                self.primary_outcome,
+                f"{self.minimum_practical_effect:.6f}",
+                f"{self.holdout_rate:.6f}",
+                str(self.planned_occasions),
+                self.stopping_rule,
+                self.salt,
+                self.registered_at,
+            )
+        )
         return hashlib.sha256(row.encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict:
@@ -161,69 +158,78 @@ def check(
     found: list[Deviation] = []
 
     if actual_salt and prereg.salt and actual_salt != prereg.salt:
-        found.append(Deviation(
-            field="randomization",
-            promised=prereg.salt, actual=actual_salt,
-            detail=(
-                "The salt names the randomization. A different salt is a DIFFERENT "
-                "EXPERIMENT -- every arm assignment was reshuffled -- so this "
-                "registration does not describe the run being reported."
-            ),
-        ))
+        found.append(
+            Deviation(
+                field="randomization",
+                promised=prereg.salt,
+                actual=actual_salt,
+                detail=(
+                    "The salt names the randomization. A different salt is a DIFFERENT "
+                    "EXPERIMENT -- every arm assignment was reshuffled -- so this "
+                    "registration does not describe the run being reported."
+                ),
+            )
+        )
 
-    if actual_holdout_rate is not None and abs(
-        actual_holdout_rate - prereg.holdout_rate
-    ) > 1e-9:
-        found.append(Deviation(
-            field="holdout_rate",
-            promised=f"{prereg.holdout_rate:.1%}", actual=f"{actual_holdout_rate:.1%}",
-            detail=(
-                "The withheld fraction sets both the control arm's size and the cost "
-                "of running the experiment. Changing it mid-run mixes two designs."
-            ),
-        ))
+    if actual_holdout_rate is not None and abs(actual_holdout_rate - prereg.holdout_rate) > 1e-9:
+        found.append(
+            Deviation(
+                field="holdout_rate",
+                promised=f"{prereg.holdout_rate:.1%}",
+                actual=f"{actual_holdout_rate:.1%}",
+                detail=(
+                    "The withheld fraction sets both the control arm's size and the cost "
+                    "of running the experiment. Changing it mid-run mixes two designs."
+                ),
+            )
+        )
 
-    if actual_detectable is not None and abs(
-        actual_detectable - prereg.minimum_practical_effect
-    ) > 1e-9:
-        found.append(Deviation(
-            field="minimum_practical_effect",
-            promised=f"{prereg.minimum_practical_effect:.1%}",
-            actual=f"{actual_detectable:.1%}",
-            detail=(
-                "This is what 'found nothing' means. Lowering it after the fact turns "
-                "an underpowered null into a reportable result; raising it turns an "
-                "inconvenient finding into noise."
-            ),
-        ))
+    if actual_detectable is not None and abs(actual_detectable - prereg.minimum_practical_effect) > 1e-9:
+        found.append(
+            Deviation(
+                field="minimum_practical_effect",
+                promised=f"{prereg.minimum_practical_effect:.1%}",
+                actual=f"{actual_detectable:.1%}",
+                detail=(
+                    "This is what 'found nothing' means. Lowering it after the fact turns "
+                    "an underpowered null into a reportable result; raising it turns an "
+                    "inconvenient finding into noise."
+                ),
+            )
+        )
 
     if actual_primary_outcome and actual_primary_outcome != prereg.primary_outcome:
-        found.append(Deviation(
-            field="primary_outcome",
-            promised=prereg.primary_outcome, actual=actual_primary_outcome,
-            detail=(
-                "The endpoint moved. Every number computed on the new outcome can be "
-                "individually correct and the conclusion still unsupported, because "
-                "the one that was chosen is the one that looked best."
-            ),
-        ))
+        found.append(
+            Deviation(
+                field="primary_outcome",
+                promised=prereg.primary_outcome,
+                actual=actual_primary_outcome,
+                detail=(
+                    "The endpoint moved. Every number computed on the new outcome can be "
+                    "individually correct and the conclusion still unsupported, because "
+                    "the one that was chosen is the one that looked best."
+                ),
+            )
+        )
 
     if (
         prereg.stopping_rule == STOP_FIXED_N
         and actual_occasions is not None
         and actual_occasions < prereg.planned_occasions
     ):
-        found.append(Deviation(
-            field="stopping_rule",
-            promised=f"{prereg.planned_occasions:,} occasions (fixed-n)",
-            actual=f"{actual_occasions:,} occasions",
-            detail=(
-                "A fixed-n design analysed early is the classic optional stop: the "
-                "estimate wanders, and stopping when it looks good selects the wander. "
-                "Either run to the planned size or register the sequential rule, whose "
-                "boundary accounts for looking."
-            ),
-        ))
+        found.append(
+            Deviation(
+                field="stopping_rule",
+                promised=f"{prereg.planned_occasions:,} occasions (fixed-n)",
+                actual=f"{actual_occasions:,} occasions",
+                detail=(
+                    "A fixed-n design analysed early is the classic optional stop: the "
+                    "estimate wanders, and stopping when it looks good selects the wander. "
+                    "Either run to the planned size or register the sequential rule, whose "
+                    "boundary accounts for looking."
+                ),
+            )
+        )
 
     if first_observation_at is not None and prereg.registered_at:
         try:
@@ -237,18 +243,20 @@ def check(
             if first.tzinfo is None:
                 first = first.replace(tzinfo=datetime.timezone.utc)
             if registered > first:
-                found.append(Deviation(
-                    field="registered_at",
-                    promised="before the first observation",
-                    actual=f"{(registered - first)} after it",
-                    detail=(
-                        "The registration was written once data was already arriving, "
-                        "so it cannot establish that these commitments predate the "
-                        "results. Usually this means the experiment started before "
-                        "anyone settled what it was measuring, which is worth knowing "
-                        "either way."
-                    ),
-                ))
+                found.append(
+                    Deviation(
+                        field="registered_at",
+                        promised="before the first observation",
+                        actual=f"{(registered - first)} after it",
+                        detail=(
+                            "The registration was written once data was already arriving, "
+                            "so it cannot establish that these commitments predate the "
+                            "results. Usually this means the experiment started before "
+                            "anyone settled what it was measuring, which is worth knowing "
+                            "either way."
+                        ),
+                    )
+                )
 
     return PreregCheck(
         registered=True,
@@ -256,8 +264,8 @@ def check(
         fingerprint=prereg.fingerprint(),
         note=(
             "Pre-registered and run as described."
-            if not found else
-            f"Pre-registered, with {len(found)} deviation(s) from the registered "
+            if not found
+            else f"Pre-registered, with {len(found)} deviation(s) from the registered "
             "design. The results may still be correct; they are no longer a test of "
             "a hypothesis fixed in advance, and should be read as exploratory."
         ),

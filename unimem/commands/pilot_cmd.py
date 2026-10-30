@@ -50,7 +50,9 @@ def _load_pilot_metrics(root: str, agent_type: str | None) -> dict | None:
     if agent_type:
         extra += ["--agent-type", agent_type]
     rc, out = run_script(
-        root, "benchmark/pilot_metrics.py", extra,
+        root,
+        "benchmark/pilot_metrics.py",
+        extra,
         "pilot_metrics.py ships inside the unimem package, so this usually "
         "means a damaged install -- try `pip install --force-reinstall unimem`.",
         capture=True,
@@ -91,8 +93,7 @@ def run(args: argparse.Namespace) -> int:
     raw_traces = _load_traces(root)
     all_instances = [inst for _, inst in raw_traces]
     matched_traces = [
-        (path, inst) for path, inst in raw_traces
-        if not args.agent_type or inst.get("agent_type") == args.agent_type
+        (path, inst) for path, inst in raw_traces if not args.agent_type or inst.get("agent_type") == args.agent_type
     ]
     trace_instances = [inst for _, inst in matched_traces]
     trace_candidates = [
@@ -114,21 +115,29 @@ def run(args: argparse.Namespace) -> int:
     ]
     lessons = evidence_io.load_active_lessons(root)
     tax = taxonomy.build_taxonomy(
-        trace_candidates, lessons,
+        trace_candidates,
+        lessons,
         similarity_threshold=args.similarity_threshold,
         min_cluster_size=args.min_cluster_size,
     )
 
     evidence = evidence_io.load_evidence(root, traces=all_instances)
     impact_report = impact.compute_impact(
-        evidence, trace_instances,
+        evidence,
+        trace_instances,
         cost_per_1k_tokens=args.cost_per_1k_tokens,
         value_per_error_avoided=args.value_per_error_avoided,
     )
 
-    scores = reliability.score_lessons(
-        evidence, min_evidence=args.min_evidence, precision_floor=args.precision_floor,
-    ) if evidence else []
+    scores = (
+        reliability.score_lessons(
+            evidence,
+            min_evidence=args.min_evidence,
+            precision_floor=args.precision_floor,
+        )
+        if evidence
+        else []
+    )
     harmful_lesson_slugs = [s.slug for s in scores if s.verdict == reliability.VERDICT_HARMFUL]
 
     all_rows, _rate, _corrupt = experiment_cmd._load(root)
@@ -137,8 +146,13 @@ def run(args: argparse.Namespace) -> int:
     causal_report = integrity.audit(holdout_rows) if holdout_rows else None
     n_lines = causal_report.n_assignments if causal_report else 0
     causal_effects = (
-        None if not holdout_rows
-        else (experiment.analyze(obs, sequential=True) if (obs and causal_report.readable) else [])
+        None
+        if not holdout_rows
+        else (
+            experiment.analyze(obs, sequential=True)
+            if (obs and causal_report is not None and causal_report.readable)
+            else []
+        )
     )
 
     pilot_json = _load_pilot_metrics(root, args.agent_type)
@@ -175,23 +189,29 @@ def run(args: argparse.Namespace) -> int:
     if args.json:
         import dataclasses
 
-        print(json.dumps({
-            "taxonomy": taxonomy.to_dict(report.taxonomy),
-            "impact": impact.to_dict(report.impact),
-            "n_active_lessons": report.n_active_lessons,
-            "n_holdout_assignments": report.n_holdout_assignments,
-            "causal_effects": (
-                None if report.causal_effects is None
-                else [dataclasses.asdict(e) for e in report.causal_effects]
-            ),
-            "resolution_baseline": report.resolution_baseline,
-            "resolution_current": report.resolution_current,
-            "resolution_delta": report.resolution_delta,
-            "n_baseline_traces": report.n_baseline_traces,
-            "n_current_traces": report.n_current_traces,
-            "harmful_lesson_slugs": report.harmful_lesson_slugs,
-            "result": dataclasses.asdict(report.result),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "taxonomy": taxonomy.to_dict(report.taxonomy),
+                    "impact": impact.to_dict(report.impact),
+                    "n_active_lessons": report.n_active_lessons,
+                    "n_holdout_assignments": report.n_holdout_assignments,
+                    "causal_effects": (
+                        None
+                        if report.causal_effects is None
+                        else [dataclasses.asdict(e) for e in report.causal_effects]
+                    ),
+                    "resolution_baseline": report.resolution_baseline,
+                    "resolution_current": report.resolution_current,
+                    "resolution_delta": report.resolution_delta,
+                    "n_baseline_traces": report.n_baseline_traces,
+                    "n_current_traces": report.n_current_traces,
+                    "harmful_lesson_slugs": report.harmful_lesson_slugs,
+                    "result": dataclasses.asdict(report.result),
+                },
+                indent=2,
+            )
+        )
         return 0
 
     if args.html:

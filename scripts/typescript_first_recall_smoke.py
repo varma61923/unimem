@@ -5,6 +5,7 @@ All npm caches, package builds, the gateway store, and the consumer install live
 a TemporaryDirectory. The SDK tarball is local; this does not test a registry
 publication or a published ``npm install @unimem/...`` flow.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,17 +36,28 @@ def run_step(
     result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True, check=False)
     elapsed = time.perf_counter() - started
     if result.returncode:
-        raise RuntimeError(
-            f"{label} failed ({result.returncode}):\n{result.stdout}\n{result.stderr}"
-        )
+        raise RuntimeError(f"{label} failed ({result.returncode}):\n{result.stdout}\n{result.stderr}")
     return result, elapsed
 
 
 def start_gateway(store: Path, env: dict[str, str]) -> tuple[subprocess.Popen[str], str, float]:
     started = time.perf_counter()
     process = subprocess.Popen(
-        [sys.executable, "-u", "-m", "unimem", "gateway", "--dest", str(store),
-         "--token", TOKEN, "--host", "127.0.0.1", "--port", "0"],
+        [
+            sys.executable,
+            "-u",
+            "-m",
+            "unimem",
+            "gateway",
+            "--dest",
+            str(store),
+            "--token",
+            TOKEN,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "0",
+        ],
         cwd=ROOT,
         env=env,
         stdout=subprocess.DEVNULL,
@@ -110,12 +122,15 @@ def main() -> int:
         _, durations["sdk_dependencies_install"] = run_step(
             "SDK dependency install",
             ["npm", "ci", "--no-audit", "--no-fund", "--cache", str(sdk_cache)],
-            cwd=build, env=env,
+            cwd=build,
+            env=env,
         )
         _, durations["sdk_tests"] = run_step("SDK build and tests", ["npm", "test"], cwd=build, env=env)
         packed, durations["pack"] = run_step(
-            "SDK pack", ["npm", "pack", "--json", "--pack-destination", str(scratch)],
-            cwd=build, env=env,
+            "SDK pack",
+            ["npm", "pack", "--json", "--pack-destination", str(scratch)],
+            cwd=build,
+            env=env,
         )
         pack_info = json.loads(packed.stdout)
         tarball = scratch / pack_info[0]["filename"]
@@ -132,16 +147,32 @@ def main() -> int:
         _, durations["consumer_npm_install"] = run_step(
             "consumer npm install",
             ["npm", "install", "--no-audit", "--no-fund", "--cache", str(consumer_cache), str(tarball)],
-            cwd=consumer, env=env,
+            cwd=consumer,
+            env=env,
         )
 
         init_started = time.perf_counter()
-        run_step("temporary store init", [sys.executable, "-m", "unimem", "init", "--dest", str(store)],
-                 cwd=ROOT, env=env)
-        run_step("disable holdout in disposable smoke store",
-                 [sys.executable, "-m", "unimem", "experiment", "--dest", str(store),
-                  "--configure", "--rate", "0", "--note", "deterministic local first-recall smoke"],
-                 cwd=ROOT, env=env)
+        run_step(
+            "temporary store init", [sys.executable, "-m", "unimem", "init", "--dest", str(store)], cwd=ROOT, env=env
+        )
+        run_step(
+            "disable holdout in disposable smoke store",
+            [
+                sys.executable,
+                "-m",
+                "unimem",
+                "experiment",
+                "--dest",
+                str(store),
+                "--configure",
+                "--rate",
+                "0",
+                "--note",
+                "deterministic local first-recall smoke",
+            ],
+            cwd=ROOT,
+            env=env,
+        )
         durations["store_setup"] = time.perf_counter() - init_started
 
         gateway: subprocess.Popen[str] | None = None
@@ -165,7 +196,9 @@ def main() -> int:
             )
             _, durations["add_and_reflect"] = run_step(
                 "packed TypeScript SDK add + reflect",
-                ["node", str(smoke), url, TOKEN], cwd=consumer, env=env,
+                ["node", str(smoke), url, TOKEN],
+                cwd=consumer,
+                env=env,
             )
             durations["npm_install_to_recall"] = time.perf_counter() - first_value_started
             result = json.loads(_.stdout)
@@ -179,22 +212,29 @@ def main() -> int:
                     gateway.wait(timeout=5)
 
     durations["script_total"] = time.perf_counter() - total_started
-    print(json.dumps({
-        "status": "passed",
-        "package": pack_info[0]["name"],
-        "package_version": pack_info[0]["version"],
-        "node": subprocess.run(["node", "--version"], capture_output=True, text=True, check=True).stdout.strip(),
-        "npm": subprocess.run(["npm", "--version"], capture_output=True, text=True, check=True).stdout.strip(),
-        "consumer_install_to_verified_reflect_seconds": round(durations["npm_install_to_recall"], 3),
-        "durations_seconds": {key: round(value, 3) for key, value in durations.items()},
-        "recall": result,
-        "limits": [
-            "installed a local npm pack tarball, not a registry-published package",
-            "gateway ran locally on loopback with a disposable store and temporary token",
-            "holdout was disabled only in the disposable smoke store for deterministic first recall",
-            "UNIMEM_OFFLINE=1; add used explicit local mode and reflect used local retrieval",
-        ],
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": "passed",
+                "package": pack_info[0]["name"],
+                "package_version": pack_info[0]["version"],
+                "node": subprocess.run(
+                    ["node", "--version"], capture_output=True, text=True, check=True
+                ).stdout.strip(),
+                "npm": subprocess.run(["npm", "--version"], capture_output=True, text=True, check=True).stdout.strip(),
+                "consumer_install_to_verified_reflect_seconds": round(durations["npm_install_to_recall"], 3),
+                "durations_seconds": {key: round(value, 3) for key, value in durations.items()},
+                "recall": result,
+                "limits": [
+                    "installed a local npm pack tarball, not a registry-published package",
+                    "gateway ran locally on loopback with a disposable store and temporary token",
+                    "holdout was disabled only in the disposable smoke store for deterministic first recall",
+                    "UNIMEM_OFFLINE=1; add used explicit local mode and reflect used local retrieval",
+                ],
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

@@ -20,10 +20,16 @@ def test_concurrent_ingestion_batches_and_recalls(tmp_path, monkeypatch):
 
     async def run():
         async with await AsyncStore.open(str(tmp_path), "load", max_pending=16, batch_size=8) as store:
-            outcomes = await asyncio.gather(*[
-                store.add("session", [{"id": str(i), "text": f"Deployment retry number {i}", "role": "user"}],
-                          extract_profile=False) for i in range(100)
-            ])
+            outcomes = await asyncio.gather(
+                *[
+                    store.add(
+                        "session",
+                        [{"id": str(i), "text": f"Deployment retry number {i}", "role": "user"}],
+                        extract_profile=False,
+                    )
+                    for i in range(100)
+                ]
+            )
             assert sum(row["added"] for row in outcomes) == 100
             assert (await store.stats())["turns"] == 100
             found = await store.recall("Deployment retry", options=Options(embedder=None, rerank=None))
@@ -42,7 +48,8 @@ def test_invalid_append_rolls_back_only_its_savepoint(tmp_path):
             outcomes = await asyncio.gather(
                 store.add("good", [{"text": "First valid evidence"}]),
                 store.add("bad", [{"text": "Partial evidence"}, {"text": "Invalid dated evidence", "at": "bad date"}]),
-                store.add("good", [{"text": "Second valid evidence"}]), return_exceptions=True,
+                store.add("good", [{"text": "Second valid evidence"}]),
+                return_exceptions=True,
             )
             assert isinstance(outcomes[1], ConversationError)
             assert (await store.stats())["turns"] == 2
@@ -106,8 +113,7 @@ def test_backpressure_does_not_consume_waiting_input_and_cancelled_write_drains(
 
 def test_input_limits_release_admission_and_read_only_rejects_writes(tmp_path):
     async def run():
-        async with await AsyncStore.open(str(tmp_path), "limits", max_pending=1,
-                                        max_messages=1, max_chars=20) as store:
+        async with await AsyncStore.open(str(tmp_path), "limits", max_pending=1, max_messages=1, max_chars=20) as store:
             with pytest.raises(ConversationError, match="messages"):
                 await store.add("s", [{"text": "one"}, {"text": "two"}])
             with pytest.raises(ConversationError, match="characters"):
@@ -127,15 +133,13 @@ def test_hot_recall_observes_an_external_writer(tmp_path):
     async def run():
         async with await AsyncStore.open(str(tmp_path), "shared") as store:
             await store.add("first", [{"text": "Deployment retry uses jitter"}], extract_profile=False)
-            options = Options(embedder=None, rerank=None, neighbours_before=0, neighbours_after=0,
-                              summaries=False)
+            options = Options(embedder=None, rerank=None, neighbours_before=0, neighbours_after=0, summaries=False)
             initial = await store.recall("Deployment retry", options=options)
             assert "jitter" in initial.context
 
             def external_write():
                 with Store(str(tmp_path), "shared") as writer:
-                    writer.add("second", [{"text": "Deployment retry uses exponential backoff"}],
-                               extract_profile=False)
+                    writer.add("second", [{"text": "Deployment retry uses exponential backoff"}], extract_profile=False)
 
             await asyncio.to_thread(external_write)
             refreshed = await store.recall("Deployment retry", options=options)

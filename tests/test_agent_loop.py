@@ -16,6 +16,7 @@ def store(tmp_path):
     store = tmp_path / "store"
     store.mkdir()
     from unimem import paths
+
     os.makedirs(paths.lessons_dir(str(store)), exist_ok=True)
     os.makedirs(paths.traces_dir(str(store)), exist_ok=True)
     return str(store)
@@ -75,8 +76,12 @@ class TestAgentLoop:
 
         def fact_recorder(context, tool_calls):
             return "Fact recorded.", [
-                {"type": "fact_record", "statement": "Database pool must not exceed 100 connections.",
-                 "category": "constraint", "confidence": 0.9},
+                {
+                    "type": "fact_record",
+                    "statement": "Database pool must not exceed 100 connections.",
+                    "category": "constraint",
+                    "confidence": 0.9,
+                },
                 {"type": "done", "done": True},
             ]
 
@@ -95,7 +100,7 @@ class TestAgentLoop:
         result = loop.run(prompt=prompt)
 
         assert result.trace_path
-        content = Path(result.trace_path).read_text(encoding='utf-8')
+        content = Path(result.trace_path).read_text(encoding="utf-8")
         assert "payment processing" in content.lower() or "Agent" in content
 
     def test_max_turns_respected(self, store):
@@ -128,7 +133,7 @@ class TestAgentLoop:
             calls.append((args, kwargs))
             assert kwargs["stdout"] == subprocess.DEVNULL
             assert kwargs["stderr"] == subprocess.DEVNULL
-            time.sleep(.01)
+            time.sleep(0.01)
             return subprocess.CompletedProcess(args, 0)
 
         monkeypatch.setattr(agent_loop.subprocess, "run", isolated_run)
@@ -172,7 +177,7 @@ class TestAgentLoop:
         lessons = agent_loop._relevant_lessons(store, "lesson")
         assert lessons == [("external-lesson", "> lesson source data")]
 
-        fact = SimpleNamespace(id="external-fact", statement="fact source data", scopes=[], confidence=.8)
+        fact = SimpleNamespace(id="external-fact", statement="fact source data", scopes=[], confidence=0.8)
         monkeypatch.setattr(hierarchical, "search_facts", lambda *args, **kwargs: [(fact, 1.0)])
         monkeypatch.setattr(agent_loop, "_relevant_lessons", lambda *args: [])
         context = agent_loop._assemble_context(store, "fact")

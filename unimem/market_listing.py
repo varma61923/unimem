@@ -4,6 +4,7 @@ Shared by the local marketplace (`unimem.marketplace`) and the Hub, so it
 depends only on the standard library, `origin` and `memory_guard` (Ed25519
 verification additionally needs `cryptography`).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -15,8 +16,17 @@ from unimem import memory_guard, origin
 SCHEMA_VERSION = 1
 LISTING_KIND = "lesson-listing"
 ROLES = {"publisher": "market-publisher", "referee": "certificate", "fleet": "fleet-effect"}
-PORTABLE_KEYS = ("name", "description", "tags", "agent_type", "domain", "importance",
-                 "importance_rationale", "applies_when", "do_not_apply_when")
+PORTABLE_KEYS = (
+    "name",
+    "description",
+    "tags",
+    "agent_type",
+    "domain",
+    "importance",
+    "importance_rationale",
+    "applies_when",
+    "do_not_apply_when",
+)
 MIN_ORGANIZATIONS = 2
 MAX_LISTING_BYTES = 256 * 1024
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -32,15 +42,23 @@ class MarketError(ValueError):
 def _lesson_problems(fm: dict) -> list[str]:
     """The lesson schema's constraints on the portable keys, without loading the schema file."""
     problems = [f"the listed lesson lacks {k}" for k in PORTABLE_KEYS if k not in fm]
-    for key in ("name", "description", "agent_type", "domain", "importance_rationale",
-                "applies_when", "do_not_apply_when"):
+    for key in (
+        "name",
+        "description",
+        "agent_type",
+        "domain",
+        "importance_rationale",
+        "applies_when",
+        "do_not_apply_when",
+    ):
         if key in fm and (not isinstance(fm[key], str) or not fm[key].strip()):
             problems.append(f"the listed lesson's {key} must be non-empty text")
     if "tags" in fm and (not isinstance(fm["tags"], list) or not all(isinstance(t, str) for t in fm["tags"])):
         problems.append("the listed lesson's tags must be a list of text")
     importance = fm.get("importance")
-    if "importance" in fm and (isinstance(importance, bool) or not isinstance(importance, int)
-                               or not 1 <= importance <= 5):
+    if "importance" in fm and (
+        isinstance(importance, bool) or not isinstance(importance, int) or not 1 <= importance <= 5
+    ):
         problems.append("the listed lesson's importance must be an integer from 1 to 5")
     return problems
 
@@ -74,8 +92,13 @@ def _licence(licence: dict) -> dict:
     price = licence.get("price")
     if price is not None:
         amount, per = price.get("amount_usd"), price.get("per", "install")
-        if (isinstance(amount, bool) or not isinstance(amount, (int, float)) or not math.isfinite(amount)
-                or not 0 <= amount <= 1_000_000 or per not in _PER):
+        if (
+            isinstance(amount, bool)
+            or not isinstance(amount, (int, float))
+            or not math.isfinite(amount)
+            or not 0 <= amount <= 1_000_000
+            or per not in _PER
+        ):
             raise MarketError(f"a price needs amount_usd in 0..1000000 and per in {', '.join(_PER)}")
         out["price"] = {"amount_usd": round(float(amount), 2), "per": per}
     return out
@@ -121,9 +144,13 @@ def verify(listing: dict, trusted: dict[str, dict[str, origin.Principal]]) -> di
     elif not origin.verify(certificate, trusted["referee"], authority=ROLES["referee"]):
         problems.append("the referee signature does not verify")
     portable = record.get("lesson")
-    if (not isinstance(portable, dict) or set(portable) != {"frontmatter", "body"}
-            or not isinstance(portable.get("frontmatter"), dict) or not isinstance(portable.get("body"), str)
-            or set(portable["frontmatter"]) - set(PORTABLE_KEYS)):
+    if (
+        not isinstance(portable, dict)
+        or set(portable) != {"frontmatter", "body"}
+        or not isinstance(portable.get("frontmatter"), dict)
+        or not isinstance(portable.get("body"), str)
+        or set(portable["frontmatter"]) - set(PORTABLE_KEYS)
+    ):
         problems.append("the listed lesson is malformed")
         return {"ok": False, "problems": problems, "lift": None}
     problems += _lesson_problems(portable["frontmatter"])
@@ -140,16 +167,29 @@ def verify(listing: dict, trusted: dict[str, dict[str, origin.Principal]]) -> di
     except MarketError as exc:
         problems.append(str(exc))
     pooled = (certificate.get("record") or {}).get("pooled")
-    return {"ok": not problems, "problems": problems, "lift": pooled, "lesson_sha256": digest,
-            "publisher": listing.get("organization"), "licence": record.get("licence")}
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "lift": pooled,
+        "lesson_sha256": digest,
+        "publisher": listing.get("organization"),
+        "licence": record.get("licence"),
+    }
 
 
 def summary(listing: dict) -> dict:
     record = listing.get("record", {})
     fm = record.get("lesson", {}).get("frontmatter", {})
     pooled = (record.get("certificate", {}).get("record") or {}).get("pooled") or {}
-    return {"id": listing_id(listing), "name": fm.get("name"), "description": fm.get("description"),
-            "publisher": listing.get("organization"), "licence": (record.get("licence") or {}).get("id"),
-            "price": (record.get("licence") or {}).get("price"), "lift": pooled.get("effect"),
-            "lift_ci": [pooled.get("ci_low"), pooled.get("ci_high")],
-            "organizations": pooled.get("organizations"), "listed_at": record.get("listed_at")}
+    return {
+        "id": listing_id(listing),
+        "name": fm.get("name"),
+        "description": fm.get("description"),
+        "publisher": listing.get("organization"),
+        "licence": (record.get("licence") or {}).get("id"),
+        "price": (record.get("licence") or {}).get("price"),
+        "lift": pooled.get("effect"),
+        "lift_ci": [pooled.get("ci_low"), pooled.get("ci_high")],
+        "organizations": pooled.get("organizations"),
+        "listed_at": record.get("listed_at"),
+    }

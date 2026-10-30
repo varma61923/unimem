@@ -7,7 +7,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from hub import auth, crud, scopes
-from hub.abuse import RateLimited, RateLimiter, TraceRejected, make_named_limiter, rate_limit_key
+from hub.abuse import RateLimited, RateLimiterBackend, TraceRejected, make_named_limiter, rate_limit_key
 from hub.config import HubConfig
 from hub.db import session_scope
 from hub.plans import EntitlementExceeded
@@ -53,15 +53,13 @@ def add_otlp_routes(
     session_factory,
     *,
     config: HubConfig,
-    rate_limiter: RateLimiter,
+    rate_limiter: RateLimiterBackend,
     trusted_proxy_hops: int = 0,
 ) -> None:
     """Register `POST /v1/traces`. Call only when OTLP ingest is enabled."""
     from unimem import adapters
 
-    auth_limiter = make_named_limiter(
-        config, config.auth_attempts_per_minute, config.auth_attempts_burst, "otlp_auth"
-    )
+    auth_limiter = make_named_limiter(config, config.auth_attempts_per_minute, config.auth_attempts_burst, "otlp_auth")
 
     async def ingest(request: Request) -> Response:
         client_key = rate_limit_key(request, trusted_proxy_hops)
@@ -87,7 +85,8 @@ def add_otlp_routes(
         content_type = request.headers.get("content-type", "")
         if content_type and "json" not in content_type:
             return _json_error(
-                415, "unsupported_media_type",
+                415,
+                "unsupported_media_type",
                 "only OTLP/JSON (Content-Type: application/json) is accepted here",
             )
 
@@ -103,7 +102,8 @@ def add_otlp_routes(
             return JSONResponse({"accepted": 0, "skipped": 0, "errors": []})
         if len(spans) > _MAX_SPANS_PER_REQUEST:
             return _json_error(
-                413, "payload_too_large",
+                413,
+                "payload_too_large",
                 f"{len(spans)} spans in one request exceeds the limit of {_MAX_SPANS_PER_REQUEST}",
             )
 
@@ -118,8 +118,12 @@ def add_otlp_routes(
                 if flat.get("occasion_id") and isinstance(flat.get("occasion_succeeded"), bool):
                     try:
                         done = await crud.record_occasion_outcome(
-                            session, authenticated.org_id, flat["occasion_id"],
-                            flat["occasion_succeeded"], actor=ACTOR_OTLP)
+                            session,
+                            authenticated.org_id,
+                            flat["occasion_id"],
+                            flat["occasion_succeeded"],
+                            actor=ACTOR_OTLP,
+                        )
                         occasions_resolved += done["observations_resolved"]
                     except ValueError as exc:
                         errors.append({"span_id": span_id, "error": str(exc)})
@@ -129,7 +133,10 @@ def add_otlp_routes(
                 outcome = {"resolved": flat["resolved"]} if "resolved" in flat else None
                 try:
                     await crud.contribute_trace(
-                        session, authenticated.org_id, config, rate_limiter,
+                        session,
+                        authenticated.org_id,
+                        config,
+                        rate_limiter,
                         title=flat.get("title") or "OTel span",
                         context_text=flat.get("context", ""),
                         solution_text=flat.get("solution", ""),
@@ -154,16 +161,18 @@ def add_otlp_routes(
                     errors.append({"span_id": span_id, "error": str(exc)})
                     break
                 except RateLimited as exc:
-                    errors.append({
-                        "span_id": span_id,
-                        "error": f"rate_limited: {exc}",
-                    })
+                    errors.append(
+                        {
+                            "span_id": span_id,
+                            "error": f"rate_limited: {exc}",
+                        }
+                    )
                     break
 
         status = 200 if not errors else 207
         return JSONResponse(
-            {"accepted": accepted, "skipped": skipped, "occasions_resolved": occasions_resolved,
-             "errors": errors}, status_code=status,
+            {"accepted": accepted, "skipped": skipped, "occasions_resolved": occasions_resolved, "errors": errors},
+            status_code=status,
         )
 
     app.add_route(OTLP_TRACES_PATH, ingest, methods=["POST"])

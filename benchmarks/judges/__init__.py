@@ -79,9 +79,7 @@ def get_judge(name: str, model: str | None = None) -> JudgeType:
     }
     canonical = lookup.get(key)
     if canonical is None:
-        raise ValueError(
-            f"Unknown judge: {name!r}. Supported judges: {list(JUDGE_CLASSES.keys())}"
-        )
+        raise ValueError(f"Unknown judge: {name!r}. Supported judges: {list(JUDGE_CLASSES.keys())}")
     cls = JUDGE_CLASSES[canonical]
     return cls(model=model)
 

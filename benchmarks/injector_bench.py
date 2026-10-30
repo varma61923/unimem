@@ -95,9 +95,7 @@ def poison_check() -> dict:
                 kit.journal.put(MemoryRecord(identity, "directive", 1, {"text": text}, scope={"agent": "fixture"}))
                 payload = _event_payload(event, {"payload": _poison_payload(event, text)}, identity)
                 result = kit.handle(event, payload, deadline_ms=1000)
-                rows.append(
-                    {"case": identity, "event": event, "successful_injection": identity in result["injected"]}
-                )
+                rows.append({"case": identity, "event": event, "successful_injection": identity in result["injected"]})
         for status in ("proposed", "quarantined", "shadow", "deprecated", "retired"):
             identity = "status-" + status
             kit.journal.put(
@@ -156,9 +154,7 @@ def measure(*, fixture_path: str, model="bge-small", repetitions=5) -> dict:
         kit = HookKit(root, "fixture", embedder=provider)
         for lesson in fixture["lessons"]:
             lesson_payload = {key: value for key, value in lesson.items() if key != "id"}
-            kit.journal.put(
-                MemoryRecord(lesson["id"], "lesson", 1, lesson_payload, scope={"agent": "fixture"})
-            )
+            kit.journal.put(MemoryRecord(lesson["id"], "lesson", 1, lesson_payload, scope={"agent": "fixture"}))
         # Warm document caches separately for each event; keep these first calls out of warm latency.
         for event, cases in cases_by_event.items():
             samples_by_event[event], rows_by_event[event] = [], []
@@ -228,10 +224,7 @@ def measure(*, fixture_path: str, model="bge-small", repetitions=5) -> dict:
         "cold_calls_timed_out_by_event": cold_by_event,
         "cold_ms_by_event": cold_ms_by_event,
         "restart_injected": restart["injected"],
-        "per_event": {
-            event: _event_summary(rows_by_event[event], samples_by_event[event])
-            for event in cases_by_event
-        },
+        "per_event": {event: _event_summary(rows_by_event[event], samples_by_event[event]) for event in cases_by_event},
         "gates": {
             "warm_hook_p95_lt_50ms": p95 < 50,
             "fixture_precision_gte_08": precision is not None and precision >= 0.8,
@@ -279,11 +272,15 @@ def measure_transport(*, repetitions=50) -> dict:
             command = shlex.split(
                 HookKit(root, "fixture", embedder="none").manifest("claude")["events"]["UserPromptSubmit"]
             )
+
             def run_native(session_id):
                 return subprocess.run(
                     command + ["--format", "claude"],
                     input=json.dumps({"session_id": session_id, "prompt": "edit code"}),
-                    text=True, capture_output=True, timeout=15, check=True,
+                    text=True,
+                    capture_output=True,
+                    timeout=15,
+                    check=True,
                 )
 
             def delivered(result):
@@ -327,7 +324,9 @@ def measure_transport(*, repetitions=50) -> dict:
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default="bge-small")
-    parser.add_argument("--fixture", help="labeled lessons and event cases (JSON); required for the latency and relevance run")
+    parser.add_argument(
+        "--fixture", help="labeled lessons and event cases (JSON); required for the latency and relevance run"
+    )
     parser.add_argument("--repetitions", type=int, default=5)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--safety-only", action="store_true")
@@ -343,8 +342,10 @@ def main(argv=None):
         if args.transport_only
         else poison_check()
         if args.safety_only
-        else {**measure(fixture_path=args.fixture, model=args.model, repetitions=args.repetitions),
-           "safety": poison_check()}
+        else {
+            **measure(fixture_path=args.fixture, model=args.model, repetitions=args.repetitions),
+            "safety": poison_check(),
+        }
     )
     if args.out:
         with open(args.out, "w", encoding="utf-8") as stream:

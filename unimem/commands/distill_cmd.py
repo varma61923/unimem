@@ -23,36 +23,42 @@ def add_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) 
     p.add_argument("--similarity-threshold", type=_similarity_threshold, default=0.3)
     p.add_argument("--min-cluster-size", type=int, default=2)
     p.add_argument(
-        "--draft", action="store_true",
+        "--draft",
+        action="store_true",
         help="Ask a configured LLM (UNIMEM_LLM_API_KEY) to fill in the Rule, "
         "applies_when and do_not_apply_when from each cluster's own grouped evidence, "
         "instead of 'TODO: ...' placeholders. Falls back per-cluster, with a stated "
         "reason, if no provider is configured or it refuses.",
     )
     p.add_argument(
-        "--extract", action="store_true",
+        "--extract",
+        action="store_true",
         help="Extract a complete evidence-consensus rule without a model. Requires corroborated "
         "resolutions and writes review candidates only; combines with --failed.",
     )
     p.add_argument(
-        "--min-validation-score", type=_validation_score, default=0.7,
-        help="Minimum evidence consistency score for --extract (0..1, default 0.7); "
-        "does not replace approval.",
+        "--min-validation-score",
+        type=_validation_score,
+        default=0.7,
+        help="Minimum evidence consistency score for --extract (0..1, default 0.7); does not replace approval.",
     )
     p.add_argument(
-        "--semantic-dedup", action="store_true",
+        "--semantic-dedup",
+        action="store_true",
         help="Screen candidate rules against active/review lessons with local embeddings when "
         "available; always retains source traces and falls back to lexical screening.",
     )
     p.add_argument(
-        "--failed", action="store_true",
+        "--failed",
+        action="store_true",
         help="Only cluster traces recorded as failures (outcome.resolved false or repeated_error): "
         "a lesson drafted from what went wrong, not from everything that happened.",
     )
     p.add_argument(
-        "--signal", default=None, metavar="NAME",
-        help="Only the traces of one named failure signal (exact name from `unimem signals list`); "
-        "implies --failed.",
+        "--signal",
+        default=None,
+        metavar="NAME",
+        help="Only the traces of one named failure signal (exact name from `unimem signals list`); implies --failed.",
     )
     p.add_argument("--dest", default=None)
     p.set_defaults(func=run)
@@ -302,8 +308,9 @@ def _run_locked(args: argparse.Namespace, root: str) -> int:
         from unimem import semantic
 
         if not semantic.available():
-            print("[unimem] local semantic model stack unavailable; using lexical candidate screening.",
-                  file=sys.stderr)
+            print(
+                "[unimem] local semantic model stack unavailable; using lexical candidate screening.", file=sys.stderr
+            )
     written = 0
     for n, cluster in enumerate(clusters, start=1):
         agent_type = cluster.traces[0].agent_type or (args.agent_type or paths.GENERAL_AGENT_TYPE)
@@ -315,8 +322,7 @@ def _run_locked(args: argparse.Namespace, root: str) -> int:
             llm_draft = distill.extract_cluster(cluster, policy)
             if llm_draft is None:
                 assessment = distill.assess_cluster(cluster, policy)
-                print(f"  [{n}] skipped: {', '.join(assessment.rejection_reasons)} "
-                      f"(score={assessment.score:.3f})")
+                print(f"  [{n}] skipped: {', '.join(assessment.rejection_reasons)} (score={assessment.score:.3f})")
                 continue
         if args.draft:
             llm_draft = _llm_draft.try_draft(
@@ -327,7 +333,8 @@ def _run_locked(args: argparse.Namespace, root: str) -> int:
                 ),
                 slug=slug,
                 current_rule_text="(none yet -- this is a brand-new candidate, not a revision)",
-                applies_when="(none yet)", do_not_apply_when="(none yet)",
+                applies_when="(none yet)",
+                do_not_apply_when="(none yet)",
                 evidence_lines=_evidence_lines(cluster),
                 allowed_evidence_ids={t.id for t in cluster.traces},
             )
@@ -339,18 +346,20 @@ def _run_locked(args: argparse.Namespace, root: str) -> int:
             domain=distill.propose_domain(cluster, agent_type),
             tags=distill.propose_tags(cluster),
             applies_when=(
-                llm_draft.applies_when if llm_draft
+                llm_draft.applies_when
+                if llm_draft
                 else "TODO: precise activation condition (auto-proposed, needs human review)"
             ),
             do_not_apply_when=(
-                llm_draft.do_not_apply_when if llm_draft
+                llm_draft.do_not_apply_when
+                if llm_draft
                 else "TODO: explicit counter-condition (auto-proposed, needs human review)"
             ),
             importance=3,
             importance_rationale=(
                 "Auto-proposed (LLM-assisted) from a repeated trace pattern; needs human calibration."
-                if llm_draft else
-                "Auto-proposed from a repeated trace pattern; needs human calibration."
+                if llm_draft
+                else "Auto-proposed from a repeated trace pattern; needs human calibration."
             ),
             source_traces=[t.id for t in cluster.traces],
             status="review",
@@ -375,19 +384,29 @@ def _run_locked(args: argparse.Namespace, root: str) -> int:
         comparable = draft_quality.candidate_text(fm, "\n".join(body_lines))
         if screen_duplicates:
             duplicate = draft_quality.find_candidate_duplicate(
-                comparable, existing_proposals, semantic_dedup=getattr(args, "semantic_dedup", False),
+                comparable,
+                existing_proposals,
+                semantic_dedup=getattr(args, "semantic_dedup", False),
             )
             if duplicate is not None:
-                print(f"  [{n}] skipped: {duplicate.method} duplicate of {duplicate.identity} "
-                      f"(similarity={duplicate.similarity:.3f}); source traces retained")
+                print(
+                    f"  [{n}] skipped: {duplicate.method} duplicate of {duplicate.identity} "
+                    f"(similarity={duplicate.similarity:.3f}); source traces retained"
+                )
                 continue
         out_path = os.path.join(ldir, f"{slug}.md")
-        method = " (evidence-consensus)" if isinstance(llm_draft, distill.GroundedDraft) else (
-            " (LLM-assisted)" if llm_draft else ""
+        method = (
+            " (evidence-consensus)"
+            if isinstance(llm_draft, distill.GroundedDraft)
+            else (" (LLM-assisted)" if llm_draft else "")
         )
         lesson_io.write_lesson(
-            out_path, fm, "\n".join(body_lines) + "\n", root=root,
-            actor="distill", reason=f"auto-proposed from {len(cluster.traces)} traces" + method,
+            out_path,
+            fm,
+            "\n".join(body_lines) + "\n",
+            root=root,
+            actor="distill",
+            reason=f"auto-proposed from {len(cluster.traces)} traces" + method,
         )
         written += 1
         if screen_duplicates:

@@ -51,7 +51,8 @@ def test_t3_graph_boost_lesson_retrieval_lifecycle(isolated_store: str):
     ]
 
     ranked = retrieval.rank_lessons(
-        task, lessons,
+        task,
+        lessons,
         graph_boost_lookup=boosts,
         graph_weight=1.0,
         adaptive_tail=False,

@@ -177,12 +177,15 @@ class TestWithdrawal:
         assert memory.reinstate(NEUTRAL) is True
         assert {i.id for i in memory.recall("q", occasion_id="o1")} == {GOOD, NEUTRAL}
 
-    @pytest.mark.parametrize("name,expected", [
-        ("mem0", [NEUTRAL]),
-        ("letta", [(NEUTRAL, "agent-1")]),
-        ("zep", [NEUTRAL]),
-        ("agentcore", [{"memoryId": "mem-1", "memoryRecordId": NEUTRAL}]),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("mem0", [NEUTRAL]),
+            ("letta", [(NEUTRAL, "agent-1")]),
+            ("zep", [NEUTRAL]),
+            ("agentcore", [{"memoryId": "mem-1", "memoryRecordId": NEUTRAL}]),
+        ],
+    )
     def test_delete_at_source_calls_the_vendors_delete(self, tmp_path, name, expected):
         adapter = ADAPTERS[name]()
         ma.MeasuredMemory(adapter, root=str(tmp_path)).withdraw(NEUTRAL, delete_at_source=True)
@@ -212,8 +215,7 @@ class TestWithdrawal:
 
 class FakeLettaCore:
     def __init__(self):
-        blocks = [NS(id=k, label=("persona" if k == NEUTRAL else k), value=v, read_only=False)
-                  for k, v in TEXT.items()]
+        blocks = [NS(id=k, label=("persona" if k == NEUTRAL else k), value=v, read_only=False) for k, v in TEXT.items()]
         self.listed = []
         self.agents = NS(blocks=NS(list=lambda agent_id, **kw: (self.listed.append(agent_id), iter(blocks))[1]))
 
@@ -275,9 +277,7 @@ class TestExternalMemoryIsScreenedForInjection:
 
     def test_screening_can_be_turned_off_explicitly(self, tmp_path):
         _configure(tmp_path, 0.0)
-        memory = ma.MeasuredMemory(
-            ma.Mem0Adapter(PoisonedMem0()), root=str(tmp_path), screen_injection=False
-        )
+        memory = ma.MeasuredMemory(ma.Mem0Adapter(PoisonedMem0()), root=str(tmp_path), screen_injection=False)
         assert "poison" in [i.id for i in memory.recall("q", occasion_id="o1")]
 
     def test_clean_memories_are_untouched(self, tmp_path):

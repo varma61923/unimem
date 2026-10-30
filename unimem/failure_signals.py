@@ -64,16 +64,18 @@ def load_failure_occurrences(root: str, agent_type: str | None = None) -> list[F
         trace_id = str(inst.get("id") or "")
         if not trace_id:
             continue
-        out.append(FailureOccurrence(
-            id=trace_id,
-            title=str(inst.get("title") or ""),
-            context_text=str(inst.get("context_text") or ""),
-            solution_text=str(inst.get("solution_text") or ""),
-            tags=_safe_tags(inst.get("tags")),
-            agent_type=str(inst.get("agent_type") or ""),
-            agent_id=str(inst.get("agent_id") or ""),
-            created_at=str(inst.get("created_at") or ""),
-        ))
+        out.append(
+            FailureOccurrence(
+                id=trace_id,
+                title=str(inst.get("title") or ""),
+                context_text=str(inst.get("context_text") or ""),
+                solution_text=str(inst.get("solution_text") or ""),
+                tags=_safe_tags(inst.get("tags")),
+                agent_type=str(inst.get("agent_type") or ""),
+                agent_id=str(inst.get("agent_id") or ""),
+                created_at=str(inst.get("created_at") or ""),
+            )
+        )
     return out
 
 
@@ -179,22 +181,38 @@ def _average_linkage(vectors: list[dict[str, float]], threshold: float) -> list[
 
 
 def build_signals(
-    root: str, *, agent_type: str | None = None,
-    similarity_threshold: float = DEFAULT_SIMILARITY, min_cluster_size: int = 2,
+    root: str,
+    *,
+    agent_type: str | None = None,
+    similarity_threshold: float = DEFAULT_SIMILARITY,
+    min_cluster_size: int = 2,
 ) -> tuple[list[Signal], dict[str, FailureOccurrence]]:
     """Cluster this store's failing traces into named signals."""
     occurrences = load_failure_occurrences(root, agent_type)
     by_id = {occ.id: occ for occ in occurrences}
-    groups = _average_linkage(_vectors(occurrences), similarity_threshold) if similarity_threshold > 0 else \
-        [list(range(len(occurrences)))] if occurrences else []
+    groups = (
+        _average_linkage(_vectors(occurrences), similarity_threshold)
+        if similarity_threshold > 0
+        else [list(range(len(occurrences)))]
+        if occurrences
+        else []
+    )
     clusters = []
     for group in groups:
         if len(group) < min_cluster_size:
             continue
-        traces = [distill.TraceCandidate(
-            id=occurrences[i].id, path="", title=occurrences[i].title, context_text=occurrences[i].context_text,
-            solution_text=occurrences[i].solution_text, tags=occurrences[i].tags,
-            agent_type=occurrences[i].agent_type) for i in group]
+        traces = [
+            distill.TraceCandidate(
+                id=occurrences[i].id,
+                path="",
+                title=occurrences[i].title,
+                context_text=occurrences[i].context_text,
+                solution_text=occurrences[i].solution_text,
+                tags=occurrences[i].tags,
+                agent_type=occurrences[i].agent_type,
+            )
+            for i in group
+        ]
         shared = set.intersection(*(distill._tokenize(f"{t.title} {t.context_text}") for t in traces))
         clusters.append(distill.Cluster(traces=traces, shared_terms=sorted(shared)[:8]))
     clusters.sort(key=lambda c: len(c.traces), reverse=True)
@@ -204,15 +222,17 @@ def build_signals(
         members = [by_id[t.id] for t in cluster.traces]
         dated = sorted(m.created_at for m in members if m.created_at)
         agents = sorted({m.agent_id for m in members if m.agent_id})
-        signals.append(Signal(
-            name=distill.propose_description(cluster),
-            trace_ids=[m.id for m in members],
-            shared_terms=cluster.shared_terms,
-            affected_agents=agents,
-            trend=_trend(dated),
-            first_seen=dated[0] if dated else "",
-            last_seen=dated[-1] if dated else "",
-        ))
+        signals.append(
+            Signal(
+                name=distill.propose_description(cluster),
+                trace_ids=[m.id for m in members],
+                shared_terms=cluster.shared_terms,
+                affected_agents=agents,
+                trend=_trend(dated),
+                first_seen=dated[0] if dated else "",
+                last_seen=dated[-1] if dated else "",
+            )
+        )
     return signals, by_id
 
 

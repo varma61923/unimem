@@ -42,8 +42,14 @@ async def _lessons(session_factory, org_id, titles):
     ids = []
     async with session_scope(session_factory) as session:
         for title in titles:
-            t = Trace(org_id=org_id, title=title, context_text=f"context for {title}",
-                      solution_text=f"solution for {title}", tags=[TAG], agent_type="code")
+            t = Trace(
+                org_id=org_id,
+                title=title,
+                context_text=f"context for {title}",
+                solution_text=f"solution for {title}",
+                tags=[TAG],
+                agent_type="code",
+            )
             session.add(t)
             await session.flush()
             ids.append(t.id)
@@ -105,9 +111,7 @@ class TestTheVerdictTravelsWithTheResult:
         got = {t["id"]: t["evidence"]["verdict"] for t in result["traces"]}
         assert got == expected
 
-    async def test_an_org_that_never_ran_an_experiment_gets_no_extra_fields(
-        self, session_factory, org
-    ):
+    async def test_an_org_that_never_ran_an_experiment_gets_no_extra_fields(self, session_factory, org):
         await _lessons(session_factory, org, ["plain lesson"])
         result = await _search(session_factory, org)
         assert "evidence" not in result
@@ -168,9 +172,7 @@ class TestTheCache:
         await _search(session_factory, org)
         assert calls["n"] == 2, "a newly recorded outcome must invalidate the evidence"
 
-    async def test_searching_during_an_experiment_does_not_recompute_each_time(
-        self, session_factory, org, monkeypatch
-    ):
+    async def test_searching_during_an_experiment_does_not_recompute_each_time(self, session_factory, org, monkeypatch):
         [trace] = await _lessons(session_factory, org, ["busy lesson"])
         await _drive(session_factory, org, trace, 40, 0.8, 0.4, "b")
         calls = await self._counting(monkeypatch)

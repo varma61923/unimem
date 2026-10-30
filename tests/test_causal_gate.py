@@ -1,4 +1,5 @@
 """Causal gate: contextual effects, source reputation, Thompson schedules, drift and off-policy checks."""
+
 from __future__ import annotations
 
 import datetime
@@ -49,8 +50,7 @@ def _at(i: int) -> str:
     return (T0 + datetime.timedelta(seconds=i)).isoformat()
 
 
-def simulate(rng, n, lessons, *, rate_for, effect_for, base_for=lambda ctx: 0.5,
-             contexts=("code", "support"), start=0):
+def simulate(rng, n, lessons, *, rate_for, effect_for, base_for=lambda ctx: 0.5, contexts=("code", "support"), start=0):
     """Occasions with every lesson independently randomized; the outcome adds each shown lesson's effect."""
     rows = []
     for i in range(start, start + n):
@@ -75,8 +75,14 @@ def test_the_contrast_is_unbiased_when_the_holdout_rate_depends_on_the_context()
     # Easy coding occasions are mostly shown the memory, hard support ones mostly not:
     # a raw difference in means credits the memory with the context's easiness.
     rng = random.Random(1)
-    rows = simulate(rng, 20000, ["m"], rate_for=lambda _l, ctx: 0.1 if ctx == "code" else 0.7,
-                    effect_for=lambda _l, _c: 0.1, base_for=lambda ctx: 0.8 if ctx == "code" else 0.2)
+    rows = simulate(
+        rng,
+        20000,
+        ["m"],
+        rate_for=lambda _l, ctx: 0.1 if ctx == "code" else 0.7,
+        effect_for=lambda _l, _c: 0.1,
+        base_for=lambda ctx: 0.8 if ctx == "code" else 0.2,
+    )
     shown = [r.succeeded for r in rows if r.injected]
     withheld = [r.succeeded for r in rows if not r.injected]
     naive = sum(shown) / len(shown) - sum(withheld) / len(withheld)
@@ -93,8 +99,13 @@ def test_a_contrast_needs_both_arms():
 
 def test_the_gate_learns_a_memory_that_helps_one_context_and_hurts_another():
     rng = random.Random(2)
-    rows = simulate(rng, 4000, ["test-runner"], rate_for=lambda _l, _c: 0.5,
-                    effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25)
+    rows = simulate(
+        rng,
+        4000,
+        ["test-runner"],
+        rate_for=lambda _l, _c: 0.5,
+        effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25,
+    )
     model = causal_gate.fit(rows)
     overall = model.lessons["test-runner"]
     code, support = model.contexts[("test-runner", "code")], model.contexts[("test-runner", "support")]
@@ -108,8 +119,9 @@ def test_the_gate_learns_a_memory_that_helps_one_context_and_hurts_another():
 
 def test_contexts_without_real_differences_stay_with_their_lesson():
     rng = random.Random(3)
-    rows = simulate(rng, 3000, ["steady"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.15,
-                    contexts=("a", "b", "c"))
+    rows = simulate(
+        rng, 3000, ["steady"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.15, contexts=("a", "b", "c")
+    )
     model = causal_gate.fit(rows)
     _rates, context_rates = causal_gate.rates(model)
     assert model.tau_context == pytest.approx(causal_gate.CONTEXT_TAU_FLOOR)
@@ -118,8 +130,7 @@ def test_contexts_without_real_differences_stay_with_their_lesson():
 
 def test_a_lesson_is_not_shrunk_toward_its_own_data():
     rng = random.Random(4)
-    rows = simulate(rng, 4000, ["solo"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.2,
-                    contexts=("x",))
+    rows = simulate(rng, 4000, ["solo"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.2, contexts=("x",))
     post = causal_gate.fit(rows).lessons["solo"]
     assert post.mean == pytest.approx(post.raw_effect, abs=0.01)
 
@@ -127,8 +138,14 @@ def test_a_lesson_is_not_shrunk_toward_its_own_data():
 def test_source_reputation_sets_the_prior_for_a_memory_with_little_evidence():
     rng = random.Random(5)
     proven = {"bad-1": -0.3, "bad-2": -0.25, "bad-3": -0.3, "good-1": 0.3, "good-2": 0.25, "good-3": 0.3}
-    rows = simulate(rng, 2000, list(proven), rate_for=lambda _l, _c: 0.5,
-                    effect_for=lambda lesson, _c: proven[lesson] / 3, contexts=("x",))
+    rows = simulate(
+        rng,
+        2000,
+        list(proven),
+        rate_for=lambda _l, _c: 0.5,
+        effect_for=lambda lesson, _c: proven[lesson] / 3,
+        contexts=("x",),
+    )
     # Two brand-new memories with identical, uninformative evidence: 2 of 3 succeed in each arm.
     for lesson in ("new-bad", "new-good"):
         rows += [Row(lesson, f"{lesson}-{i}", i < 3, i % 3 != 0, 0.5, "x", _at(10_000 + i)) for i in range(6)]
@@ -157,9 +174,12 @@ def test_withhold_rates_are_clipped_and_the_floor_is_validated():
 def test_lesson_source_reads_publisher_then_provenance_then_traces():
     assert causal_gate.lesson_source({"publisher": "Acme"}) == "publisher:Acme"
     assert causal_gate.lesson_source({"marketplace": {"publisher": "Acme"}}) == "publisher:Acme"
-    assert causal_gate.lesson_source(
-        {"provenance": {"source_kind": "explicit_host_history_scan", "source_agent": "cursor"}}
-    ) == "kind:explicit_host_history_scan/cursor"
+    assert (
+        causal_gate.lesson_source(
+            {"provenance": {"source_kind": "explicit_host_history_scan", "source_agent": "cursor"}}
+        )
+        == "kind:explicit_host_history_scan/cursor"
+    )
     assert causal_gate.lesson_source({"source_traces": ["t1"]}) == "distilled"
     assert causal_gate.lesson_source({}) == "local"
 
@@ -169,11 +189,23 @@ def test_lesson_source_reads_publisher_then_provenance_then_traces():
 
 def test_drift_finds_a_memory_that_stopped_helping_and_leaves_stable_ones_alone():
     rng = random.Random(6)
-    rows = simulate(rng, 1600, ["flips", "steady"], rate_for=lambda _l, _c: 0.5,
-                    effect_for=lambda lesson, _c: 0.15 if lesson == "steady" else 0.3, contexts=("x",))
-    rows += simulate(rng, 1600, ["flips", "steady"], rate_for=lambda _l, _c: 0.5,
-                     effect_for=lambda lesson, _c: 0.15 if lesson == "steady" else -0.3, contexts=("x",),
-                     start=1600)
+    rows = simulate(
+        rng,
+        1600,
+        ["flips", "steady"],
+        rate_for=lambda _l, _c: 0.5,
+        effect_for=lambda lesson, _c: 0.15 if lesson == "steady" else 0.3,
+        contexts=("x",),
+    )
+    rows += simulate(
+        rng,
+        1600,
+        ["flips", "steady"],
+        rate_for=lambda _l, _c: 0.5,
+        effect_for=lambda lesson, _c: 0.15 if lesson == "steady" else -0.3,
+        contexts=("x",),
+        start=1600,
+    )
     rows += [Row("rare", f"r{i}", i % 2 == 0, True, 0.5, "x", _at(9000 + i)) for i in range(6)]
     found = {d.lesson: d for d in causal_gate.drift(rows)}
     assert found["flips"].verdict == "DRIFTED"
@@ -184,10 +216,10 @@ def test_drift_finds_a_memory_that_stopped_helping_and_leaves_stable_ones_alone(
 
 def test_a_drifted_memory_is_gated_on_its_evidence_since_the_change():
     rng = random.Random(12)
-    rows = simulate(rng, 1600, ["flips"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.3,
-                    contexts=("x",))
-    rows += simulate(rng, 800, ["flips"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: -0.3,
-                     contexts=("x",), start=1600)
+    rows = simulate(rng, 1600, ["flips"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: 0.3, contexts=("x",))
+    rows += simulate(
+        rng, 800, ["flips"], rate_for=lambda _l, _c: 0.5, effect_for=lambda _l, _c: -0.3, contexts=("x",), start=1600
+    )
     stale = causal_gate.fit(rows).lessons["flips"]
     assert stale.mean > 0  # the old record still outweighs the new harm
     kept, resets = causal_gate.forget_before_drift(rows, causal_gate.drift(rows))
@@ -210,8 +242,13 @@ def test_stable_memories_are_rarely_reset():
     rng = random.Random(13)
     resets = 0
     for run in range(150):
-        rows = simulate(rng, 600, [f"m{run}"], rate_for=lambda _l, _c: 0.5,
-                        effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25)
+        rows = simulate(
+            rng,
+            600,
+            [f"m{run}"],
+            rate_for=lambda _l, _c: 0.5,
+            effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25,
+        )
         resets += bool(causal_gate.forget_before_drift(rows, causal_gate.drift(rows))[1])
     assert resets / 150 <= 0.04  # nominal 1%, with room for sampling noise
 
@@ -226,8 +263,9 @@ def test_benjamini_hochberg_matches_the_textbook_step_up():
 
 def test_the_logging_policy_scores_exactly_what_was_delivered():
     rng = random.Random(7)
-    rows = simulate(rng, 500, ["a", "b"], rate_for=lambda lesson, _c: 0.3 if lesson == "a" else 0.6,
-                    effect_for=lambda _l, _c: 0.1)
+    rows = simulate(
+        rng, 500, ["a", "b"], rate_for=lambda lesson, _c: 0.3 if lesson == "a" else 0.6, effect_for=lambda _l, _c: 0.1
+    )
     result = causal_gate.policy_value(rows, lambda lesson, _c: 0.3 if lesson == "a" else 0.6)
     assert result.lift == pytest.approx(0.0, abs=1e-12)
     assert result.effective_sample_size == pytest.approx(500)
@@ -235,8 +273,13 @@ def test_the_logging_policy_scores_exactly_what_was_delivered():
 
 def test_the_off_policy_check_credits_a_gate_that_injects_where_memories_help():
     rng = random.Random(8)
-    rows = simulate(rng, 6000, ["test-runner"], rate_for=lambda _l, _c: 0.5,
-                    effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25)
+    rows = simulate(
+        rng,
+        6000,
+        ["test-runner"],
+        rate_for=lambda _l, _c: 0.5,
+        effect_for=lambda _l, ctx: 0.25 if ctx == "code" else -0.25,
+    )
     result = causal_gate.evaluate(rows)
     # Delivered: half the occasions in each context see the memory, so the effects cancel.
     # The gate shows it on 95% of code occasions and 5% of support ones: +0.1125 expected.
@@ -262,15 +305,33 @@ def test_off_policy_needs_data():
 
 
 def _schedule(**extra):
-    return allocation_schedule.Schedule(version=0, salt="s", effective_from=T0.isoformat(), default_rate=0.5,
-                                        rates={"a": 0.2}, policy={}, basis={}, previous="",
-                                        created_at=T0.isoformat(), **extra)
+    return allocation_schedule.Schedule(
+        version=0,
+        salt="s",
+        effective_from=T0.isoformat(),
+        default_rate=0.5,
+        rates={"a": 0.2},
+        policy={},
+        basis={},
+        previous="",
+        created_at=T0.isoformat(),
+        **extra,
+    )
 
 
 def test_schedules_without_context_rates_hash_exactly_as_before():
-    legacy_body = {"version": 0, "salt": "s", "effective_from": T0.isoformat(), "default_rate": 0.5,
-                   "rates": {"a": 0.2}, "policy": {}, "basis": {}, "previous": "",
-                   "created_at": T0.isoformat(), "enabled": True}
+    legacy_body = {
+        "version": 0,
+        "salt": "s",
+        "effective_from": T0.isoformat(),
+        "default_rate": 0.5,
+        "rates": {"a": 0.2},
+        "policy": {},
+        "basis": {},
+        "previous": "",
+        "created_at": T0.isoformat(),
+        "enabled": True,
+    }
     assert _schedule().body() == legacy_body
     assert "context_rates" in _schedule(context_rates={"a": {"code": 0.05}}).body()
 
@@ -281,8 +342,10 @@ def test_a_schedule_sets_rates_per_context_and_the_audit_checks_them():
     assert schedule.rate_for("a", "support") == schedule.rate_for("a") == 0.2
     assert schedule.rate_for("b", "code") == 0.5
     later = T0 + datetime.timedelta(minutes=1)
-    good = [integrity.Assignment("a", f"o{i}", True, rate=0.05, salt="s", at=later, schedule="x", context="code")
-            for i in range(3)]
+    good = [
+        integrity.Assignment("a", f"o{i}", True, rate=0.05, salt="s", at=later, schedule="x", context="code")
+        for i in range(3)
+    ]
     good.append(integrity.Assignment("a", "o9", True, rate=0.2, salt="s", at=later, schedule="x", context="support"))
     assert allocation_schedule.unscheduled(good, [schedule]) == []
     wrong = integrity.Assignment("a", "o8", True, rate=0.05, salt="s", at=later, schedule="x", context="support")
@@ -290,8 +353,16 @@ def test_a_schedule_sets_rates_per_context_and_the_audit_checks_them():
     assert integrity.check_assignment_drift([*good, wrong], [schedule]).severity == integrity.SEVERITY_INVALIDATES
 
 
-@pytest.mark.parametrize("raw, label", [(None, ""), ("", ""), ("  Code   Review ", "code review"),
-                                        ("Support", "support"), ("line\u2028break", "line break")])
+@pytest.mark.parametrize(
+    "raw, label",
+    [
+        (None, ""),
+        ("", ""),
+        ("  Code   Review ", "code review"),
+        ("Support", "support"),
+        ("line\u2028break", "line break"),
+    ],
+)
 def test_context_labels_are_normalized(raw, label):
     assert holdout_io.context_label(raw) == label
 
@@ -316,8 +387,15 @@ def test_thompson_eras_gate_per_context_and_the_whole_run_audits(tmp_path, clock
         for i in range(start, start + n):
             ctx = "code" if i % 2 == 0 else "support"
             occasion = f"T-{i}"
-            withheld = holdout_io.assign_and_log(root, ["test-runner"], occasion_id=occasion, rate=0.5,
-                                                 salt="pinned", revisions={"test-runner": "r1"}, context=ctx)
+            withheld = holdout_io.assign_and_log(
+                root,
+                ["test-runner"],
+                occasion_id=occasion,
+                rate=0.5,
+                salt="pinned",
+                revisions={"test-runner": "r1"},
+                context=ctx,
+            )
             p = 0.5 + (effect[ctx] if "test-runner" not in withheld else 0.0)
             holdout_io.record_outcome(root, occasion, rng.random() < p)
             clock.tick(30)
@@ -358,8 +436,9 @@ def test_the_gate_command_reports_in_text_and_json(tmp_path, clock, capsys):
     rng = random.Random(11)
     for i in range(400):
         ctx = "code" if i % 2 == 0 else "support"
-        withheld = holdout_io.assign_and_log(root, ["m"], occasion_id=f"o{i}", rate=0.5, salt="pinned",
-                                             revisions={"m": "r1"}, context=ctx)
+        withheld = holdout_io.assign_and_log(
+            root, ["m"], occasion_id=f"o{i}", rate=0.5, salt="pinned", revisions={"m": "r1"}, context=ctx
+        )
         holdout_io.record_outcome(root, f"o{i}", rng.random() < 0.5 + (0.3 if "m" not in withheld else 0.0))
         clock.tick(5)
     assert main(["allocate", "gate", "--dest", root]) == 0
@@ -406,8 +485,13 @@ def test_mcp_retrieve_logs_the_agent_type_and_the_report_tool_answers(tmp_path):
 
     root = str(tmp_path / "store")
     assert cli("init", "--dest", root, "--agent-type", "support").returncode == 0
-    _write_lesson(root, "verify-owner", description="password reset: verify the account owner",
-                  body="Before sending a password reset email, verify the account owner.", agent_type="support")
+    _write_lesson(
+        root,
+        "verify-owner",
+        description="password reset: verify the account owner",
+        body="Before sending a password reset email, verify the account owner.",
+        agent_type="support",
+    )
     holdout_io.configure(root, rate=0.5, salt="pinned")
     server = mcp_server.build_server(root)
     out = call(server, "retrieve", task="password reset email", occasion_id="occ-1", agent_type="support")

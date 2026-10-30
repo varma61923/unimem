@@ -71,9 +71,17 @@ def test_the_label_records_the_reranker_around_the_first_stage():
 
 
 def test_a_reranked_row_is_not_judged_against_the_lexical_floor():
-    rows = [integrity.Assignment(lesson="x", occasion_id=f"o{i}", injected=bool(i % 2),
-                                 relevance=-3.0, scorer="ce:minilm6(idf-v2)", floor=0.04)
-            for i in range(20)]
+    rows = [
+        integrity.Assignment(
+            lesson="x",
+            occasion_id=f"o{i}",
+            injected=bool(i % 2),
+            relevance=-3.0,
+            scorer="ce:minilm6(idf-v2)",
+            floor=0.04,
+        )
+        for i in range(20)
+    ]
     assert integrity.check_marginal_eligibility(rows).severity == integrity.SEVERITY_OK
 
 
@@ -90,21 +98,29 @@ def test_configuring_it_is_persisted_and_pinned_from_the_log(tmp_path, capsys):
 
     os.remove(retrieval_io.config_path(root))
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
-                             "salt": "s", "scorer": "ce:minilm6(rrf(idf-v2+semantic))",
-                             "floor": 0.04}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "occasion_id": "o",
+                    "lesson": "l",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "s",
+                    "scorer": "ce:minilm6(rrf(idf-v2+semantic))",
+                    "floor": 0.04,
+                }
+            )
+            + "\n"
+        )
     pinned = retrieval_io.load_config(root)
-    assert (pinned.scorer, pinned.fusion, pinned.rerank) == (
-        "idf-v2", retrieval_io.FUSION_RRF, retrieval_io.RERANK_CE)
+    assert (pinned.scorer, pinned.fusion, pinned.rerank) == ("idf-v2", retrieval_io.FUSION_RRF, retrieval_io.RERANK_CE)
     assert pinned.eligibility == "ce:minilm6(rrf(idf-v2+semantic))"
 
 
 def _rerank_store(store):
     for i in range(4):
-        _write_lesson(store, f"filler-{i}", body="Nothing relevant.",
-                      description=f"password reset email filler {i}")
-    _write_lesson(store, "roster-drift", body="Resync nightly.",
-                  description="suppression roster drifts at the vendor")
+        _write_lesson(store, f"filler-{i}", body="Nothing relevant.", description=f"password reset email filler {i}")
+    _write_lesson(store, "roster-drift", body="Resync nightly.", description="suppression roster drifts at the vendor")
     retrieval_io.configure(store, rerank=retrieval_io.RERANK_CE)
     return store
 
@@ -113,8 +129,7 @@ def test_the_reranker_lifts_a_lesson_from_the_pool_onto_the_page(store, ce, monk
     _stub_both(monkeypatch)
     _rerank_store(store)
     retrieval_io.configure(store, fusion=retrieval_io.FUSION_NONE)
-    lexical_only = call(mcp_server.build_server(store), "retrieve", task=TASK, top_k=2,
-                        occasion_id="r-1")
+    lexical_only = call(mcp_server.build_server(store), "retrieve", task=TASK, top_k=2, occasion_id="r-1")
     rows = _logged(store, "r-1")
     assert rows["roster-drift"]["rank"] == 1, rows
     assert {r["scorer"] for r in rows.values()} == {"ce:minilm6(adaptive-v1)"}
@@ -152,7 +167,8 @@ def test_a_store_that_cannot_rerank_ranks_as_if_it_had_not_asked(store, monkeypa
     plain = call(server, "retrieve", task=TASK, top_k=2, occasion_id="plain")
     assert _slugs(out, "lessons", "withheld") == _slugs(plain, "lessons", "withheld")
     assert {r: v["relevance"] for r, v in _logged(store, "no-ce").items()} == {
-        r: v["relevance"] for r, v in _logged(store, "plain").items()}
+        r: v["relevance"] for r, v in _logged(store, "plain").items()
+    }
 
 
 def test_the_model_runs_once_per_retrieval(store, ce, monkeypatch):
@@ -172,12 +188,9 @@ def test_withdrawal_names_only_what_the_reranked_page_would_have_shown(store, ce
     _stub_both(monkeypatch)
     _rerank_store(store)
     retrieval_io.configure(store, fusion=retrieval_io.FUSION_NONE)
-    _write_lesson(store, "vendor-optout", body="x",
-                  description="password reset opt-out roster at the vendor")
-    hurts = {"verdict": "HURTS", "effect": -0.3, "ci_95": [-0.5, -0.1], "n_treated": 40,
-             "n_control": 40}
-    monkeypatch.setattr(evidence, "withdrawn",
-                        lambda root, policy: {"vendor-optout": hurts, "filler-2": hurts})
+    _write_lesson(store, "vendor-optout", body="x", description="password reset opt-out roster at the vendor")
+    hurts = {"verdict": "HURTS", "effect": -0.3, "ci_95": [-0.5, -0.1], "n_treated": 40, "n_control": 40}
+    monkeypatch.setattr(evidence, "withdrawn", lambda root, policy: {"vendor-optout": hurts, "filler-2": hurts})
 
     out = call(mcp_server.build_server(store), "retrieve", task=TASK, top_k=1)
     assert _slugs(out, "lessons", "withheld") == {"roster-drift"}
@@ -210,11 +223,9 @@ def test_the_fast_model_is_its_own_treatment(store, ce, monkeypatch):
     _rerank_store(store)
     retrieval_io.configure(store, rerank=retrieval_io.RERANK_CE_FAST)
     call(mcp_server.build_server(store), "retrieve", task=TASK, top_k=2, occasion_id="fast-1")
-    assert {r["scorer"] for r in _logged(store, "fast-1").values()} == {
-        "ce:tinybert2(rrf(adaptive-v1+semantic))"}
+    assert {r["scorer"] for r in _logged(store, "fast-1").values()} == {"ce:tinybert2(rrf(adaptive-v1+semantic))"}
     assert set(loaded) == {retrieval_io.RERANK_CE_FAST}
-    assert retrieval_io.parse_rerank_label("ce:tinybert2(idf-v2)") == (
-        "idf-v2", retrieval_io.RERANK_CE_FAST)
+    assert retrieval_io.parse_rerank_label("ce:tinybert2(idf-v2)") == ("idf-v2", retrieval_io.RERANK_CE_FAST)
 
 
 @pytest.fixture
@@ -241,8 +252,20 @@ def test_a_store_mid_experiment_does_not_gain_a_reranker_on_upgrade(tmp_path, no
     with open(config_file, "w") as target:
         json.dump(raw, target)
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
-                             "salt": "s", "scorer": "idf-v2", "floor": 0.05}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "occasion_id": "o",
+                    "lesson": "l",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "s",
+                    "scorer": "idf-v2",
+                    "floor": 0.05,
+                }
+            )
+            + "\n"
+        )
     assert retrieval_io.load_config(root).rerank == retrieval_io.RERANK_NONE
     import os
 
@@ -255,8 +278,20 @@ def test_a_default_reranked_store_stays_reranked_once_it_has_history(tmp_path, n
     root = str(tmp_path)
     assert main(["init", "--dest", root]) == 0
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
-                             "salt": "s", "scorer": "ce:tinybert2(idf-v2)", "floor": 0.04}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "occasion_id": "o",
+                    "lesson": "l",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "s",
+                    "scorer": "ce:tinybert2(idf-v2)",
+                    "floor": 0.04,
+                }
+            )
+            + "\n"
+        )
     assert retrieval_io.load_config(root).rerank == retrieval_io.RERANK_CE_FAST
 
 
@@ -270,10 +305,8 @@ def test_the_operator_can_turn_the_default_off(tmp_path, monkeypatch):
 def test_without_fusion_both_surfaces_rerank_the_lexical_arm(store, ce, monkeypatch):
     _stub_both(monkeypatch)
     _rerank_store(store)
-    retrieval_io.configure(store, fusion=retrieval_io.FUSION_NONE,
-                           rerank=retrieval_io.RERANK_CE_FAST)
-    monkeypatch.setattr(query_cmd, "run_script",
-                        lambda *a, **k: pytest.fail("the semantic arm must not run"))
+    retrieval_io.configure(store, fusion=retrieval_io.FUSION_NONE, rerank=retrieval_io.RERANK_CE_FAST)
+    monkeypatch.setattr(query_cmd, "run_script", lambda *a, **k: pytest.fail("the semantic arm must not run"))
     assert query_cmd.run(_args(store, TASK, experiment=True, occasion_id="cli-l", top_k=2)) == 0
     call(mcp_server.build_server(store), "retrieve", task=TASK, top_k=2, occasion_id="mcp-l")
     cli_rows, mcp_rows = _logged(store, "cli-l"), _logged(store, "mcp-l")
@@ -289,8 +322,20 @@ def test_a_store_that_ran_semantic_retrieval_stays_semantic(tmp_path, no_overrid
     root = str(tmp_path)
     assert main(["init", "--dest", root]) == 0
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
-                             "salt": "s", "scorer": "semantic", "floor": 0.04}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "occasion_id": "o",
+                    "lesson": "l",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "s",
+                    "scorer": "semantic",
+                    "floor": 0.04,
+                }
+            )
+            + "\n"
+        )
     assert retrieval_io.load_config(root).rerank == retrieval_io.RERANK_NONE
 
 
@@ -312,20 +357,17 @@ def test_the_gate_filters_the_pool_and_the_withdrawn():
 
 def test_gated_fusion_admits_what_the_reranker_vouches_for(store, gate_ce, monkeypatch):
     _stub_both(monkeypatch)
-    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED,
-                           rerank=retrieval_io.RERANK_CE)
+    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED, rerank=retrieval_io.RERANK_CE)
     out = call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="g-1")
     page = _slugs(out, "lessons", "withheld")
     assert {"suppression-list", "unsubscribe-sync"} <= page
     assert "refund-threshold" not in page
-    assert {r["scorer"] for r in _logged(store, "g-1").values()} == {
-        "ce:minilm6(gated(adaptive-v1+semantic))"}
+    assert {r["scorer"] for r in _logged(store, "g-1").values()} == {"ce:minilm6(gated(adaptive-v1+semantic))"}
 
 
 def test_both_surfaces_gate_the_same_way(store, gate_ce, monkeypatch):
     _stub_both(monkeypatch)
-    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED,
-                           rerank=retrieval_io.RERANK_CE_FAST)
+    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED, rerank=retrieval_io.RERANK_CE_FAST)
     assert query_cmd.run(_args(store, TASK, experiment=True, occasion_id="cli-g")) == 0
     call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="mcp-g")
     cli_rows, mcp_rows = _logged(store, "cli-g"), _logged(store, "mcp-g")
@@ -340,27 +382,34 @@ def test_the_gate_and_the_label_follow_the_semantic_arms_model(store, gate_ce, m
     _stub_both(monkeypatch, model=arctic)
     fetched = []
     stub_mcp, stub_cli = semantic_arm.ranked_slugs, query_cmd._semantic_slugs
-    monkeypatch.setattr(semantic_arm, "ranked_slugs", lambda root, q, top_k, agent_type=None: (
-        fetched.append(("mcp", top_k)) or stub_mcp(root, q, top_k, agent_type)))
-    monkeypatch.setattr(query_cmd, "_semantic_slugs", lambda args, root, hint, extra=0: (
-        fetched.append(("cli", args.top_k + extra)) or stub_cli(args, root, hint, extra)))
-    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED,
-                           rerank=retrieval_io.RERANK_CE)
+    monkeypatch.setattr(
+        semantic_arm,
+        "ranked_slugs",
+        lambda root, q, top_k, agent_type=None: fetched.append(("mcp", top_k)) or stub_mcp(root, q, top_k, agent_type),
+    )
+    monkeypatch.setattr(
+        query_cmd,
+        "_semantic_slugs",
+        lambda args, root, hint, extra=0: (
+            fetched.append(("cli", args.top_k + extra)) or stub_cli(args, root, hint, extra)
+        ),
+    )
+    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED, rerank=retrieval_io.RERANK_CE)
     assert query_cmd.run(_args(store, TASK, experiment=True, occasion_id="cli-a")) == 0
     call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="mcp-a")
     cli_rows, mcp_rows = _logged(store, "cli-a"), _logged(store, "mcp-a")
     assert set(cli_rows) == set(mcp_rows)
     assert "refund-threshold" in mcp_rows
     assert {r["scorer"] for r in list(cli_rows.values()) + list(mcp_rows.values())} == {
-        "ce:minilm6(gated(adaptive-v1+semantic@arctic-m))"}
+        "ce:minilm6(gated(adaptive-v1+semantic@arctic-m))"
+    }
     assert {depth for _surface, depth in fetched} == {10}
     assert {surface for surface, _depth in fetched} == {"cli", "mcp"}
 
 
 def test_gated_fusion_without_a_reranker_is_lexical_and_says_so(store, monkeypatch):
     _stub_both(monkeypatch)
-    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED,
-                           rerank=retrieval_io.RERANK_CE)
+    retrieval_io.configure(store, fusion=retrieval_io.FUSION_GATED, rerank=retrieval_io.RERANK_CE)
     monkeypatch.setattr(rerank_arm, "available", lambda: False)
     out = call(mcp_server.build_server(store), "retrieve", task=TASK, occasion_id="g-no")
     assert "reranker" in out["fusion_note"]
@@ -369,7 +418,9 @@ def test_gated_fusion_without_a_reranker_is_lexical_and_says_so(store, monkeypat
 
 
 def test_a_new_store_fuses_gated_by_default_where_both_models_are_installed(
-    tmp_path, no_override, monkeypatch,
+    tmp_path,
+    no_override,
+    monkeypatch,
 ):
     from unimem import semantic_arm
 
@@ -390,9 +441,20 @@ def test_a_gated_store_is_pinned_to_gated_by_its_log(tmp_path, no_override, monk
     root = str(tmp_path)
     assert main(["init", "--dest", root]) == 0
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"occasion_id": "o", "lesson": "l", "injected": True, "rate": 0.5,
-                             "salt": "s", "scorer": "ce:tinybert2(gated(idf-v2+semantic))",
-                             "floor": 0.04}) + "\n")
+        fh.write(
+            json.dumps(
+                {
+                    "occasion_id": "o",
+                    "lesson": "l",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "s",
+                    "scorer": "ce:tinybert2(gated(idf-v2+semantic))",
+                    "floor": 0.04,
+                }
+            )
+            + "\n"
+        )
     config = retrieval_io.load_config(root)
     assert (config.fusion, config.rerank) == (retrieval_io.FUSION_GATED, retrieval_io.RERANK_CE_FAST)
 
@@ -462,11 +524,16 @@ def test_the_cli_loads_the_reranker_alongside_the_semantic_arm(store, monkeypatc
     _rerank_store(store)
     depths = []
     stub = query_cmd._semantic_slugs
-    monkeypatch.setattr(query_cmd, "_semantic_slugs", lambda args, root, hint, extra=0: (
-        depths.append(args.top_k + extra) or stub(args, root, hint, extra)))
+    monkeypatch.setattr(
+        query_cmd,
+        "_semantic_slugs",
+        lambda args, root, hint, extra=0: depths.append(args.top_k + extra) or stub(args, root, hint, extra),
+    )
     monkeypatch.setattr(rerank_arm, "available", lambda: True)
     monkeypatch.setattr(rerank_arm, "ready", lambda mode: "")
-    monkeypatch.setattr(rerank_arm, "rerank", lambda task, slugs, texts, top_k, **k: ([(s, 1.0) for s in slugs[:top_k]], []))
+    monkeypatch.setattr(
+        rerank_arm, "rerank", lambda task, slugs, texts, top_k, **k: ([(s, 1.0) for s in slugs[:top_k]], [])
+    )
     assert query_cmd.run(_args(store, TASK, top_k=2)) == 0
     assert depths == [rerank_arm.pool_size(2, retrieval_io.RERANK_CE)]
 

@@ -22,8 +22,13 @@ def close_idle_fact_connections():
 
 def pytest_collection_modifyitems(items):
     """Classify existing contracts without moving files or changing their execution."""
-    integration = {"test_optional_memory_backends.py", "test_new_framework_sdks.py", "test_vector_store.py",
-                   "test_vector_engines.py", "test_postgres_vector_snapshots.py"}
+    integration = {
+        "test_optional_memory_backends.py",
+        "test_new_framework_sdks.py",
+        "test_vector_store.py",
+        "test_vector_engines.py",
+        "test_postgres_vector_snapshots.py",
+    }
     for item in items:
         path = str(item.path).replace(os.sep, "/")
         if "/e2e/" in path or "/e2e_tests/" in path or path.endswith("test_ui_browser.py"):
@@ -48,10 +53,21 @@ def tmp_memory(tmp_path):
     return mem
 
 
-def write_lesson(mem_dir, name, description="A test lesson", domain="testing",
-                 importance=3, uses=0, last_hit="NEVER", source_episodes=None,
-                 source_traces=None, agent_type="code",
-                 status="active", rule="Apply this rule.", tags=None):
+def write_lesson(
+    mem_dir,
+    name,
+    description="A test lesson",
+    domain="testing",
+    importance=3,
+    uses=0,
+    last_hit="NEVER",
+    source_episodes=None,
+    source_traces=None,
+    agent_type="code",
+    status="active",
+    rule="Apply this rule.",
+    tags=None,
+):
     fm = {
         "name": name,
         "description": description,
@@ -80,9 +96,20 @@ def write_lesson(mem_dir, name, description="A test lesson", domain="testing",
     return path
 
 
-def write_episode(mem_dir, name, description="A test episode", project="test-project",
-                  verdict="CONFORM", importance=3, task="do something",
-                  retrieved=None, hit=None, proposed=None, validated=None, tags=None):
+def write_episode(
+    mem_dir,
+    name,
+    description="A test episode",
+    project="test-project",
+    verdict="CONFORM",
+    importance=3,
+    task="do something",
+    retrieved=None,
+    hit=None,
+    proposed=None,
+    validated=None,
+    tags=None,
+):
     fm = {
         "name": name,
         "description": description,

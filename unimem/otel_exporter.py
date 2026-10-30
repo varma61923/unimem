@@ -33,7 +33,11 @@ def _span_to_row(span: "ReadableSpan") -> dict[str, Any]:
 
 
 def write_trace_from_row(
-    root: str, row: dict[str, Any], *, agent_type: str, profile: str = "",
+    root: str,
+    row: dict[str, Any],
+    *,
+    agent_type: str,
+    profile: str = "",
 ) -> str | None:
     result = import_data._row_to_trace(0, dict(row), import_data.FieldMapping(source=_SOURCE))
     if isinstance(result, import_data.SkippedRow):
@@ -41,7 +45,12 @@ def write_trace_from_row(
 
     trace_id = str(uuid.uuid4())
     fm = templates.trace_frontmatter(
-        trace_id, result.title, agent_type, result.tags, profile, result.outcome or None,
+        trace_id,
+        result.title,
+        agent_type,
+        result.tags,
+        profile,
+        result.outcome or None,
     )
     instance = dict(fm)
     instance["context_text"] = result.context_text
@@ -78,10 +87,7 @@ class UniMemSpanExporter:
         try:
             import opentelemetry.sdk.trace.export  # noqa: F401
         except ImportError as exc:
-            raise ImportError(
-                "UniMemSpanExporter needs the OpenTelemetry SDK: "
-                "pip install 'unimem[otel]'"
-            ) from exc
+            raise ImportError("UniMemSpanExporter needs the OpenTelemetry SDK: pip install 'unimem[otel]'") from exc
         self._root = paths.resolve_root(dest)
         self._agent_type = agent_type
         self._profile = profile
@@ -100,7 +106,10 @@ class UniMemSpanExporter:
                 row = _span_to_row(span)
                 record_occasion_from_row(self._root, row)
                 write_trace_from_row(
-                    self._root, row, agent_type=self._agent_type, profile=self._profile,
+                    self._root,
+                    row,
+                    agent_type=self._agent_type,
+                    profile=self._profile,
                 )
         except Exception:  # noqa: BLE001 - never raise into the app this is attached to
             return SpanExportResult.FAILURE

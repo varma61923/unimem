@@ -202,7 +202,9 @@ def test_link_memories_matches_sequential_linking_with_one_save(store, monkeypat
 
     saves = []
     original = entity_store.save_entities
-    monkeypatch.setattr(entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities)))
+    monkeypatch.setattr(
+        entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities))
+    )
     assert entity_store.link_memories(store, pairs) == 3
     assert len(saves) == 1
     actual = {n: (e["type"], e["memory_ids"], e["count"]) for n, e in entity_store.load_entities(store).items()}
@@ -218,7 +220,9 @@ def test_link_memories_with_nothing_to_link_never_writes(store, monkeypatch):
 def test_batched_fact_writes_rewrite_the_entity_index_once(store, monkeypatch):
     saves = []
     original = entity_store.save_entities
-    monkeypatch.setattr(entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities)))
+    monkeypatch.setattr(
+        entity_store, "save_entities", lambda root, entities: (saves.append(1), original(root, entities))
+    )
     hierarchical.add_facts(store, [{"statement": f"Customer Acme{i} prefers invoices by email"} for i in range(25)])
     assert len(saves) == 1
 

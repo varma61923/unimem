@@ -10,8 +10,7 @@ from unimem import compression, dosage
 def test_seeded_knapsack_dominates_relevance_under_fixed_budget():
     rng = random.Random(41)
     for _ in range(100):
-        candidates = [dosage.Candidate(str(i), "x" * rng.randrange(4, 80), relevance=1 - i / 20)
-                      for i in range(20)]
+        candidates = [dosage.Candidate(str(i), "x" * rng.randrange(4, 80), relevance=1 - i / 20) for i in range(20)]
         values = {item.slug: rng.random() for item in candidates}
         chosen, report = dosage.value_pack(candidates, values, max_tokens=60, max_items=8, duplicate_penalty=0)
         assert report["estimated_value"] + 1e-12 >= report["baseline_value"]
@@ -23,15 +22,24 @@ def test_seeded_knapsack_dominates_relevance_under_fixed_budget():
 
 
 def test_cache_prefix_golden_stability_and_configured_bill():
-    items = [{"id": "b", "text": "Memory B", "approved": True, "value": .2, "churn": 0},
-             {"id": "a", "text": "Memory A", "approved": True, "value": .3, "churn": 0},
-             {"id": "unapproved", "text": "Memory C", "approved": False, "value": 1, "churn": 0}]
+    items = [
+        {"id": "b", "text": "Memory B", "approved": True, "value": 0.2, "churn": 0},
+        {"id": "a", "text": "Memory A", "approved": True, "value": 0.3, "churn": 0},
+        {"id": "unapproved", "text": "Memory C", "approved": False, "value": 1, "churn": 0},
+    ]
     first = compression.cache_prefix(items)
     assert first == compression.cache_prefix(list(reversed(items)))
     assert first["text"].encode() == b"[a]\nMemory A\n\n[b]\nMemory B"
     assert first["context_bill"]["savings_usd"] is None
-    priced = compression.cache_prefix(items, pricing={"uncached_per_million": 10, "cached_per_million": 2,
-                                                     "uncached_ms_per_token": 1, "cached_ms_per_token": .2})
+    priced = compression.cache_prefix(
+        items,
+        pricing={
+            "uncached_per_million": 10,
+            "cached_per_million": 2,
+            "uncached_ms_per_token": 1,
+            "cached_ms_per_token": 0.2,
+        },
+    )
     assert priced["context_bill"]["savings_usd"] > 0
 
 

@@ -37,6 +37,7 @@ def test_spawn_reaps_its_child_even_when_supervision_cannot_start(tmp_path, monk
 
     monkeypatch.setattr(warm.subprocess, "Popen", child)
     if thread_failure:
+
         def unavailable():
             raise RuntimeError("cannot start thread")
 

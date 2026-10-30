@@ -301,6 +301,7 @@ import os
 import sys
 import uuid
 from collections import Counter
+from collections.abc import Callable, Coroutine
 from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select, update
@@ -329,7 +330,7 @@ from unimem.configuration import getenv as _configuration_getenv
 
 
 def _default_session_factory() -> async_sessionmaker[AsyncSession]:
-    return make_session_factory(make_engine(HubConfig.from_env()))
+    return make_session_factory(make_engine(HubConfig.from_env(), pooled=False))
 
 
 def _default_stripe_settings() -> StripeSettings:
@@ -345,9 +346,7 @@ def _default_stripe_settings() -> StripeSettings:
 async def create_org(name: str, session_factory=None) -> None:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
-        existing = (
-            await session.execute(select(Organization.id).where(Organization.name == name))
-        ).scalars().all()
+        existing = (await session.execute(select(Organization.id).where(Organization.name == name))).scalars().all()
         if existing:
             print(
                 f"[WARN] another org already uses the name {name!r} "
@@ -358,26 +357,35 @@ async def create_org(name: str, session_factory=None) -> None:
         session.add(org)
         await session.flush()
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="create_org",
-            org_id=org.id, target_type="org", target_id=org.id, summary=f"name={name!r}",
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="create_org",
+            org_id=org.id,
+            target_type="org",
+            target_id=org.id,
+            summary=f"name={name!r}",
         )
         print(f"org_id: {org.id}")
 
 
 async def issue_key(
-    org_id: str, expires_days: str | None = None, scope_list: str | None = None,
+    org_id: str,
+    expires_days: str | None = None,
+    scope_list: str | None = None,
     session_factory=None,
 ) -> None:
     """`issue-key <org_id> [days] [scopes]`."""
     days = int(expires_days) if expires_days is not None else None
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
-        issued = await auth.issue_api_key(
-            session, org_id, expires_days=days, scopes=scope_list
-        )
+        issued = await auth.issue_api_key(session, org_id, expires_days=days, scopes=scope_list)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="issue_key",
-            org_id=org_id, target_type="api_key", target_id=issued.key_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="issue_key",
+            org_id=org_id,
+            target_type="api_key",
+            target_id=issued.key_id,
             summary=(
                 f"prefix={issued.key_prefix} "
                 f"expires_days={days if days is not None else 'never'} "
@@ -401,8 +409,12 @@ async def rotate_key(key_id: str, session_factory=None) -> None:
     async with session_scope(session_factory) as session:
         issued = await auth.rotate_api_key(session, key_id)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="rotate_key",
-            org_id=issued.org_id, target_type="api_key", target_id=issued.key_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="rotate_key",
+            org_id=issued.org_id,
+            target_type="api_key",
+            target_id=issued.key_id,
             summary=f"replaces={key_id}",
         )
     print(f"revoked: {key_id}")
@@ -419,8 +431,12 @@ async def revoke_key(key_id: str, session_factory=None) -> bool:
             return False
         await auth.revoke_api_key(session, key_id)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="revoke_key",
-            org_id=key.org_id, target_type="api_key", target_id=key_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="revoke_key",
+            org_id=key.org_id,
+            target_type="api_key",
+            target_id=key_id,
         )
     print(f"revoked: {key_id}")
     return True
@@ -430,23 +446,26 @@ async def list_orgs(session_factory=None) -> None:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         orgs = (await session.execute(select(Organization))).scalars().all()
-        keys_by_org = dict(
-            (
+        keys_by_org = {
+            row_key: row_value
+            for row_key, row_value in (
                 await session.execute(
-                    select(ApiKey.org_id, func.count())
-                    .where(ApiKey.revoked_at.is_(None))
-                    .group_by(ApiKey.org_id)
+                    select(ApiKey.org_id, func.count()).where(ApiKey.revoked_at.is_(None)).group_by(ApiKey.org_id)
                 )
             ).all()
-        )
+        }
         for org in orgs:
             n_keys = keys_by_org.get(org.id, 0)
             print(f"{org.id}  {org.name!r}  created={org.created_at.isoformat()}  active_keys={n_keys}")
 
 
 async def create_user(
-    org_id: str, email: str, role: str, display_name: str = "",
-    session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    org_id: str,
+    email: str,
+    role: str,
+    display_name: str = "",
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     """`create-user <org_id> <email> <role> [display_name]`."""
     try:
@@ -461,7 +480,10 @@ async def create_user(
             print(f"error: no such organization: {org_id}", file=sys.stderr)
             return False
         user = User(
-            org_id=org_id, email=email, role=role, display_name=display_name,
+            org_id=org_id,
+            email=email,
+            role=role,
+            display_name=display_name,
             created_by=actor,
         )
         session.add(user)
@@ -476,18 +498,28 @@ async def create_user(
             return False
         user_id = user.id
         await audit.record(
-            session, actor=actor, action="create_user",
-            org_id=org_id, target_type="user", target_id=user_id,
+            session,
+            actor=actor,
+            action="create_user",
+            org_id=org_id,
+            target_type="user",
+            target_id=user_id,
             summary=f"email={email} role={role}",
         )
         if role in rbac.PRIVILEGED_ROLES:
-            await events.emit(session, org_id, "user.privileged_role_granted", {
-                "user_id": user_id, "role": role, "actor": actor,
-            })
+            await events.emit(
+                session,
+                org_id,
+                "user.privileged_role_granted",
+                {
+                    "user_id": user_id,
+                    "role": role,
+                    "actor": actor,
+                },
+            )
     print(f"user_id: {user_id}")
     print(f"  {email}  role={role}  org={org_id}")
-    print("  No SSO identity is linked yet -- this user cannot sign in until "
-          "you run `link-sso`.")
+    print("  No SSO identity is linked yet -- this user cannot sign in until you run `link-sso`.")
     return True
 
 
@@ -499,13 +531,13 @@ async def list_users(org_id: str, session_factory=None) -> bool:
             print(f"error: no such organization: {org_id}", file=sys.stderr)
             return False
         users = (
-            await session.execute(
-                select(User).where(User.org_id == org_id).order_by(User.created_at)
-            )
-        ).scalars().all()
+            (await session.execute(select(User).where(User.org_id == org_id).order_by(User.created_at))).scalars().all()
+        )
     if not users:
-        print(f"No users for {org_id}. (An org's API key still works independently "
-              "of any of this -- users are an additional, per-person identity.)")
+        print(
+            f"No users for {org_id}. (An org's API key still works independently "
+            "of any of this -- users are an additional, per-person identity.)"
+        )
         return True
     for u in users:
         state = "disabled" if u.disabled_at is not None else "active"
@@ -517,7 +549,10 @@ async def list_users(org_id: str, session_factory=None) -> bool:
 
 
 async def set_user_role(
-    user_id: str, role: str, session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    user_id: str,
+    role: str,
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     try:
         rbac.check_role(role)
@@ -533,20 +568,33 @@ async def set_user_role(
         previous = user.role
         user.role = role
         await audit.record(
-            session, actor=actor, action="set_user_role",
-            org_id=user.org_id, target_type="user", target_id=user_id,
+            session,
+            actor=actor,
+            action="set_user_role",
+            org_id=user.org_id,
+            target_type="user",
+            target_id=user_id,
             summary=f"{previous} -> {role}",
         )
         if role in rbac.PRIVILEGED_ROLES:
-            await events.emit(session, user.org_id, "user.privileged_role_granted", {
-                "user_id": user_id, "role": role, "actor": actor,
-            })
+            await events.emit(
+                session,
+                user.org_id,
+                "user.privileged_role_granted",
+                {
+                    "user_id": user_id,
+                    "role": role,
+                    "actor": actor,
+                },
+            )
     print(f"{user_id}: role changed {previous} -> {role}")
     return True
 
 
 async def disable_user(
-    user_id: str, session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    user_id: str,
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -555,21 +603,25 @@ async def disable_user(
             print(f"error: no such user: {user_id}", file=sys.stderr)
             return False
         if user.disabled_at is not None:
-            print(f"{user_id} is already disabled (since {user.disabled_at.isoformat()}).",
-                  file=sys.stderr)
+            print(f"{user_id} is already disabled (since {user.disabled_at.isoformat()}).", file=sys.stderr)
             return False
         user.disabled_at = datetime.now(timezone.utc)
         await audit.record(
-            session, actor=actor, action="disable_user",
-            org_id=user.org_id, target_type="user", target_id=user_id,
+            session,
+            actor=actor,
+            action="disable_user",
+            org_id=user.org_id,
+            target_type="user",
+            target_id=user_id,
         )
-    print(f"{user_id} disabled. Access is blocked immediately, independent of any "
-          "token this person is still holding.")
+    print(f"{user_id} disabled. Access is blocked immediately, independent of any token this person is still holding.")
     return True
 
 
 async def enable_user(
-    user_id: str, session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    user_id: str,
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -582,19 +634,33 @@ async def enable_user(
             return False
         user.disabled_at = None
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="enable_user",
-            org_id=user.org_id, target_type="user", target_id=user_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="enable_user",
+            org_id=user.org_id,
+            target_type="user",
+            target_id=user_id,
         )
         if user.role in rbac.PRIVILEGED_ROLES:
-            await events.emit(session, user.org_id, "user.privileged_role_granted", {
-                "user_id": user_id, "role": user.role, "actor": audit.ACTOR_OPERATOR_CLI,
-            })
+            await events.emit(
+                session,
+                user.org_id,
+                "user.privileged_role_granted",
+                {
+                    "user_id": user_id,
+                    "role": user.role,
+                    "actor": audit.ACTOR_OPERATOR_CLI,
+                },
+            )
     print(f"{user_id} re-enabled.")
     return True
 
 
 async def link_sso(
-    user_id: str, issuer: str, external_subject: str, session_factory=None,
+    user_id: str,
+    issuer: str,
+    external_subject: str,
+    session_factory=None,
 ) -> bool:
     """Link a `User` row to one OIDC identity."""
     session_factory = session_factory or _default_session_factory()
@@ -616,13 +682,16 @@ async def link_sso(
             )
             return False
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="link_sso",
-            org_id=user.org_id, target_type="user", target_id=user_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="link_sso",
+            org_id=user.org_id,
+            target_type="user",
+            target_id=user_id,
             summary=f"issuer={issuer}",
         )
     print(f"{user_id} linked to {issuer} / {external_subject}.")
-    print("  This user can now authenticate with a bearer JWT verified against "
-        "that issuer.")
+    print("  This user can now authenticate with a bearer JWT verified against that issuer.")
     return True
 
 
@@ -640,8 +709,12 @@ async def unlink_sso(user_id: str, session_factory=None) -> bool:
         user.issuer = ""
         user.external_subject = ""
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="unlink_sso",
-            org_id=user.org_id, target_type="user", target_id=user_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="unlink_sso",
+            org_id=user.org_id,
+            target_type="user",
+            target_id=user_id,
             summary=f"was {previous}",
         )
     print(f"{user_id} unlinked. They can no longer authenticate until relinked.")
@@ -652,13 +725,13 @@ async def stats(session_factory=None) -> None:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         n_orgs = await session.scalar(select(func.count()).select_from(Organization)) or 0
-        n_active_keys = await session.scalar(
-            select(func.count()).select_from(ApiKey).where(ApiKey.revoked_at.is_(None))
-        ) or 0
+        n_active_keys = (
+            await session.scalar(select(func.count()).select_from(ApiKey).where(ApiKey.revoked_at.is_(None))) or 0
+        )
         n_traces = await session.scalar(select(func.count()).select_from(Trace)) or 0
-        n_quarantined = await session.scalar(
-            select(func.count()).select_from(Trace).where(Trace.quarantined.is_(True))
-        ) or 0
+        n_quarantined = (
+            await session.scalar(select(func.count()).select_from(Trace).where(Trace.quarantined.is_(True))) or 0
+        )
         n_votes = await session.scalar(select(func.count()).select_from(Vote)) or 0
         mean_trust = await session.scalar(select(func.avg(Trace.trust))) if n_traces else None
 
@@ -746,8 +819,7 @@ async def validate_corpus(path: str) -> bool:
             problems.append(f"  line {i}: not a JSON object")
             continue
         if rec.get("review_after") and _parse_review_after(rec["review_after"]) is None:
-            problems.append(
-                f"  line {i}: review_after={rec['review_after']!r} is not ISO 8601")
+            problems.append(f"  line {i}: review_after={rec['review_after']!r} is not ISO 8601")
         problem = _corpus_schema_problem(rec, config)
         if problem:
             problems.append(f"  line {i}: {problem}")
@@ -758,7 +830,8 @@ async def validate_corpus(path: str) -> bool:
             print(p, file=sys.stderr)
         return False
     scope = (
-        "the trace schema and this deployment's size limits" if config is not None
+        "the trace schema and this deployment's size limits"
+        if config is not None
         else "the trace schema (size limits skipped: no HUB_DATABASE_URL configured)"
     )
     print(f"{len(raw_lines)} record(s) in {path}: all conform to {scope}.")
@@ -766,7 +839,10 @@ async def validate_corpus(path: str) -> bool:
 
 
 async def commons_seed(
-    path: str, org_id: str, session_factory=None, config: HubConfig | None = None,
+    path: str,
+    org_id: str,
+    session_factory=None,
+    config: HubConfig | None = None,
 ) -> bool:
     import json as _json
 
@@ -800,8 +876,7 @@ async def commons_seed(
             if parsed is None:
                 bad += 1
                 print(
-                    f"  line {i}: review_after={rec['review_after']!r} is not an ISO 8601 "
-                    "date or timestamp, skipped",
+                    f"  line {i}: review_after={rec['review_after']!r} is not an ISO 8601 date or timestamp, skipped",
                     file=sys.stderr,
                 )
                 continue
@@ -848,8 +923,12 @@ async def commons_seed(
         await session.flush()
         await crud._adjust_trace_count(session, org_id, added)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="commons_seed",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="commons_seed",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=f"seeded={added} skipped={bad} from={path!r}",
         )
 
@@ -865,10 +944,10 @@ async def kb_stats(session_factory=None) -> None:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         entries = (
-            await session.execute(
-                select(Trace).where(*crud.commons_visible()).order_by(Trace.commons_hits.desc())
-            )
-        ).scalars().all()
+            (await session.execute(select(Trace).where(*crud.commons_visible()).order_by(Trace.commons_hits.desc())))
+            .scalars()
+            .all()
+        )
         n_retracted = (
             await session.execute(
                 select(func.count())
@@ -887,21 +966,17 @@ async def kb_stats(session_factory=None) -> None:
                 )
             )
         ).scalar_one()
-        n_orgs_total = (
-            await session.execute(select(func.count()).select_from(Organization))
-        ).scalar_one()
-        submission_counts = dict(
-            (
+        n_orgs_total = (await session.execute(select(func.count()).select_from(Organization))).scalar_one()
+        submission_counts = {
+            row_key: row_value
+            for row_key, row_value in (
                 await session.execute(
-                    select(KnowledgeBaseSubmission.status, func.count())
-                    .group_by(KnowledgeBaseSubmission.status)
+                    select(KnowledgeBaseSubmission.status, func.count()).group_by(KnowledgeBaseSubmission.status)
                 )
             ).all()
-        )
+        }
         n_submitting_orgs = (
-            await session.execute(
-                select(func.count(func.distinct(KnowledgeBaseSubmission.org_id)))
-            )
+            await session.execute(select(func.count(func.distinct(KnowledgeBaseSubmission.org_id))))
         ).scalar_one()
         queue_total = await crud.count_kb_review_queue(session)
 
@@ -912,8 +987,7 @@ async def kb_stats(session_factory=None) -> None:
         decided = approved + rejected
         print("community submissions:")
         print(f"  pending review:  {pending}")
-        print(f"  approved:        {approved}"
-              + (f"  ({approved / decided:.0%} of reviewed)" if decided else ""))
+        print(f"  approved:        {approved}" + (f"  ({approved / decided:.0%} of reviewed)" if decided else ""))
         print(f"  rejected:        {rejected}")
         print(f"  submitting orgs: {n_submitting_orgs}")
         if pending:
@@ -921,8 +995,7 @@ async def kb_stats(session_factory=None) -> None:
         print()
 
     if not entries:
-        print("The Knowledge Base has no entries yet. `commons-seed <file.jsonl> "
-              "<operator_org_id>` loads one.")
+        print("The Knowledge Base has no entries yet. `commons-seed <file.jsonl> <operator_org_id>` loads one.")
         return
 
     total_hits = sum(t.commons_hits for t in entries)
@@ -931,8 +1004,10 @@ async def kb_stats(session_factory=None) -> None:
     standings = Counter(crud.standing_of(t, now) for t in entries)
 
     print(f"knowledge base entries:  {len(entries)}")
-    print(f"total hits delivered:    {total_hits}   (times an entry covered a real "
-          "recurring failure, at the conservative threshold)")
+    print(
+        f"total hits delivered:    {total_hits}   (times an entry covered a real "
+        "recurring failure, at the conservative threshold)"
+    )
     print(f"queried by:              {n_queriers} of {n_orgs_total} org(s) (ever, any period)")
     print(f"never matched anything:  {len(zero_hit)} of {len(entries)} entries")
 
@@ -985,9 +1060,7 @@ async def _observed_volume_and_baseline(session, org_id: str) -> tuple[int, floa
     return searches, baseline
 
 
-async def plan_experiment(
-    org_id: str, detect: str = "0.10", occasions: str = "", session_factory=None
-) -> bool:
+async def plan_experiment(org_id: str, detect: str = "0.10", occasions: str = "", session_factory=None) -> bool:
     """What holdout rate can this org's volume actually answer with?"""
     session_factory = session_factory or _default_session_factory()
     try:
@@ -1018,30 +1091,35 @@ async def plan_experiment(
         budget = searches
 
     baseline = observed if observed is not None else 0.5
-    design = experiment.plan(
-        effect=effect, baseline=baseline, rate=current_rate, occasions_budget=budget
-    )
+    design = experiment.plan(effect=effect, baseline=baseline, rate=current_rate, occasions_budget=budget)
     print(experiment.render_plan(design))
     print()
     print(
         f"_Baseline {baseline:.0%} "
-        + ("from this org's own recorded outcomes._" if observed is not None
-           else "assumed: too few recorded outcomes to read one. 50% is the most "
-                "pessimistic, so this will not understate the sample._")
+        + (
+            "from this org's own recorded outcomes._"
+            if observed is not None
+            else "assumed: too few recorded outcomes to read one. 50% is the most "
+            "pessimistic, so this will not understate the sample._"
+        )
     )
     if budget and not occasions:
-        print(f"_Budget {budget:,} from this org's searches this period. Pass an explicit "
-              "count to plan a different window._")
+        print(
+            f"_Budget {budget:,} from this org's searches this period. Pass an explicit "
+            "count to plan a different window._"
+        )
     elif not budget:
-        print("_No occasion budget: this org has not searched yet this period. Pass a "
-              "count to size a window._")
+        print("_No occasion budget: this org has not searched yet this period. Pass a count to size a window._")
     return design.verdict != "infeasible"
 
 
 async def start_experiment(
-    org_id: str, rate: str = str(DEFAULT_HOLDOUT_RATE),
-    outcome: str = "resolved", notes: str = "",
-    session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    org_id: str,
+    rate: str = str(DEFAULT_HOLDOUT_RATE),
+    outcome: str = "resolved",
+    notes: str = "",
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     session_factory = session_factory or _default_session_factory()
     try:
@@ -1070,7 +1148,8 @@ async def start_experiment(
         planned = experiment.plan(
             effect=experiment.DEFAULT_PRACTICAL_EFFECT,
             baseline=baseline_now if baseline_now is not None else 0.5,
-            rate=value, occasions_budget=searches_now or None,
+            rate=value,
+            occasions_budget=searches_now or None,
         )
         registration = prereg.register(
             primary_outcome=outcome,
@@ -1084,12 +1163,23 @@ async def start_experiment(
         org.holdout_prereg = registration.to_dict()
         await session.flush()
         with contextlib.suppress(events.EventError):
-            await events.emit(session, org_id, "experiment.started", {
-                "rate": value, "salt": org.holdout_salt, "outcome": outcome,
-            })
+            await events.emit(
+                session,
+                org_id,
+                "experiment.started",
+                {
+                    "rate": value,
+                    "salt": org.holdout_salt,
+                    "outcome": outcome,
+                },
+            )
         await audit.record(
-            session, actor=actor, action="start_experiment",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=actor,
+            action="start_experiment",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=(
                 f"rate={value} salt={org.holdout_salt} previous_salt={previous or '-'} "
                 f"prereg={registration.fingerprint()[:16]} outcome={outcome}"
@@ -1101,9 +1191,11 @@ async def start_experiment(
     print(f"  holdout rate: {value:.0%} of eligible injections will be withheld")
     print(f"  salt:         {salt}")
     print(f"  primary outcome: {registration.primary_outcome}")
-    print(f"  pre-registered:  {registration.fingerprint()[:16]}... "
-          f"({registration.planned_occasions:,} occasions planned, "
-          f"{registration.stopping_rule} stopping)")
+    print(
+        f"  pre-registered:  {registration.fingerprint()[:16]}... "
+        f"({registration.planned_occasions:,} occasions planned, "
+        f"{registration.stopping_rule} stopping)"
+    )
     if previous:
         print(f"  NOTE: this replaces experiment {previous}. Its observations are kept but")
         print("        are no longer pooled -- they came from a different randomization.")
@@ -1113,17 +1205,22 @@ async def start_experiment(
         design = experiment.plan(
             effect=experiment.DEFAULT_PRACTICAL_EFFECT,
             baseline=observed if observed is not None else 0.5,
-            rate=value, occasions_budget=searches,
+            rate=value,
+            occasions_budget=searches,
         )
         if design.verdict == "infeasible":
             print(f"  WARNING: at this org's observed {searches:,} search(es) per period, NO")
-            print(f"           rate answers a {experiment.DEFAULT_PRACTICAL_EFFECT:.0%} effect"
-                  f" -- it needs {design.n_per_arm:,} per arm.")
+            print(
+                f"           rate answers a {experiment.DEFAULT_PRACTICAL_EFFECT:.0%} effect"
+                f" -- it needs {design.n_per_arm:,} per arm."
+            )
             print("           Run for longer, or accept a larger effect as the thing tested.")
         elif design.verdict == "raise_rate":
             print(f"  WARNING: {value:.0%} is too low for this org's observed {searches:,}")
-            print(f"           search(es) per period. A {experiment.DEFAULT_PRACTICAL_EFFECT:.0%}"
-                  f" effect needs a rate of {design.rate_for_budget:.0%}.")
+            print(
+                f"           search(es) per period. A {experiment.DEFAULT_PRACTICAL_EFFECT:.0%}"
+                f" effect needs a rate of {design.rate_for_budget:.0%}."
+            )
             print(f"           `python -m hub.manage plan-experiment {org_id}` shows the working.")
     print("  The fleet's agents must call holdout_assign(...) before injecting, and")
     print("  record_occasion_outcome(...) afterwards, or nothing is measured.")
@@ -1131,9 +1228,7 @@ async def start_experiment(
     return True
 
 
-async def export_assignments(
-    org_id: str, path: str | None = None, session_factory=None
-) -> bool:
+async def export_assignments(org_id: str, path: str | None = None, session_factory=None) -> bool:
     """Every arm decision for this org's current experiment, as CSV."""
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -1163,7 +1258,9 @@ async def export_assignments(
 
 
 async def stop_experiment(
-    org_id: str, session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    org_id: str,
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     """End the holdout. Observations are kept; nothing further is withheld."""
     session_factory = session_factory or _default_session_factory()
@@ -1178,11 +1275,14 @@ async def stop_experiment(
         org.holdout_rate = 0.0
         await session.flush()
         with contextlib.suppress(events.EventError):
-            await events.emit(session, org_id, "experiment.stopped",
-                              {"salt": org.holdout_salt})
+            await events.emit(session, org_id, "experiment.stopped", {"salt": org.holdout_salt})
         await audit.record(
-            session, actor=actor, action="stop_experiment",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=actor,
+            action="stop_experiment",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=f"salt={org.holdout_salt}",
         )
     print(f"experiment stopped for {org_id}. Nothing further will be withheld.")
@@ -1191,11 +1291,13 @@ async def stop_experiment(
 
 
 async def harm_policy(
-    org_id: str, policy: str = "", session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    org_id: str,
+    policy: str = "",
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     if policy and policy not in harm.POLICIES:
-        print(f"error: policy must be one of {', '.join(harm.POLICIES)}, got {policy!r}",
-              file=sys.stderr)
+        print(f"error: policy must be one of {', '.join(harm.POLICIES)}, got {policy!r}", file=sys.stderr)
         return False
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -1210,8 +1312,12 @@ async def harm_policy(
         org.harm_policy = policy
         await session.flush()
         await audit.record(
-            session, actor=actor, action="set_harm_policy",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=actor,
+            action="set_harm_policy",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=f"{previous} -> {policy}",
         )
     print(f"harm policy for {org_id}: {previous} -> {policy}")
@@ -1240,10 +1346,8 @@ async def experiment_results(org_id: str, session_factory=None) -> bool:
         report = await crud.causal_effects(session, org_id)
 
     state = "running" if report["experiment_running"] else "stopped"
-    print(f"{org.name}  ({org_id})   experiment {state}, "
-          f"holdout rate {report['holdout_rate']:.0%}")
-    print(f"  {report['n_observations']} resolved observation(s) across "
-          f"{report['n_occasions']} occasion(s)")
+    print(f"{org.name}  ({org_id})   experiment {state}, holdout rate {report['holdout_rate']:.0%}")
+    print(f"  {report['n_observations']} resolved observation(s) across {report['n_occasions']} occasion(s)")
     if not report["effects"]:
         print("\n  Nothing measured yet. Agents must call holdout_assign(...) before")
         print("  injecting and record_occasion_outcome(...) afterwards.")
@@ -1252,9 +1356,11 @@ async def experiment_results(org_id: str, session_factory=None) -> bool:
     print()
     for e in report["effects"]:
         print(f"  {_EFFECT_MARK.get(e['verdict'], e['verdict']):<12} {e['title'][:52]}")
-        print(f"      injected {e['rate_injected']:.0%} (n={e['n_injected']})  vs  "
-              f"withheld {e['rate_withheld']:.0%} (n={e['n_withheld']})   "
-              f"effect {e['effect']:+.1%}")
+        print(
+            f"      injected {e['rate_injected']:.0%} (n={e['n_injected']})  vs  "
+            f"withheld {e['rate_withheld']:.0%} (n={e['n_withheld']})   "
+            f"effect {e['effect']:+.1%}"
+        )
         if e["verdict"] in ("HELPS", "HURTS"):
             print(f"      95% CI [{e['ci_95'][0]:+.1%}, {e['ci_95'][1]:+.1%}]  p={e['p_value']:.4f}")
         if e["note"]:
@@ -1296,7 +1402,7 @@ async def kb_review(limit: str = "50", session_factory=None) -> bool:
         print(f"      {item['why']}  --  {item['commons_hits']} hit(s) delivered")
 
     print(f"\n{len(queue)} entry(ies) listed.")
-    print("  `kb-retract <trace_id> \"<reason>\"` withdraws one. Reversible with `kb-restore`.")
+    print('  `kb-retract <trace_id> "<reason>"` withdraws one. Reversible with `kb-restore`.')
     return True
 
 
@@ -1375,8 +1481,12 @@ async def approve_submission(
             print(f"error: no such organization: {operator_org_id}", file=sys.stderr)
             return False
         result = await crud.review_kb_submission(
-            session, submission_id, "approve", operator_org_id,
-            reviewer=audit.ACTOR_OPERATOR_CLI, credit=credit_int,
+            session,
+            submission_id,
+            "approve",
+            operator_org_id,
+            reviewer=audit.ACTOR_OPERATOR_CLI,
+            credit=credit_int,
         )
     if result is None:
         print(f"error: no PENDING submission with id: {submission_id}", file=sys.stderr)
@@ -1390,7 +1500,11 @@ async def reject_submission(submission_id: str, reason: str = "", session_factor
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         result = await crud.review_kb_submission(
-            session, submission_id, "reject", operator_org_id="", reviewer=audit.ACTOR_OPERATOR_CLI,
+            session,
+            submission_id,
+            "reject",
+            operator_org_id="",
+            reviewer=audit.ACTOR_OPERATOR_CLI,
             rejection_reason=reason,
         )
     if result is None:
@@ -1410,10 +1524,7 @@ _VERDICT_MARK = {
 
 def _print_outcome_report(report: dict, indent: str = "") -> None:
     print(f"{indent}{report['headline']}")
-    print(
-        f"{indent}  {report['n_baseline_traces']} baseline trace(s), "
-        f"{report['n_current_traces']} since."
-    )
+    print(f"{indent}  {report['n_baseline_traces']} baseline trace(s), {report['n_current_traces']} since.")
     for row in report["metrics"]:
         b, c = row["baseline"], row["current"]
         line = f"{indent}  {_VERDICT_MARK[row['verdict']]} {row['metric']:<20}"
@@ -1452,13 +1563,9 @@ async def fleet_outcomes(org_id: str | None = None, session_factory=None) -> boo
         else:
             targets = [
                 (row.id, row.name)
-                for row in (
-                    await session.execute(select(Organization).order_by(Organization.name))
-                ).scalars().all()
+                for row in (await session.execute(select(Organization).order_by(Organization.name))).scalars().all()
             ]
-        reports = [
-            (name, await crud.fleet_outcomes(session, oid)) for oid, name in targets
-        ]
+        reports = [(name, await crud.fleet_outcomes(session, oid)) for oid, name in targets]
 
     if not reports:
         print("No organizations yet.")
@@ -1473,14 +1580,11 @@ async def fleet_outcomes(org_id: str | None = None, session_factory=None) -> boo
         print()
 
     if not org_id:
-        worsened = [
-            n for n, r in measurable
-            if any(m["verdict"] == outcomes.VERDICT_WORSENED for m in r["metrics"])
-        ]
+        worsened = [n for n, r in measurable if any(m["verdict"] == outcomes.VERDICT_WORSENED for m in r["metrics"])]
         improved = [
-            n for n, r in measurable
-            if any(m["verdict"] == outcomes.VERDICT_IMPROVED for m in r["metrics"])
-            and n not in worsened
+            n
+            for n, r in measurable
+            if any(m["verdict"] == outcomes.VERDICT_IMPROVED for m in r["metrics"]) and n not in worsened
         ]
         print(f"{len(measurable)} of {len(reports)} org(s) have a baseline window to compare against.")
         if worsened:
@@ -1523,12 +1627,14 @@ async def release_quarantine(trace_id: str, session_factory=None) -> bool:
             return False
         previous_reason = trace.quarantine_reason
         org_id = trace.org_id
-        await session.execute(
-            update(Trace).where(Trace.id == trace_id).values(quarantined=False, quarantine_reason="")
-        )
+        await session.execute(update(Trace).where(Trace.id == trace_id).values(quarantined=False, quarantine_reason=""))
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="release_quarantine",
-            org_id=org_id, target_type="trace", target_id=trace_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="release_quarantine",
+            org_id=org_id,
+            target_type="trace",
+            target_id=trace_id,
             summary=f"was={previous_reason[:100]}",
         )
     print(f"released from quarantine: {trace_id}")
@@ -1560,15 +1666,18 @@ async def amend_trace(
         org_id = trace.org_id
         try:
             amended = await crud.amend_trace(
-                session, org_id, trace_id, config, rate_limiter,
+                session,
+                org_id,
+                trace_id,
+                config,
+                rate_limiter,
                 title=title or None,
                 context_text=context_text or None,
                 solution_text=solution_text or None,
                 tags=tags,
                 actor=actor,
             )
-        except (abuse.TraceRejected, abuse.RateLimited, crud.IdempotencyKeyConflict,
-                plans.EntitlementExceeded) as exc:
+        except (abuse.TraceRejected, abuse.RateLimited, crud.IdempotencyKeyConflict, plans.EntitlementExceeded) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
     if amended is None:
@@ -1579,7 +1688,10 @@ async def amend_trace(
 
 
 async def search_content(
-    org_id: str, pattern: str, mode: str = "literal", session_factory=None,
+    org_id: str,
+    pattern: str,
+    mode: str = "literal",
+    session_factory=None,
 ) -> bool:
     if mode not in ("literal", "regex"):
         print(f"error: mode must be 'literal' or 'regex', got {mode!r}", file=sys.stderr)
@@ -1592,7 +1704,10 @@ async def search_content(
             return False
         try:
             results = await crud.search_trace_content(
-                session, org_id, pattern, regex=(mode == "regex"),
+                session,
+                org_id,
+                pattern,
+                regex=(mode == "regex"),
             )
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -1605,13 +1720,18 @@ async def search_content(
         print(f"{r['id']}  created={r['created_at']}{state}")
         print(f"    {r['title']!r}  (matched {r['matched_field']})")
         print(f"    {r['snippet']}")
-    print(f"\n{len(results)} match(es). This locates candidates -- it deletes nothing. "
-          "Review each, then `purge-trace <id>` the ones that need to go.")
+    print(
+        f"\n{len(results)} match(es). This locates candidates -- it deletes nothing. "
+        "Review each, then `purge-trace <id>` the ones that need to go."
+    )
     return True
 
 
 async def tag_trace_subjects(
-    org_id: str, trace_id: str, subject_ids_csv: str = "", session_factory=None,
+    org_id: str,
+    trace_id: str,
+    subject_ids_csv: str = "",
+    session_factory=None,
 ) -> bool:
     """`tag-trace-subjects <org_id> <trace_id> [subject_ids_csv]`."""
     subject_ids = [s.strip() for s in subject_ids_csv.split(",") if s.strip()]
@@ -1619,7 +1739,11 @@ async def tag_trace_subjects(
     async with session_scope(session_factory) as session:
         try:
             result = await crud.tag_trace_subjects(
-                session, org_id, trace_id, subject_ids, actor=audit.ACTOR_OPERATOR_CLI,
+                session,
+                org_id,
+                trace_id,
+                subject_ids,
+                actor=audit.ACTOR_OPERATOR_CLI,
             )
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -1643,8 +1767,7 @@ async def find_subject_traces(org_id: str, subject_id: str, session_factory=None
         state = " [quarantined]" if r["quarantined"] else ""
         print(f"{r['id']}  created={r['created_at']}{state}")
         print(f"    {r['title']!r}  subject_ids={r['subject_ids']}")
-    print(f"\n{len(results)} exact match(es). `purge-subject-traces {org_id} {subject_id}` "
-          "deletes them all.")
+    print(f"\n{len(results)} exact match(es). `purge-subject-traces {org_id} {subject_id}` deletes them all.")
     return True
 
 
@@ -1653,14 +1776,19 @@ async def purge_subject_traces(org_id: str, subject_id: str, session_factory=Non
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         result = await crud.purge_traces_by_subject(
-            session, org_id, subject_id, actor=audit.ACTOR_OPERATOR_CLI,
+            session,
+            org_id,
+            subject_id,
+            actor=audit.ACTOR_OPERATOR_CLI,
         )
     print(f"purged {result['purged']} trace(s) in {org_id} tagged with subject {subject_id!r}.")
     return True
 
 
 async def purge_trace(
-    trace_id: str, session_factory=None, actor: str = audit.ACTOR_OPERATOR_CLI,
+    trace_id: str,
+    session_factory=None,
+    actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -1674,8 +1802,12 @@ async def purge_trace(
         await session.execute(delete(Trace).where(Trace.id.in_(chain_ids)))
         await crud._adjust_trace_count(session, org_id, -len(chain_ids))
         await audit.record(
-            session, actor=actor, action="purge_trace",
-            org_id=org_id, target_type="trace", target_id=trace_id,
+            session,
+            actor=actor,
+            action="purge_trace",
+            org_id=org_id,
+            target_type="trace",
+            target_id=trace_id,
             summary=f"irreversible n_amendment_chain={len(chain_ids)}",
         )
     extra = len(chain_ids) - 1
@@ -1685,7 +1817,9 @@ async def purge_trace(
 
 
 async def purge_org(
-    org_id: str, session_factory=None, stripe: StripeSettings | None = None,
+    org_id: str,
+    session_factory=None,
+    stripe: StripeSettings | None = None,
     actor: str = audit.ACTOR_OPERATOR_CLI,
 ) -> bool:
     session_factory = session_factory or _default_session_factory()
@@ -1713,10 +1847,14 @@ async def purge_org(
         await session.delete(org)
         await auth.announce_auth_change(session)
         await audit.record(
-            session, actor=actor, action="purge_org",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=actor,
+            action="purge_org",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=f"name={org_name!r} n_traces={len(trace_ids)} "
-                    f"stripe_subscription_cancelled={had_subscription} irreversible",
+            f"stripe_subscription_cancelled={had_subscription} irreversible",
         )
     print(f"permanently deleted organization {org_id} and all its api_keys/traces/votes.")
     return True
@@ -1729,9 +1867,7 @@ async def audit_log(org_id: str | None = None, session_factory=None) -> None:
         stmt = select(AuditLogEntry)
         if org_id:
             stmt = stmt.where(AuditLogEntry.org_id == org_id)
-        rows = (
-            await session.execute(stmt.order_by(AuditLogEntry.created_at.desc()).limit(100))
-        ).scalars().all()
+        rows = (await session.execute(stmt.order_by(AuditLogEntry.created_at.desc()).limit(100))).scalars().all()
 
     if not rows:
         print("no audit entries" + (f" for org {org_id}" if org_id else ""))
@@ -1744,7 +1880,10 @@ async def audit_log(org_id: str | None = None, session_factory=None) -> None:
 
 
 async def export_audit(
-    fmt: str, since: str | None = None, org_id: str | None = None, session_factory=None,
+    fmt: str,
+    since: str | None = None,
+    org_id: str | None = None,
+    session_factory=None,
 ) -> bool:
     """Stream audit entries to stdout in a SIEM format. See hub/audit_export.py."""
     from hub import audit_export
@@ -1773,8 +1912,7 @@ async def set_plan(org_id: str, plan_name: str, session_factory=None) -> bool:
     session_factory = session_factory or _default_session_factory()
     key = (plan_name or "").strip().lower()
     if key not in plans.PLANS:
-        print(f"error: unknown plan {plan_name!r}. Known: {', '.join(sorted(plans.PLANS))}",
-              file=sys.stderr)
+        print(f"error: unknown plan {plan_name!r}. Known: {', '.join(sorted(plans.PLANS))}", file=sys.stderr)
         return False
 
     async with session_scope(session_factory) as session:
@@ -1784,8 +1922,12 @@ async def set_plan(org_id: str, plan_name: str, session_factory=None) -> bool:
             return False
         was, org.plan = org.plan, key
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="set_plan",
-            org_id=org_id, target_type="org", target_id=org_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="set_plan",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
             summary=f"{was!r} -> {key!r}",
         )
     plan = plans.PLANS[key]
@@ -1803,8 +1945,10 @@ async def set_region(org_id: str, region: str, session_factory=None) -> bool:
     if value in ("none", "-", ""):
         value = ""
     elif not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", value):
-        print("error: a region is letters, digits and hyphens (e.g. eu, us, eu-west-1), up to 32; "
-              "`none` unpins", file=sys.stderr)
+        print(
+            "error: a region is letters, digits and hyphens (e.g. eu, us, eu-west-1), up to 32; `none` unpins",
+            file=sys.stderr,
+        )
         return False
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
@@ -1815,8 +1959,14 @@ async def set_region(org_id: str, region: str, session_factory=None) -> bool:
         was, org.data_region = org.data_region, (value or None)
         await auth.announce_auth_change(session)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="set_region", org_id=org_id, target_type="org",
-            target_id=org_id, summary=f"{was!r} -> {value or None!r}")
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="set_region",
+            org_id=org_id,
+            target_type="org",
+            target_id=org_id,
+            summary=f"{was!r} -> {value or None!r}",
+        )
     print(f"{org_id}: {was or 'unpinned'} -> {value or 'unpinned'}")
     return True
 
@@ -1830,16 +1980,17 @@ async def usage(org_id: str | None = None, session_factory=None) -> bool:
             q = q.where(Organization.id == org_id)
         orgs = (await session.execute(q)).scalars().all()
         if not orgs:
-            print("no organizations." if not org_id else f"error: no such organization: {org_id}",
-                  file=sys.stderr if org_id else sys.stdout)
+            print(
+                "no organizations." if not org_id else f"error: no such organization: {org_id}",
+                file=sys.stderr if org_id else sys.stdout,
+            )
             return not org_id
 
         rows = [await crud.entitlements(session, o.id) for o in orgs]
 
     period = rows[0]["period"]
     print(f"billing period {period} (UTC)")
-    print(f"{'organization':<26} {'plan':<9} {'agents':>12} {'traces':>14} "
-          f"{'kb queries':>14}")
+    print(f"{'organization':<26} {'plan':<9} {'agents':>12} {'traces':>14} {'kb queries':>14}")
     print("-" * 86)
     any_floor = False
     total_agents = 0
@@ -1853,10 +2004,11 @@ async def usage(org_id: str | None = None, session_factory=None) -> bool:
         used = f"{q['used']:,}/{plans.describe(q['allowance'])}"
         print(f"{org.name[:25]:<26} {r['plan']:<9} {agents:>12} {traces:>14} {used:>14}")
     print()
-    print(f"agents under management (all orgs): {total_agents:,}"
-          f"{'+ -- see below' if any_floor else ''}")
-    print(f"'agents' counts distinct agent_ids active in the last {plans.ACTIVE_AGENT_WINDOW_DAYS} "
-          "days, so it can fall as well as rise.")
+    print(f"agents under management (all orgs): {total_agents:,}{'+ -- see below' if any_floor else ''}")
+    print(
+        f"'agents' counts distinct agent_ids active in the last {plans.ACTIVE_AGENT_WINDOW_DAYS} "
+        "days, so it can fall as well as rise."
+    )
     if any_floor:
         print("A trailing '+' is a FLOOR, not a total: that org has traces whose client sent no")
         print("agent_id, and they collapse into one 'unattributed' agent however many really sent")
@@ -1873,19 +2025,24 @@ async def retrieval(org_id: str | None = None, session_factory=None) -> bool:
             q = q.where(Organization.id == org_id)
         orgs = (await session.execute(q)).scalars().all()
         if not orgs:
-            print("no organizations." if not org_id else f"error: no such organization: {org_id}",
-                  file=sys.stderr if org_id else sys.stdout)
+            print(
+                "no organizations." if not org_id else f"error: no such organization: {org_id}",
+                file=sys.stderr if org_id else sys.stdout,
+            )
             return not org_id
         rows = [await crud.search_health(session, o.id) for o in orgs]
 
     print(f"billing period {rows[0]['period']} (UTC)")
-    print(f"{'organization':<26} {'traces':>9} {'searches':>10} {'no match':>10} "
-          f"{'miss rate':>11} {'unsearchable':>13}")
+    print(
+        f"{'organization':<26} {'traces':>9} {'searches':>10} {'no match':>10} {'miss rate':>11} {'unsearchable':>13}"
+    )
     print("-" * 84)
     for org, r in zip(orgs, rows):
         rate = "--" if r["miss_rate"] is None else f"{r['miss_rate']:.0%}"
-        print(f"{org.name[:25]:<26} {r['traces']:>9,} {r['searches_with_terms']:>10,} "
-              f"{r['empty']:>10,} {rate:>11} {r['no_terms']:>13,}")
+        print(
+            f"{org.name[:25]:<26} {r['traces']:>9,} {r['searches_with_terms']:>10,} "
+            f"{r['empty']:>10,} {rate:>11} {r['no_terms']:>13,}"
+        )
     print()
     print("'searches' counts text searches that had at least one searchable term, first")
     print("page only -- paging through one result set is one act of retrieval, not several.")
@@ -1905,17 +2062,18 @@ async def revenue(session_factory=None) -> None:
     """Who is on a billable plan, and how much of each resource they used."""
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
-        orgs = (await session.execute(
-            select(Organization).order_by(Organization.created_at)
-        )).scalars().all()
+        orgs = (await session.execute(select(Organization).order_by(Organization.created_at))).scalars().all()
         billable = [o for o in orgs if o.plan in plans.BILLABLE_PLANS]
         rows = [(o, await crud.entitlements(session, o.id)) for o in billable]
-        total_q = int(await session.scalar(
-            select(func.coalesce(func.sum(UsageCounter.n), 0)).where(
-                UsageCounter.metric == crud.METRIC_COMMONS_QUERIES,
-                UsageCounter.period == crud.billing_period(),
+        total_q = int(
+            await session.scalar(
+                select(func.coalesce(func.sum(UsageCounter.n), 0)).where(
+                    UsageCounter.metric == crud.METRIC_COMMONS_QUERIES,
+                    UsageCounter.period == crud.billing_period(),
+                )
             )
-        ) or 0)
+            or 0
+        )
 
     if not billable:
         print(f"No org is on a billable plan ({' or '.join(plans.BILLABLE_PLANS)}).")
@@ -1928,11 +2086,12 @@ async def revenue(session_factory=None) -> None:
     print(f"{'organization':<26} {'plan':<9} {'traces':>10} {'kb queries':>12}")
     print("-" * 60)
     for org, r in rows:
-        print(f"{org.name[:25]:<26} {org.plan:<9} {r['traces']['used']:>10,} "
-              f"{r['commons_queries']['used']:>12,}")
+        print(f"{org.name[:25]:<26} {org.plan:<9} {r['traces']['used']:>10,} {r['commons_queries']['used']:>12,}")
     print("-" * 60)
-    print(f"{len(billable)} billable org(s) of {len(orgs)}; "
-          f"{total_q:,} Knowledge Base queries across all orgs this period.")
+    print(
+        f"{len(billable)} billable org(s) of {len(orgs)}; "
+        f"{total_q:,} Knowledge Base queries across all orgs this period."
+    )
     print()
     print("No currency is printed here on purpose: this implements the entitlement,")
     print("not the invoice. Attaching a rate is a decision for whoever owns the P&L,")
@@ -1946,8 +2105,7 @@ async def value(org_id: str, value_per_occasion: str | None = None, session_fact
         try:
             rate = float(value_per_occasion)
         except ValueError:
-            print(f"error: value_per_occasion must be a number, got {value_per_occasion!r}",
-                  file=sys.stderr)
+            print(f"error: value_per_occasion must be a number, got {value_per_occasion!r}", file=sys.stderr)
             return False
 
     async with session_scope(session_factory) as session:
@@ -1962,8 +2120,10 @@ async def value(org_id: str, value_per_occasion: str | None = None, session_fact
         print(f"not readable: {report['reason']}")
         return True
 
-    print(f"occasions improved: {report['occasions_improved']:,.1f} "
-          f"(95% CI {report['ci_95'][0]:,.1f} .. {report['ci_95'][1]:,.1f})")
+    print(
+        f"occasions improved: {report['occasions_improved']:,.1f} "
+        f"(95% CI {report['ci_95'][0]:,.1f} .. {report['ci_95'][1]:,.1f})"
+    )
     print(f"memories counted: {report['n_counted']}  excluded: {report['n_excluded']}")
     evidence = report.get("evidence")
     if evidence and evidence["n_stale"]:
@@ -1972,27 +2132,32 @@ async def value(org_id: str, value_per_occasion: str | None = None, session_fact
             f"{evidence['horizon_days']}-day horizon, "
             f"{evidence['n_withheld']} of them no longer billed."
         )
-        print("  re-measure (oldest first): "
-              + ", ".join(evidence["due_for_remeasurement"][:5]))
+        print("  re-measure (oldest first): " + ", ".join(evidence["due_for_remeasurement"][:5]))
     if rate is not None and report["money"] is not None:
         low, high = report["money_range"] or (report["money"], report["money"])
         billable = report["money"] * plans.VALUE_CAPTURE_SHARE
-        print(f"at {rate:,.2f}/occasion: {report['money']:,.2f} total "
-              f"({low:,.2f} .. {high:,.2f}); {plans.VALUE_CAPTURE_SHARE:.0%} share = {billable:,.2f}")
+        print(
+            f"at {rate:,.2f}/occasion: {report['money']:,.2f} total "
+            f"({low:,.2f} .. {high:,.2f}); {plans.VALUE_CAPTURE_SHARE:.0%} share = {billable:,.2f}"
+        )
     else:
-        print("(pass a value-per-occasion rate as a second argument for a priced figure -- "
-              "taken fresh each time, never stored)")
+        print(
+            "(pass a value-per-occasion rate as a second argument for a priced figure -- "
+            "taken fresh each time, never stored)"
+        )
     for m in report["memories"]:
         if m["counted"]:
-            print(f"  + {m['title'] or m['trace_id']}: {m['occasions_improved']:,.1f} occasions "
-                  f"({m['verdict']})")
+            print(f"  + {m['title'] or m['trace_id']}: {m['occasions_improved']:,.1f} occasions ({m['verdict']})")
         else:
             print(f"  - {m['title'] or m['trace_id']}: excluded ({m['why_not']})")
     return True
 
 
 async def set_retention(
-    org_id: str, object_type: str, days: str, status: str = retention.STATUS_ANY,
+    org_id: str,
+    object_type: str,
+    days: str,
+    status: str = retention.STATUS_ANY,
     session_factory=None,
 ) -> bool:
     """Configure how long one org keeps one kind of object."""
@@ -2008,35 +2173,35 @@ async def set_retention(
             print(f"error: no such organization: {org_id}", file=sys.stderr)
             return False
         try:
-            await retention.set_policy(
-                session, org_id, object_type, max_age_days, status=status
-            )
+            await retention.set_policy(session, org_id, object_type, max_age_days, status=status)
         except retention.RetentionError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="retention.set_policy",
-            org_id=org_id, target_type="retention_policy",
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="retention.set_policy",
+            org_id=org_id,
+            target_type="retention_policy",
             target_id=f"{object_type}/{status}",
             summary=f"keep {max_age_days}d",
         )
     print(f"{object_type} [{status}] for {org_id}: keep {max_age_days} days.")
-    print("  Nothing is deleted until you run `retention-plan` and then "
-          "`retention-apply` with the plan's digest.")
+    print("  Nothing is deleted until you run `retention-plan` and then `retention-apply` with the plan's digest.")
     return True
 
 
 async def clear_retention(
-    org_id: str, object_type: str, status: str = retention.STATUS_ANY,
+    org_id: str,
+    object_type: str,
+    status: str = retention.STATUS_ANY,
     session_factory=None,
 ) -> bool:
     """Remove a policy, so that object type stops expiring."""
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         try:
-            removed = await retention.remove_policy(
-                session, org_id, object_type, status=status
-            )
+            removed = await retention.remove_policy(session, org_id, object_type, status=status)
         except retention.RetentionError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
@@ -2044,9 +2209,13 @@ async def clear_retention(
             print(f"No {object_type} [{status}] policy for {org_id}.", file=sys.stderr)
             return False
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="retention.clear_policy",
-            org_id=org_id, target_type="retention_policy",
-            target_id=f"{object_type}/{status}", summary="removed",
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="retention.clear_policy",
+            org_id=org_id,
+            target_type="retention_policy",
+            target_id=f"{object_type}/{status}",
+            summary="removed",
         )
     print(f"{object_type} [{status}] for {org_id}: policy removed; it no longer expires.")
     return True
@@ -2095,7 +2264,10 @@ async def retention_apply(org_id: str, digest: str, session_factory=None) -> boo
 
 
 async def place_legal_hold(
-    org_id: str, reason: str, object_type: str = "", target_id: str = "",
+    org_id: str,
+    reason: str,
+    object_type: str = "",
+    target_id: str = "",
     session_factory=None,
 ) -> bool:
     """Freeze data against every retention policy, until released."""
@@ -2107,9 +2279,12 @@ async def place_legal_hold(
             return False
         try:
             hold = await retention.place_hold(
-                session, org_id, reason=reason,
+                session,
+                org_id,
+                reason=reason,
                 placed_by=audit.ACTOR_OPERATOR_CLI,
-                object_type=object_type, target_id=target_id,
+                object_type=object_type,
+                target_id=target_id,
             )
         except retention.RetentionError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -2117,16 +2292,22 @@ async def place_legal_hold(
         await session.flush()
         hold_id = hold.id
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="retention.place_hold",
-            org_id=org_id, target_type="legal_hold", target_id=hold_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="retention.place_hold",
+            org_id=org_id,
+            target_type="legal_hold",
+            target_id=hold_id,
             summary=f"{object_type or 'everything'}: {reason[:200]}",
         )
     scope = object_type or "everything this org has"
     if target_id:
         scope = f"{object_type} {target_id}"
     print(f"legal hold {hold_id} placed on {scope}.")
-    print("  It outranks every retention policy until released. Retention plans "
-          "will report the frozen rows rather than silently skipping them.")
+    print(
+        "  It outranks every retention policy until released. Retention plans "
+        "will report the frozen rows rather than silently skipping them."
+    )
     return True
 
 
@@ -2141,12 +2322,15 @@ async def release_legal_hold(hold_id: str, reason: str = "", session_factory=Non
             return False
         org_id = hold.org_id
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="retention.release_hold",
-            org_id=org_id, target_type="legal_hold", target_id=hold_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="retention.release_hold",
+            org_id=org_id,
+            target_type="legal_hold",
+            target_id=hold_id,
             summary=reason[:200] or "released",
         )
-    print(f"legal hold {hold_id} released. The rows it froze are subject to "
-          "retention again from the next plan.")
+    print(f"legal hold {hold_id} released. The rows it froze are subject to retention again from the next plan.")
     return True
 
 
@@ -2158,8 +2342,7 @@ async def list_legal_holds(org_id: str, session_factory=None) -> bool:
     if policies:
         print("Retention policies:")
         for p in policies:
-            print(f"  {p.object_type} [{p.status}]: keep {p.max_age_days}d"
-                  + (f"  -- {p.note}" if p.note else ""))
+            print(f"  {p.object_type} [{p.status}]: keep {p.max_age_days}d" + (f"  -- {p.note}" if p.note else ""))
     else:
         print("No retention policy: nothing expires on its own.")
     print()
@@ -2212,7 +2395,10 @@ async def generate_encryption_key() -> bool:
 
 
 async def webhook_add(
-    org_id: str, url: str, event_names: str = "", session_factory=None,
+    org_id: str,
+    url: str,
+    event_names: str = "",
+    session_factory=None,
 ) -> bool:
     """Register a URL to be told what happens, and print its secret once."""
     session_factory = session_factory or _default_session_factory()
@@ -2224,16 +2410,24 @@ async def webhook_add(
             return False
         try:
             endpoint, secret = await events.add_endpoint(
-                session, org_id, url, events=subscribed,
-                signing_key=_config_signing_key(), cipher=_config_cipher(),
+                session,
+                org_id,
+                url,
+                events=subscribed,
+                signing_key=_config_signing_key(),
+                cipher=_config_cipher(),
             )
         except events.EventError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
         endpoint_id, subscribed_to = endpoint.id, list(endpoint.events)
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="webhook.add",
-            org_id=org_id, target_type="webhook_endpoint", target_id=endpoint_id,
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="webhook.add",
+            org_id=org_id,
+            target_type="webhook_endpoint",
+            target_id=endpoint_id,
             summary=f"{url} ({len(subscribed_to)} event types)",
         )
     print(f"endpoint {endpoint_id} -> {url}")
@@ -2272,16 +2466,21 @@ async def webhook_rotate(endpoint_id: str, session_factory=None) -> bool:
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         try:
-            secret = await events.rotate_secret(
-                session, endpoint_id, signing_key=_config_signing_key())
+            secret = await events.rotate_secret(session, endpoint_id, signing_key=_config_signing_key())
         except events.EventError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
         endpoint = await session.get(WebhookEndpoint, endpoint_id)
+        if endpoint is None:
+            raise events.EventError("webhook endpoint disappeared during rotation")
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="webhook.rotate",
-            org_id=endpoint.org_id, target_type="webhook_endpoint",
-            target_id=endpoint_id, summary=f"key v{endpoint.key_version}",
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="webhook.rotate",
+            org_id=endpoint.org_id,
+            target_type="webhook_endpoint",
+            target_id=endpoint_id,
+            summary=f"key v{endpoint.key_version}",
         )
     os.write(1, f"endpoint {endpoint_id} rotated credential: {secret}\n".encode("utf-8"))
     print("  The previous secret stops verifying immediately.")
@@ -2297,12 +2496,17 @@ async def webhook_disable(endpoint_id: str, session_factory=None) -> bool:
             return False
         endpoint.enabled = False
         await audit.record(
-            session, actor=audit.ACTOR_OPERATOR_CLI, action="webhook.disable",
-            org_id=endpoint.org_id, target_type="webhook_endpoint",
-            target_id=endpoint_id, summary=_config_cipher().decrypt(endpoint.url),
+            session,
+            actor=audit.ACTOR_OPERATOR_CLI,
+            action="webhook.disable",
+            org_id=endpoint.org_id,
+            target_type="webhook_endpoint",
+            target_id=endpoint_id,
+            summary=_config_cipher().decrypt(endpoint.url),
         )
-    print(f"endpoint {endpoint_id} disabled. Queued deliveries to it will be "
-          "marked failed rather than retried forever.")
+    print(
+        f"endpoint {endpoint_id} disabled. Queued deliveries to it will be marked failed rather than retried forever."
+    )
     return True
 
 
@@ -2316,18 +2520,25 @@ async def webhook_deliver(limit: str = "100", session_factory=None) -> bool:
         return False
     async with session_scope(session_factory) as session:
         result = await events.deliver_pending(
-            session, events.http_transport(),
-            signing_key=_config_signing_key(), limit=batch,
+            session,
+            events.http_transport(),
+            signing_key=_config_signing_key(),
+            limit=batch,
             cipher=_config_cipher(),
         )
-    print(f"attempted {result.attempted}: {result.delivered} delivered, "
-          f"{result.retrying} will retry, {result.gave_up} gave up, "
-          f"{result.deferred} deferred behind a failing endpoint.")
+    print(
+        f"attempted {result.attempted}: {result.delivered} delivered, "
+        f"{result.retrying} will retry, {result.gave_up} gave up, "
+        f"{result.deferred} deferred behind a failing endpoint."
+    )
     return True
 
 
 async def create_alert_rule(
-    org_id: str, metric: str, comparator: str, threshold: str,
+    org_id: str,
+    metric: str,
+    comparator: str,
+    threshold: str,
     cooldown_minutes: str = str(alerts.DEFAULT_COOLDOWN_MINUTES),
     session_factory=None,
 ) -> bool:
@@ -2335,24 +2546,34 @@ async def create_alert_rule(
         threshold_val = float(threshold)
         cooldown_val = int(cooldown_minutes)
     except ValueError:
-        print(f"error: threshold must be a number and cooldown_minutes a whole "
-              f"number, got {threshold!r} / {cooldown_minutes!r}", file=sys.stderr)
+        print(
+            f"error: threshold must be a number and cooldown_minutes a whole "
+            f"number, got {threshold!r} / {cooldown_minutes!r}",
+            file=sys.stderr,
+        )
         return False
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
         try:
             rule = await alerts.create_rule(
-                session, org_id, metric, comparator, threshold_val,
-                cooldown_minutes=cooldown_val, created_by=audit.ACTOR_OPERATOR_CLI,
+                session,
+                org_id,
+                metric,
+                comparator,
+                threshold_val,
+                cooldown_minutes=cooldown_val,
+                created_by=audit.ACTOR_OPERATOR_CLI,
             )
         except alerts.AlertError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return False
         rule_id = rule.id
     print(f"rule_id: {rule_id}")
-    print(f"  fires when {metric} {comparator} {threshold_val} "
-          f"(cooldown {cooldown_val}m), delivered as alert.triggered "
-          "to this org's webhook endpoint(s).")
+    print(
+        f"  fires when {metric} {comparator} {threshold_val} "
+        f"(cooldown {cooldown_val}m), delivered as alert.triggered "
+        "to this org's webhook endpoint(s)."
+    )
     return True
 
 
@@ -2370,8 +2591,10 @@ async def list_alert_rules(org_id: str, session_factory=None) -> bool:
     for r in rules:
         state = "enabled" if r.enabled else "disabled"
         last = r.last_triggered_at.isoformat() if r.last_triggered_at else "never"
-        print(f"{r.id}  {r.metric} {r.comparator} {r.threshold}  {state}  "
-              f"cooldown={r.cooldown_minutes}m  last_triggered={last}")
+        print(
+            f"{r.id}  {r.metric} {r.comparator} {r.threshold}  {state}  "
+            f"cooldown={r.cooldown_minutes}m  last_triggered={last}"
+        )
     return True
 
 
@@ -2394,8 +2617,10 @@ async def check_alerts(org_id: str | None = None, session_factory=None) -> bool:
         print("No alert crossed its threshold.")
         return True
     for f in fired:
-        print(f"[FIRED] {f['rule_id']} ({f['org_id']}): {f['metric']} "
-              f"{f['comparator']} {f['threshold']} -- value={f['value']}")
+        print(
+            f"[FIRED] {f['rule_id']} ({f['org_id']}): {f['metric']} "
+            f"{f['comparator']} {f['threshold']} -- value={f['value']}"
+        )
     print(f"{len(fired)} alert(s) fired, queued as alert.triggered.")
     return True
 
@@ -2409,9 +2634,11 @@ async def generate_report(org_id: str, session_factory=None) -> bool:
             print(f"error: {exc}", file=sys.stderr)
             return False
     print(f"report.generated for {org_id} ({report['period']}, plan={report['plan']}):")
-    print(f"  traces={report['traces_total']}  "
-          f"commons_queries={report['commons_queries_used']}/"
-          f"{report['commons_queries_allowance']}")
+    print(
+        f"  traces={report['traces_total']}  "
+        f"commons_queries={report['commons_queries_used']}/"
+        f"{report['commons_queries_allowance']}"
+    )
     print("  Queued to this org's webhook endpoint(s).")
     return True
 
@@ -2424,7 +2651,10 @@ def _connector_summary(c) -> str:
 
 
 async def connector_add(
-    org_id: str, provider: str, config_json: str = "", session_factory=None,
+    org_id: str,
+    provider: str,
+    config_json: str = "",
+    session_factory=None,
 ) -> bool:
     """Create a connector and print where the vendor should send its webhooks."""
     import getpass
@@ -2436,8 +2666,11 @@ async def connector_add(
     if not secret and sys.stdin.isatty():
         secret = getpass.getpass("Vendor signing secret (hidden): ")
     if not secret:
-        print("error: set HUB_CONNECTOR_SECRET (or run interactively) -- the vendor's signing "
-              "secret is never taken from the command line.", file=sys.stderr)
+        print(
+            "error: set HUB_CONNECTOR_SECRET (or run interactively) -- the vendor's signing "
+            "secret is never taken from the command line.",
+            file=sys.stderr,
+        )
         return False
     try:
         config = _json.loads(config_json) if config_json else {}
@@ -2451,7 +2684,12 @@ async def connector_add(
             return False
         try:
             connector = await connector_service.create_connector(
-                session, org_id, provider, secret, cipher=_config_cipher(), config=config,
+                session,
+                org_id,
+                provider,
+                secret,
+                cipher=_config_cipher(),
+                config=config,
             )
         except connector_service.ConnectorError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -2469,9 +2707,11 @@ async def connector_list(org_id: str, session_factory=None) -> bool:
 
     session_factory = session_factory or _default_session_factory()
     async with session_scope(session_factory) as session:
-        rows = (await session.execute(
-            select(Connector).where(Connector.org_id == org_id).order_by(Connector.created_at)
-        )).scalars().all()
+        rows = (
+            (await session.execute(select(Connector).where(Connector.org_id == org_id).order_by(Connector.created_at)))
+            .scalars()
+            .all()
+        )
     if not rows:
         print("no connectors")
     for row in rows:
@@ -2497,29 +2737,29 @@ async def _connector_change(connector_id: str, change, session_factory=None) -> 
 async def connector_live(connector_id: str, session_factory=None) -> bool:
     from hub.connectors import service as connector_service
 
-    return await _connector_change(
-        connector_id, lambda s, i: connector_service.set_live(s, i, True), session_factory)
+    return await _connector_change(connector_id, lambda s, i: connector_service.set_live(s, i, True), session_factory)
 
 
 async def connector_dry_run(connector_id: str, session_factory=None) -> bool:
     from hub.connectors import service as connector_service
 
-    return await _connector_change(
-        connector_id, lambda s, i: connector_service.set_live(s, i, False), session_factory)
+    return await _connector_change(connector_id, lambda s, i: connector_service.set_live(s, i, False), session_factory)
 
 
 async def connector_enable(connector_id: str, session_factory=None) -> bool:
     from hub.connectors import service as connector_service
 
     return await _connector_change(
-        connector_id, lambda s, i: connector_service.set_enabled(s, i, True), session_factory)
+        connector_id, lambda s, i: connector_service.set_enabled(s, i, True), session_factory
+    )
 
 
 async def connector_disable(connector_id: str, session_factory=None) -> bool:
     from hub.connectors import service as connector_service
 
     return await _connector_change(
-        connector_id, lambda s, i: connector_service.set_enabled(s, i, False), session_factory)
+        connector_id, lambda s, i: connector_service.set_enabled(s, i, False), session_factory
+    )
 
 
 async def connector_deliveries(connector_id: str, limit: str = "20", session_factory=None) -> bool:
@@ -2532,10 +2772,18 @@ async def connector_deliveries(connector_id: str, limit: str = "20", session_fac
         print("error: limit must be a whole number", file=sys.stderr)
         return False
     async with session_scope(session_factory) as session:
-        rows = (await session.execute(
-            select(ConnectorDelivery).where(ConnectorDelivery.connector_id == connector_id)
-            .order_by(ConnectorDelivery.received_at.desc()).limit(count)
-        )).scalars().all()
+        rows = (
+            (
+                await session.execute(
+                    select(ConnectorDelivery)
+                    .where(ConnectorDelivery.connector_id == connector_id)
+                    .order_by(ConnectorDelivery.received_at.desc())
+                    .limit(count)
+                )
+            )
+            .scalars()
+            .all()
+        )
     if not rows:
         print("no deliveries")
     for row in rows:
@@ -2552,7 +2800,7 @@ async def connector_finalize(session_factory=None) -> bool:
     return True
 
 
-_COMMANDS = {
+_COMMANDS: dict[str, tuple[Callable[..., Coroutine[object, object, object]], int, int]] = {
     "create-org": (create_org, 1, 1),
     "issue-key": (issue_key, 1, 3),
     "rotate-key": (rotate_key, 1, 1),
@@ -2630,16 +2878,14 @@ _COMMANDS = {
 
 _DESTRUCTIVE_COMMANDS: dict[str, str] = {
     "purge-trace": "permanently delete this trace and its full amendment chain",
-    "purge-org": "permanently delete this organization and everything scoped to it "
-                 "(api_keys, traces, votes)",
+    "purge-org": "permanently delete this organization and everything scoped to it (api_keys, traces, votes)",
 }
 
 
 def _confirm_destructive(action: str) -> bool:
     if not sys.stdin.isatty():
         print(
-            f"error: refusing to {action} without --yes (stdin is not a terminal, "
-            "cannot prompt for confirmation)",
+            f"error: refusing to {action} without --yes (stdin is not a terminal, cannot prompt for confirmation)",
             file=sys.stderr,
         )
         return False
@@ -2667,8 +2913,9 @@ def main(argv: list[str] | None = None) -> int:
         skip_confirm = "--yes" in args
         args = [a for a in args if a != "--yes"]
         if len(args) != min_args:
-            print(f"error: {argv[0]} takes {min_args} argument(s) (plus optional --yes), "
-                  f"got {len(args)}", file=sys.stderr)
+            print(
+                f"error: {argv[0]} takes {min_args} argument(s) (plus optional --yes), got {len(args)}", file=sys.stderr
+            )
             return 2
         if not skip_confirm and not _confirm_destructive(_DESTRUCTIVE_COMMANDS[argv[0]]):
             print("aborted (no changes made)", file=sys.stderr)

@@ -1,4 +1,5 @@
 """The Neo4j/FalkorDB mirror's CLI doors: backend selection, `graph mirror` and `graph query --backend mirror`."""
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,11 @@ class FakeMirror:
 
     def typed_neighbors(self, node_id, *, relations=None, direction="both", as_of=None, known_at=None):
         self.calls.append(("typed_neighbors", node_id, relations, as_of))
-        return [{"neighbor_id": t, "relation": r, "direction": "out"} for s, t, r in self.edges
-                if s == node_id and (relations is None or r in relations)]
+        return [
+            {"neighbor_id": t, "relation": r, "direction": "out"}
+            for s, t, r in self.edges
+            if s == node_id and (relations is None or r in relations)
+        ]
 
     def multi_hop(self, start, max_hops=2, relations=None, as_of=None, known_at=None):
         self.calls.append(("multi_hop", tuple(start), max_hops))
@@ -52,8 +56,16 @@ def store(tmp_path):
 
 
 def _args(root, **kw):
-    base = {"entity": "service:api", "hops": 1, "as_of": "", "known_at": "", "backend": "mirror",
-            "relation": [], "dest": root, "json": False}
+    base = {
+        "entity": "service:api",
+        "hops": 1,
+        "as_of": "",
+        "known_at": "",
+        "backend": "mirror",
+        "relation": [],
+        "dest": root,
+        "json": False,
+    }
     return argparse.Namespace(**{**base, **kw})
 
 
@@ -86,8 +98,13 @@ def test_neo4j_settings_reach_the_driver_and_the_password_reads_from_a_file(monk
     monkeypatch.setenv("UNIMEM_NEO4J_PASSWORD_FILE", str(secret))
     monkeypatch.setenv("UNIMEM_GRAPH_NAMESPACE", "fleet-a")
     assert isinstance(graph_backends.from_env(), Neo4j)
-    assert seen == {"uri": "bolt://graph:7687", "username": "neo4j", "password": "s3cret", "database": "neo4j",
-                    "namespace": "fleet-a"}
+    assert seen == {
+        "uri": "bolt://graph:7687",
+        "username": "neo4j",
+        "password": "s3cret",
+        "database": "neo4j",
+        "namespace": "fleet-a",
+    }
 
 
 def test_graph_mirror_publishes_the_local_graph(store, monkeypatch, capsys):
@@ -95,8 +112,10 @@ def test_graph_mirror_publishes_the_local_graph(store, monkeypatch, capsys):
     monkeypatch.setattr(graph_backends, "from_env", lambda name=None: mirror)
     assert graph_cmd.run_mirror(_args(store, backend=None)) == 0
     assert set(mirror.nodes) == {"service:api", "service:db", "team:core"}
-    assert sorted(mirror.edges) == [("service:api", "service:db", "depends_on"),
-                                    ("service:api", "team:core", "owned_by")]
+    assert sorted(mirror.edges) == [
+        ("service:api", "service:db", "depends_on"),
+        ("service:api", "team:core", "owned_by"),
+    ]
     assert mirror.calls == ["publish"] and mirror.closed
     assert "mirrored 3 node(s) and 2 edge(s)" in capsys.readouterr().out
 

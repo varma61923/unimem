@@ -1,4 +1,3 @@
-
 from benchmarks.adapters import (
     BenchmarkItem,
     get_adapter,

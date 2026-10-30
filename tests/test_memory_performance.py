@@ -76,9 +76,7 @@ class TestSemanticDuplicatesPerformance:
         naive_result = _naive_pairwise_duplicates(embeddings, slugs, threshold=threshold)
 
         for chunk_size in [1, 7, 25, 50, 100]:
-            chunked_pairs = _chunked_pairwise_duplicates(
-                embeddings, slugs, threshold=threshold, chunk_size=chunk_size
-            )
+            chunked_pairs = _chunked_pairwise_duplicates(embeddings, slugs, threshold=threshold, chunk_size=chunk_size)
             assert len(chunked_pairs) == len(naive_result)
             for (c_a, c_b, c_score), (n_a, n_b, n_score) in zip(chunked_pairs, naive_result):
                 assert c_a == n_a
@@ -99,7 +97,7 @@ class TestSemanticDuplicatesPerformance:
         embeddings_f32 = embeddings_f64.astype(np.float32)
         res_f32 = compute_semantic_duplicates(embeddings_f32, slugs, threshold=0.1, chunk_size=3)
 
-        assert res_f64.count == res_f32.count
+        assert res_f64.n_matches == res_f32.n_matches
         for (a1, b1, s1), (a2, b2, s2) in zip(res_f64.pairs, res_f32.pairs):
             assert a1 == a2
             assert b1 == b2
@@ -234,12 +232,10 @@ class TestLexicalDuplicatesPerformance:
             },
             "long": {
                 "description": (
-                    "alpha beta gamma delta epsilon zeta eta theta iota kappa "
-                    "lambda mu nu xi omicron pi rho sigma tau"
+                    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
                 ),
                 "applies_when": (
-                    "alpha beta gamma delta epsilon zeta eta theta iota kappa "
-                    "lambda mu nu xi omicron pi rho sigma tau"
+                    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau"
                 ),
             },
         }
@@ -359,3 +355,11 @@ class TestIncrementalVectorCaching:
         with np.load(out_npz, allow_pickle=False) as data:
             assert len(data["slugs"]) == 0
             assert data["embeddings"].shape == (0, EMBEDDING_DIM)
+
+
+def test_duplicate_result_preserves_numeric_attribute_and_mapping_count():
+    pairs = [("a", "b", 0.9)]
+    result = SemanticDuplicatesResult(1, pairs, n_lessons=2)
+    assert tuple(result) == (1, pairs)
+    assert result.n_matches == result["count"] == result.get("count") == 1
+    assert result.count == 1

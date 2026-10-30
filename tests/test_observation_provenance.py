@@ -1,4 +1,5 @@
 """Consolidation respects source validity, scope identity, and provenance."""
+
 from __future__ import annotations
 
 import hashlib
@@ -13,10 +14,20 @@ NOW = "2026-10-04T00:00:00+00:00"
 
 
 def _fact(identity="fact", statement="Prefer concise explanations.", **kwargs):
-    args = dict(id=identity, statement=statement, category="preference", scopes=[],
-                confidence=0.8, confirmations=2, valid_from="2026-01-01T00:00:00Z",
-                valid_until=None, source_traces=[identity + "-trace"], created_at=NOW,
-                updated_at=NOW, revision="imported-revision")
+    args = dict(
+        id=identity,
+        statement=statement,
+        category="preference",
+        scopes=[],
+        confidence=0.8,
+        confirmations=2,
+        valid_from="2026-01-01T00:00:00Z",
+        valid_until=None,
+        source_traces=[identity + "-trace"],
+        created_at=NOW,
+        updated_at=NOW,
+        revision="imported-revision",
+    )
     args.update(kwargs)
     return hierarchical.AtomicFact(**args)
 
@@ -34,7 +45,9 @@ def test_identical_statement_in_different_scopes_has_separate_provenance(tmp_pat
         assert [item["source_id"] for item in observation.evidence] == [identity + "-trace"]
     global_id = observations._observation_id(facts[0].statement)
     assert {item.id for item in observations.load_observations(root, scope="a").values()} == {
-        global_id, observations._observation_id(facts[0].statement, ["a"])}
+        global_id,
+        observations._observation_id(facts[0].statement, ["a"]),
+    }
     tenant_b_id = observations._observation_id(facts[0].statement, ["b"])
     assert observations.get_observation(root, tenant_b_id, scope="a") is None
 
@@ -53,17 +66,22 @@ def test_scoped_id_cannot_collide_with_unscoped_statement_containing_boundary_su
     assert scoped_id != unscoped_id
     assert unscoped_id == "obs-" + hashlib.sha256(crafted.lower().encode()).hexdigest()[:12]
     assert {observation.id: observation.source_fact_ids for observation in output} == {
-        scoped_id: ["scoped"], unscoped_id: ["global"]}
+        scoped_id: ["scoped"],
+        unscoped_id: ["global"],
+    }
 
 
-@pytest.mark.parametrize("changes", [
-    {"valid_from": "2026-10-05T00:00:00Z"},
-    {"valid_until": NOW},
-    {"expires_at": NOW},
-    {"forgotten": True},
-    {"status": "superseded"},
-    {"status": "deleted"},
-])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"valid_from": "2026-10-05T00:00:00Z"},
+        {"valid_until": NOW},
+        {"expires_at": NOW},
+        {"forgotten": True},
+        {"status": "superseded"},
+        {"status": "deleted"},
+    ],
+)
 def test_noncurrent_sources_do_not_become_current_observations(tmp_path, changes):
     root = str(tmp_path)
     current = _fact("current")
@@ -82,10 +100,13 @@ def test_old_recorded_time_does_not_override_valid_time(tmp_path):
 
 def test_legacy_observation_fields_remain_readable_and_malformed_count_is_skipped(tmp_path):
     root = str(tmp_path)
-    _jsonl.write_rows(observations._observations_file(root), [
-        {"id": "legacy", "statement": "Durable claim", "proof_count": 2},
-        {"id": "invalid", "statement": "Invalid count", "proof_count": float("inf")},
-    ])
+    _jsonl.write_rows(
+        observations._observations_file(root),
+        [
+            {"id": "legacy", "statement": "Durable claim", "proof_count": 2},
+            {"id": "invalid", "statement": "Invalid count", "proof_count": float("inf")},
+        ],
+    )
     result = observations.load_observations(root, scope="tenant")
     assert list(result) == ["legacy"]
     assert result["legacy"].scopes == []
@@ -114,22 +135,34 @@ def test_current_fact_search_keeps_valid_windows_and_preserves_historical_and_tt
             return moment.astimezone(tz) if tz else moment.replace(tzinfo=None)
 
     monkeypatch.setattr(hierarchical, "datetime", Clock)
-    facts = [_fact("current", "Matching indexed document"),
-             _fact("future", "Matching indexed document", valid_from="2026-10-05T00:00:00Z"),
-             _fact("ended", "Matching indexed document", valid_until=NOW),
-             _fact("expired", "Matching indexed document", expires_at="2026-10-03T00:00:00Z")]
+    facts = [
+        _fact("current", "Matching indexed document"),
+        _fact("future", "Matching indexed document", valid_from="2026-10-05T00:00:00Z"),
+        _fact("ended", "Matching indexed document", valid_until=NOW),
+        _fact("expired", "Matching indexed document", expires_at="2026-10-03T00:00:00Z"),
+    ]
     hierarchical.save_facts(root, {fact.id: fact for fact in facts})
     assert {fact.id for fact, _score in hierarchical.search_facts(root, "matching")} == {"current"}
     assert {fact.id for fact, _score in hierarchical.search_facts(root, "matching", as_of="")} == {"current"}
     assert {fact.id for fact, _score in hierarchical.search_facts(root, "matching", show_expired=True)} == {
-        "current", "expired"}
+        "current",
+        "expired",
+    }
     assert {fact.id for fact, _score in hierarchical.search_facts(root, "matching", as_of="2026-01-02")} == {
-        "current", "ended", "expired"}
+        "current",
+        "ended",
+        "expired",
+    }
     assert {fact.id for fact, _score in hierarchical.search_facts(root, "matching", as_of="2026-10-06")} == {
-        "current", "future"}
+        "current",
+        "future",
+    }
     # Administrative listing retains scheduled/ended active-status records.
     assert {fact.id for fact in hierarchical.list_facts(root, now=datetime.now(timezone.utc))} == {
-        "current", "future", "ended"}
+        "current",
+        "future",
+        "ended",
+    }
 
 
 def test_malformed_reversed_fact_window_is_skipped_without_losing_valid_rows(tmp_path):

@@ -28,9 +28,16 @@ async def _contribute(session_factory, config, org_id, title, context, solution,
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text=context, solution_text=solution,
-            tags=tags or [], agent_type="code", actor=actor,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            tags=tags or [],
+            agent_type="code",
+            actor=actor,
         )
 
 
@@ -38,8 +45,11 @@ async def _seed_kb(session_factory, operator_org_id, title):
     async with session_scope(session_factory) as session:
         trace = Trace(
             org_id=operator_org_id,
-            title=title, context_text="c", solution_text="s",
-            tags=[], agent_type="code",
+            title=title,
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
             shared_with_commons=True,
             shared_at=datetime.now(timezone.utc),
             shared_rationale="test fixture",
@@ -64,9 +74,7 @@ class TestVoteTraceRace:
         async def _vote(i):
             vote_type = "up" if i % 2 == 0 else "down"
             async with session_scope(session_factory) as session:
-                return await crud.vote_trace(
-                    session, org_id, trace_id, vote_type, actor=f"concurrent-{i}"
-                )
+                return await crud.vote_trace(session, org_id, trace_id, vote_type, actor=f"concurrent-{i}")
 
         return await asyncio.gather(*[_vote(i) for i in range(n)], return_exceptions=True)
 
@@ -80,9 +88,7 @@ class TestVoteTraceRace:
             succeeded = [r for r in results if not isinstance(r, BaseException)]
 
             async with session_scope(session_factory) as session:
-                votes = (
-                    await session.execute(select(Vote).where(Vote.trace_id == trace["id"]))
-                ).scalars().all()
+                votes = (await session.execute(select(Vote).where(Vote.trace_id == trace["id"]))).scalars().all()
                 t = await session.get(Trace, trace["id"])
 
             print(
@@ -163,16 +169,18 @@ class TestContributeTraceIdempotency:
         print(f"[idempotency] first id={r1['id']} second id={r2['id']}")
 
         async with session_scope(session_factory) as session:
-            rows = (
-                await session.execute(select(Trace).where(Trace.org_id == org))
-            ).scalars().all()
+            rows = (await session.execute(select(Trace).where(Trace.org_id == org))).scalars().all()
 
         assert r1["id"] == r2["id"], "retry with the same key must return the original trace, not a new one"
         assert len(rows) == 1, f"expected exactly 1 row after 2 identical-key calls, found {len(rows)}"
 
     async def test_omitted_key_is_unaffected_and_still_duplicates(self, session_factory, config, org):
         args = dict(
-            title="no key", context_text="c", solution_text="s", tags=[], agent_type="code",
+            title="no key",
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
         )
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
@@ -181,31 +189,45 @@ class TestContributeTraceIdempotency:
             r2 = await crud.contribute_trace(session, org, config, rate_limiter, **args)
         assert r1["id"] != r2["id"]
 
-    async def test_same_key_different_payload_raises_conflict_not_stale_data(
-        self, session_factory, config, org
-    ):
+    async def test_same_key_different_payload_raises_conflict_not_stale_data(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="original", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="original",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
                 idempotency_key="reused-key",
             )
         with pytest.raises(crud.IdempotencyKeyConflict):
             async with session_scope(session_factory) as session:
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="a genuinely different request", context_text="c2", solution_text="s2",
-                    tags=[], agent_type="code", idempotency_key="reused-key",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="a genuinely different request",
+                    context_text="c2",
+                    solution_text="s2",
+                    tags=[],
+                    agent_type="code",
+                    idempotency_key="reused-key",
                 )
 
-    async def test_20_concurrent_identical_retries_create_exactly_one_trace(
-        self, session_factory, config, org
-    ):
+    async def test_20_concurrent_identical_retries_create_exactly_one_trace(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         args = dict(
-            title="concurrent idempotency probe", context_text="c", solution_text="s",
-            tags=[], agent_type="code", idempotency_key="concurrent-key",
+            title="concurrent idempotency probe",
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
+            idempotency_key="concurrent-key",
         )
 
         async def _call():
@@ -218,10 +240,14 @@ class TestContributeTraceIdempotency:
 
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(Trace).where(Trace.org_id == org, Trace.idempotency_key == "concurrent-key")
+                (
+                    await session.execute(
+                        select(Trace).where(Trace.org_id == org, Trace.idempotency_key == "concurrent-key")
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         print(f"[concurrent idempotency] n_exceptions={len(exceptions)} distinct_ids={ids} n_rows={len(rows)}")
         assert not exceptions, f"unexpected exceptions: {exceptions}"
@@ -230,9 +256,7 @@ class TestContributeTraceIdempotency:
 
 
 class TestAmendTraceIdempotency:
-    async def test_identical_retry_with_same_key_returns_the_original_not_a_fork(
-        self, session_factory, config, org
-    ):
+    async def test_identical_retry_with_same_key_returns_the_original_not_a_fork(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         original = await _contribute(session_factory, config, org, "before amendment", "c", "s")
 
@@ -246,10 +270,14 @@ class TestAmendTraceIdempotency:
 
         async with session_scope(session_factory) as session:
             forks = (
-                await session.execute(
-                    select(Trace).where(Trace.org_id == org, Trace.supersedes_trace_id == original["id"])
+                (
+                    await session.execute(
+                        select(Trace).where(Trace.org_id == org, Trace.supersedes_trace_id == original["id"])
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         assert r1["id"] == r2["id"], "retry with the same key must return the original amendment, not a fork"
         assert len(forks) == 1, f"expected exactly 1 amendment after 2 identical-key retries, found {len(forks)}"
@@ -271,45 +299,66 @@ class TestAmendTraceIdempotency:
 
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, org, original_a["id"], config, rate_limiter,
-                title="amended a", idempotency_key="shared-key",
+                session,
+                org,
+                original_a["id"],
+                config,
+                rate_limiter,
+                title="amended a",
+                idempotency_key="shared-key",
             )
         with pytest.raises(crud.IdempotencyKeyConflict):
             async with session_scope(session_factory) as session:
                 await crud.amend_trace(
-                    session, org, original_b["id"], config, rate_limiter,
-                    title="amended b", idempotency_key="shared-key",
+                    session,
+                    org,
+                    original_b["id"],
+                    config,
+                    rate_limiter,
+                    title="amended b",
+                    idempotency_key="shared-key",
                 )
 
-    async def test_same_key_different_fields_raises_conflict_not_stale_data(
-        self, session_factory, config, org
-    ):
+    async def test_same_key_different_fields_raises_conflict_not_stale_data(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         original = await _contribute(session_factory, config, org, "before amendment", "c", "s")
 
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, org, original["id"], config, rate_limiter,
-                title="first version", idempotency_key="reused-amend-key",
+                session,
+                org,
+                original["id"],
+                config,
+                rate_limiter,
+                title="first version",
+                idempotency_key="reused-amend-key",
             )
         with pytest.raises(crud.IdempotencyKeyConflict):
             async with session_scope(session_factory) as session:
                 await crud.amend_trace(
-                    session, org, original["id"], config, rate_limiter,
-                    title="a genuinely different edit", idempotency_key="reused-amend-key",
+                    session,
+                    org,
+                    original["id"],
+                    config,
+                    rate_limiter,
+                    title="a genuinely different edit",
+                    idempotency_key="reused-amend-key",
                 )
 
-    async def test_20_concurrent_identical_retries_create_exactly_one_amendment(
-        self, session_factory, config, org
-    ):
+    async def test_20_concurrent_identical_retries_create_exactly_one_amendment(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         original = await _contribute(session_factory, config, org, "before amendment", "c", "s")
 
         async def _call():
             async with session_scope(session_factory) as session:
                 return await crud.amend_trace(
-                    session, org, original["id"], config, rate_limiter,
-                    title="concurrently amended", idempotency_key="concurrent-amend-key",
+                    session,
+                    org,
+                    original["id"],
+                    config,
+                    rate_limiter,
+                    title="concurrently amended",
+                    idempotency_key="concurrent-amend-key",
                 )
 
         results = await asyncio.gather(*[_call() for _ in range(20)], return_exceptions=True)
@@ -318,12 +367,14 @@ class TestAmendTraceIdempotency:
 
         async with session_scope(session_factory) as session:
             forks = (
-                await session.execute(
-                    select(Trace).where(
-                        Trace.org_id == org, Trace.supersedes_trace_id == original["id"]
+                (
+                    await session.execute(
+                        select(Trace).where(Trace.org_id == org, Trace.supersedes_trace_id == original["id"])
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
         print(f"[concurrent amend idempotency] n_exceptions={len(exceptions)} distinct_ids={ids} n_forks={len(forks)}")
         assert not exceptions, f"unexpected exceptions: {exceptions}"
@@ -413,9 +464,9 @@ class TestContributeTraceStorageQuotaRace:
     async def test_concurrent_writes_never_exceed_the_cap(self, session_factory, config, org, monkeypatch):
         cap = 5
         monkeypatch.setitem(
-            plans.PLANS, "free",
-            plans.Plan("free", max_traces=cap, commons_queries_per_month=20,
-                       commons_access=True, summary="test"),
+            plans.PLANS,
+            "free",
+            plans.Plan("free", max_traces=cap, commons_queries_per_month=20, commons_access=True, summary="test"),
         )
         n = 20
 
@@ -431,9 +482,7 @@ class TestContributeTraceStorageQuotaRace:
         ]
 
         async with session_scope(session_factory) as session:
-            stored = int(await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == org)
-            ) or 0)
+            stored = int(await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org)) or 0)
 
         print(
             f"[storage quota race] cap={cap} n_attempted={n} n_succeeded={len(succeeded)} "
@@ -451,16 +500,21 @@ async def _submit_kb(session_factory, config, org_id, title, context, solution, 
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.submit_kb_entry(
-            session, org_id, config, rate_limiter,
-            title=title, context_text=context, solution_text=solution,
-            tags=[], agent_type="code", actor=actor,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            tags=[],
+            agent_type="code",
+            actor=actor,
         )
 
 
 class TestSubmitKbEntryPendingQuotaRace:
-    async def test_concurrent_submissions_never_exceed_the_pending_cap(
-        self, session_factory, config, org, monkeypatch
-    ):
+    async def test_concurrent_submissions_never_exceed_the_pending_cap(self, session_factory, config, org, monkeypatch):
         cap = 5
         monkeypatch.setattr(crud, "MAX_PENDING_SUBMISSIONS_PER_ORG", cap)
         n = 20
@@ -477,12 +531,17 @@ class TestSubmitKbEntryPendingQuotaRace:
         ]
 
         async with session_scope(session_factory) as session:
-            pending = int(await session.scalar(
-                select(func.count()).select_from(crud.KnowledgeBaseSubmission).where(
-                    crud.KnowledgeBaseSubmission.org_id == org,
-                    crud.KnowledgeBaseSubmission.status == "pending",
+            pending = int(
+                await session.scalar(
+                    select(func.count())
+                    .select_from(crud.KnowledgeBaseSubmission)
+                    .where(
+                        crud.KnowledgeBaseSubmission.org_id == org,
+                        crud.KnowledgeBaseSubmission.status == "pending",
+                    )
                 )
-            ) or 0)
+                or 0
+            )
 
         print(
             f"[kb pending quota race] cap={cap} n_attempted={n} n_succeeded={len(succeeded)} "
@@ -496,12 +555,12 @@ class TestSubmitKbEntryPendingQuotaRace:
 
 
 class TestSubmitKbEntryIdempotency:
-    async def test_20_concurrent_identical_submissions_create_exactly_one(
-        self, session_factory, config, org
-    ):
+    async def test_20_concurrent_identical_submissions_create_exactly_one(self, session_factory, config, org):
         rate_limiter = make_rate_limiter(config)
         args = dict(
-            title="concurrent kb idempotency probe", context_text="c", solution_text="s",
+            title="concurrent kb idempotency probe",
+            context_text="c",
+            solution_text="s",
             idempotency_key="concurrent-kb-key",
         )
 
@@ -515,26 +574,26 @@ class TestSubmitKbEntryIdempotency:
 
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(crud.KnowledgeBaseSubmission).where(
-                        crud.KnowledgeBaseSubmission.org_id == org,
-                        crud.KnowledgeBaseSubmission.idempotency_key == "concurrent-kb-key",
+                (
+                    await session.execute(
+                        select(crud.KnowledgeBaseSubmission).where(
+                            crud.KnowledgeBaseSubmission.org_id == org,
+                            crud.KnowledgeBaseSubmission.idempotency_key == "concurrent-kb-key",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
-        print(
-            f"[kb idempotency race] n_exceptions={len(exceptions)} distinct_ids={ids} n_rows={len(rows)}"
-        )
+        print(f"[kb idempotency race] n_exceptions={len(exceptions)} distinct_ids={ids} n_rows={len(rows)}")
         assert not exceptions, f"unexpected exceptions: {exceptions}"
         assert ids == {rows[0].id}, "every concurrent retry must resolve to the same single submission id"
         assert len(rows) == 1
 
 
 class TestIdempotencyRaceInsideABatch:
-    async def test_losing_the_race_keeps_earlier_writes_and_the_tenant_binding(
-        self, session_factory, config, org
-    ):
+    async def test_losing_the_race_keeps_earlier_writes_and_the_tenant_binding(self, session_factory, config, org):
         real = make_rate_limiter(config)
 
         class RacingLimiter:
@@ -542,23 +601,43 @@ class TestIdempotencyRaceInsideABatch:
             # our insert; the rate-limit check sits exactly in that window.
             async def check(self, key):
                 async with session_scope(session_factory) as other:
-                    other.add(Trace(
-                        org_id=org, title="t", context_text="c", solution_text="s",
-                        tags=[], agent_type="code", idempotency_key="span-1",
-                        request_hash=crud._contribute_request_hash("t", "c", "s", [], "code", {}, ""),
-                    ))
+                    other.add(
+                        Trace(
+                            org_id=org,
+                            title="t",
+                            context_text="c",
+                            solution_text="s",
+                            tags=[],
+                            agent_type="code",
+                            idempotency_key="span-1",
+                            request_hash=crud._contribute_request_hash("t", "c", "s", [], "code", {}, ""),
+                        )
+                    )
                 return await real.check(key)
 
         async with session_scope(session_factory, org_id=org) as session:
             # An earlier write in the same batch transaction (an OTLP occasion outcome, say).
             await audit.record(session, actor="batch", action="earlier_write", org_id=org)
             replayed = await crud.contribute_trace(
-                session, org, config, RacingLimiter(), title="t", context_text="c", solution_text="s",
-                agent_type="code", idempotency_key="span-1")
+                session,
+                org,
+                config,
+                RacingLimiter(),
+                title="t",
+                context_text="c",
+                solution_text="s",
+                agent_type="code",
+                idempotency_key="span-1",
+            )
             bound = (await session.execute(text("SELECT current_setting('app.org_id', true)"))).scalar()
         assert replayed["id"]
         assert bound == org, "the tenant binding must survive the lost race"
         async with session_scope(session_factory) as session:
-            earlier = (await session.execute(select(func.count()).select_from(AuditLogEntry).where(
-                AuditLogEntry.org_id == org, AuditLogEntry.action == "earlier_write"))).scalar()
+            earlier = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(AuditLogEntry)
+                    .where(AuditLogEntry.org_id == org, AuditLogEntry.action == "earlier_write")
+                )
+            ).scalar()
         assert earlier == 1, "the earlier write in the batch was rolled back"

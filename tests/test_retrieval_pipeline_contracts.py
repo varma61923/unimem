@@ -1,4 +1,5 @@
 """Public retrieval behavior across the canonical JSONL and SQLite stores."""
+
 from __future__ import annotations
 
 import asyncio
@@ -13,9 +14,7 @@ from unimem.gateway import Gateway
 
 @pytest.fixture(params=["jsonl", "sqlite"])
 def root(tmp_path, request):
-    (tmp_path / "unimem.yaml").write_text(
-        "profiles:\n  local:\n    embedding: none\n    reranker: none\n"
-    )
+    (tmp_path / "unimem.yaml").write_text("profiles:\n  local:\n    embedding: none\n    reranker: none\n")
     if request.param == "sqlite":
         fact_store.migrate(str(tmp_path))
     return str(tmp_path)
@@ -32,8 +31,11 @@ def test_hybrid_consensus_beats_either_channel_alone(root):
     semantic = add(root, "automobile service procedure")
     explanation = {}
     rows = MemoryClient(root).search(
-        "quartz approval", dense_scores={consensus.id: 0.8, semantic.id: 0.9},
-        reranker="none", graph_hops=0, explain=explanation,
+        "quartz approval",
+        dense_scores={consensus.id: 0.8, semantic.id: 0.9},
+        reranker="none",
+        graph_hops=0,
+        explain=explanation,
     )
     assert rows[0]["id"] == consensus.id
     assert {row["id"] for row in rows} == {lexical.id, consensus.id, semantic.id}
@@ -65,17 +67,19 @@ def test_multi_hop_preserves_feedback_weight_and_prefers_stronger_paths(root):
     class Backend:
         def neighbors(self, node_id, *, as_of=None):
             return {
-                "Alice": [{"neighbor_id": "Bridge", "weight": .8}],
-                "Bridge": [{"neighbor_id": weak.id, "weight": .1},
-                           {"neighbor_id": strong.id, "weight": .9}],
+                "Alice": [{"neighbor_id": "Bridge", "weight": 0.8}],
+                "Bridge": [{"neighbor_id": weak.id, "weight": 0.1}, {"neighbor_id": strong.id, "weight": 0.9}],
             }.get(node_id, [])
 
     rows = MemoryClient(root).search(
-        "Alice", entity_ids=["Alice"], backend=Backend(), reranker="none",
+        "Alice",
+        entity_ids=["Alice"],
+        backend=Backend(),
+        reranker="none",
     )
     assert [row["id"] for row in rows] == [strong.id, weak.id]
-    assert rows[0]["signals"]["entity"] == pytest.approx(.72)
-    assert rows[1]["signals"]["entity"] == pytest.approx(.08)
+    assert rows[0]["signals"]["entity"] == pytest.approx(0.72)
+    assert rows[1]["signals"]["entity"] == pytest.approx(0.08)
 
 
 def test_mcp_uses_the_governed_hybrid_and_temporal_pipeline(root, monkeypatch):
@@ -93,9 +97,17 @@ def test_mcp_uses_the_governed_hybrid_and_temporal_pipeline(root, monkeypatch):
     server = mcp_server.build_server(root)
 
     def call(**options):
-        result = asyncio.run(server.call_tool("memory_search", {
-            "query": "Alice", "context": ["agent:reader"], "reranker": "none", **options,
-        }))
+        result = asyncio.run(
+            server.call_tool(
+                "memory_search",
+                {
+                    "query": "Alice",
+                    "context": ["agent:reader"],
+                    "reranker": "none",
+                    **options,
+                },
+            )
+        )
         structured = getattr(result, "structured_content", None)
         return structured.get("result", structured) if structured else json.loads(result.content[0].text)
 
@@ -136,7 +148,10 @@ def test_a_private_fact_cannot_bridge_to_otherwise_visible_evidence(root, prefix
     graph.add_edge(root, bridge, target.id, "derived_from")
 
     rows = MemoryClient(root, agent_id="reader").search(
-        "Alice", retriever=retriever, graph_hops=2, reranker="none",
+        "Alice",
+        retriever=retriever,
+        graph_hops=2,
+        reranker="none",
     )
     assert rows == []
 
@@ -156,7 +171,8 @@ def test_valid_time_and_record_time_are_independent_public_search_filters(root, 
 
     gateway = Gateway(root, token="t" * 40)
     result = gateway.handle(
-        "POST", "/v1/memory/search",
+        "POST",
+        "/v1/memory/search",
         body=json.dumps({"query": "quartz approval", "known_at": "2025-02-15", **options}).encode(),
         headers={"Authorization": "Bearer " + "t" * 40, "Host": "localhost"},
     )
@@ -169,7 +185,10 @@ def test_mmr_keeps_a_relevant_but_distinct_supporting_fact(root):
     duplicate = add(root, "quartz policy retries")
     distinct = add(root, "quartz policy rollback for archival export")
     rows = MemoryClient(root).search(
-        "quartz policy", reranker="mmr", graph_hops=0, limit=2,
+        "quartz policy",
+        reranker="mmr",
+        graph_hops=0,
+        limit=2,
         dense_scores={first.id: 0.95, duplicate.id: 0.94, distinct.id: 0.93},
     )
     assert [row["id"] for row in rows] == [first.id, distinct.id]

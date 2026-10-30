@@ -84,9 +84,15 @@ Each HTTP request needs a fresh holder proof in addition to normal credentials:
 from unimem import capabilities, frontier_protocol
 
 headers = capabilities.headers(
-    token, key=holder_key, holder_algorithm="hmac-sha256",
-    method="POST", target="/v1/memory/search", raw=body_bytes,
-    purpose="support", nonce=fresh_random_nonce, now=frontier_protocol.now(),
+    token,
+    key=holder_key,
+    holder_algorithm="hmac-sha256",
+    method="POST",
+    target="/v1/memory/search",
+    raw=body_bytes,
+    purpose="support",
+    nonce=fresh_random_nonce,
+    now=frontier_protocol.now(),
 )
 headers["Authorization"] = "Bearer " + primary_gateway_credential
 ```

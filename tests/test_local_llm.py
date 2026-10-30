@@ -1,4 +1,5 @@
 """In-process `local` LLM provider and the deterministic exact judge."""
+
 import sys
 import types
 
@@ -35,15 +36,20 @@ def test_complete_dispatches_to_the_in_process_model(monkeypatch):
 
 
 def test_bounded_benchmark_request_costs_nothing_and_keeps_the_output_cap(monkeypatch):
-    monkeypatch.setattr(local_llm, "complete",
-                        lambda config, prompt, *, max_new_tokens=None: ("ok", {"input_tokens": 3,
-                                                                                "output_tokens": max_new_tokens}))
+    monkeypatch.setattr(
+        local_llm,
+        "complete",
+        lambda config, prompt, *, max_new_tokens=None: ("ok", {"input_tokens": 3, "output_tokens": max_new_tokens}),
+    )
     guard = CostGuard(max_cost_usd=0.0)
     cfg = llm.Config(provider="local", model="org/tiny", api_key="")
     text, usage, cost = bounded_complete("q", cfg, guard, output_limit=16)
     assert (text, cost, usage["output_tokens"], guard.call_count) == ("ok", 0.0, 16, 1)
-    monkeypatch.setattr(local_llm, "complete",
-                        lambda config, prompt, *, max_new_tokens=None: ("x", {"input_tokens": 3, "output_tokens": 99}))
+    monkeypatch.setattr(
+        local_llm,
+        "complete",
+        lambda config, prompt, *, max_new_tokens=None: ("x", {"input_tokens": 3, "output_tokens": 99}),
+    )
     with pytest.raises(ValueError, match="output limit"):
         bounded_complete("q", cfg, guard, output_limit=16)
 
@@ -101,8 +107,9 @@ def _fake_runtime(monkeypatch, calls):
             return False
 
     monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(float32="f32", inference_mode=_NoGrad))
-    monkeypatch.setitem(sys.modules, "transformers",
-                        types.SimpleNamespace(AutoTokenizer=Tokenizer, AutoModelForCausalLM=Model))
+    monkeypatch.setitem(
+        sys.modules, "transformers", types.SimpleNamespace(AutoTokenizer=Tokenizer, AutoModelForCausalLM=Model)
+    )
     monkeypatch.setattr(local_llm, "_LOADED", {})
 
 

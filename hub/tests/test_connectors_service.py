@@ -67,7 +67,8 @@ def _gh(payload: dict, event: str, delivery: str, secret=GH_SECRET):
     body = json.dumps(payload).encode()
     return {
         "X-Hub-Signature-256": "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest(),
-        "X-GitHub-Event": event, "X-GitHub-Delivery": delivery,
+        "X-GitHub-Event": event,
+        "X-GitHub-Delivery": delivery,
     }, body
 
 
@@ -79,11 +80,11 @@ async def _org(session_factory, name="Acme"):
         return org.id
 
 
-async def _connector(session_factory, org_id, provider="zendesk", secret=ZD_SECRET, *,
-                     config=None, live=True):
+async def _connector(session_factory, org_id, provider="zendesk", secret=ZD_SECRET, *, config=None, live=True):
     async with session_scope(session_factory) as session:
         connector = await service.create_connector(
-            session, org_id, provider, secret, cipher=CIPHER, config=config or {})
+            session, org_id, provider, secret, cipher=CIPHER, config=config or {}
+        )
         if live:
             await service.set_live(session, connector.id, True)
         return connector.id
@@ -99,10 +100,13 @@ async def _occasion(session_factory, org_id, occasion):
 
 async def _outcome(session_factory, org_id, occasion):
     async with session_scope(session_factory) as session:
-        rows = (await session.execute(
-            select(HoldoutObservation.succeeded)
-            .where(HoldoutObservation.org_id == org_id, HoldoutObservation.occasion_id == occasion)
-        )).all()
+        rows = (
+            await session.execute(
+                select(HoldoutObservation.succeeded).where(
+                    HoldoutObservation.org_id == org_id, HoldoutObservation.occasion_id == occasion
+                )
+            )
+        ).all()
     assert len(rows) == 1, rows
     return rows[0][0]
 
@@ -142,8 +146,11 @@ class TestAuthenticOrNothing:
             (await _post(session_factory, c, h, body)).status.__str__()
             + json.dumps((await _post(session_factory, c, h, body)).body, sort_keys=True)
             for c, h in [
-                (live, bad_headers), ("00000000-0000-0000-0000-000000000000", headers),
-                (off, headers), ("not-a-uuid", headers), ("' OR 1=1", headers),
+                (live, bad_headers),
+                ("00000000-0000-0000-0000-000000000000", headers),
+                (off, headers),
+                ("not-a-uuid", headers),
+                ("' OR 1=1", headers),
             ]
         }
         assert len(answers) == 1, answers
@@ -182,8 +189,12 @@ class TestAuthenticOrNothing:
             stamp = _stamp(datetime.now(timezone.utc))
             digest = hmac.new(ZD_SECRET.encode(), stamp.encode() + body, hashlib.sha256).digest()
             sig = base64.b64encode(digest).decode()
-            result = await _post(session_factory, cid, {
-                "X-Zendesk-Webhook-Signature": sig, "X-Zendesk-Webhook-Signature-Timestamp": stamp}, body)
+            result = await _post(
+                session_factory,
+                cid,
+                {"X-Zendesk-Webhook-Signature": sig, "X-Zendesk-Webhook-Signature-Timestamp": stamp},
+                body,
+            )
             assert result.status == 400, body
 
     async def test_an_authentic_but_unmappable_payload_is_acknowledged_not_retried(self, session_factory):
@@ -304,8 +315,9 @@ class TestGithubCodingFlow:
     def _merged(self, number=2, sha="c4295bd74fb0f4fda03689c3df3f2803b658fd85"):
         payload = _fixture("github_pull_request_closed.json")
         payload["number"] = number
-        payload["pull_request"].update(merged=True, merged_at=payload["pull_request"]["closed_at"],
-                                       merge_commit_sha=sha)
+        payload["pull_request"].update(
+            merged=True, merged_at=payload["pull_request"]["closed_at"], merge_commit_sha=sha
+        )
         return payload
 
     async def test_merged_then_reverted_inside_the_window_is_a_failure(self, session_factory):
@@ -315,8 +327,7 @@ class TestGithubCodingFlow:
         await _post(session_factory, cid, *_gh(self._merged(), "pull_request", "d-1"))
         assert await _outcome(session_factory, org, "2") is None
         push = _fixture("github_push_master.json")
-        push["commits"][0]["message"] = (
-            'Revert "x"\n\nThis reverts commit c4295bd74fb0f4fda03689c3df3f2803b658fd85.\n')
+        push["commits"][0]["message"] = 'Revert "x"\n\nThis reverts commit c4295bd74fb0f4fda03689c3df3f2803b658fd85.\n'
         await _post(session_factory, cid, *_gh(push, "push", "d-2"))
         assert await _outcome(session_factory, org, "2") is False
 
@@ -344,8 +355,9 @@ class TestGithubCodingFlow:
 
     async def test_another_repos_pr_with_the_same_number_is_ignored(self, session_factory):
         org = await _org(session_factory)
-        cid = await _connector(session_factory, org, "github", GH_SECRET,
-                               config={"repository": "acme/widgets", "window_days": 0})
+        cid = await _connector(
+            session_factory, org, "github", GH_SECRET, config={"repository": "acme/widgets", "window_days": 0}
+        )
         await _occasion(session_factory, org, "2")
         await _post(session_factory, cid, *_gh(self._merged(), "pull_request", "d-1"))
         assert await _outcome(session_factory, org, "2") is None
@@ -405,8 +417,11 @@ class TestTenancy:
         await _occasion(session_factory, org, "1244")
         await _post(session_factory, cid, *_zd(_zd_status("SOLVED", "OPEN")))
         async with session_scope(session_factory) as session:
-            entries = (await session.execute(
-                select(AuditLogEntry).where(AuditLogEntry.action == "connector.outcome"))).scalars().all()
+            entries = (
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "connector.outcome")))
+                .scalars()
+                .all()
+            )
         assert len(entries) == 1 and entries[0].actor == f"connector:zendesk:{cid[:8]}"
         assert entries[0].org_id == org
 
@@ -425,15 +440,17 @@ class TestManagement:
         org = await _org(session_factory)
         async with session_scope(session_factory) as session:
             with pytest.raises(service.ConnectorError, match="HUB_ENCRYPTION_KEY"):
-                await service.create_connector(
-                    session, org, "zendesk", ZD_SECRET, cipher=EnvelopeCipher())
+                await service.create_connector(session, org, "zendesk", ZD_SECRET, cipher=EnvelopeCipher())
 
-    @pytest.mark.parametrize("provider, secret, options, message", [
-        ("salesforce", "s", {}, "unknown provider"),
-        ("zendesk", "  ", {}, "signing secret is required"),
-        ("zendesk", "s", {"nope": 1}, "unknown config option"),
-        ("github", "s", {"repository": "x"}, "owner/name"),
-    ])
+    @pytest.mark.parametrize(
+        "provider, secret, options, message",
+        [
+            ("salesforce", "s", {}, "unknown provider"),
+            ("zendesk", "  ", {}, "signing secret is required"),
+            ("zendesk", "s", {"nope": 1}, "unknown config option"),
+            ("github", "s", {"repository": "x"}, "owner/name"),
+        ],
+    )
     async def test_bad_creation_is_refused(self, session_factory, provider, secret, options, message):
         org = await _org(session_factory)
         async with session_scope(session_factory) as session:
@@ -485,8 +502,9 @@ class TestRoute:
         headers, body = _zd(_zd_status("SOLVED", "OPEN"))
         async with self._client(session_factory, config) as client:
             response = await client.post(f"/connectors/{cid}/events", content=body, headers=headers)
-            bad = await client.post(f"/connectors/{cid}/events", content=body,
-                                    headers={**headers, "X-Zendesk-Webhook-Signature": "AAAA"})
+            bad = await client.post(
+                f"/connectors/{cid}/events", content=body, headers={**headers, "X-Zendesk-Webhook-Signature": "AAAA"}
+            )
             only_post = await client.get(f"/connectors/{cid}/events")
         assert response.status_code == 200 and response.json()["status"] == "ok"
         assert bad.status_code == 401 and only_post.status_code == 405
@@ -502,8 +520,12 @@ class TestRoute:
     async def test_the_route_is_rate_limited_before_any_work(self, session_factory):
         config = HubConfig(database_url="x", auth_attempts_per_minute=2, auth_attempts_burst=2)
         async with self._client(session_factory, config) as client:
-            codes = [(await client.post("/connectors/00000000-0000-0000-0000-000000000000/events",
-                                        content=b"{}")).status_code for _ in range(6)]
+            codes = [
+                (
+                    await client.post("/connectors/00000000-0000-0000-0000-000000000000/events", content=b"{}")
+                ).status_code
+                for _ in range(6)
+            ]
         assert 429 in codes and codes[0] == 401
 
     async def test_genuine_deliveries_do_not_spend_the_failed_attempt_budget(
@@ -545,9 +567,7 @@ class TestHardening:
         org = await _org(session_factory)
         cid = await _connector(session_factory, org, "github", GH_SECRET, config={"window_days": 14})
         push = _fixture("github_push_master.json")
-        push["commits"] = [
-            {"message": f"This reverts commit {i:040x}."} for i in range(service.MAX_SIGNALS + 150)
-        ]
+        push["commits"] = [{"message": f"This reverts commit {i:040x}."} for i in range(service.MAX_SIGNALS + 150)]
         result = await _post(session_factory, cid, *_gh(push, "push", "d-big"))
         assert result.status == 200 and len(result.body["signals"]) == service.MAX_SIGNALS
 
@@ -628,8 +648,9 @@ class TestIntercomSupportFlow:
 
     def _signed(self, topic, conversation="1295", notification="notif-1", age_seconds=30):
         payload = _fixture("intercom_notification_company_created.json")
-        payload.update(topic=topic, id=notification,
-                       created_at=int(datetime.now(timezone.utc).timestamp()) - age_seconds)
+        payload.update(
+            topic=topic, id=notification, created_at=int(datetime.now(timezone.utc).timestamp()) - age_seconds
+        )
         payload["data"]["item"] = {"type": "conversation", "id": conversation, "state": "closed"}
         body = json.dumps(payload).encode()
         return {"X-Hub-Signature": "sha1=" + hmac.new(self.SECRET.encode(), body, hashlib.sha1).hexdigest()}, body

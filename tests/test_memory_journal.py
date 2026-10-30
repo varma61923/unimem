@@ -32,6 +32,7 @@ def test_journal_partial_cursor_releases_checkpoint_on_return(tmp_path, abort):
             assert cursor.fetchone() is not None
             if abort:
                 raise RuntimeError("abort read")
+
     if abort:
         with pytest.raises(RuntimeError, match="abort read"):
             read()
@@ -60,13 +61,11 @@ def test_aborted_journal_writer_is_discarded(tmp_path):
 def test_indexed_queries_bind_scope_literals_and_fts_input(tmp_path):
     journal = Journal(str(tmp_path))
     literal = "owner' OR 1=1 --"
-    journal.put(MemoryRecord("literal-owner", "fact", 1, {"text": "Private design notes."},
-                             scope={"agent": literal}))
-    journal.put(MemoryRecord("other-owner", "fact", 1, {"text": "Private design notes."},
-                             scope={"agent": "other"}))
+    journal.put(MemoryRecord("literal-owner", "fact", 1, {"text": "Private design notes."}, scope={"agent": literal}))
+    journal.put(MemoryRecord("other-owner", "fact", 1, {"text": "Private design notes."}, scope={"agent": "other"}))
     assert [record.id for record in journal.search("notes", scope={"agent": literal})] == ["literal-owner"]
     assert not journal.search("notes", scope={"agent": "' OR 1=1 --"})
-    journal.search("notes\"; DROP TABLE records; --", scope={"agent": literal})
+    journal.search('notes"; DROP TABLE records; --', scope={"agent": literal})
     assert [record.id for record in journal.search("notes", scope={"agent": literal})] == ["literal-owner"]
 
 
@@ -162,9 +161,7 @@ def test_derivatives_hide_when_grounding_retracted(tmp_path):
 
     journal = Journal(str(tmp_path))
     source = journal.put(MemoryRecord("f", "fact", 1, {"text": "original"}))
-    observation = journal.put(
-        MemoryRecord("o", "observation", 1, {"text": "derived"}, relations={"derives": ["f"]})
-    )
+    observation = journal.put(MemoryRecord("o", "observation", 1, {"text": "derived"}, relations={"derives": ["f"]}))
     journal.put(replace(source, version=2, status="retired"))
     assert journal.search("derived") == []
     assert journal.current("o", scope={}) is None

@@ -3,6 +3,7 @@
 These raw-source profiles deliberately exclude managed APIs and LLM extraction.
 Gold evidence and answers never enter them. Canonical Store is only a source map.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,8 +45,15 @@ def pack(store, ranked_ids, budget, *, profile):
             chunks.append(chunk)
             kept.append(identity)
     context = "\n\n".join(chunks)
-    return Recall("", context, tokens(context), kept, ranked, None,
-                  {"vendor_profile": profile, "rerank": "native", "packing": "whole-source-turns"})
+    return Recall(
+        "",
+        context,
+        tokens(context),
+        kept,
+        ranked,
+        None,
+        {"vendor_profile": profile, "rerank": "native", "packing": "whole-source-turns"},
+    )
 
 
 def eligible_turns(store, now):
@@ -53,8 +61,7 @@ def eligible_turns(store, now):
     if now is not None and moment is None:
         raise ValueError("vendor profile requires a parseable history cutoff")
     ids = [row[0] for row in store.db.execute("SELECT id FROM turns ORDER BY id")]
-    return [turn for turn in store.turns(ids).values()
-            if moment is None or turn.at is None or turn.at <= moment]
+    return [turn for turn in store.turns(ids).values() if moment is None or turn.at is None or turn.at <= moment]
 
 
 def huggingface_cache_paths():
@@ -70,6 +77,7 @@ class Mem0Raw:
         os.environ["MEM0_TELEMETRY"] = "False"
         from mem0 import Memory
         from mem0.memory import telemetry
+
         telemetry.MEM0_TELEMETRY = False
 
         self.store = store
@@ -78,18 +86,35 @@ class Mem0Raw:
         source_binding = package_source("mem0")
         embedding_binding = model_artifact("sentence-transformers/all-MiniLM-L6-v2")
         self.closed = False
-        self.memory = Memory.from_config({
-            "vector_store": {"provider": "qdrant", "config": {
-                "collection_name": "benchmark", "embedding_model_dims": 384,
-                "path": os.path.join(directory, "qdrant")}},
-            "embedder": {"provider": "huggingface", "config": {
-                "model": "sentence-transformers/all-MiniLM-L6-v2",
-                "model_kwargs": {"local_files_only": True}}},
-            # infer=False never dispatches to this deliberately unusable endpoint.
-            "llm": {"provider": "openai", "config": {"model": "unused",
-                "api_key": "local-profile-unused", "openai_base_url": "http://127.0.0.1:1/v1"}},
-            "history_db_path": os.path.join(directory, "history.db"),
-        })
+        self.memory = Memory.from_config(
+            {
+                "vector_store": {
+                    "provider": "qdrant",
+                    "config": {
+                        "collection_name": "benchmark",
+                        "embedding_model_dims": 384,
+                        "path": os.path.join(directory, "qdrant"),
+                    },
+                },
+                "embedder": {
+                    "provider": "huggingface",
+                    "config": {
+                        "model": "sentence-transformers/all-MiniLM-L6-v2",
+                        "model_kwargs": {"local_files_only": True},
+                    },
+                },
+                # infer=False never dispatches to this deliberately unusable endpoint.
+                "llm": {
+                    "provider": "openai",
+                    "config": {
+                        "model": "unused",
+                        "api_key": "local-profile-unused",
+                        "openai_base_url": "http://127.0.0.1:1/v1",
+                    },
+                },
+                "history_db_path": os.path.join(directory, "history.db"),
+            }
+        )
         self.refs = {}
         texts = [f"{turn.speaker}: {turn.text}" for turn in turns]
         embed = self.memory.embedding_model.embed
@@ -101,11 +126,15 @@ class Mem0Raw:
                 raise ValueError("vendor batch embedding count mismatch")
             memo = dict(zip(texts, vectors))
             self.memory.embedding_model.embed = lambda text, memory_action=None: (
-                memo[text] if memory_action == "add" and text in memo else embed(text, memory_action))
+                memo[text] if memory_action == "add" and text in memo else embed(text, memory_action)
+            )
             for turn in turns:
                 result = self.memory.add(
                     [{"role": "user", "content": f"{turn.speaker}: {turn.text}"}],
-                    user_id=store.space, infer=False, metadata={"source_ref": turn.ref})
+                    user_id=store.space,
+                    infer=False,
+                    metadata={"source_ref": turn.ref},
+                )
                 added = result["results"]
                 if len(added) != 1 or added[0]["event"] != "ADD":
                     raise ValueError("raw vendor ingestion did not preserve one source record")
@@ -117,19 +146,30 @@ class Mem0Raw:
             self.memory.embedding_model.embed = embed
         try:
             encoder = self.memory.vector_store._get_bm25_encoder()
-            self.descriptor = {"profile": "mem0-raw", "version": version, "upstream_sha256": source_binding, "embedding_artifact": embedding_binding,
-                "inference": False, "ingestion_embeddings": "public-batch-identical-input-memo", "embedder": "sentence-transformers/all-MiniLM-L6-v2",
+            self.descriptor = {
+                "profile": "mem0-raw",
+                "version": version,
+                "upstream_sha256": source_binding,
+                "embedding_artifact": embedding_binding,
+                "inference": False,
+                "ingestion_embeddings": "public-batch-identical-input-memo",
+                "embedder": "sentence-transformers/all-MiniLM-L6-v2",
                 "sparse_encoder": "Qdrant/bm25" if encoder else None,
-                "backend": "qdrant-local", "top_k": 200, "threshold": 0.0,
-                "time_filter": "history-cutoff-before-indexing", "packing": "whole-source-turns"}
+                "backend": "qdrant-local",
+                "top_k": 200,
+                "threshold": 0.0,
+                "time_filter": "history-cutoff-before-indexing",
+                "packing": "whole-source-turns",
+            }
 
         except BaseException:
             self.close()
             raise
 
     def retrieve(self, question, budget):
-        result = self.memory.search(question, filters={"user_id": self.store.space},
-                                    top_k=200, threshold=0.0, rerank=False)
+        result = self.memory.search(
+            question, filters={"user_id": self.store.space}, top_k=200, threshold=0.0, rerank=False
+        )
         identities = [self.refs[item["id"]] for item in result["results"]]
         return pack(self.store, identities, budget, profile="mem0-raw")
 
@@ -166,18 +206,30 @@ class GraphitiEpisodic:
             self.driver = FalkorDriver(falkor_db=self.client, database="benchmark")
             self.loop.run_until_complete(self.driver.build_indices_and_constraints())
             for turn in turns:
-                node = EpisodicNode(name=str(turn.ref), group_id=self.group_id,
-                    source=EpisodeType.message, source_description="raw conversation turn",
+                node = EpisodicNode(
+                    name=str(turn.ref),
+                    group_id=self.group_id,
+                    source=EpisodeType.message,
+                    source_description="raw conversation turn",
                     content=f"{turn.speaker}: {turn.text}",
-                    valid_at=(turn.at or dt.datetime(1970, 1, 1)).replace(tzinfo=dt.timezone.utc))
+                    valid_at=(turn.at or dt.datetime(1970, 1, 1)).replace(tzinfo=dt.timezone.utc),
+                )
                 self.loop.run_until_complete(node.save(self.driver))
                 self.refs[node.uuid] = turn.id
-            self.descriptor = {"profile": "graphiti-episodic",
-                "version": version, "upstream_sha256": source_binding, "inference": False,
-                "search": "native-episode-bm25", "reranker": "rrf", "top_k": 200,
-                "backend": "falkordblite", "time_filter": "history-cutoff-before-indexing",
-                "packing": "whole-source-turns", "entity_graph": False,
-                "group_namespace": "sha256-canonical-space-utf8"}
+            self.descriptor = {
+                "profile": "graphiti-episodic",
+                "version": version,
+                "upstream_sha256": source_binding,
+                "inference": False,
+                "search": "native-episode-bm25",
+                "reranker": "rrf",
+                "top_k": 200,
+                "backend": "falkordblite",
+                "time_filter": "history-cutoff-before-indexing",
+                "packing": "whole-source-turns",
+                "entity_graph": False,
+                "group_namespace": "sha256-canonical-space-utf8",
+            }
         except BaseException:
             self.close()
             raise
@@ -187,9 +239,18 @@ class GraphitiEpisodic:
         from graphiti_core.search.search_config import EpisodeSearchConfig, EpisodeSearchMethod
         from graphiti_core.search.search_filters import SearchFilters
 
-        episodes, _scores = self.loop.run_until_complete(episode_search(
-            self.driver, None, question, [], [self.group_id],
-            EpisodeSearchConfig(search_methods=[EpisodeSearchMethod.bm25]), SearchFilters(), limit=200))
+        episodes, _scores = self.loop.run_until_complete(
+            episode_search(
+                self.driver,
+                None,
+                question,
+                [],
+                [self.group_id],
+                EpisodeSearchConfig(search_methods=[EpisodeSearchMethod.bm25]),
+                SearchFilters(),
+                limit=200,
+            )
+        )
         identities = [self.refs[episode.uuid] for episode in episodes]
         return pack(self.store, identities, budget, profile="graphiti-episodic")
 
@@ -232,40 +293,48 @@ class HindsightRaw:
         self._home_locked = True
         try:
             self._saved_env = {key: os.environ.get(key) for key in _HINDSIGHT_HOME_KEYS}
-            self._saved_env.update({
-                "HINDSIGHT_EMBED_API_DATABASE_URL": os.environ.get("HINDSIGHT_EMBED_API_DATABASE_URL"),
-                "HINDSIGHT_API_DATABASE_URL": os.environ.get("HINDSIGHT_API_DATABASE_URL"),
-                "HINDSIGHT_API_DATABASE_BACKEND": os.environ.get("HINDSIGHT_API_DATABASE_BACKEND"),
-                "HINDSIGHT_API_READ_DATABASE_URL": os.environ.get("HINDSIGHT_API_READ_DATABASE_URL"),
-                "HINDSIGHT_API_MIGRATION_DATABASE_URL": os.environ.get("HINDSIGHT_API_MIGRATION_DATABASE_URL"),
-                "HINDSIGHT_API_LLM_PROVIDER": os.environ.get("HINDSIGHT_API_LLM_PROVIDER"),
-                "HINDSIGHT_API_RETAIN_LLM_PROVIDER": os.environ.get("HINDSIGHT_API_RETAIN_LLM_PROVIDER"),
-                "HINDSIGHT_API_EMBEDDINGS_PROVIDER": os.environ.get("HINDSIGHT_API_EMBEDDINGS_PROVIDER"),
-                "HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL": os.environ.get("HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL"),
-                "HINDSIGHT_API_ENABLE_RERANKING": os.environ.get("HINDSIGHT_API_ENABLE_RERANKING"),
-                "HINDSIGHT_API_OTEL_TRACES_ENABLED": os.environ.get("HINDSIGHT_API_OTEL_TRACES_ENABLED"),
-                "HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT"),
-                "HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS": os.environ.get("HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS"),
-                "OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
-                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
-                "OTEL_EXPORTER_OTLP_HEADERS": os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"),
-                "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
-                "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
-                "HF_HOME": os.environ.get("HF_HOME"),
-                "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
-                "TRANSFORMERS_CACHE": os.environ.get("TRANSFORMERS_CACHE"),
-            })
+            self._saved_env.update(
+                {
+                    "HINDSIGHT_EMBED_API_DATABASE_URL": os.environ.get("HINDSIGHT_EMBED_API_DATABASE_URL"),
+                    "HINDSIGHT_API_DATABASE_URL": os.environ.get("HINDSIGHT_API_DATABASE_URL"),
+                    "HINDSIGHT_API_DATABASE_BACKEND": os.environ.get("HINDSIGHT_API_DATABASE_BACKEND"),
+                    "HINDSIGHT_API_READ_DATABASE_URL": os.environ.get("HINDSIGHT_API_READ_DATABASE_URL"),
+                    "HINDSIGHT_API_MIGRATION_DATABASE_URL": os.environ.get("HINDSIGHT_API_MIGRATION_DATABASE_URL"),
+                    "HINDSIGHT_API_LLM_PROVIDER": os.environ.get("HINDSIGHT_API_LLM_PROVIDER"),
+                    "HINDSIGHT_API_RETAIN_LLM_PROVIDER": os.environ.get("HINDSIGHT_API_RETAIN_LLM_PROVIDER"),
+                    "HINDSIGHT_API_EMBEDDINGS_PROVIDER": os.environ.get("HINDSIGHT_API_EMBEDDINGS_PROVIDER"),
+                    "HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL": os.environ.get("HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL"),
+                    "HINDSIGHT_API_ENABLE_RERANKING": os.environ.get("HINDSIGHT_API_ENABLE_RERANKING"),
+                    "HINDSIGHT_API_OTEL_TRACES_ENABLED": os.environ.get("HINDSIGHT_API_OTEL_TRACES_ENABLED"),
+                    "HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get(
+                        "HINDSIGHT_API_OTEL_EXPORTER_OTLP_ENDPOINT"
+                    ),
+                    "HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS": os.environ.get(
+                        "HINDSIGHT_API_OTEL_EXPORTER_OTLP_HEADERS"
+                    ),
+                    "OTEL_EXPORTER_OTLP_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+                    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": os.environ.get("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
+                    "OTEL_EXPORTER_OTLP_HEADERS": os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"),
+                    "HF_HUB_OFFLINE": os.environ.get("HF_HUB_OFFLINE"),
+                    "TRANSFORMERS_OFFLINE": os.environ.get("TRANSFORMERS_OFFLINE"),
+                    "HF_HOME": os.environ.get("HF_HOME"),
+                    "HF_HUB_CACHE": os.environ.get("HF_HUB_CACHE"),
+                    "TRANSFORMERS_CACHE": os.environ.get("TRANSFORMERS_CACHE"),
+                }
+            )
             # Retain provider chains and explicit database overrides can turn a
             # nominally local profile into a remote call. Snapshot and remove
             # every such host override before selecting the isolated local path.
             for key, value in list(os.environ.items()):
-                if key.startswith((
-                    "HINDSIGHT_API_LLM_",
-                    "HINDSIGHT_API_RETAIN_LLM_",
-                    "HINDSIGHT_API_REFLECT_LLM_",
-                    "HINDSIGHT_API_CONSOLIDATION_LLM_",
-                    "HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_",
-                )):
+                if key.startswith(
+                    (
+                        "HINDSIGHT_API_LLM_",
+                        "HINDSIGHT_API_RETAIN_LLM_",
+                        "HINDSIGHT_API_REFLECT_LLM_",
+                        "HINDSIGHT_API_CONSOLIDATION_LLM_",
+                        "HINDSIGHT_API_MENTAL_MODEL_REFRESH_LLM_",
+                    )
+                ):
                     self._saved_env.setdefault(key, value)
                     os.environ.pop(key, None)
             for key in (
@@ -277,9 +346,13 @@ class HindsightRaw:
             ):
                 os.environ.pop(key, None)
             if shutil.which("hindsight-api") is None:
-                raise RuntimeError("hindsight-raw requires a locally installed hindsight-api executable; network fallback is disabled")
+                raise RuntimeError(
+                    "hindsight-raw requires a locally installed hindsight-api executable; network fallback is disabled"
+                )
             if find_spec("sentence_transformers") is None:
-                raise RuntimeError("hindsight-raw requires Hindsight's local-ml dependencies; network fallback is disabled")
+                raise RuntimeError(
+                    "hindsight-raw requires Hindsight's local-ml dependencies; network fallback is disabled"
+                )
             # The default cache is read-only for this path. If it is absent,
             # fail before Hindsight can attempt a download from Hugging Face.
             embedding_binding = model_artifact(self.embedder)
@@ -425,7 +498,10 @@ def vendor_profile(name, store, now):
                 package = "mem0" if name == "mem0-raw" else "graphiti_core"
                 if package_source(package) != adapter.descriptor["upstream_sha256"]:
                     raise RuntimeError("vendor source changed during measurement")
-            if name in ("mem0-raw", "hindsight-raw") and model_artifact(adapter.descriptor["embedder"]) != adapter.descriptor["embedding_artifact"]:
+            if (
+                name in ("mem0-raw", "hindsight-raw")
+                and model_artifact(adapter.descriptor["embedder"]) != adapter.descriptor["embedding_artifact"]
+            ):
                 raise RuntimeError("vendor embedding artifacts changed during measurement")
         finally:
             adapter.close()

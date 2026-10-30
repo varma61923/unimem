@@ -71,7 +71,12 @@ async def cancel_subscription(settings: StripeSettings, *, subscription_id: str)
 
 
 async def create_checkout_session(
-    settings: StripeSettings, *, org: Organization, plan: str, success_url: str, cancel_url: str,
+    settings: StripeSettings,
+    *,
+    org: Organization,
+    plan: str,
+    success_url: str,
+    cancel_url: str,
 ) -> str:
     """Mint a Stripe-hosted Checkout URL for `org` to subscribe to `plan`."""
     price = settings.price_for_plan(plan)
@@ -101,7 +106,11 @@ async def create_billing_portal_session(settings: StripeSettings, *, customer_id
 
 
 def verify_webhook_signature(
-    payload: bytes, sig_header: str, secret: str, *, now: float | None = None,
+    payload: bytes,
+    sig_header: str,
+    secret: str,
+    *,
+    now: float | None = None,
     tolerance: int = WEBHOOK_TOLERANCE_SECONDS,
 ) -> bool:
     if not sig_header or not secret:
@@ -124,8 +133,7 @@ def verify_webhook_signature(
         return False
     signed_payload = f"{timestamp}.".encode("ascii") + payload
     expected = hmac.new(secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
-    return any(hmac.compare_digest(expected.encode(), candidate.encode("utf-8", "replace"))
-               for candidate in signatures)
+    return any(hmac.compare_digest(expected.encode(), candidate.encode("utf-8", "replace")) for candidate in signatures)
 
 
 def _looks_like_org_id(value: str | None) -> bool:
@@ -199,8 +207,10 @@ async def _apply_webhook_event_once(session: AsyncSession, settings: StripeSetti
         if subscription_id and org.stripe_subscription_id and subscription_id != org.stripe_subscription_id:
             status = str(obj.get("status") or "")
             if event_type == "customer.subscription.deleted" or status not in ("active", "trialing"):
-                return (f"ignored {event_type}: subscription {subscription_id} is not the org's "
-                        f"current subscription {org.stripe_subscription_id}")
+                return (
+                    f"ignored {event_type}: subscription {subscription_id} is not the org's "
+                    f"current subscription {org.stripe_subscription_id}"
+                )
 
         if event_type == "customer.subscription.deleted":
             org.plan = plans.DEFAULT_PLAN

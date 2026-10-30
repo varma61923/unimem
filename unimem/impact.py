@@ -135,7 +135,7 @@ def render_markdown(r: ImpactReport) -> str:
         "# UniMem Impact Dashboard",
         "",
         "Errors avoided, lessons reused, and value generated or saved "
-        "(the pilot design step 3: \"Measure what changed\").",
+        '(the pilot design step 3: "Measure what changed").',
         "",
         f"- **Lessons reused**: {r.lessons_reused} "
         f"(across {r.n_occasions_with_lesson} occasion(s) where a lesson was retrieved)",
@@ -152,8 +152,11 @@ def render_markdown(r: ImpactReport) -> str:
         f"- Avg. tokens/task — baseline: {_fmt_num(r.avg_tokens_baseline, 1)} "
         f"({r.n_baseline} traces) · current: {_fmt_num(r.avg_tokens_current, 1)} ({r.n_current} traces)",
         f"- Tokens saved per task: {_fmt_num(r.tokens_saved_per_task, 1)}"
-        + (f" (× {r.n_current} current traces = {_fmt_num(r.tokens_saved_total, 0)} total)"
-           if r.tokens_saved_total is not None else ""),
+        + (
+            f" (× {r.n_current} current traces = {_fmt_num(r.tokens_saved_total, 0)} total)"
+            if r.tokens_saved_total is not None
+            else ""
+        ),
         "",
         "## Value generated or saved (estimate)",
         "",
@@ -187,15 +190,15 @@ def render_html_fragment(r: ImpactReport) -> str:
     value_card = (
         report_html.stat_card("Value generated + saved", "N/A", "pass a rate flag to estimate")
         if r.dollar_value_total is None
-        else report_html.stat_card(
-            "Value generated + saved", _fmt_money(r.dollar_value_total), "estimate — see below"
-        )
+        else report_html.stat_card("Value generated + saved", _fmt_money(r.dollar_value_total), "estimate — see below")
     )
-    cards = "".join([
-        report_html.stat_card("Errors avoided", str(r.errors_avoided), "in production, to date"),
-        report_html.stat_card("Lessons reused", str(r.lessons_reused)),
-        value_card,
-    ])
+    cards = "".join(
+        [
+            report_html.stat_card("Errors avoided", str(r.errors_avoided), "in production, to date"),
+            report_html.stat_card("Lessons reused", str(r.lessons_reused)),
+            value_card,
+        ]
+    )
     dollar_detail = ""
     if r.dollar_value_total is not None:
         parts = []

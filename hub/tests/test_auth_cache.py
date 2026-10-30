@@ -69,6 +69,7 @@ async def test_revoking_through_this_process_forgets_the_key_at_once(session_fac
         from sqlalchemy import select
 
         from hub.models import ApiKey
+
         key_id = (await session.execute(select(ApiKey.id))).scalars().first()
         await auth.revoke_api_key(session, key_id)
     assert auth.cached_key(raw) is None
@@ -83,6 +84,7 @@ async def test_rotation_forgets_the_old_key(session_factory, config):
         from sqlalchemy import select
 
         from hub.models import ApiKey
+
         key_id = (await session.execute(select(ApiKey.id))).scalars().first()
         await auth.rotate_api_key(session, key_id)
     assert auth.cached_key(raw) is None
@@ -105,6 +107,7 @@ async def test_the_window_is_clamped_to_zero_through_sixty_seconds(asked, got):
 @pytest.mark.parametrize("value,ok", [("0", True), ("60", True), ("61", False), ("-1", False), ("abc", False)])
 async def test_the_setting_is_validated(monkeypatch, value, ok):
     from hub.config import HubConfig
+
     monkeypatch.setenv("HUB_DATABASE_URL", "postgresql+asyncpg://u:p@h/db")
     monkeypatch.setenv("HUB_AUTH_CACHE_SECONDS", value)
     if ok:
@@ -134,8 +137,13 @@ async def test_a_cached_key_skips_the_database_on_the_request_path(session_facto
 
     app = Starlette(routes=[Route("/mcp", ok)])
     limiter = abuse.make_rate_limiter(config)
-    wrapped = server.ApiKeyAuthMiddleware(app, session_factory=counting_factory, protected_path="/mcp",
-                                          auth_rate_limiter=limiter, read_rate_limiter=limiter)
+    wrapped = server.ApiKeyAuthMiddleware(
+        app,
+        session_factory=counting_factory,
+        protected_path="/mcp",
+        auth_rate_limiter=limiter,
+        read_rate_limiter=limiter,
+    )
     auth.configure_auth_cache(30)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=wrapped), base_url="http://t") as client:
         headers = {"Authorization": f"Bearer {raw}"}
@@ -267,6 +275,7 @@ async def test_a_rolled_back_revocation_notifies_no_one(session_factory, config,
             from sqlalchemy import select
 
             from hub.models import ApiKey
+
             key_id = (await session.execute(select(ApiKey.id))).scalars().first()
             await auth.revoke_api_key(session, key_id)
             await session.rollback()

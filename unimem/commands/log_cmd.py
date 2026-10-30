@@ -1,4 +1,5 @@
 """Export and verify SCITT-style transparency receipts."""
+
 from __future__ import annotations
 
 import argparse

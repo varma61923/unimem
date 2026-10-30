@@ -1,4 +1,5 @@
 """The paired summary workload must preserve output and restore production hooks."""
+
 import pytest
 
 from benchmarks.session_summary import main, run

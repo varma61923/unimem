@@ -29,14 +29,27 @@ async def _contribute(session_factory, config, org_id, title, context, solution,
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text=context, solution_text=solution,
-            tags=tags or [], agent_type="code", actor="test",
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text=context,
+            solution_text=solution,
+            tags=tags or [],
+            agent_type="code",
+            actor="test",
         )
 
 
 async def _seed(
-    session_factory, operator_org_id, title, context, solution, tags=None, agent_type="code",
+    session_factory,
+    operator_org_id,
+    title,
+    context,
+    solution,
+    tags=None,
+    agent_type="code",
 ):
     tags = tags or []
     async with session_scope(session_factory) as session:
@@ -72,8 +85,9 @@ class TestSignatureCompatibility:
         from unimem import overlap
 
         text = commons.matchable_text("Stripe webhook", "duplicate delivery", ["stripe"])
-        assert commons.signature_for("Stripe webhook", "duplicate delivery", ["stripe"]) == \
-            overlap.minhash(text, overlap.DEFAULT_NUM_PERM)
+        assert commons.signature_for("Stripe webhook", "duplicate delivery", ["stripe"]) == overlap.minhash(
+            text, overlap.DEFAULT_NUM_PERM
+        )
 
     def test_identical_text_matches_itself_perfectly(self):
         sig = _sign("Stripe webhook retries", "duplicate delivery on 500", ["stripe"])
@@ -88,12 +102,17 @@ class TestSignatureCompatibility:
 class TestCommonsDoesNotLeak:
     async def test_an_ordinary_customer_trace_never_appears(self, session_factory, config, orgs):
         await _contribute(
-            session_factory, config, orgs["customer-a"],
-            "Stripe webhook retries", "duplicate delivery on 500", "SECRET-SOLUTION",
+            session_factory,
+            config,
+            orgs["customer-a"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "SECRET-SOLUTION",
         )
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-b"],
+                session,
+                orgs["customer-b"],
                 [_failure("f1", "Stripe webhook retries", "duplicate delivery on 500")],
             )
         assert report["n_commons_traces"] == 0
@@ -102,8 +121,11 @@ class TestCommonsDoesNotLeak:
 
     async def test_a_quarantined_seed_entry_is_excluded(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "use an idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "use an idempotency key",
         )
         async with session_scope(session_factory) as session:
             row = await session.get(Trace, tid)
@@ -111,15 +133,14 @@ class TestCommonsDoesNotLeak:
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f1", "Stripe webhook retries", "duplicate delivery on 500")],
             )
         assert report["n_commons_traces"] == 0
         assert report["n_covered"] == 0
 
-    async def test_a_shared_row_that_is_not_seed_sourced_is_still_invisible(
-        self, session_factory, orgs
-    ):
+    async def test_a_shared_row_that_is_not_seed_sourced_is_still_invisible(self, session_factory, orgs):
         async with session_scope(session_factory) as session:
             rogue = Trace(
                 org_id=orgs["customer-a"],
@@ -139,7 +160,8 @@ class TestCommonsDoesNotLeak:
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-b"],
+                session,
+                orgs["customer-b"],
                 [_failure("f1", "Customer A's proprietary escalation policy", "internal pricing logic")],
             )
         assert report["n_commons_traces"] == 0
@@ -147,26 +169,32 @@ class TestCommonsDoesNotLeak:
 
         async with session_scope(session_factory) as session:
             search_result = await crud.commons_search(
-                session, orgs["customer-b"],
+                session,
+                orgs["customer-b"],
                 _sign("Customer A's proprietary escalation policy", "internal pricing logic"),
             )
         assert search_result["n_candidates"] == 0
 
 
 class TestCoverageNumber:
-    async def test_matching_failure_is_covered_and_returns_the_solution(
-        self, session_factory, orgs
-    ):
+    async def test_matching_failure_is_covered_and_returns_the_solution(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500 response",
-            "Use an idempotency key on the handler", tags=["stripe", "webhooks"],
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500 response",
+            "Use an idempotency key on the handler",
+            tags=["stripe", "webhooks"],
         )
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
-                [_failure("our-f1", "Stripe webhook retries", "duplicate delivery on 500 response",
-                          ["stripe", "webhooks"])],
+                session,
+                orgs["customer-a"],
+                [
+                    _failure(
+                        "our-f1", "Stripe webhook retries", "duplicate delivery on 500 response", ["stripe", "webhooks"]
+                    )
+                ],
             )
 
         assert report["n_covered"] == 1
@@ -178,26 +206,33 @@ class TestCoverageNumber:
 
     async def test_unrelated_failure_is_not_covered(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
-                [_failure("f1", "CUDA kernel launch failure",
-                          "grid dimensions exceeded the device limit", ["cuda"])],
+                session,
+                orgs["customer-a"],
+                [_failure("f1", "CUDA kernel launch failure", "grid dimensions exceeded the device limit", ["cuda"])],
             )
         assert report["n_covered"] == 0
         assert report["covered_fraction"] == pytest.approx(0.0)
 
     async def test_coverage_fraction_is_the_ratio_covered(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [
                     _failure("hit", "Stripe webhook retries", "duplicate delivery on 500"),
                     _failure("miss1", "CUDA kernel launch", "grid dimensions exceeded"),
@@ -210,12 +245,18 @@ class TestCoverageNumber:
 
     async def test_aggregates_across_multiple_entries(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         await _seed(
-            session_factory, orgs["operator"],
-            "CUDA kernel launch failure", "grid dimensions exceeded the device limit", "clamp the grid",
+            session_factory,
+            orgs["operator"],
+            "CUDA kernel launch failure",
+            "grid dimensions exceeded the device limit",
+            "clamp the grid",
         )
         probe = [
             _failure("f1", "Stripe webhook retries", "duplicate delivery on 500"),
@@ -228,40 +269,42 @@ class TestCoverageNumber:
         assert report["n_covered"] == 2
         assert report["covered_fraction"] == pytest.approx(1.0)
 
-    async def test_include_matches_false_returns_the_number_without_content(
-        self, session_factory, orgs
-    ):
+    async def test_include_matches_false_returns_the_number_without_content(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f1", "Stripe webhook retries", "duplicate delivery on 500")],
                 include_matches=False,
             )
         assert report["n_covered"] == 1
         assert report["matches"] == []
 
-    async def test_empty_knowledge_base_says_so_rather_than_reporting_zero_percent(
-        self, session_factory, orgs
-    ):
+    async def test_empty_knowledge_base_says_so_rather_than_reporting_zero_percent(self, session_factory, orgs):
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"], [_failure("f1", "anything", "at all")],
+                session,
+                orgs["customer-a"],
+                [_failure("f1", "anything", "at all")],
             )
         assert report["n_covered"] == 0
         assert "no entries yet" in report["note"].lower()
 
 
 class TestScanDoesNotBlockTheEventLoop:
-    async def test_best_matches_runs_off_the_event_loop_thread(
-        self, session_factory, orgs, monkeypatch
-    ):
+    async def test_best_matches_runs_off_the_event_loop_thread(self, session_factory, orgs, monkeypatch):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500 response",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500 response",
             "Use an idempotency key on the handler",
         )
 
@@ -279,7 +322,8 @@ class TestScanDoesNotBlockTheEventLoop:
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f1", "Stripe webhook retries", "duplicate delivery on 500 response")],
             )
         assert report["n_covered"] == 1
@@ -288,13 +332,14 @@ class TestScanDoesNotBlockTheEventLoop:
 
 
 class TestCommonsCrossOrgProjection:
-    async def test_private_fields_are_excluded_from_a_commons_match(
-        self, session_factory, orgs
-    ):
+    async def test_private_fields_are_excluded_from_a_commons_match(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500",
-            "Use an idempotency key", tags=["stripe"],
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "Use an idempotency key",
+            tags=["stripe"],
         )
         async with session_scope(session_factory) as session:
             row = await session.get(Trace, tid)
@@ -306,16 +351,26 @@ class TestCommonsCrossOrgProjection:
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f1", "Stripe webhook retries", "duplicate delivery on 500", ["stripe"])],
             )
 
         assert report["n_covered"] == 1
         match_trace = report["matches"][0]["trace"]
         for private_field in (
-            "contributor", "extensions", "outcome", "watch_condition",
-            "review_after", "retrievals", "depth", "supersedes_trace_id",
-            "votes", "related", "quarantined", "quarantine_reason",
+            "contributor",
+            "extensions",
+            "outcome",
+            "watch_condition",
+            "review_after",
+            "retrievals",
+            "depth",
+            "supersedes_trace_id",
+            "votes",
+            "related",
+            "quarantined",
+            "quarantine_reason",
             "shared_with_commons",
         ):
             assert private_field not in match_trace, f"{private_field!r} leaked to a caller"
@@ -332,10 +387,7 @@ class TestMatcherPaths:
         import random
 
         rnd = random.Random(seed)
-        return [
-            [rnd.randrange(0, 1 << 61) for _ in range(commons.COMMONS_NUM_PERM)]
-            for _ in range(n)
-        ]
+        return [[rnd.randrange(0, 1 << 61) for _ in range(commons.COMMONS_NUM_PERM)] for _ in range(n)]
 
     def _pure_python(self, submitted, corpus):
         out = []
@@ -368,16 +420,16 @@ class TestMatcherPaths:
 
 
 class TestBoundedCorpusScan:
-    async def test_a_truncated_scan_is_reported_as_a_lower_bound(
-        self, session_factory, orgs, monkeypatch
-    ):
+    async def test_a_truncated_scan_is_reported_as_a_lower_bound(self, session_factory, orgs, monkeypatch):
         monkeypatch.setattr(commons, "max_corpus_scan", lambda: 1)
         for i in range(3):
             await _seed(session_factory, orgs["operator"], f"Shared substrate {i}", f"context {i}", "fix")
 
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"], [_failure("f", "Shared substrate 0", "context 0")],
+                session,
+                orgs["customer-a"],
+                [_failure("f", "Shared substrate 0", "context 0")],
             )
 
         assert report["corpus_truncated"] is True
@@ -389,7 +441,9 @@ class TestBoundedCorpusScan:
         await _seed(session_factory, orgs["operator"], "Shared", "ctx", "fix")
         async with session_scope(session_factory) as session:
             report = await crud.commons_overlap(
-                session, orgs["customer-a"], [_failure("f", "Shared", "ctx")],
+                session,
+                orgs["customer-a"],
+                [_failure("f", "Shared", "ctx")],
             )
         assert report["corpus_truncated"] is False
         assert report["n_commons_traces"] == report["n_commons_traces_total"] == 1
@@ -398,20 +452,29 @@ class TestBoundedCorpusScan:
 class TestAgentTypePrefilter:
     async def test_narrowing_by_agent_type_excludes_other_fleets(self, session_factory, orgs):
         await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         probe = [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")]
 
         async with session_scope(session_factory) as session:
             matching = await crud.commons_overlap(
-                session, orgs["customer-a"], probe, agent_type="code",
+                session,
+                orgs["customer-a"],
+                probe,
+                agent_type="code",
             )
         assert matching["n_covered"] == 1
 
         async with session_scope(session_factory) as session:
             other = await crud.commons_overlap(
-                session, orgs["customer-a"], probe, agent_type="support",
+                session,
+                orgs["customer-a"],
+                probe,
+                agent_type="support",
             )
         assert other["n_commons_traces"] == 0
         assert other["n_covered"] == 0
@@ -432,12 +495,16 @@ class TestKbStats:
         from hub import manage
 
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")],
             )
         async with session_scope(session_factory) as session:
@@ -485,7 +552,9 @@ class TestKbStats:
             await _seed(session_factory, orgs["operator"], f"Dead entry {i}", f"ctx {i}", "fix")
         async with session_scope(session_factory) as session:
             await crud.commons_overlap(
-                session, orgs["customer-a"], [_failure("f", "Matched entry", "ctx")],
+                session,
+                orgs["customer-a"],
+                [_failure("f", "Matched entry", "ctx")],
             )
 
         await manage.kb_stats(session_factory=session_factory)
@@ -507,17 +576,38 @@ class TestKbStatsSubmissionFunnel:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             pending = await crud.submit_kb_entry(
-                session, orgs["customer-a"], config, rate_limiter,
-                title="p", context_text="c", solution_text="s", rationale="r", actor="test",
+                session,
+                orgs["customer-a"],
+                config,
+                rate_limiter,
+                title="p",
+                context_text="c",
+                solution_text="s",
+                rationale="r",
+                actor="test",
             )
             approved = await crud.submit_kb_entry(
-                session, orgs["customer-a"], config, rate_limiter,
-                title="a", context_text="c", solution_text="s", rationale="r", actor="test",
+                session,
+                orgs["customer-a"],
+                config,
+                rate_limiter,
+                title="a",
+                context_text="c",
+                solution_text="s",
+                rationale="r",
+                actor="test",
                 idempotency_key="approved-one",
             )
             rejected = await crud.submit_kb_entry(
-                session, orgs["customer-b"], config, rate_limiter,
-                title="r", context_text="c", solution_text="s", rationale="r", actor="test",
+                session,
+                orgs["customer-b"],
+                config,
+                rate_limiter,
+                title="r",
+                context_text="c",
+                solution_text="s",
+                rationale="r",
+                actor="test",
                 idempotency_key="rejected-one",
             )
         async with session_scope(session_factory) as session:
@@ -540,8 +630,11 @@ class TestValueLedger:
 
     async def test_a_covered_failure_increments_the_hit_count(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             row = await session.get(Trace, tid)
@@ -549,7 +642,8 @@ class TestValueLedger:
 
         async with session_scope(session_factory) as session:
             await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")],
             )
 
@@ -559,12 +653,16 @@ class TestValueLedger:
 
     async def test_a_miss_credits_nothing(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         async with session_scope(session_factory) as session:
             await crud.commons_overlap(
-                session, orgs["customer-a"],
+                session,
+                orgs["customer-a"],
                 [_failure("f", "CUDA kernel launch", "grid dimensions exceeded")],
             )
         async with session_scope(session_factory) as session:
@@ -573,8 +671,11 @@ class TestValueLedger:
 
     async def test_hits_accumulate_across_separate_customers(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         probe = [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")]
         for customer in ("customer-a", "customer-b"):
@@ -585,12 +686,13 @@ class TestValueLedger:
             row = await session.get(Trace, tid)
         assert row.commons_hits == 2
 
-    async def test_two_failures_in_one_query_hitting_the_same_entry_both_count(
-        self, session_factory, orgs
-    ):
+    async def test_two_failures_in_one_query_hitting_the_same_entry_both_count(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         probe = [
             _failure("first-occurrence", "Stripe webhook retries", "duplicate delivery on 500"),
@@ -602,14 +704,15 @@ class TestValueLedger:
 
         async with session_scope(session_factory) as session:
             row = await session.get(Trace, tid)
-        assert row.commons_hits == 2, (
-            "two failures covered in one call must count as two hits, not one"
-        )
+        assert row.commons_hits == 2, "two failures covered in one call must count as two hits, not one"
 
     async def test_duplicate_signature_farming_is_capped_per_query(self, session_factory, orgs):
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         probe = [
             _failure(f"occurrence-{i}", "Stripe webhook retries", "duplicate delivery on 500")
@@ -629,8 +732,11 @@ class TestValueLedger:
         import asyncio
 
         tid = await _seed(
-            session_factory, orgs["operator"],
-            "Stripe webhook retries", "duplicate delivery on 500", "idempotency key",
+            session_factory,
+            orgs["operator"],
+            "Stripe webhook retries",
+            "duplicate delivery on 500",
+            "idempotency key",
         )
         probe = [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")]
 
@@ -650,7 +756,9 @@ class TestSubmittedInputIsValidated:
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["customer-a"], [{"label": "f", "signature": [1, 2, 3]}],
+                    session,
+                    orgs["customer-a"],
+                    [{"label": "f", "signature": [1, 2, 3]}],
                 )
 
     async def test_rejects_too_many_failures(self, session_factory, orgs):
@@ -666,7 +774,8 @@ class TestSubmittedInputIsValidated:
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["customer-a"],
+                    session,
+                    orgs["customer-a"],
                     [{"label": "f", "signature": ["x"] * commons.COMMONS_NUM_PERM}],
                 )
 
@@ -685,7 +794,8 @@ class TestSubmittedInputIsValidated:
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["customer-a"],
+                    session,
+                    orgs["customer-a"],
                     [{"label": "f", "signature": [-1] * commons.COMMONS_NUM_PERM}],
                 )
 
@@ -693,7 +803,8 @@ class TestSubmittedInputIsValidated:
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(
-                    session, orgs["customer-a"],
+                    session,
+                    orgs["customer-a"],
                     [{"label": "f", "signature": [2**64] * commons.COMMONS_NUM_PERM}],
                 )
 
@@ -703,9 +814,7 @@ class TestSubmittedInputIsValidated:
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(session, orgs["customer-a"], probe, threshold=float("nan"))
 
-    async def test_rejects_a_non_numeric_threshold_with_a_clean_error_not_a_crash(
-        self, session_factory, orgs
-    ):
+    async def test_rejects_a_non_numeric_threshold_with_a_clean_error_not_a_crash(self, session_factory, orgs):
         probe = [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")]
         with pytest.raises(commons.CommonsInputError):
             async with session_scope(session_factory) as session:
@@ -716,8 +825,11 @@ class TestCommonsAccessEntitlement:
     @pytest_asyncio.fixture
     async def no_commons_org(self, session_factory, monkeypatch):
         no_commons_plan = plans.Plan(
-            "no-commons-test-plan", max_traces=100, commons_queries_per_month=10,
-            commons_access=False, summary="test",
+            "no-commons-test-plan",
+            max_traces=100,
+            commons_queries_per_month=10,
+            commons_access=False,
+            summary="test",
         )
         monkeypatch.setitem(plans.PLANS, no_commons_plan.name, no_commons_plan)
         async with session_scope(session_factory) as session:
@@ -726,17 +838,13 @@ class TestCommonsAccessEntitlement:
             await session.flush()
             return o.id
 
-    async def test_commons_overlap_refuses_a_plan_without_commons_access(
-        self, session_factory, no_commons_org
-    ):
+    async def test_commons_overlap_refuses_a_plan_without_commons_access(self, session_factory, no_commons_org):
         probe = [_failure("f", "Stripe webhook retries", "duplicate delivery on 500")]
         with pytest.raises(plans.EntitlementExceeded, match="commons_access"):
             async with session_scope(session_factory) as session:
                 await crud.commons_overlap(session, no_commons_org, probe)
 
-    async def test_commons_search_refuses_a_plan_without_commons_access(
-        self, session_factory, no_commons_org
-    ):
+    async def test_commons_search_refuses_a_plan_without_commons_access(self, session_factory, no_commons_org):
         signature = _sign("x", "y")
         with pytest.raises(plans.EntitlementExceeded, match="commons_access"):
             async with session_scope(session_factory) as session:

@@ -3,6 +3,7 @@
 Only loopback generation/judging endpoints are allowed. Dataset inputs and model
 weights remain outside git; results include input hashes and observable model calls.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,19 +42,25 @@ def balanced(items: list[dict], key: str, count: int, seed: int) -> list[dict]:
     for item in items:
         groups[str(item[key])].append(item)
     rng = random.Random(seed)
-    return [item for category in sorted(groups)
-            for item in rng.sample(groups[category], min(count, len(groups[category])))]
+    return [
+        item for category in sorted(groups) for item in rng.sample(groups[category], min(count, len(groups[category])))
+    ]
 
 
 def subset(args, output: Path) -> dict:
     source = Path(args.data).resolve()
-    details = {"source_sha256": sha256(source), "seed": args.seed,
-               "per_category": args.per_category, "conversation_index": args.conversation_index}
+    details = {
+        "source_sha256": sha256(source),
+        "seed": args.seed,
+        "per_category": args.per_category,
+        "conversation_index": args.conversation_index,
+    }
     if args.dataset == "locomo":
         conversations = json.loads(source.read_text())
         conversation = dict(conversations[args.conversation_index])
-        eligible = [dict(q, original_index=i) for i, q in enumerate(conversation["qa"])
-                    if q.get("category") in (1, 2, 3, 4)]
+        eligible = [
+            dict(q, original_index=i) for i, q in enumerate(conversation["qa"]) if q.get("category") in (1, 2, 3, 4)
+        ]
         selected = balanced(eligible, "category", args.per_category, args.seed)
         details["selected_original_indices"] = [q["original_index"] for q in selected]
         details["conversation_id"] = conversation["sample_id"]
@@ -64,22 +71,27 @@ def subset(args, output: Path) -> dict:
         items = json.loads(source.read_text())
         for item in items:
             item["selection_category"] = item["question_type"] + (
-                "-abstain" if item["question_id"].endswith("_abs") else "")
+                "-abstain" if item["question_id"].endswith("_abs") else ""
+            )
         selected = balanced(items, "selection_category", args.per_category, args.seed)
         details["selected_question_ids"] = [q["question_id"] for q in selected]
         details["categories"] = [q["selection_category"] for q in selected]
-        output.write_text(json.dumps([{k: v for k, v in q.items() if k != "selection_category"}
-                                      for q in selected]))
+        output.write_text(json.dumps([{k: v for k, v in q.items() if k != "selection_category"} for q in selected]))
     else:
         import pandas as pd
 
         frame = pd.read_parquet(source).iloc[[args.conversation_index]].copy()
         row = frame.iloc[0]
-        probing = ast.literal_eval(row["probing_questions"]) if isinstance(row["probing_questions"], str) \
+        probing = (
+            ast.literal_eval(row["probing_questions"])
+            if isinstance(row["probing_questions"], str)
             else row["probing_questions"]
+        )
         rng = random.Random(args.seed)
-        chosen = {category: rng.sample(list(items), min(args.per_category, len(items)))
-                  for category, items in sorted(probing.items())}
+        chosen = {
+            category: rng.sample(list(items), min(args.per_category, len(items)))
+            for category, items in sorted(probing.items())
+        }
         frame["probing_questions"] = [repr(chosen)]
         frame.to_parquet(output)
         details["conversation_id"] = int(row["conversation_id"])
@@ -98,12 +110,17 @@ def execute(checkout: str, call_log: str, argv: list[str], timeout_seconds: int)
     llm._TIMEOUT_SECONDS = timeout_seconds
     original = llm._post_json
     with open(call_log, "w", encoding="utf-8") as output:
+
         def observed(url, headers, payload):
             start = time.perf_counter()
             content = "\n".join(message.get("content", "") for message in payload.get("messages", []))
-            entry = {"model": payload.get("model"), "prompt_sha256": hashlib.sha256(
-                json.dumps(payload.get("messages"), sort_keys=True).encode()).hexdigest(),
-                "kind": "answer" if content.startswith("You answer from your memory") else "judge"}
+            entry = {
+                "model": payload.get("model"),
+                "prompt_sha256": hashlib.sha256(
+                    json.dumps(payload.get("messages"), sort_keys=True).encode()
+                ).hexdigest(),
+                "kind": "answer" if content.startswith("You answer from your memory") else "judge",
+            }
             try:
                 result = original(url, headers, payload)
                 entry["choices"] = result.get("choices")
@@ -116,6 +133,7 @@ def execute(checkout: str, call_log: str, argv: list[str], timeout_seconds: int)
                 entry["latency_seconds"] = time.perf_counter() - start
                 output.write(json.dumps(entry) + "\n")
                 output.flush()
+
         llm._post_json = observed
         return conversation_bench.main(argv)
 
@@ -134,10 +152,17 @@ def main(argv=None) -> int:
     parser.add_argument("--seed", type=int, default=2026)
     parser.add_argument("--budget", type=int, default=1500)
     parser.add_argument("--embedder", choices=("none", "arctic-m", "minilm"), default="arctic-m")
-    parser.add_argument("--timeout-seconds", type=int, default=300,
-                        help="Local CPU inference HTTP timeout; prompts and scoring are unchanged")
-    parser.add_argument("--retrieval-only", action="store_true",
-                        help="Run official dataset retrieval metrics without generation or judge calls")
+    parser.add_argument(
+        "--timeout-seconds",
+        type=int,
+        default=300,
+        help="Local CPU inference HTTP timeout; prompts and scoring are unchanged",
+    )
+    parser.add_argument(
+        "--retrieval-only",
+        action="store_true",
+        help="Run official dataset retrieval metrics without generation or judge calls",
+    )
     parser.add_argument("--execute", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--call-log", help=argparse.SUPPRESS)
     args, benchmark_argv = parser.parse_known_args(argv)
@@ -156,18 +181,33 @@ def main(argv=None) -> int:
             parser.error("Evaluation checkouts must be clean so the recorded git revision describes the code")
     output.mkdir(parents=True, exist_ok=True)
     data = output / ("subset.parquet" if args.dataset == "beam" else "subset.json")
-    manifest = {"dataset": args.dataset, "selection": subset(args, data),
-                "model": args.model, "model_sha256": sha256(Path(args.model_file)) if args.model_file else None,
-                "endpoint": args.endpoint, "budget": args.budget, "embedder": args.embedder,
-                "timeout_seconds": args.timeout_seconds, "answer_and_judge_enabled": not args.retrieval_only,
-                "judge_model_matches_published_defaults": False,
-                "judge_profile": "locomo-downstream-binary-v1" if args.dataset == "locomo" else args.dataset,
-                "runs": []}
+    manifest = {
+        "dataset": args.dataset,
+        "selection": subset(args, data),
+        "model": args.model,
+        "model_sha256": sha256(Path(args.model_file)) if args.model_file else None,
+        "endpoint": args.endpoint,
+        "budget": args.budget,
+        "embedder": args.embedder,
+        "timeout_seconds": args.timeout_seconds,
+        "answer_and_judge_enabled": not args.retrieval_only,
+        "judge_model_matches_published_defaults": False,
+        "judge_profile": "locomo-downstream-binary-v1" if args.dataset == "locomo" else args.dataset,
+        "runs": [],
+    }
     environment = dict(os.environ)
-    environment.update(UNIMEM_LLM_PROVIDER="openai-compatible", UNIMEM_LLM_API_KEY="local-only",
-                       UNIMEM_LLM_BASE_URL=args.endpoint, UNIMEM_LLM_MODEL=args.model,
-                       HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", OMP_NUM_THREADS="1",
-                       OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1", PYTHONUNBUFFERED="1")
+    environment.update(
+        UNIMEM_LLM_PROVIDER="openai-compatible",
+        UNIMEM_LLM_API_KEY="local-only",
+        UNIMEM_LLM_BASE_URL=args.endpoint,
+        UNIMEM_LLM_MODEL=args.model,
+        HF_HUB_OFFLINE="1",
+        TRANSFORMERS_OFFLINE="1",
+        OMP_NUM_THREADS="1",
+        OPENBLAS_NUM_THREADS="1",
+        MKL_NUM_THREADS="1",
+        PYTHONUNBUFFERED="1",
+    )
     for index, checkout in enumerate(args.checkout):
         checkout = str(Path(checkout).resolve())
         revision = subprocess.check_output(["git", "-C", checkout, "rev-parse", "HEAD"], text=True).strip()
@@ -175,33 +215,67 @@ def main(argv=None) -> int:
         root = str(prefix) + "-store"
         result_path = str(prefix) + ".json"
         calls_path = str(prefix) + "-calls.jsonl"
-        command = [sys.executable, str(Path(__file__).resolve()), "--execute", "--checkout", checkout,
-                   "--call-log", calls_path, "--timeout-seconds", str(args.timeout_seconds),
-                   "--", "--dataset", args.dataset, "--data", str(data),
-                   "--root", root, "--out", result_path, "--budget", str(args.budget),
-                   "--embedder", args.embedder, "--rerank", "none", "--judge", args.dataset,
-                   "--answer-model", args.model, "--judge-model", args.model, "--no-cache", "--seed", str(args.seed)]
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--execute",
+            "--checkout",
+            checkout,
+            "--call-log",
+            calls_path,
+            "--timeout-seconds",
+            str(args.timeout_seconds),
+            "--",
+            "--dataset",
+            args.dataset,
+            "--data",
+            str(data),
+            "--root",
+            root,
+            "--out",
+            result_path,
+            "--budget",
+            str(args.budget),
+            "--embedder",
+            args.embedder,
+            "--rerank",
+            "none",
+            "--judge",
+            args.dataset,
+            "--answer-model",
+            args.model,
+            "--judge-model",
+            args.model,
+            "--no-cache",
+            "--seed",
+            str(args.seed),
+        ]
         if not args.retrieval_only:
             command.append("--answer")
         start = time.perf_counter()
         with open(str(prefix) + ".log", "w") as log:
             result = subprocess.run(command, env=environment, cwd=checkout, stdout=log, stderr=log)
         calls = [json.loads(line) for line in Path(calls_path).read_text().splitlines()]
-        manifest["runs"].append({"git_sha": revision, "checkout": checkout, "command": command,
-                                 "exit_code": result.returncode, "wall_seconds": time.perf_counter() - start,
-                                 "result": result_path, "calls": calls_path,
-                                 "runner_sha256": sha256(Path(checkout) / "benchmarks" / "conversation_bench.py"),
-                                 "judge_sha256": sha256(Path(checkout) / "benchmarks" / "judges" /
-                                                        (args.dataset + ".py")),
-                                 "model_calls": len(calls),
-                                 "model_call_errors": sum("error" in call for call in calls),
-                                 "model_input_tokens": sum((call.get("usage") or {}).get("prompt_tokens", 0)
-                                                           for call in calls),
-                                 "model_output_tokens": sum((call.get("usage") or {}).get("completion_tokens", 0)
-                                                            for call in calls),
-                                 "truncated_completions": sum(choice.get("finish_reason") == "length"
-                                                              for call in calls for choice in
-                                                              (call.get("choices") or []))})
+        manifest["runs"].append(
+            {
+                "git_sha": revision,
+                "checkout": checkout,
+                "command": command,
+                "exit_code": result.returncode,
+                "wall_seconds": time.perf_counter() - start,
+                "result": result_path,
+                "calls": calls_path,
+                "runner_sha256": sha256(Path(checkout) / "benchmarks" / "conversation_bench.py"),
+                "judge_sha256": sha256(Path(checkout) / "benchmarks" / "judges" / (args.dataset + ".py")),
+                "model_calls": len(calls),
+                "model_call_errors": sum("error" in call for call in calls),
+                "model_input_tokens": sum((call.get("usage") or {}).get("prompt_tokens", 0) for call in calls),
+                "model_output_tokens": sum((call.get("usage") or {}).get("completion_tokens", 0) for call in calls),
+                "truncated_completions": sum(
+                    choice.get("finish_reason") == "length" for call in calls for choice in (call.get("choices") or [])
+                ),
+            }
+        )
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2))
         print(json.dumps(manifest["runs"][-1]), flush=True)
         if result.returncode:

@@ -4,6 +4,7 @@ from commons.eval import coverage_harness as ch
 def _run(good, bad, neutral):
     def row(verdict, effect, truth):
         return {"verdict": verdict, "effect": effect, "ci_low": effect - 0.05, "ci_high": effect + 0.05}
+
     return {ch.GOOD: row(*good), ch.BAD: row(*bad), ch.NEUTRAL: row(*neutral)}
 
 
@@ -20,9 +21,23 @@ def test_summarise_scores_verdicts_and_interval_coverage_against_the_planted_tru
 
 
 def test_a_few_real_seeds_run_end_to_end_for_two_adapters(capsys):
-    assert ch.main(["--scenario", "coverage", "--seeds", "2", "--adapters", "mem0,agentcore",
-                    "--jobs", "1", "--occasions", "150", "--json"]) in (0, 1)
+    assert ch.main(
+        [
+            "--scenario",
+            "coverage",
+            "--seeds",
+            "2",
+            "--adapters",
+            "mem0,agentcore",
+            "--jobs",
+            "1",
+            "--occasions",
+            "150",
+            "--json",
+        ]
+    ) in (0, 1)
     import json
+
     report = json.loads(capsys.readouterr().out)
     assert [c["adapter"] for c in report["coverage"]] == ["mem0", "agentcore"]
     assert set(report["coverage"][0]["memories"]) == {ch.GOOD, ch.BAD, ch.NEUTRAL}

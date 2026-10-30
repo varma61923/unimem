@@ -2,6 +2,7 @@
 
 The suffix stages use the Porter measure (VC transitions) to avoid stripping
 short roots. Non-ASCII tokens are preserved rather than applying English rules."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -40,16 +41,17 @@ def _has_vowel(stem: str) -> bool:
 
 
 def _ends_double_consonant(word: str) -> bool:
-    return (
-        len(word) >= 2 and word[-1] == word[-2] and _is_consonant(word, len(word) - 1)
-    )
+    return len(word) >= 2 and word[-1] == word[-2] and _is_consonant(word, len(word) - 1)
 
 
 def _cvc(word: str) -> bool:
     if len(word) < 3:
         return False
-    if not (_is_consonant(word, len(word) - 3) and not _is_consonant(word, len(word) - 2)
-            and _is_consonant(word, len(word) - 1)):
+    if not (
+        _is_consonant(word, len(word) - 3)
+        and not _is_consonant(word, len(word) - 2)
+        and _is_consonant(word, len(word) - 1)
+    ):
         return False
     return word[-1] not in "wxy"
 
@@ -101,21 +103,58 @@ def _step1c(w: str) -> str:
 
 
 _STEP2 = (
-    ("ational", "ate"), ("tional", "tion"), ("enci", "ence"), ("anci", "ance"),
-    ("izer", "ize"), ("abli", "able"), ("alli", "al"), ("entli", "ent"), ("eli", "e"),
-    ("ousli", "ous"), ("ization", "ize"), ("ation", "ate"), ("ator", "ate"),
-    ("alism", "al"), ("iveness", "ive"), ("fulness", "ful"), ("ousness", "ous"),
-    ("aliti", "al"), ("iviti", "ive"), ("biliti", "ble"),
+    ("ational", "ate"),
+    ("tional", "tion"),
+    ("enci", "ence"),
+    ("anci", "ance"),
+    ("izer", "ize"),
+    ("abli", "able"),
+    ("alli", "al"),
+    ("entli", "ent"),
+    ("eli", "e"),
+    ("ousli", "ous"),
+    ("ization", "ize"),
+    ("ation", "ate"),
+    ("ator", "ate"),
+    ("alism", "al"),
+    ("iveness", "ive"),
+    ("fulness", "ful"),
+    ("ousness", "ous"),
+    ("aliti", "al"),
+    ("iviti", "ive"),
+    ("biliti", "ble"),
 )
 
 _STEP3 = (
-    ("icate", "ic"), ("ative", ""), ("alize", "al"), ("iciti", "ic"), ("ical", "ic"),
-    ("ful", ""), ("ness", ""),
+    ("icate", "ic"),
+    ("ative", ""),
+    ("alize", "al"),
+    ("iciti", "ic"),
+    ("ical", "ic"),
+    ("ful", ""),
+    ("ness", ""),
 )
 
 _STEP4 = (
-    "al", "ance", "ence", "er", "ic", "able", "ible", "ant", "ement", "ment", "ent",
-    "ion", "ou", "ism", "ate", "iti", "ous", "ive", "ize",
+    "al",
+    "ance",
+    "ence",
+    "er",
+    "ic",
+    "able",
+    "ible",
+    "ant",
+    "ement",
+    "ment",
+    "ent",
+    "ion",
+    "ou",
+    "ism",
+    "ate",
+    "iti",
+    "ous",
+    "ive",
+    "ize",
 )
 
 

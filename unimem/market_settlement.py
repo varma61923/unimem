@@ -17,6 +17,7 @@ Two kinds of charge, both from terms the publisher signed into the listing:
 Statements are hash-chained in ``memory/market/settlements.json``; a period is
 settled once.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -84,11 +85,26 @@ def settle(root: str, period: str, *, value_per_occasion: float | None = None, c
         price = licence.get("price")
         if price and status not in (None, "rejected"):
             per, amount = price["per"], price["amount_usd"]
-            due = (amount if per == "month" else amount / 12 if per == "year"
-                   else amount if row["installed_at"][:7] == period else 0.0)
+            due = (
+                amount
+                if per == "month"
+                else amount / 12
+                if per == "year"
+                else amount
+                if row["installed_at"][:7] == period
+                else 0.0
+            )
             if due:
-                lines.append({"publisher": publisher, "listing": row["listing"], "slug": slug, "kind": f"fee-{per}",
-                              "amount_usd": round(due, 2), "licence": licence["id"]})
+                lines.append(
+                    {
+                        "publisher": publisher,
+                        "listing": row["listing"],
+                        "slug": slug,
+                        "kind": f"fee-{per}",
+                        "amount_usd": round(due, 2),
+                        "licence": licence["id"],
+                    }
+                )
         share = licence.get("outcome_share")
         if not share:
             continue
@@ -97,8 +113,14 @@ def settle(root: str, period: str, *, value_per_occasion: float | None = None, c
             continue
         effect = effects.get(lesson_io.canonical_slug(slug))
         if status != "active" or effect is None or effect.verdict != "HELPS":
-            refused.append({"slug": slug, "reason": "no HELPS verdict in this store's own holdout yet"
-                            if status == "active" else f"the lesson is {status or 'missing'}, not active"})
+            refused.append(
+                {
+                    "slug": slug,
+                    "reason": "no HELPS verdict in this store's own holdout yet"
+                    if status == "active"
+                    else f"the lesson is {status or 'missing'}, not active",
+                }
+            )
             continue
         basis = max(0.0, effect.ci_low) * effect.n_injected * value_per_occasion
         previous = float(book.get("outcome_basis", {}).get(row["listing"], 0.0))
@@ -106,20 +128,41 @@ def settle(root: str, period: str, *, value_per_occasion: float | None = None, c
         if delta <= 0:
             continue
         new_basis[row["listing"]] = basis
-        lines.append({"publisher": publisher, "listing": row["listing"], "slug": slug, "kind": "outcome-share",
-                      "amount_usd": round(delta * share, 2), "licence": licence["id"],
-                      "evidence": {"verdict": effect.verdict, "ci_low": effect.ci_low, "effect": effect.effect,
-                                   "n_injected": effect.n_injected, "n_withheld": effect.n_withheld,
-                                   "value_per_occasion": value_per_occasion, "basis_usd": round(basis, 2),
-                                   "previously_settled_basis_usd": round(previous, 2), "share": share}})
+        lines.append(
+            {
+                "publisher": publisher,
+                "listing": row["listing"],
+                "slug": slug,
+                "kind": "outcome-share",
+                "amount_usd": round(delta * share, 2),
+                "licence": licence["id"],
+                "evidence": {
+                    "verdict": effect.verdict,
+                    "ci_low": effect.ci_low,
+                    "effect": effect.effect,
+                    "n_injected": effect.n_injected,
+                    "n_withheld": effect.n_withheld,
+                    "value_per_occasion": value_per_occasion,
+                    "basis_usd": round(basis, 2),
+                    "previously_settled_basis_usd": round(previous, 2),
+                    "share": share,
+                },
+            }
+        )
     totals: dict[str, float] = {}
     for line in lines:
         totals[line["publisher"]] = round(totals.get(line["publisher"], 0.0) + line["amount_usd"], 2)
     previous_digest = book["statements"][-1]["digest"] if book["statements"] else None
-    statement = {"schema": "unimem.market-settlement.v1", "period": period, "lines": lines,
-                 "refused": refused, "totals_usd": totals, "total_usd": round(sum(totals.values()), 2),
-                 "previous_digest": previous_digest,
-                 "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    statement = {
+        "schema": "unimem.market-settlement.v1",
+        "period": period,
+        "lines": lines,
+        "refused": refused,
+        "totals_usd": totals,
+        "total_usd": round(sum(totals.values()), 2),
+        "previous_digest": previous_digest,
+        "issued_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+    }
     statement["digest"] = hashlib.sha256(json.dumps(statement, sort_keys=True).encode("utf-8")).hexdigest()
     if commit:
         path = _book_path(root)

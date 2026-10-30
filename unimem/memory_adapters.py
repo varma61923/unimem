@@ -128,7 +128,8 @@ class LettaCoreBlockAdapter:
     def render(items: Iterable[Item]) -> str:
         return "\n\n".join(
             f"<{getattr(i.raw, 'label', None) or i.id}>\n{i.text}\n</{getattr(i.raw, 'label', None) or i.id}>"
-            for i in items)
+            for i in items
+        )
 
 
 class ZepAdapter:
@@ -136,7 +137,11 @@ class ZepAdapter:
     _TEXT_FIELD = {"edges": "fact", "nodes": "summary", "episodes": "content"}
 
     def __init__(
-        self, client: Any, *, user_id: str | None = None, graph_id: str | None = None,
+        self,
+        client: Any,
+        *,
+        user_id: str | None = None,
+        graph_id: str | None = None,
         scope: str = "edges",
     ) -> None:
         if (user_id is None) == (graph_id is None):
@@ -173,9 +178,13 @@ class ZepAdapter:
             self.client.graph.edge.delete(item_id)
         elif self.scope == "nodes":
             node_api = getattr(self.client.graph, "node", getattr(self.client.graph, "nodes", None))
+            if node_api is None:
+                raise NotImplementedError("deleting nodes is not supported here")
             node_api.delete(item_id)
         elif self.scope == "episodes":
             ep_api = getattr(self.client.graph, "episode", getattr(self.client.graph, "episodes", None))
+            if ep_api is None:
+                raise NotImplementedError("deleting episodes is not supported here")
             ep_api.delete(item_id)
 
 
@@ -219,7 +228,11 @@ class AgentCoreAdapter:
     can_delete = True
 
     def __init__(
-        self, client: Any, *, memory_id: str, namespace: str | None = None,
+        self,
+        client: Any,
+        *,
+        memory_id: str,
+        namespace: str | None = None,
         namespace_path: str | None = None,
     ) -> None:
         if (namespace is None) == (namespace_path is None):
@@ -230,7 +243,10 @@ class AgentCoreAdapter:
 
     def search(self, query: str, **kwargs: Any) -> list[Item]:
         records = self.client.retrieve_memories(
-            memory_id=self.memory_id, query=query, **self.target, **kwargs,
+            memory_id=self.memory_id,
+            query=query,
+            **self.target,
+            **kwargs,
         )
         items = []
         for record in records or []:
@@ -248,17 +264,30 @@ class MeasuredMemory:
     """Any adapter above, with holdout, outcome recording and withdrawal."""
 
     def __init__(
-        self, adapter: MemoryAdapter, *, root: str | None = None, source_key: str | None = None,
-        pinned: Iterable[str] = (), on_harm: str | None = None, delete_harmful: bool = False,
-        check_every: int = DEFAULT_CHECK_EVERY, screen_injection: bool = True,
+        self,
+        adapter: MemoryAdapter,
+        *,
+        root: str | None = None,
+        source_key: str | None = None,
+        pinned: Iterable[str] = (),
+        on_harm: str | None = None,
+        delete_harmful: bool = False,
+        check_every: int = DEFAULT_CHECK_EVERY,
+        screen_injection: bool = True,
     ) -> None:
         self.adapter = adapter
         self.root = paths.resolve_root(root)
         self.source_key = source_key or f"adapter:{adapter.name}"
         self._delete_harmful = delete_harmful
         self._causal = CausalMemory(
-            self._eligible, root=self.root, key=lambda i: i.id, text=lambda i: i.text,
-            pinned=pinned, scorer=f"adapter:{adapter.name}", on_harm=on_harm, check_every=check_every,
+            self._eligible,
+            root=self.root,
+            key=lambda i: i.id,
+            text=lambda i: i.text,
+            pinned=pinned,
+            scorer=f"adapter:{adapter.name}",
+            on_harm=on_harm,
+            check_every=check_every,
             screen=screen_injection,
         )
 
@@ -331,8 +360,15 @@ class VendorReadAdapter:
     can_delete = False
     PROVIDERS = frozenset({"mem0", "zep", "graphiti", "letta", "agentcore", "vertex", "foundry", "anthropic"})
 
-    def __init__(self, provider: str, *, endpoint: str, scope: dict[str, str], client: Any = None,
-                 headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        provider: str,
+        *,
+        endpoint: str,
+        scope: dict[str, str],
+        client: Any = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         from urllib.parse import urlsplit
 
         from unimem import frontier_protocol as fp
@@ -383,8 +419,14 @@ class VendorReadAdapter:
         fp.wire(data)
         if not isinstance(data, dict):
             raise ValueError("vendor memory response must be an object")
-        rows = next((data[key] for key in ("results", "memories", "memoryRecordSummaries", "edges", "passages", "items")
-                     if key in data), [])
+        rows: object = next(
+            (
+                data[key]
+                for key in ("results", "memories", "memoryRecordSummaries", "edges", "passages", "items")
+                if key in data
+            ),
+            [],
+        )
         if not isinstance(rows, list) or len(rows) > 1000:
             raise ValueError("vendor memory response has invalid result bounds")
         result = []
@@ -397,10 +439,14 @@ class VendorReadAdapter:
             if not isinstance(content, str) or not content or len(content.encode()) > 64_000 or "\x00" in content:
                 continue  # an empty, non-text or oversized vendor item is skipped, not fatal
             id_fields = ("id", "uuid", "uuid_", "name", "memoryRecordId", "key")
-            remote_id = next((str(row[k]) for k in id_fields if k in row),
-                             fp.digest(content))
-            identity = self.name + "-" + fp.digest({"provider": self.name, "endpoint": self.endpoint,
-                                                    "scope": self.scope, "remote_id": remote_id})[:32]
+            remote_id = next((str(row[k]) for k in id_fields if k in row), fp.digest(content))
+            identity = (
+                self.name
+                + "-"
+                + fp.digest(
+                    {"provider": self.name, "endpoint": self.endpoint, "scope": self.scope, "remote_id": remote_id}
+                )[:32]
+            )
             result.append(Item(identity, content, {"provider": self.name, "remote_id_hash": fp.digest(remote_id)}))
         return result
 
@@ -419,8 +465,19 @@ def comparative_report(root: str) -> dict[str, Any]:
             sources.setdefault(row.lesson, set()).add(row.scorer.removeprefix("adapter:"))
     for effect in analysis.effects:
         measured_sources = sources.get(effect.lesson_slug, set())
-        store = (next(iter(measured_sources)) if len(measured_sources) == 1 else
-                 "ambiguous-source" if measured_sources else "local-or-unattributed")
-        groups.setdefault(store, []).append({"memory": effect.lesson_slug, "effect": effect.effect,
-                                             "n": effect.n_injected + effect.n_withheld, "verdict": effect.verdict})
+        store = (
+            next(iter(measured_sources))
+            if len(measured_sources) == 1
+            else "ambiguous-source"
+            if measured_sources
+            else "local-or-unattributed"
+        )
+        groups.setdefault(store, []).append(
+            {
+                "memory": effect.lesson_slug,
+                "effect": effect.effect,
+                "n": effect.n_injected + effect.n_withheld,
+                "verdict": effect.verdict,
+            }
+        )
     return {"stores": groups, "notice": "Randomized per-store memory effects; traffic populations can differ."}

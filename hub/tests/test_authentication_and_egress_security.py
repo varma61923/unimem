@@ -1,4 +1,5 @@
 """Regressions for regional authentication and recipient-controlled egress."""
+
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +26,10 @@ from hub.sso import IdentityProvider
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pinned,accepted", [("eu", False), ("us", True), ("", True)])
 async def test_oidc_respects_the_same_region_boundary_as_api_keys(
-    session_factory, monkeypatch, pinned, accepted,
+    session_factory,
+    monkeypatch,
+    pinned,
+    accepted,
 ):
     monkeypatch.setattr(auth, "_DEPLOYMENT_REGION", "us")
     issuer = "https://idp.example.test/"
@@ -36,15 +40,20 @@ async def test_oidc_respects_the_same_region_boundary_as_api_keys(
     now = int(time.time())
     token = jwt.encode(
         {"iss": issuer, "aud": "hub", "sub": "region-user", "iat": now, "exp": now + 300},
-        signing_key, algorithm="RS256", headers={"kid": "region-key"},
+        signing_key,
+        algorithm="RS256",
+        headers={"kid": "region-key"},
     )
     async with session_scope(session_factory) as session:
         org = Organization(name="regional-auth", data_region=pinned)
         session.add(org)
         await session.flush()
         user = User(
-            org_id=org.id, email="user@example.test", role="viewer",
-            issuer=issuer, external_subject="region-user",
+            org_id=org.id,
+            email="user@example.test",
+            role="viewer",
+            issuer=issuer,
+            external_subject="region-user",
         )
         session.add(user)
         await session.flush()
@@ -88,7 +97,8 @@ async def test_webhook_ignores_response_bodies_and_closes_streams(monkeypatch, s
     async def response(transport, request):
         requests.append(request)
         return httpx.Response(
-            status, stream=stream,
+            status,
+            stream=stream,
             headers={"location": "http://127.0.0.1/private", "content-encoding": "gzip"},
         )
 
@@ -188,7 +198,10 @@ async def test_explicit_session_org_is_restored_after_rollback_and_cancellation(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("surface", ["rest-write", "rest-read", "otlp-write"])
 async def test_authenticated_ingestion_sessions_set_the_tenant_guc(
-    session_factory, config, monkeypatch, surface,
+    session_factory,
+    config,
+    monkeypatch,
+    surface,
 ):
     keys = []
     async with session_scope(session_factory) as session:
@@ -214,13 +227,26 @@ async def test_authenticated_ingestion_sessions_set_the_tenant_guc(
     if surface == "otlp-write":
         otlp.add_otlp_routes(app, session_factory, config=config, rate_limiter=make_rate_limiter(config))
         path = "/v1/traces"
-        payload = {"resourceSpans": [{"scopeSpans": [{"spans": [{
-            "spanId": "a" * 16, "name": "work",
-            "attributes": [
-                {"key": "gen_ai.prompt", "value": {"stringValue": "context"}},
-                {"key": "gen_ai.completion", "value": {"stringValue": "solution"}},
-            ],
-        }]}]}]}
+        payload = {
+            "resourceSpans": [
+                {
+                    "scopeSpans": [
+                        {
+                            "spans": [
+                                {
+                                    "spanId": "a" * 16,
+                                    "name": "work",
+                                    "attributes": [
+                                        {"key": "gen_ai.prompt", "value": {"stringValue": "context"}},
+                                        {"key": "gen_ai.completion", "value": {"stringValue": "solution"}},
+                                    ],
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
     else:
         rest.add_rest_routes(app, session_factory, config=config, rate_limiter=make_rate_limiter(config))
         if surface == "rest-read":
@@ -230,9 +256,9 @@ async def test_authenticated_ingestion_sessions_set_the_tenant_guc(
             payload = {"title": "work", "context_text": "context", "solution_text": "solution"}
     original = auth.current_org_id.get()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        responses = await asyncio.gather(*[
-            client.post(path, json=payload, headers={"X-API-Key": raw}) for _, raw in keys
-        ])
+        responses = await asyncio.gather(
+            *[client.post(path, json=payload, headers={"X-API-Key": raw}) for _, raw in keys]
+        )
     assert all(response.status_code in (200, 201) for response in responses)
     assert sorted(seen) == sorted(org for org, _ in keys)
     assert auth.current_org_id.get() == original

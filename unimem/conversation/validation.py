@@ -4,6 +4,7 @@ The embedded Store keeps its historical coercions for trusted importers. HTTP
 and MCP clients must supply textual fields as strings rather than allowing
 containers to become accidental knowledge through their Python repr.
 """
+
 from __future__ import annotations
 
 from unimem.conversation.store import ConversationError

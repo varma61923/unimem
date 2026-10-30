@@ -32,26 +32,23 @@ async def _contribute(session_factory, config, org_id, **overrides):
     }
     fields.update(overrides)
     async with session_scope(session_factory) as session:
-        return await crud.contribute_trace(
-            session, org_id, config, rate_limiter, actor="test", **fields
-        )
+        return await crud.contribute_trace(session, org_id, config, rate_limiter, actor="test", **fields)
 
 
 async def _amend(session_factory, config, org_id, trace_id, **overrides):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
-        return await crud.amend_trace(
-            session, org_id, trace_id, config, rate_limiter, actor="test", **overrides
-        )
+        return await crud.amend_trace(session, org_id, trace_id, config, rate_limiter, actor="test", **overrides)
 
 
 class TestTheOriginalRecordsItsOwnSupersession:
-    async def test_amending_sets_both_columns_on_the_row_being_amended(
-        self, session_factory, config, org
-    ):
+    async def test_amending_sets_both_columns_on_the_row_being_amended(self, session_factory, config, org):
         original = await _contribute(session_factory, config, org)
         amended = await _amend(
-            session_factory, config, org, original["id"],
+            session_factory,
+            config,
+            org,
+            original["id"],
             title="Deploy fails when the config file is missing (rewritten)",
         )
 
@@ -60,9 +57,7 @@ class TestTheOriginalRecordsItsOwnSupersession:
         assert row.superseded_at is not None
         assert row.superseded_by_trace_id == amended["id"]
 
-    async def test_the_new_head_carries_no_supersession_of_its_own(
-        self, session_factory, config, org
-    ):
+    async def test_the_new_head_carries_no_supersession_of_its_own(self, session_factory, config, org):
         original = await _contribute(session_factory, config, org)
         amended = await _amend(session_factory, config, org, original["id"], title="v2")
 
@@ -81,9 +76,7 @@ class TestTheOriginalRecordsItsOwnSupersession:
         assert orig_row.superseded_by_trace_id == new_row.id
         assert new_row.supersedes_trace_id == orig_row.id
 
-    async def test_a_chain_of_two_amendments_links_correctly_in_both_directions(
-        self, session_factory, config, org
-    ):
+    async def test_a_chain_of_two_amendments_links_correctly_in_both_directions(self, session_factory, config, org):
         v1 = await _contribute(session_factory, config, org)
         v2 = await _amend(session_factory, config, org, v1["id"], title="v2")
         v3 = await _amend(session_factory, config, org, v2["id"], title="v3")
@@ -98,16 +91,19 @@ class TestTheOriginalRecordsItsOwnSupersession:
 
 
 class TestSearchStopsOfferingStaleTraces:
-    async def test_searching_old_wording_no_longer_returns_the_stale_original(
-        self, session_factory, config, org
-    ):
+    async def test_searching_old_wording_no_longer_returns_the_stale_original(self, session_factory, config, org):
         original = await _contribute(
-            session_factory, config, org,
+            session_factory,
+            config,
+            org,
             title="zzqrx sentinel marker phrase alpha",
             context_text="irrelevant",
         )
         await _amend(
-            session_factory, config, org, original["id"],
+            session_factory,
+            config,
+            org,
+            original["id"],
             title="a completely different, unrelated title",
         )
 
@@ -116,16 +112,16 @@ class TestSearchStopsOfferingStaleTraces:
 
         ids = [t["id"] for t in result["traces"]]
         assert original["id"] not in ids, (
-            "search returned the superseded, stale original -- the exact "
-            "regression this file exists to catch"
+            "search returned the superseded, stale original -- the exact regression this file exists to catch"
         )
 
-    async def test_the_current_head_is_still_findable_by_its_own_wording(
-        self, session_factory, config, org
-    ):
+    async def test_the_current_head_is_still_findable_by_its_own_wording(self, session_factory, config, org):
         original = await _contribute(session_factory, config, org)
         amended = await _amend(
-            session_factory, config, org, original["id"],
+            session_factory,
+            config,
+            org,
+            original["id"],
             title="qqzyx unique marker for the amended version",
         )
 
@@ -137,18 +133,14 @@ class TestSearchStopsOfferingStaleTraces:
         assert original["id"] not in ids
 
     async def test_an_unamended_trace_is_unaffected(self, session_factory, config, org):
-        trace = await _contribute(
-            session_factory, config, org, title="wwvut never amended marker"
-        )
+        trace = await _contribute(session_factory, config, org, title="wwvut never amended marker")
         async with session_scope(session_factory) as session:
             result = await crud.search_traces(session, org, query="wwvut never amended")
         assert trace["id"] in [t["id"] for t in result["traces"]]
 
 
 class TestGetTraceStillReturnsSupersededTraces:
-    async def test_fetching_a_superseded_trace_by_id_still_works(
-        self, session_factory, config, org
-    ):
+    async def test_fetching_a_superseded_trace_by_id_still_works(self, session_factory, config, org):
         original = await _contribute(session_factory, config, org)
         amended = await _amend(session_factory, config, org, original["id"], title="v2")
 
@@ -159,9 +151,7 @@ class TestGetTraceStillReturnsSupersededTraces:
         assert fetched["superseded_by_trace_id"] == amended["id"]
         assert fetched["superseded_at"]
 
-    async def test_the_wire_shape_is_empty_string_for_a_never_amended_trace(
-        self, session_factory, config, org
-    ):
+    async def test_the_wire_shape_is_empty_string_for_a_never_amended_trace(self, session_factory, config, org):
         trace = await _contribute(session_factory, config, org)
         async with session_scope(session_factory) as session:
             fetched = await crud.get_trace(session, org, trace["id"])
@@ -170,20 +160,30 @@ class TestGetTraceStillReturnsSupersededTraces:
 
 
 class TestIdempotentReplayDoesNotDoubleSupersede:
-    async def test_a_replayed_amend_call_does_not_change_the_original_again(
-        self, session_factory, config, org
-    ):
+    async def test_a_replayed_amend_call_does_not_change_the_original_again(self, session_factory, config, org):
         original = await _contribute(session_factory, config, org)
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             first = await crud.amend_trace(
-                session, org, original["id"], config, rate_limiter,
-                title="v2", actor="test", idempotency_key="k1",
+                session,
+                org,
+                original["id"],
+                config,
+                rate_limiter,
+                title="v2",
+                actor="test",
+                idempotency_key="k1",
             )
         async with session_scope(session_factory) as session:
             replay = await crud.amend_trace(
-                session, org, original["id"], config, rate_limiter,
-                title="v2", actor="test", idempotency_key="k1",
+                session,
+                org,
+                original["id"],
+                config,
+                rate_limiter,
+                title="v2",
+                actor="test",
+                idempotency_key="k1",
             )
         assert replay["id"] == first["id"]
 
@@ -193,9 +193,7 @@ class TestIdempotentReplayDoesNotDoubleSupersede:
 
 
 class TestTheKnowledgeBaseSurfaceGetsTheSameFix:
-    async def test_a_superseded_shared_trace_is_no_longer_commons_visible(
-        self, session_factory, config, org
-    ):
+    async def test_a_superseded_shared_trace_is_no_longer_commons_visible(self, session_factory, config, org):
         trace = await _contribute(session_factory, config, org)
         async with session_scope(session_factory) as session:
             row = await session.get(Trace, trace["id"])
@@ -211,9 +209,7 @@ class TestTheKnowledgeBaseSurfaceGetsTheSameFix:
 
 
 class TestForkedAmendmentsAllStayLive:
-    async def test_both_forks_of_the_same_parent_are_independently_live(
-        self, session_factory, config, org
-    ):
+    async def test_both_forks_of_the_same_parent_are_independently_live(self, session_factory, config, org):
         v1 = await _contribute(session_factory, config, org, title="parent")
         fork_a = await _amend(session_factory, config, org, v1["id"], title="fork a")
         fork_b = await _amend(session_factory, config, org, v1["id"], title="fork b")

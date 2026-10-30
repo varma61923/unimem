@@ -1,4 +1,5 @@
 """Real-file snapshot isolation and current trust for selective governed search."""
+
 from __future__ import annotations
 
 import asyncio
@@ -46,8 +47,12 @@ os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
 if atomic == '1':
     os.replace(target, path)
 """
-    subprocess.run([sys.executable, "-c", script, str(path), old, new, "1" if atomic else "0"],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, "-c", script, str(path), old, new, "1" if atomic else "0"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 @pytest.mark.parametrize("scorer", SCORERS)
@@ -58,10 +63,10 @@ def test_foreign_scope_documents_do_not_change_visible_statistics(tmp_path, scor
     public = add(root, "The Lumen service has a timeout monitor", confidence=0.7)
     before = [(fact.id, score) for fact, score in search(root, scope="alpha", scorer=scorer)]
     assert public.id in {identity for identity, _ in before}
-    hierarchical.add_facts(str(root), [
-        {"statement": f"Lumen timeout timeout timeout beta-only marker {i}", "scopes": ["beta"]}
-        for i in range(30)
-    ])
+    hierarchical.add_facts(
+        str(root),
+        [{"statement": f"Lumen timeout timeout timeout beta-only marker {i}", "scopes": ["beta"]} for i in range(30)],
+    )
     after = [(fact.id, score) for fact, score in search(root, scope="alpha", scorer=scorer)]
     assert after == before
 
@@ -86,8 +91,13 @@ def test_returned_rows_and_nested_fields_cannot_mutate_a_cached_snapshot(tmp_pat
 
     premise = add(tmp_path, "Instrument recorded the Lumen timeout", scopes=["alpha"])
     receipt = bind_evidence(str(tmp_path), "fact", premise.id)
-    target = add(tmp_path, "Lumen timeout is five seconds", scopes=["alpha"], evidence=[receipt],
-                 source_trace_id="trace-original")
+    target = add(
+        tmp_path,
+        "Lumen timeout is five seconds",
+        scopes=["alpha"],
+        evidence=[receipt],
+        source_trace_id="trace-original",
+    )
     view = fact_index.snapshot_facts(str(tmp_path))
     original = view[target.id].to_dict()
     returned = hierarchical.load_facts(str(tmp_path))[target.id]
@@ -209,11 +219,14 @@ def test_lesson_source_trust_is_current_while_fact_generation_stays_hot(tmp_path
     lesson.parent.mkdir(parents=True)
     fm = {"name": "lesson_lumen", "status": "active", "scopes": ["alpha"]}
     body = "## Rule\nLumen timeout measurements establish a five second deadline.\n"
-    fm[lesson_admission.RECEIPT_FIELD] = lesson_admission.issue(str(tmp_path), str(lesson), fm, body,
-                                                              actor="reviewer")
+    fm[lesson_admission.RECEIPT_FIELD] = lesson_admission.issue(str(tmp_path), str(lesson), fm, body, actor="reviewer")
     frontmatter.write(str(lesson), fm, body)
-    target = add(tmp_path, "Lumen timeout is five seconds", scopes=["alpha"],
-                 evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")])
+    target = add(
+        tmp_path,
+        "Lumen timeout is five seconds",
+        scopes=["alpha"],
+        evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")],
+    )
     fallback = add(tmp_path, "Lumen timeout troubleshooting has more detailed fallback instructions", scopes=["alpha"])
     before = fact_index.snapshot_facts(str(tmp_path)).generation
     assert search(tmp_path, scope="alpha", scorer=scorer, limit=1)[0][0].id == target.id
@@ -225,8 +238,9 @@ def test_lesson_source_trust_is_current_while_fact_generation_stays_hot(tmp_path
             frontmatter.write(str(lesson), fm, body)
     assert fact_index.snapshot_facts(str(tmp_path)).generation == before
     assert search(tmp_path, scope="alpha", scorer=scorer, limit=1)[0][0].id == fallback.id
-    assert target.id not in {fact.id for fact, _ in search(tmp_path, scope="alpha", scorer=scorer,
-                                                        as_of="2026-05-01T00:00:00Z")}
+    assert target.id not in {
+        fact.id for fact, _ in search(tmp_path, scope="alpha", scorer=scorer, as_of="2026-05-01T00:00:00Z")
+    }
 
 
 @pytest.mark.parametrize("scorer", SCORERS)
@@ -237,8 +251,7 @@ def test_approval_policy_change_invalidates_legacy_dependencies_without_fact_fil
     lesson.parent.mkdir(parents=True)
     fm = {"name": "lesson_lumen", "status": "active"}
     frontmatter.write(str(lesson), fm, "Lumen timeout measurements establish a five second deadline.\n")
-    target = add(tmp_path, "Lumen timeout is five seconds",
-                 evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")])
+    target = add(tmp_path, "Lumen timeout is five seconds", evidence=[bind_evidence(str(tmp_path), "lesson", "lumen")])
     fallback = add(tmp_path, "Lumen timeout troubleshooting has detailed fallback instructions")
     before = fact_index.snapshot_facts(str(tmp_path)).generation
     assert search(tmp_path, scorer=scorer, limit=1)[0][0].id == target.id
@@ -251,8 +264,7 @@ def test_approval_policy_change_invalidates_legacy_dependencies_without_fact_fil
 @pytest.mark.parametrize("change", ["forget", "delete", "correct"])
 def test_current_fact_source_mutations_invalidate_governed_targets(tmp_path, scorer, change):
     premise = add(tmp_path, "The instrument recorded a five second deadline")
-    target = add(tmp_path, "Lumen timeout is five seconds",
-                 evidence=[bind_evidence(str(tmp_path), "fact", premise.id)])
+    target = add(tmp_path, "Lumen timeout is five seconds", evidence=[bind_evidence(str(tmp_path), "fact", premise.id)])
     fallback = add(tmp_path, "Lumen timeout troubleshooting has detailed fallback instructions")
     assert search(tmp_path, scorer=scorer, limit=1)[0][0].id == target.id
     if change == "forget":
@@ -276,10 +288,10 @@ def test_invalid_high_scoring_candidates_are_refilled_from_live_lower_ranks(tmp_
 def test_unrelated_postings_do_not_trigger_evidence_assessment(tmp_path, monkeypatch):
     premise = add(tmp_path, "Instrument recorded an approved deadline")
     receipt = bind_evidence(str(tmp_path), "fact", premise.id)
-    hierarchical.add_facts(str(tmp_path), [
-        {"statement": f"Orchid private background marker {i}", "evidence": [receipt]}
-        for i in range(80)
-    ])
+    hierarchical.add_facts(
+        str(tmp_path),
+        [{"statement": f"Orchid private background marker {i}", "evidence": [receipt]} for i in range(80)],
+    )
     target = add(tmp_path, "Lumen timeout is five seconds", evidence=[receipt])
     visited = []
     assess = EvidenceResolver.assess
@@ -302,7 +314,9 @@ def test_explicit_invalid_scorer_never_coalesces_to_a_default(tmp_path, scorer):
 
 @pytest.mark.parametrize("scorer", SCORERS)
 def test_candidate_materialization_during_crossprocess_replacement_retries_the_whole_snapshot(
-    tmp_path, monkeypatch, scorer,
+    tmp_path,
+    monkeypatch,
+    scorer,
 ):
     from unimem import fact_index
 
@@ -370,9 +384,12 @@ def test_public_recall_and_explorer_strictly_validate_explicit_scorer(tmp_path, 
     with pytest.raises(explorer.ExplorerError):
         explorer.inspect(str(tmp_path), {"question": "Lumen timeout", "fact_scorer": scorer})
     service = gateway.Gateway(str(tmp_path), token="test-scorer-authorization-token-123456789")
-    result = service.handle("POST", "/v1/explore",
-                            {"Authorization": "Bearer test-scorer-authorization-token-123456789"},
-                            json.dumps({"question": "Lumen timeout", "fact_scorer": scorer}).encode())
+    result = service.handle(
+        "POST",
+        "/v1/explore",
+        {"Authorization": "Bearer test-scorer-authorization-token-123456789"},
+        json.dumps({"question": "Lumen timeout", "fact_scorer": scorer}).encode(),
+    )
     assert result.status == 400
     response = json.loads(result.body)
     assert response["error"]["code"] == "bad_request" and "items" not in response
@@ -386,8 +403,11 @@ def test_actual_mcp_envelopes_reject_unknown_scorer(tmp_path, scorer):
     add(tmp_path, "Lumen timeout is five seconds")
     server = mcp_server.build_server(str(tmp_path))
     for name, field in (("memory_recall", "fact_scorer"), ("query_facts", "scorer")):
-        arguments = {"question": "Lumen timeout", "channels": ["facts"]} if name == "memory_recall" \
+        arguments = (
+            {"question": "Lumen timeout", "channels": ["facts"]}
+            if name == "memory_recall"
             else {"query": "Lumen timeout"}
+        )
         arguments[field] = scorer
         result = asyncio.run(server.call_tool(name, arguments))
         structured = getattr(result, "structured_content", None)
@@ -408,18 +428,24 @@ def test_actual_mcp_schema_rejects_non_string_scorer(tmp_path, scorer):
 
     server = mcp_server.build_server(str(tmp_path))
     for name, field in (("memory_recall", "fact_scorer"), ("query_facts", "scorer")):
-        arguments = {"question": "Lumen timeout", "channels": ["facts"]} if name == "memory_recall" \
+        arguments = (
+            {"question": "Lumen timeout", "channels": ["facts"]}
+            if name == "memory_recall"
             else {"query": "Lumen timeout"}
+        )
         arguments[field] = scorer
         with pytest.raises(ToolError, match="validation"):
             asyncio.run(server.call_tool(name, arguments))
 
 
-@pytest.mark.parametrize("question,evidence", [
-    ("électricité", "électromagnétisme est documenté"),
-    ("batería", "bateristas han llegado"),
-    ("distribución", "distribution is documented"),
-])
+@pytest.mark.parametrize(
+    "question,evidence",
+    [
+        ("électricité", "électromagnétisme est documenté"),
+        ("batería", "bateristas han llegado"),
+        ("distribución", "distribution is documented"),
+    ],
+)
 def test_non_ascii_subjects_do_not_acquire_unrelated_prefix_matches(question, evidence):
     coverage = assess(question, [evidence])
     assert coverage.abstain and coverage.matched_terms == 0
@@ -434,10 +460,13 @@ def test_multilingual_partial_subject_coverage_stays_explicit_and_uncalibrated()
     assert "unverified" in coverage.reason
 
 
-@pytest.mark.parametrize("question,evidence", [
-    ("What is Élise bicycle serial number?", "Élise bought a bicycle."),
-    ("Nia 自転車 serial number", "Niaは青い自転車を買った。"),
-])
+@pytest.mark.parametrize(
+    "question,evidence",
+    [
+        ("What is Élise bicycle serial number?", "Élise bought a bicycle."),
+        ("Nia 自転車 serial number", "Niaは青い自転車を買った。"),
+    ],
+)
 def test_identifier_still_requires_explicit_recorded_evidence_across_languages(question, evidence):
     absent = assess(question, [evidence], labels=["serial"])
     assert absent.abstain and absent.confidence == 0
