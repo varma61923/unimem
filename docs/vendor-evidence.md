@@ -14,6 +14,12 @@ embedded credentials; errors redact transport details. Bounded representative
 response fixtures exercise normalization and stable provider/scope/item ids.
 Missing vendor ids fall back to a content hash.
 
+The HTTP streaming transport caps responses at 1 MiB and applies a ten-second
+total response deadline as well as socket timeouts. A trickling body cannot
+extend the call indefinitely; deadline enforcement can overshoot by at most one
+socket read timeout. Custom non-streaming transports must enforce their own
+read deadlines and buffering limits.
+
 Wrap an adapter in `MeasuredMemory(adapter, root=...)`. Before a foreign item can
 reach the agent it receives external-integrity lineage and the normal injection
 screen. Canonical holdouts log exact schedule propensities and transparency

@@ -43,6 +43,46 @@ async def test_capability_header_rejects_ambiguous_json(encoded):
         delegation._decode(base64.urlsafe_b64encode(encoded).decode().rstrip("="), 8192)
 
 
+async def test_console_cookie_cannot_outlive_delegate_enrollment(session_factory, config, tmp_path):
+    from sqlalchemy import func
+    from starlette.applications import Starlette
+
+    from hub import console
+    from hub.models import ApiKey
+
+    org, raw_key = await _org_with_key(session_factory)
+    directory = str(tmp_path / "delegation")
+    configured = replace(config, capability_directory=directory)
+    app = Starlette()
+    console.add_console_routes(app, session_factory, console_secret="test-secret", config=configured)
+    async with client(app) as browser:
+        response = await browser.post("/app/signin", data={"api_key": raw_key})
+        assert response.status_code == 303
+        assert (await browser.get("/app/signout")).status_code == 200
+        async with session_scope(session_factory) as session:
+            principal = await auth.verify_api_key(session, raw_key)
+        keyfile = tmp_path / "delegate.key"
+        keyfile.write_bytes(A_KEY)
+        keyfile.chmod(0o600)
+        io.register_agent(
+            os.path.join(directory, org),
+            "agent",
+            principal.key_prefix,
+            secret_file=str(keyfile),
+            clearance=["tenant:" + org],
+        )
+        # Both read access and credential issuance must be refused using the
+        # very same cookie that worked before enrollment.
+        for response in (
+            await browser.get("/app/signout"),
+            await browser.post("/app/keys/issue", data={"scopes": "read"}),
+        ):
+            assert response.status_code == 303
+            assert response.headers["location"] == "/app/signin"
+        async with session_scope(session_factory) as session:
+            assert await session.scalar(select(func.count()).select_from(ApiKey).where(ApiKey.org_id == org)) == 1
+
+
 @pytest.mark.parametrize(
     "raw",
     [

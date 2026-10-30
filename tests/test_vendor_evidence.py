@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -107,6 +108,30 @@ def _httpx_adapter(handler):
     return memory_adapters.VendorReadAdapter(
         "mem0", endpoint="https://memory.example/retrieve", scope={"tenant_id": "acme"}, client=client
     )
+
+
+def test_vendor_trickling_response_has_a_total_deadline(monkeypatch):
+    httpx = pytest.importorskip("httpx")
+    elapsed, pulled, closed = [0.0], [], []
+    monkeypatch.setattr(memory_adapters, "time", SimpleNamespace(monotonic=lambda: elapsed[0]), raising=False)
+
+    class Trickle(httpx.SyncByteStream):
+        def __iter__(self):
+            # Each chunk arrives within the 10s socket timeout, but the body
+            # takes much longer. The payload stays under the byte ceiling.
+            for chunk in [b" "] * 10 + [json.dumps(FIXTURES["mem0"]).encode()]:
+                elapsed[0] += 6.0
+                pulled.append(1)
+                yield chunk
+
+        def close(self):
+            closed.append(True)
+
+    adapter = _httpx_adapter(lambda request: httpx.Response(200, stream=Trickle()))
+    with pytest.raises(ValueError, match="memory read failed"):
+        adapter.search("object")
+    assert len(pulled) == 2
+    assert closed == [True]
 
 
 def test_httpx_vendor_reads_stream_and_stop_at_the_size_limit():

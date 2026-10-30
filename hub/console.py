@@ -17,6 +17,7 @@ from types import MappingProxyType
 from urllib.parse import quote as _url_quote
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
@@ -1782,6 +1783,17 @@ def add_console_routes(
     def _secret() -> str:
         return console_secret
 
+    async def _requires_capability(authenticated: auth.AuthenticatedKey) -> bool:
+        from hub import delegation
+
+        try:
+            return await delegation.requires_capability(authenticated, config, session_factory)
+        except (PermissionError, ValueError, OSError, RuntimeError, SQLAlchemyError):
+            # Missing or unverifiable enrollment metadata must never restore
+            # unrestricted console access. Do not log credentials or paths.
+            logger.warning("console delegation metadata could not be verified")
+            return True
+
     async def _claims(request: Request) -> dict | None:
         claims = read_session(_secret(), request.cookies.get(SESSION_COOKIE, ""))
         if claims is None:
@@ -1806,6 +1818,13 @@ def add_console_routes(
                 )
             ).first()
         if row is None or not scopes.satisfies(row[1], scopes.SCOPE_READ):
+            return None
+        # Enrollment can change after sign-in. Recheck on every read and
+        # mutation so an older cookie cannot bypass a delegate's narrowing.
+        authenticated = auth.AuthenticatedKey(
+            org_id=str(claims["org"]), key_prefix=prefix, scopes=auth._scopes_of(row[1]), key_id=row[0]
+        )
+        if await _requires_capability(authenticated):
             return None
         claims["scopes"] = row[1]
         _VIEW.set(
@@ -1845,14 +1864,8 @@ def add_console_routes(
         async with session_scope(session_factory) as session:
             authenticated = await auth.verify_api_key(session, raw_key)
         if authenticated is not None and scopes.satisfies(authenticated.scopes, scopes.SCOPE_READ):
-            from hub import delegation
-
-            try:
-                # An enrolled delegate is narrowed by its capability on REST and
-                # MCP; the console cannot verify one, so it must not sign in.
-                if await delegation.requires_capability(authenticated, config, session_factory):
-                    authenticated = None
-            except PermissionError:
+            # The console cannot verify capability and possession headers.
+            if await _requires_capability(authenticated):
                 authenticated = None
         if authenticated is None or not scopes.satisfies(authenticated.scopes, scopes.SCOPE_READ):
             logger.info("console sign-in rejected")
