@@ -66,7 +66,7 @@ def stored_model(root: str) -> str | None:
     try:
         import numpy as np
 
-        with np.load(index_path(root), allow_pickle=False) as data:
+        with open(index_path(root), "rb") as source, np.load(source, allow_pickle=False) as data:
             return str(data["model_name"])
     except Exception:  # noqa: BLE001 - no readable index names no model
         return None

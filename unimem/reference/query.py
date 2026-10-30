@@ -135,7 +135,7 @@ def load_importances_from_index(data) -> "ImportancesResult | None":
         if np is None:
             return None
         try:
-            with np.load(data, allow_pickle=False) as npz:
+            with open(data, "rb") as source, np.load(source, allow_pickle=False) as npz:
                 return load_importances_from_index(npz)
         except Exception:
             return None
@@ -311,7 +311,9 @@ def load_index(index_path):
             ],
         )
     try:
-        with np.load(index_path, allow_pickle=False) as data:
+        # Own the descriptor even if NumPy raises while constructing NpzFile;
+        # its context manager cannot close a file it never finished opening.
+        with open(index_path, "rb") as source, np.load(source, allow_pickle=False) as data:
             model_name = str(data["model_name"])
             embeddings = data["embeddings"]
             slugs = data["slugs"]
