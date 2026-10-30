@@ -389,6 +389,7 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
 
                 with fact_store.transaction(root) as current:
                     resolver = EvidenceResolver(root, current)
+                    lineage_blocked = memory_authority.lineage_checker(root)
                     ranked = []
                     for identity, cosine in candidate_scores.items():
                         fact = current.get(identity)
@@ -401,7 +402,7 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                             and scope not in fact.scopes
                             or not hierarchical._valid_at(fact, moment)
                             or hierarchical._is_expired(fact, moment)
-                            or memory_authority.lineage_blocked(root, fact.id)
+                            or lineage_blocked(fact.id)
                         ):
                             continue
                         if fact.evidence_bound and not resolver.assess(fact.id).eligible:
