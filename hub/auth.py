@@ -187,6 +187,18 @@ class AuthenticatedKey:
     key_id: str = field(default="", compare=False)
 
 
+@dataclass(frozen=True)
+class UserPrincipal(AuthenticatedKey):
+    """An OIDC person admitted on a key-shaped principal.
+
+    Scopes alone are coarse (analyst, deployer and curator all hold ``write``);
+    ``role`` lets REST routes enforce the same per-capability checks that MCP
+    applies to the person, instead of granting everything the scopes allow.
+    """
+
+    role: str = field(default="", compare=False)
+
+
 _AUTH_CACHE_TTL = 0.0
 _AUTH_CACHE_MAX = 4096
 _AUTH_CACHE: dict[str, tuple[float, "AuthenticatedKey"]] = {}

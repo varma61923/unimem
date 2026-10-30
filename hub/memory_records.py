@@ -946,7 +946,18 @@ def add_memory_routes(app, session_factory, *, authenticate, require_scope):
 
     from starlette.responses import JSONResponse
 
-    from hub import scopes
+    from hub import rbac, scopes
+
+    # The role capability a signed-in person needs per operation, matching the
+    # MCP tool mapping: erasure is a security act, not an ordinary write.
+    capability_of = {
+        "search": rbac.CAP_VIEW,
+        "profile": rbac.CAP_VIEW,
+        "turn": rbac.CAP_ANALYZE,
+        "put": rbac.CAP_CURATE,
+        "forget": rbac.CAP_SECURITY,
+        "reap-due": rbac.CAP_SECURITY,
+    }
 
     async def operation(request):
         action = request.path_params["operation"].removeprefix("record-")
@@ -959,7 +970,7 @@ def add_memory_routes(app, session_factory, *, authenticate, require_scope):
                 if action in ("search", "profile")
                 else scopes.SCOPE_WRITE
             )
-            denied = require_scope(authenticated, required_scope)
+            denied = require_scope(authenticated, required_scope, capability_of.get(action))
         if denied is None and action == "turn":
             denied = require_scope(authenticated, scopes.SCOPE_READ)
         if denied is not None:
