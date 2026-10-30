@@ -340,3 +340,44 @@ def test_add_never_breaks_when_entity_hook_fails(store, monkeypatch):
     fact, action = hierarchical.add_fact(store, "Postgres max connections is 100.")
     assert action == "ADD"
     assert fact.id
+
+
+def test_unlink_memories_drops_every_id_with_one_save(store, monkeypatch):
+    a, _ = hierarchical.add_fact(store, 'Customer "Ada Lovelace" uses Postgres', "general")
+    b, _ = hierarchical.add_fact(store, 'Customer "Ada Lovelace" prefers email', "general")
+    c, _ = hierarchical.add_fact(store, 'Customer "Grace Hopper" prefers email', "general")
+    saves = []
+    real_save = entity_store.save_entities
+    monkeypatch.setattr(entity_store, "save_entities", lambda r, e: saves.append(1) or real_save(r, e))
+    assert entity_store.unlink_memories(store, [a.id, b.id, "", "missing"]) >= 1
+    assert len(saves) == 1
+    remaining = {m for e in entity_store.load_entities(store).values() for m in e["memory_ids"]}
+    assert remaining == {c.id}
+    assert "ada lovelace" not in entity_store.load_entities(store)
+    assert entity_store.unlink_memories(store, []) == 0
+
+
+def test_rebuild_does_not_resurrect_a_link_deleted_mid_rebuild(store, monkeypatch):
+    # Regression: the rebuild snapshotted facts outside the index lock, so a
+    # delete_fact landing mid-rebuild was overwritten by the stale snapshot.
+    import threading
+
+    fact, _ = hierarchical.add_fact(store, 'Customer "Bob Marley" prefers email', "general")
+    real_load = hierarchical.load_facts
+    worker: list[threading.Thread] = []
+
+    def load_then_race(root):
+        facts = real_load(root)
+        if not worker:
+            t = threading.Thread(target=hierarchical.delete_fact, args=(root, fact.id))
+            worker.append(t)
+            t.start()
+            t.join(timeout=0.3)  # let the delete commit; its unlink must wait on the index lock
+        return facts
+
+    monkeypatch.setattr(hierarchical, "load_facts", load_then_race)
+    entity_store.rebuild_entity_index(store)
+    worker[0].join(timeout=30)
+    assert not worker[0].is_alive()
+    linked = {m for e in entity_store.load_entities(store).values() for m in e["memory_ids"]}
+    assert fact.id not in linked
