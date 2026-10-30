@@ -938,20 +938,33 @@ class Journal:
             }
 
     def cache_vector(self, identity, model, text, vector):
-        digest = hashlib.sha256(text.encode()).hexdigest()
+        self.cache_vectors([(identity, text, vector)], model)
+
+    def cache_vectors(self, entries: list[tuple[str, str, list[float]]], model: str) -> None:
+        """Persist a candidate batch atomically, with one connection and transaction."""
+        rows = [
+            (identity, model, hashlib.sha256(text.encode()).hexdigest(), json.dumps(vector, allow_nan=False))
+            for identity, text, vector in entries
+        ]
+        if not rows:
+            return
         with self.connect(write=True) as db:
-            db.execute("INSERT OR REPLACE INTO vectors VALUES(?,?,?,?)", (identity, model, digest, json.dumps(vector)))
+            db.executemany("INSERT OR REPLACE INTO vectors VALUES(?,?,?,?)", rows)
 
     def vectors(self, records: list[tuple[MemoryRecord, str]], model: str) -> list:
+        if not records:
+            return []
+        requested = [(record.id, hashlib.sha256(text.encode()).hexdigest()) for record, text in records]
         with self.connect() as db:
-            result = []
-            for record, text in records:
-                row = db.execute(
-                    "SELECT vector FROM vectors WHERE id=? AND model=? AND digest=?",
-                    (record.id, model, hashlib.sha256(text.encode()).hexdigest()),
-                ).fetchone()
-                result.append(json.loads(row[0]) if row else None)
-            return result
+            # JSON input avoids SQLite's bind-variable limit. LEFT JOIN preserves
+            # misses and duplicate requests; array keys restore caller order.
+            rows = db.execute(
+                "SELECT v.vector FROM json_each(?) r LEFT JOIN vectors v "
+                "ON v.id=json_extract(r.value,'$[0]') AND v.model=? "
+                "AND v.digest=json_extract(r.value,'$[1]') ORDER BY CAST(r.key AS INTEGER)",
+                (json.dumps(requested), model),
+            ).fetchall()
+            return [json.loads(row[0]) if row[0] is not None else None for row in rows]
 
     def vector(self, identity, model, text):
         with self.connect() as db:

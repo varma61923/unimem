@@ -246,11 +246,13 @@ class HookKit:
                     vectors = self.journal.vectors(candidates, model)
                     missing = [i for i, vector in enumerate(vectors) if vector is None]
                     if missing:
-                        for i, vector in zip(
-                            missing, kg_similarity.embed(provider, [candidates[i][1] for i in missing], query=False)
-                        ):
+                        embedded = kg_similarity.embed(provider, [candidates[i][1] for i in missing], query=False)
+                        self.journal.cache_vectors(
+                            [(candidates[i][0].id, candidates[i][1], vector) for i, vector in zip(missing, embedded)],
+                            model,
+                        )
+                        for i, vector in zip(missing, embedded):
                             vectors[i] = vector
-                            self.journal.cache_vector(candidates[i][0].id, model, candidates[i][1], vector)
                     qvector = kg_similarity.embed(provider, [query], query=True)[0]
                     dense = [kg_similarity.cosine(qvector, vector) for vector in vectors]
                     lexical_order = sorted(range(len(candidates)), key=lambda i: (-sparse[i], candidates[i][0].id))
