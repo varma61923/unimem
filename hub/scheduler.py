@@ -30,24 +30,39 @@ async def run(session_factory, *, interval_seconds: int, stop_event: asyncio.Eve
 async def _deliver_webhooks_once(session_factory, *, signing_key: str, cipher, batch_size: int) -> None:
     async with session_scope(session_factory) as session:
         result = await events.deliver_pending(
-            session, events.http_transport(),
-            signing_key=signing_key, limit=batch_size, cipher=cipher,
+            session,
+            events.http_transport(),
+            signing_key=signing_key,
+            limit=batch_size,
+            cipher=cipher,
         )
         if result.attempted:
             logger.info(
                 "webhook scheduler: attempted=%d delivered=%d retrying=%d gave_up=%d deferred=%d",
-                result.attempted, result.delivered, result.retrying, result.gave_up, result.deferred,
+                result.attempted,
+                result.delivered,
+                result.retrying,
+                result.gave_up,
+                result.deferred,
             )
 
 
 async def run_webhook_delivery(
-    session_factory, *, interval_seconds: int, stop_event: asyncio.Event,
-    signing_key: str, cipher, batch_size: int = 100,
+    session_factory,
+    *,
+    interval_seconds: int,
+    stop_event: asyncio.Event,
+    signing_key: str,
+    cipher,
+    batch_size: int = 100,
 ) -> None:
     while not stop_event.is_set():
         try:
             await _deliver_webhooks_once(
-                session_factory, signing_key=signing_key, cipher=cipher, batch_size=batch_size,
+                session_factory,
+                signing_key=signing_key,
+                cipher=cipher,
+                batch_size=batch_size,
             )
         except Exception:
             logger.exception("webhook delivery scheduler sweep failed")

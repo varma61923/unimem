@@ -3,6 +3,7 @@
 Stdlib only (the Hub server image runs `experiment.analyze`, which uses this).
 See `allocation` for the design and the references.
 """
+
 from __future__ import annotations
 
 import math
@@ -29,8 +30,9 @@ def _mixture_rho2(alpha: float, horizon: float) -> float:
     return (-2.0 * log_alpha + math.log(1.0 - 2.0 * log_alpha)) / max(1.0, horizon)
 
 
-def confidence_sequence(scores: list[float], alpha: float = 0.05,
-                        horizon: float = 2000.0) -> tuple[float, float, float]:
+def confidence_sequence(
+    scores: list[float], alpha: float = 0.05, horizon: float = 2000.0
+) -> tuple[float, float, float]:
     """(mean, low, high): a two-sided asymptotic confidence sequence for the mean of `scores`.
 
     ``mean +- sqrt(2 (V rho^2 + 1) / rho^2 * log(sqrt(V rho^2 + 1) / alpha)) / t`` with
@@ -47,8 +49,9 @@ def confidence_sequence(scores: list[float], alpha: float = 0.05,
     return mean, mean - radius, mean + radius
 
 
-def running_intersection(scores: list[float], alpha: float = 0.05, horizon: float = 2000.0,
-                         burn_in: int = BURN_IN) -> tuple[float, float, float]:
+def running_intersection(
+    scores: list[float], alpha: float = 0.05, horizon: float = 2000.0, burn_in: int = BURN_IN
+) -> tuple[float, float, float]:
     """The confidence sequence intersected over every prefix from `burn_in` scores on.
 
     A time-uniform sequence covers at every time at once, so its running intersection
@@ -60,8 +63,8 @@ def running_intersection(scores: list[float], alpha: float = 0.05, horizon: floa
     if t <= burn_in:
         return mean, low, high
     rho2 = _mixture_rho2(alpha, horizon)
-    total = math.fsum(scores[:burn_in - 1])
-    square = math.fsum(s * s for s in scores[:burn_in - 1])
+    total = math.fsum(scores[: burn_in - 1])
+    square = math.fsum(s * s for s in scores[: burn_in - 1])
     for k in range(burn_in, t + 1):
         s = scores[k - 1]
         total += s
@@ -154,8 +157,14 @@ class Estimate:
     method: str
 
 
-def estimate(observations: list[Observation], *, alpha: float = 0.05, horizon: float = 2000.0,
-             sequential: bool = True, window: int = WINDOW) -> Estimate:
+def estimate(
+    observations: list[Observation],
+    *,
+    alpha: float = 0.05,
+    horizon: float = 2000.0,
+    sequential: bool = True,
+    window: int = WINDOW,
+) -> Estimate:
     scores = aipw_scores(observations, window)
     randomized = [o for o in observations if 0.0 < o.rate < 1.0]
     n_inj = sum(o.injected for o in randomized)
@@ -166,5 +175,12 @@ def estimate(observations: list[Observation], *, alpha: float = 0.05, horizon: f
         if len(scores) < BURN_IN:
             # The sequence's coverage is asymptotic; before the burn-in it claims nothing.
             low, high = -math.inf, math.inf
-    return Estimate(mean, max(-1.0, low), min(1.0, high), p, n_inj, len(randomized) - n_inj,
-                    "aipw-asymptotic-cs" if sequential else "aipw-clt")
+    return Estimate(
+        mean,
+        max(-1.0, low),
+        min(1.0, high),
+        p,
+        n_inj,
+        len(randomized) - n_inj,
+        "aipw-asymptotic-cs" if sequential else "aipw-clt",
+    )

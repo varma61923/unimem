@@ -3,6 +3,7 @@
 This deliberately small stdlib backend is an executable protocol reference,
 not an ORAM, a verifiable PIR scheme, or protection against colluding servers.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,9 +68,15 @@ def _distance(a: Sequence[float], b: Sequence[float]) -> float:
     return math.sqrt(math.fsum((x - y) ** 2 for x, y in zip(a, b)))
 
 
-def cluster_records(records: list[dict[str, Any]], centroids: dict[str, list[float]], *, clearance: str,
-                    labels: Sequence[str] = ("public", "internal", "confidential", "restricted"),
-                    block_bytes: int = 4096, blocks_per_cluster: int = PUBLIC_CLUSTER_BLOCKS) -> dict[str, list[bytes]]:
+def cluster_records(
+    records: list[dict[str, Any]],
+    centroids: dict[str, list[float]],
+    *,
+    clearance: str,
+    labels: Sequence[str] = ("public", "internal", "confidential", "restricted"),
+    block_bytes: int = 4096,
+    blocks_per_cluster: int = PUBLIC_CLUSTER_BLOCKS,
+) -> dict[str, list[bytes]]:
     """Provision aligned fixed-size blocks after enforcing a maximum label."""
     if not isinstance(centroids, dict) or not centroids or len(centroids) > MAX_CLUSTERS:
         raise ValueError("centroid index must contain 1..256 clusters")
@@ -79,8 +86,7 @@ def cluster_records(records: list[dict[str, Any]], centroids: dict[str, list[flo
     ceiling = _hierarchy(labels, clearance)
     if not isinstance(records, list) or len(records) > MAX_CLUSTERS * MAX_BLOCKS_PER_CLUSTER:
         raise ValueError("memory records must be a bounded array")
-    vectors = {fp.text(name, "cluster name", 96): _vector(vector)
-               for name, vector in centroids.items()}
+    vectors = {fp.text(name, "cluster name", 96): _vector(vector) for name, vector in centroids.items()}
     if any(not v or len(v) > 4096 for v in vectors.values()) or len({len(v) for v in vectors.values()}) != 1:
         raise ValueError("centroid dimensions exceed bound")
     clusters: dict[str, list[bytes]] = {name: [] for name in sorted(vectors)}
@@ -208,9 +214,16 @@ def _decode_block(block: bytes) -> dict[str, Any] | None:
     return decoded
 
 
-def client_recall(centroids: dict[str, list[float]], query_vector: list[float], *, clearance: str, limit: int,
-                  fetch_pair: Any, clusters_to_fetch: int | None = None,
-                  labels: Sequence[str] = ("public", "internal", "confidential", "restricted")) -> dict[str, Any]:
+def client_recall(
+    centroids: dict[str, list[float]],
+    query_vector: list[float],
+    *,
+    clearance: str,
+    limit: int,
+    fetch_pair: Any,
+    clusters_to_fetch: int | None = None,
+    labels: Sequence[str] = ("public", "internal", "confidential", "restricted"),
+) -> dict[str, Any]:
     """Select public-centroid clusters locally, PIR-fetch their blocks, rerank locally.
 
     fetch_pair(cluster, shares0, shares1) sends all fixed-capacity shares to each
@@ -223,10 +236,12 @@ def client_recall(centroids: dict[str, list[float]], query_vector: list[float], 
     if not isinstance(centroids, dict) or not centroids or len(centroids) > MAX_CLUSTERS:
         raise ValueError("centroid index must contain 1..256 clusters")
     query_vector = _vector(query_vector)
-    centroids = {fp.text(name, "cluster name", 96): _vector(vector)
-                 for name, vector in centroids.items()}
-    count = (len(centroids) if clusters_to_fetch is None else
-             fp.count(clusters_to_fetch, 1, min(MAX_CLUSTERS, len(centroids))))
+    centroids = {fp.text(name, "cluster name", 96): _vector(vector) for name, vector in centroids.items()}
+    count = (
+        len(centroids)
+        if clusters_to_fetch is None
+        else fp.count(clusters_to_fetch, 1, min(MAX_CLUSTERS, len(centroids)))
+    )
     selected = sorted(centroids, key=lambda name: (_distance(query_vector, centroids[name]), name))[:count]
     found = []
     blocks_fetched = 0
@@ -263,7 +278,11 @@ def client_recall(centroids: dict[str, list[float]], query_vector: list[float], 
                 found.append(record)
             blocks_fetched += 1
     ranked = sorted(found, key=lambda row: (_distance(query_vector, row["vector"]), str(row.get("id", ""))))
-    return {"results": ranked[:limit], "clusters_fetched": len(selected), "cluster_count": len(centroids),
-            "blocks_fetched": blocks_fetched,
-            "leakage": ["selected_cluster_ids", "clusters_fetched", "cluster_count"],
-            "control_loop_use": False}
+    return {
+        "results": ranked[:limit],
+        "clusters_fetched": len(selected),
+        "cluster_count": len(centroids),
+        "blocks_fetched": blocks_fetched,
+        "leakage": ["selected_cluster_ids", "clusters_fetched", "cluster_count"],
+        "control_loop_use": False,
+    }

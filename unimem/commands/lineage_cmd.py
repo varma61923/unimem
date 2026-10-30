@@ -1,4 +1,5 @@
 """Inspect derivations without exposing unauthenticated trust claims."""
+
 from __future__ import annotations
 
 import argparse
@@ -32,9 +33,13 @@ def run(args: argparse.Namespace) -> int:
     if args.operation == "contagion":
         from unimem import contagion
 
-        result = (contagion.freeze(root, args.id, args.freeze, context=args.context) if args.freeze
-                  else contagion.radius(root, args.id, context=args.context,
-                                        max_depth=args.max_depth, max_nodes=args.max_nodes))
+        result = (
+            contagion.freeze(root, args.id, args.freeze, context=args.context)
+            if args.freeze
+            else contagion.radius(
+                root, args.id, context=args.context, max_depth=args.max_depth, max_nodes=args.max_nodes
+            )
+        )
     elif args.operation == "taint":
         result = lineage.taint(root, args.id, args.reason)
     elif args.operation == "invalidate":

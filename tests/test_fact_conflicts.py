@@ -1,4 +1,5 @@
 """Contradiction detection on write, supersede mode, and transaction-time (known_at) queries."""
+
 from __future__ import annotations
 
 import time
@@ -11,25 +12,40 @@ from unimem import fact_conflicts, hierarchical
 
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
-    for name in ("UNIMEM_FACT_CONFLICTS", "UNIMEM_FACT_CONFLICT_JUDGE", "UNIMEM_FACT_DEDUP",
-                 "UNIMEM_FACT_EMBEDDER", "UNIMEM_FACT_EMBEDDER_PATH"):
+    for name in (
+        "UNIMEM_FACT_CONFLICTS",
+        "UNIMEM_FACT_CONFLICT_JUDGE",
+        "UNIMEM_FACT_DEDUP",
+        "UNIMEM_FACT_EMBEDDER",
+        "UNIMEM_FACT_EMBEDDER_PATH",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
-@pytest.mark.parametrize("words", [("like", "likes", "liked", "liking"), ("work", "works", "worked", "working"),
-                                   ("study", "studies"), ("use", "uses", "used", "using")])
+@pytest.mark.parametrize(
+    "words",
+    [
+        ("like", "likes", "liked", "liking"),
+        ("work", "works", "worked", "working"),
+        ("study", "studies"),
+        ("use", "uses", "used", "using"),
+    ],
+)
 def test_inflections_share_one_stem(words):
     assert len({fact_conflicts._stem(w) for w in words}) == 1
 
 
-@pytest.mark.parametrize("older, newer, kind", [
-    ("Alice likes spicy food a lot", "Alice does not like spicy food a lot", "negation"),
-    ("Bob never used vim at work", "Bob uses vim at work", "negation"),
-    ("Bob has 2 cats at home", "Bob has 3 cats at home", "value"),
-    ("Bob works at Acme", "Bob worked at Initech", None),
-    ("Alice likes spicy food", "Alice likes spicy food", None),
-    ("Not here", "Here", None),  # too few content words to name a slot
-])
+@pytest.mark.parametrize(
+    "older, newer, kind",
+    [
+        ("Alice likes spicy food a lot", "Alice does not like spicy food a lot", "negation"),
+        ("Bob never used vim at work", "Bob uses vim at work", "negation"),
+        ("Bob has 2 cats at home", "Bob has 3 cats at home", "value"),
+        ("Bob works at Acme", "Bob worked at Initech", None),
+        ("Alice likes spicy food", "Alice likes spicy food", None),
+        ("Not here", "Here", None),  # too few content words to name a slot
+    ],
+)
 def test_classify(older, newer, kind):
     assert fact_conflicts.classify(older, newer) == kind
 
@@ -84,8 +100,9 @@ def test_a_batch_compares_each_fact_only_with_earlier_ones(tmp_path, monkeypatch
         from unimem import fact_store
 
         fact_store.migrate(root)
-    [(old, _), (new, _)] = hierarchical.add_facts(root, [{"statement": "Alice likes spicy food a lot"},
-                                                         {"statement": "Alice does not like spicy food a lot"}])
+    [(old, _), (new, _)] = hierarchical.add_facts(
+        root, [{"statement": "Alice likes spicy food a lot"}, {"statement": "Alice does not like spicy food a lot"}]
+    )
     facts = hierarchical.load_facts(root)
     assert facts[old.id].status == "superseded" and facts[new.id].status == "active"
     assert facts[old.id].superseded_by == new.id
@@ -106,11 +123,14 @@ def test_batch_conflicts_reuse_staged_slot_features(tmp_path, monkeypatch):
         return original(statement)
 
     monkeypatch.setattr(fact_conflicts, "slot_key", track)
-    result = hierarchical.add_facts(root, [
-        {"statement": "Service alpha archives incident reports"},
-        {"statement": "Service beta validates signed requests"},
-        {"statement": "Service gamma rotates encryption keys"},
-    ])
+    result = hierarchical.add_facts(
+        root,
+        [
+            {"statement": "Service alpha archives incident reports"},
+            {"statement": "Service beta validates signed requests"},
+            {"statement": "Service gamma rotates encryption keys"},
+        ],
+    )
 
     assert len(result) == 3 and all(action == "ADD" for _, action in result)
     assert calls == [fact.statement for fact, _action in result]
@@ -142,10 +162,11 @@ def test_batch_llm_conflict_judge_keeps_eager_fts_candidates_beyond_overlay_cap(
     monkeypatch.setattr(fact_conflicts, "judge", judge)
     monkeypatch.setattr(fact_embeddings, "similar", similar)
     monkeypatch.setattr(fact_vector_projection, "search", lambda *args, **kwargs: [])
-    rows = hierarchical.add_facts(root, [
-        {"statement": f"Vault stores public artifacts after routine review item{n}"}
-        for n in range(119)
-    ] + [{"statement": target}, {"statement": query}])
+    rows = hierarchical.add_facts(
+        root,
+        [{"statement": f"Vault stores public artifacts after routine review item{n}"} for n in range(119)]
+        + [{"statement": target}, {"statement": query}],
+    )
 
     assert len(rows) == 121 and all(action == "ADD" for _, action in rows)
     assert target in semantic_candidates
@@ -216,11 +237,17 @@ def test_known_at_reconstructs_what_the_store_believed(tmp_path, monkeypatch):
 
 
 def test_known_at_falls_back_for_rows_written_before_retracted_at(tmp_path):
-    fact = hierarchical._coerce_fact({"id": "f1", "statement": "x y z", "status": "deleted",
-                                      "valid_from": "2026-01-01T00:00:00+00:00",
-                                      "valid_until": "2026-02-01T00:00:00+00:00",
-                                      "created_at": "2026-01-01T00:00:00+00:00",
-                                      "updated_at": "2026-02-01T00:00:00+00:00"})
+    fact = hierarchical._coerce_fact(
+        {
+            "id": "f1",
+            "statement": "x y z",
+            "status": "deleted",
+            "valid_from": "2026-01-01T00:00:00+00:00",
+            "valid_until": "2026-02-01T00:00:00+00:00",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-02-01T00:00:00+00:00",
+        }
+    )
     assert fact.retracted_at is None
     jan = datetime(2026, 1, 15, tzinfo=timezone.utc)
     mar = datetime(2026, 3, 1, tzinfo=timezone.utc)

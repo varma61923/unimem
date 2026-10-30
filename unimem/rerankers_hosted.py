@@ -16,6 +16,7 @@ truncated to ``MAX_CHARS`` and at most ``MAX_DOCUMENTS`` leave the host per call
 A provider's reply is accepted only when every index is distinct, in range and
 scored; a short or malformed reply raises `RerankError` with the provider's name.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,11 @@ from unimem.reranking import Hit, RerankError, TextReranker, order_scores, valid
 MAX_CHARS = 4_000
 MAX_DOCUMENTS = 200
 DEFAULT_MODELS = {"cohere": "rerank-v3.5", "voyage": "rerank-2.5", "jina": "jina-reranker-v2-base-multilingual"}
-URLS = {"cohere": "https://api.cohere.com/v2/rerank", "voyage": "https://api.voyageai.com/v1/rerank",
-        "jina": "https://api.jina.ai/v1/rerank"}
+URLS = {
+    "cohere": "https://api.cohere.com/v2/rerank",
+    "voyage": "https://api.voyageai.com/v1/rerank",
+    "jina": "https://api.jina.ai/v1/rerank",
+}
 KEYS = {"cohere": "COHERE_API_KEY", "voyage": "VOYAGE_API_KEY", "jina": "JINA_API_KEY"}
 _MODEL = re.compile(r"^[A-Za-z0-9._/\-]{1,128}$")
 
@@ -88,8 +92,9 @@ class HostedReranker(TextReranker):
         rows = data.get("data" if self.provider == "voyage" else "results") if isinstance(data, dict) else None
         if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):
             raise RerankError(f"{self.name} returned no result list")
-        return validate_hits([(r.get("index"), r.get("relevance_score")) for r in rows], len(documents), want,
-                             self.name)
+        return validate_hits(
+            [(r.get("index"), r.get("relevance_score")) for r in rows], len(documents), want, self.name
+        )
 
 
 LLM_MAX_DOCUMENTS = 50
@@ -127,8 +132,9 @@ def parse_permutation(text: str, count: int) -> list[int] | None:
         if not isinstance(ids, list):
             continue
         values = [int(v) if isinstance(v, str) and v.strip().isdigit() else v for v in ids]
-        if all(isinstance(v, int) and not isinstance(v, bool) for v in values) \
-                and sorted(values) == list(range(1, count + 1)):
+        if all(isinstance(v, int) and not isinstance(v, bool) for v in values) and sorted(values) == list(
+            range(1, count + 1)
+        ):
             return [v - 1 for v in values]
     return None
 

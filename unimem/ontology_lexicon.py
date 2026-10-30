@@ -10,6 +10,7 @@ town", "Run flumectl sync", "Brannigan approved the change").
 A store's ontology may declare other types; those are typed by their own names,
 keywords and aliases (and embeddings or an LLM when configured), never by these
 built-in lists, which only score types the ontology actually declares."""
+
 from __future__ import annotations
 
 import re
@@ -90,13 +91,50 @@ nyc osaka oslo ottawa paris perth philadelphia phoenix portland prague pune
 riyadh rome rotterdam santiago seattle seoul shanghai
 shenzhen singapore stockholm stuttgart sydney taipei tallinn tokyo toronto turin vancouver venice
 vienna warsaw wellington zurich
-""") | frozenset({"cape town", "hong kong", "las vegas", "los angeles", "mexico city", "new delhi", "new york",
-                 "new york city", "rio de janeiro", "san diego", "san francisco", "san jose", "são paulo",
-                 "sao paulo", "tel aviv", "silicon valley", "bay area", "south africa", "south korea",
-                 "north korea", "new zealand", "saudi arabia", "united states", "united kingdom",
-                 "sri lanka", "costa rica", "puerto rico", "north america", "south america",
-                 "latin america", "middle east", "lake tahoe", "mount everest", "new jersey", "new mexico",
-                 "north carolina", "south carolina", "rhode island", "west virginia", "british columbia"})
+""") | frozenset(
+    {
+        "cape town",
+        "hong kong",
+        "las vegas",
+        "los angeles",
+        "mexico city",
+        "new delhi",
+        "new york",
+        "new york city",
+        "rio de janeiro",
+        "san diego",
+        "san francisco",
+        "san jose",
+        "são paulo",
+        "sao paulo",
+        "tel aviv",
+        "silicon valley",
+        "bay area",
+        "south africa",
+        "south korea",
+        "north korea",
+        "new zealand",
+        "saudi arabia",
+        "united states",
+        "united kingdom",
+        "sri lanka",
+        "costa rica",
+        "puerto rico",
+        "north america",
+        "south america",
+        "latin america",
+        "middle east",
+        "lake tahoe",
+        "mount everest",
+        "new jersey",
+        "new mexico",
+        "north carolina",
+        "south carolina",
+        "rhode island",
+        "west virginia",
+        "british columbia",
+    }
+)
 
 ORGANIZATIONS = _words("""
 google alphabet microsoft apple amazon aws meta facebook netflix nvidia intel amd ibm oracle salesforce
@@ -108,9 +146,25 @@ dell hp nokia ericsson philips bosch volkswagen bmw mercedes ford gm boeing airb
 moderna novartis roche walmart target costco ikea mckinsey deloitte accenture kpmg pwc goldman jpmorgan
 fda nasa esa nsa fbi cia who unicef unesco nato un eu ecb imf irs sec ftc fcc nhs cern mit stanford harvard
 berkeley oxford cambridge caltech princeton yale eth epfl ucla nyu cmu inria
-""") | frozenset({"hugging face", "goldman sachs", "jp morgan", "red hat", "general motors", "eli lilly",
-                 "procter & gamble", "world bank", "united nations", "european union", "carnegie mellon",
-                 "the new york times", "new york times", "linux foundation", "apache foundation"})
+""") | frozenset(
+    {
+        "hugging face",
+        "goldman sachs",
+        "jp morgan",
+        "red hat",
+        "general motors",
+        "eli lilly",
+        "procter & gamble",
+        "world bank",
+        "united nations",
+        "european union",
+        "carnegie mellon",
+        "the new york times",
+        "new york times",
+        "linux foundation",
+        "apache foundation",
+    }
+)
 
 TOOLS = _words("""
 docker podman kubernetes kubectl helm terraform pulumi ansible chef puppet vagrant packer git mercurial svn
@@ -125,8 +179,20 @@ opentelemetry jaeger zipkin sentry datadog splunk kibana logstash fluentd vector
 sed awk jq yq curl wget httpie postman insomnia ssh tmux vim neovim emacs vscode intellij pycharm xcode
 gdb lldb valgrind strace perf htop wireshark tcpdump nmap openssl certbot k9s kustomize skaffold tilt
 minikube kind k3s istio linkerd envoy traefik nginx haproxy caddy
-""") | frozenset({"github actions", "gitlab ci", "node.js", "vs code", "visual studio", "scikit learn",
-                 "hugging face transformers", "react native", "spring boot", "ruby on rails"})
+""") | frozenset(
+    {
+        "github actions",
+        "gitlab ci",
+        "node.js",
+        "vs code",
+        "visual studio",
+        "scikit learn",
+        "hugging face transformers",
+        "react native",
+        "spring boot",
+        "ruby on rails",
+    }
+)
 
 SERVICES = _words("""
 postgres postgresql mysql mariadb sqlite redis memcached kafka rabbitmq activemq nats pulsar zookeeper
@@ -141,33 +207,128 @@ EVENTS = _words("""
 christmas thanksgiving easter halloween diwali ramadan eid hanukkah newyear
 blackfriday cybermonday kubecon pycon wwdc reinvent re:invent neurips icml iclr cvpr acl emnlp ces
 mwc defcon blackhat siggraph hackweek hackathon standup retro retrospective offsite allhands all-hands
-""") | frozenset({"black friday", "cyber monday", "new year", "new year's eve", "google i/o", "re:invent",
-                 "aws re:invent", "apple wwdc", "microsoft build", "google cloud next", "aws summit",
-                 "world cup", "super bowl", "the olympics", "olympics", "all hands", "game day"})
+""") | frozenset(
+    {
+        "black friday",
+        "cyber monday",
+        "new year",
+        "new year's eve",
+        "google i/o",
+        "re:invent",
+        "aws re:invent",
+        "apple wwdc",
+        "microsoft build",
+        "google cloud next",
+        "aws summit",
+        "world cup",
+        "super bowl",
+        "the olympics",
+        "olympics",
+        "all hands",
+        "game day",
+    }
+)
 
 ERRORS = _words("""
 segfault segmentation deadlock livelock oomkilled oom sigsegv sigkill sigterm sigabrt panic stackoverflow
 crashloopbackoff imagepullbackoff errimagepull econnreset econnrefused etimedout enoent eacces eperm eaddrinuse
 epipe enomem enospc
-""") | frozenset({"stack overflow", "out of memory", "race condition", "memory leak", "null pointer",
-                 "segmentation fault", "bus error", "kernel panic", "heap corruption"})
+""") | frozenset(
+    {
+        "stack overflow",
+        "out of memory",
+        "race condition",
+        "memory leak",
+        "null pointer",
+        "segmentation fault",
+        "bus error",
+        "kernel panic",
+        "heap corruption",
+    }
+)
 
 # Base names of files that carry no extension.
-FILE_NAMES = frozenset({"dockerfile", "makefile", "jenkinsfile", "procfile", "gemfile", "rakefile", "vagrantfile",
-                        "brewfile", "justfile", "license", "codeowners", "readme", "changelog", "pipfile",
-                        "containerfile", "tiltfile", "caddyfile"})
+FILE_NAMES = frozenset(
+    {
+        "dockerfile",
+        "makefile",
+        "jenkinsfile",
+        "procfile",
+        "gemfile",
+        "rakefile",
+        "vagrantfile",
+        "brewfile",
+        "justfile",
+        "license",
+        "codeowners",
+        "readme",
+        "changelog",
+        "pipfile",
+        "containerfile",
+        "tiltfile",
+        "caddyfile",
+    }
+)
 
 LISTS: dict[str, frozenset[str]] = {
-    "person": FIRST_NAMES, "place": PLACES, "organization": ORGANIZATIONS, "tool": TOOLS, "service": SERVICES,
-    "event": EVENTS, "error": ERRORS,
+    "person": FIRST_NAMES,
+    "place": PLACES,
+    "organization": ORGANIZATIONS,
+    "tool": TOOLS,
+    "service": SERVICES,
+    "event": EVENTS,
+    "error": ERRORS,
 }
 # Some names belong on two lists (snowflake the company and the warehouse; envoy and
 # nginx run as services and ship as tools); the list score is lower for those.
-AMBIGUOUS = frozenset({"snowflake", "envoy", "nginx", "georgia", "washington", "jordan", "victoria", "chad",
-                       "lambda", "vector", "black", "flux", "chef", "puppet", "make", "kind", "tempo",
-                       "target", "visa", "cambridge", "oxford", "stanford", "berkeley", "paris", "india",
-                       "vercel", "netlify", "heroku", "stripe", "twilio", "firebase", "supabase", "kim",
-                       "min", "li", "yan", "mark", "will", "may", "grace", "faith", "hope", "rose", "amber"})
+AMBIGUOUS = frozenset(
+    {
+        "snowflake",
+        "envoy",
+        "nginx",
+        "georgia",
+        "washington",
+        "jordan",
+        "victoria",
+        "chad",
+        "lambda",
+        "vector",
+        "black",
+        "flux",
+        "chef",
+        "puppet",
+        "make",
+        "kind",
+        "tempo",
+        "target",
+        "visa",
+        "cambridge",
+        "oxford",
+        "stanford",
+        "berkeley",
+        "paris",
+        "india",
+        "vercel",
+        "netlify",
+        "heroku",
+        "stripe",
+        "twilio",
+        "firebase",
+        "supabase",
+        "kim",
+        "min",
+        "li",
+        "yan",
+        "mark",
+        "will",
+        "may",
+        "grace",
+        "faith",
+        "hope",
+        "rose",
+        "amber",
+    }
+)
 
 # --- hypernyms: words that name a type in "X is a <word>", "X, a <word>", "<word>s such as X"
 
@@ -195,34 +356,51 @@ HYPERNYMS: dict[str, frozenset[str]] = {
         gateway backend microservice endpoint api warehouse index search-engine platform proxy balancer
         load-balancer registry bucket key-value"""),
     "error": _words("""error exception failure fault crash bug issue panic timeout signal warning
-        regression""") | frozenset({"error code", "status code", "exit code", "error message"}),
+        regression""")
+    | frozenset({"error code", "status code", "exit code", "error message"}),
     "event": _words("""event conference summit meetup meeting launch release outage incident migration
         workshop hackathon sprint holiday festival ceremony offsite retreat webinar keynote round funding
         quarter season election celebration deadline milestone kickoff kick-off review"""),
     "symbol": _words("""function method class variable constant field property attribute struct interface
         enum macro syscall decorator getter setter constructor destructor member identifier callback
-        coroutine lambda typedef""") | frozenset({"system call", "global variable", "environment variable"}),
+        coroutine lambda typedef""")
+    | frozenset({"system call", "global variable", "environment variable"}),
     "file": _words("""file files directory folder path filename dotfile"""),
     "document": _words("""document doc docs spec specification rfc readme report runbook handbook policy
         guide guideline manual memo proposal postmortem post-mortem charter contract agreement standard
         paper whitepaper article page wiki note notes plan roadmap design adr decision record template
-        checklist playbook book license licence""")
+        checklist playbook book license licence"""),
 }
 
 # --- mention shapes -------------------------------------------------------------------
 
-_EXT = ("py|pyi|ipynb|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|kts|rb|php|c|cc|cpp|cxx|h|hh|hpp|cs|swift|scala|"
-        "sql|sh|bash|zsh|ps1|bat|yaml|yml|json|jsonl|toml|ini|cfg|conf|env|md|mdx|rst|txt|csv|tsv|xml|html|"
-        "htm|css|scss|sass|less|lock|tf|tfvars|hcl|proto|graphql|gql|dockerfile|gradle|pom|properties|"
-        "log|pdf|png|jpg|jpeg|gif|svg|wasm|so|dll|exe|whl|tar|gz|zip|parquet|onnx|pt|pkl|db|sqlite")
+_EXT = (
+    "py|pyi|ipynb|js|mjs|cjs|jsx|ts|tsx|go|rs|java|kt|kts|rb|php|c|cc|cpp|cxx|h|hh|hpp|cs|swift|scala|"
+    "sql|sh|bash|zsh|ps1|bat|yaml|yml|json|jsonl|toml|ini|cfg|conf|env|md|mdx|rst|txt|csv|tsv|xml|html|"
+    "htm|css|scss|sass|less|lock|tf|tfvars|hcl|proto|graphql|gql|dockerfile|gradle|pom|properties|"
+    "log|pdf|png|jpg|jpeg|gif|svg|wasm|so|dll|exe|whl|tar|gz|zip|parquet|onnx|pt|pkl|db|sqlite"
+)
 SHAPES: tuple[tuple[str, float, re.Pattern[str]], ...] = (
     # (type, score, pattern over the whole mention)
     # A path needs an extension or two separators: "and/or", "TCP/IP" and "24/7" are not files.
-    ("file", 0.95, re.compile(r"^(?:\.{0,2}/)?(?:(?:[\w.@-]+/)+[\w@-][\w.@-]*\.[A-Za-z0-9]{1,8}|"
-                              r"(?:[\w.@-]+/){2,}[\w.@-]+)$")),
+    (
+        "file",
+        0.95,
+        re.compile(
+            r"^(?:\.{0,2}/)?(?:(?:[\w.@-]+/)+[\w@-][\w.@-]*\.[A-Za-z0-9]{1,8}|"
+            r"(?:[\w.@-]+/){2,}[\w.@-]+)$"
+        ),
+    ),
     ("file", 0.92, re.compile(r"^[\w@-][\w.@-]*\.(?:" + _EXT + r")$", re.I)),
-    ("file", 0.9, re.compile(r"^\.(?:env|gitignore|dockerignore|editorconfig|npmrc|nvmrc|bashrc|zshrc|"
-                             r"profile|pylintrc|flake8|prettierrc|eslintrc)(?:\.[\w-]+)?$", re.I)),
+    (
+        "file",
+        0.9,
+        re.compile(
+            r"^\.(?:env|gitignore|dockerignore|editorconfig|npmrc|nvmrc|bashrc|zshrc|"
+            r"profile|pylintrc|flake8|prettierrc|eslintrc)(?:\.[\w-]+)?$",
+            re.I,
+        ),
+    ),
     ("file", 0.92, re.compile(r"^/(?:[\w.@-]+/)+[\w.@-]+$")),  # absolute paths: /etc/passwd
     ("symbol", 0.92, re.compile(r"^[A-Za-z_$][\w$]*(?:(?:\.|::|#|->)[A-Za-z_$][\w$]*)*\(\)$")),
     ("symbol", 0.9, re.compile(r"^(?:[A-Za-z_]\w*::)+[A-Za-z_~]\w*$")),  # std::vector
@@ -233,42 +411,97 @@ SHAPES: tuple[tuple[str, float, re.Pattern[str]], ...] = (
     ("symbol", 0.85, re.compile(r"^[A-Za-z_]\w*(?:\.[a-z_]\w*)*\.(?:[a-z]+_[a-z_\d]+|[a-z]+[A-Z]\w*)$")),
     ("symbol", 0.8, re.compile(r"^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+\.[a-z_]\w*$")),
     # requests.get, os.path.join; two letters a part, so "e.g" and "i.e" are not code
-    ("symbol", 0.8, re.compile(r"^[a-z_][a-z0-9_]+(?:\.[a-z_][a-z0-9_]+)+(?<!\.com)(?<!\.org)(?<!\.net)"
-                               r"(?<!\.io)(?<!\.dev)(?<!\.ai)(?<!\.js)$")),
+    (
+        "symbol",
+        0.8,
+        re.compile(
+            r"^[a-z_][a-z0-9_]+(?:\.[a-z_][a-z0-9_]+)+(?<!\.com)(?<!\.org)(?<!\.net)"
+            r"(?<!\.io)(?<!\.dev)(?<!\.ai)(?<!\.js)$"
+        ),
+    ),
     ("error", 0.95, re.compile(r"^[A-Z]\w*(?:Error|Exception|Fault|Panic|Failure)$")),
     # "ZetaSyncMismatch", "VoidPointerLeakSignal": a compound whose last part is a failure noun
-    ("error", 0.9, re.compile(r"^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*(?:Mismatch|Violation|Timeout|Overflow|"
-                              r"Underflow|Deadlock|Corruption|Rejection|Conflict|Signal|Leak|Abort|Halt|"
-                              r"Crash|Denied|Refused|Unavailable|NotFound|Exceeded)$")),
+    (
+        "error",
+        0.9,
+        re.compile(
+            r"^[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*(?:Mismatch|Violation|Timeout|Overflow|"
+            r"Underflow|Deadlock|Corruption|Rejection|Conflict|Signal|Leak|Abort|Halt|"
+            r"Crash|Denied|Refused|Unavailable|NotFound|Exceeded)$"
+        ),
+    ),
     ("error", 0.95, re.compile(r"^(?:HTTP )?[45]\d\d(?: [A-Z][A-Za-z-]+)+$")),  # 404 Not Found
-    ("error", 0.92, re.compile(r"^(?:E|ERR|ERROR)_[A-Z0-9_]+$|^[A-Z][A-Z0-9_]*_(?:ERROR|ERR|FAILED|FAILURE|"
-                               r"INVALID|MALFORMED|DENIED|TIMEOUT|EXCEEDED|NOT_FOUND|REFUSED|UNAVAILABLE|"
-                               r"FORBIDDEN|UNAUTHORIZED|CONFLICT|OVERFLOW)$")),
-    ("error", 0.92, re.compile(r"^E(?:CONN\w+|TIMEDOUT|NOENT|ACCES|PERM|ADDRINUSE|PIPE|NOMEM|NOSPC|AGAIN|"
-                               r"EXIST|INVAL|ISDIR|NOTDIR|MFILE|HOSTUNREACH|NETUNREACH)$")),
+    (
+        "error",
+        0.92,
+        re.compile(
+            r"^(?:E|ERR|ERROR)_[A-Z0-9_]+$|^[A-Z][A-Z0-9_]*_(?:ERROR|ERR|FAILED|FAILURE|"
+            r"INVALID|MALFORMED|DENIED|TIMEOUT|EXCEEDED|NOT_FOUND|REFUSED|UNAVAILABLE|"
+            r"FORBIDDEN|UNAUTHORIZED|CONFLICT|OVERFLOW)$"
+        ),
+    ),
+    (
+        "error",
+        0.92,
+        re.compile(
+            r"^E(?:CONN\w+|TIMEDOUT|NOENT|ACCES|PERM|ADDRINUSE|PIPE|NOMEM|NOSPC|AGAIN|"
+            r"EXIST|INVAL|ISDIR|NOTDIR|MFILE|HOSTUNREACH|NETUNREACH)$"
+        ),
+    ),
     ("error", 0.9, re.compile(r"^(?:HTTP|status|code)[ ]?[45]\d\d$", re.I)),
     ("error", 0.85, re.compile(r"^(?:[A-Z]{1,3}\d{3,5}|SQLSTATE[ ]?\w{5})$")),
     ("error", 0.9, re.compile(r"^SIG[A-Z]{2,6}$")),
     ("error", 0.88, re.compile(r"^[A-Z][a-zA-Z]+(?:Killed|BackOff|Backoff|Failed|Crashed)$")),
-    ("document", 0.95, re.compile(r"^(?:RFC|PEP|ADR|KEP|JEP|BIP|EIP|ISO|IEC|IEEE|NIST SP|FIPS|ECMA)[ -]?\d+"
-                                  r"(?:[-.]\d+)*$", re.I)),
-    ("place", 0.92, re.compile(r"^(?:us|eu|ap|sa|ca|me|af|il|mx)-(?:north|south|east|west|central|northeast|"
-                               r"northwest|southeast|southwest)-\d$")),
+    (
+        "document",
+        0.95,
+        re.compile(
+            r"^(?:RFC|PEP|ADR|KEP|JEP|BIP|EIP|ISO|IEC|IEEE|NIST SP|FIPS|ECMA)[ -]?\d+"
+            r"(?:[-.]\d+)*$",
+            re.I,
+        ),
+    ),
+    (
+        "place",
+        0.92,
+        re.compile(
+            r"^(?:us|eu|ap|sa|ca|me|af|il|mx)-(?:north|south|east|west|central|northeast|"
+            r"northwest|southeast|southwest)-\d$"
+        ),
+    ),
     ("place", 0.9, re.compile(r"^(?:us|europe|asia|australia|northamerica|southamerica|me|africa)-[a-z]+\d$")),
-    ("event", 0.9, re.compile(r"^(?:Q[1-4]|H[12]|FY ?\d{2,4})(?: \d{4})?(?: (?:planning|launch|review|offsite|"
-                              r"kickoff|kick-off|okrs?|roadmap|release|retro|retrospective|all-hands|meeting|"
-                              r"summit|earnings|close|freeze|goals|hackathon|sprint|board meeting))?$")),
+    (
+        "event",
+        0.9,
+        re.compile(
+            r"^(?:Q[1-4]|H[12]|FY ?\d{2,4})(?: \d{4})?(?: (?:planning|launch|review|offsite|"
+            r"kickoff|kick-off|okrs?|roadmap|release|retro|retrospective|all-hands|meeting|"
+            r"summit|earnings|close|freeze|goals|hackathon|sprint|board meeting))?$"
+        ),
+    ),
     ("event", 0.9, re.compile(r"^(?:Sprint|Iteration|Milestone|Release|Week|Cycle|PI) \d+$", re.I)),
     ("event", 0.88, re.compile(r"^(?:[A-Z][\w-]* )+(?:Sprint|Iteration|Milestone|Cycle|PI) \d+$")),
     ("event", 0.6, re.compile(r"^[A-Z][\w:-]*(?: [A-Z][\w:-]*)* (?:19|20)\d{2}$")),  # CodeSync 2024
     ("event", 0.9, re.compile(r"^(?:Series [A-H]|Seed round|Pre-seed|IPO)$", re.I)),
     ("person", 0.95, re.compile(r"^(?:Mr|Mrs|Ms|Mx|Dr|Prof|Sir|Dame)\.? [A-Z][\w'-]+(?: [A-Z][\w'-]+)*$")),
     ("person", 0.85, re.compile(r"^@[A-Za-z0-9][\w-]{1,38}$")),
-    ("organization", 0.92, re.compile(r"^[A-Z][\w&.'-]*(?: [A-Z][\w&.'-]*)* (?:Inc|Corp|Corporation|LLC|Ltd|"
-                                      r"GmbH|AG|SA|SAS|PLC|BV|NV|Pty|Co|Labs|Technologies|Systems)$")),
+    (
+        "organization",
+        0.92,
+        re.compile(
+            r"^[A-Z][\w&.'-]*(?: [A-Z][\w&.'-]*)* (?:Inc|Corp|Corporation|LLC|Ltd|"
+            r"GmbH|AG|SA|SAS|PLC|BV|NV|Pty|Co|Labs|Technologies|Systems)$"
+        ),
+    ),
     ("tool", 0.9, re.compile(r"^[A-Z][\w-]*\.js$")),  # Node.js, Vue.js: frameworks, not files
-    ("service", 0.85, re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-(?:svc|service|api|server|db|gateway|"
-                                 r"proxy|worker|queue|cache|backend|frontend|daemon)$")),
+    (
+        "service",
+        0.85,
+        re.compile(
+            r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*-(?:svc|service|api|server|db|gateway|"
+            r"proxy|worker|queue|cache|backend|frontend|daemon)$"
+        ),
+    ),
 )
 
 # --- context cues: phrases next to the mention ("§" marks it) ----------------------
@@ -278,120 +511,262 @@ _N = r"(?:[\w'-]+ ){0,3}"  # up to three words in between
 CUES: tuple[tuple[str, float, re.Pattern[str]], ...] = tuple(
     (type_, score, re.compile(pattern if pattern.startswith("§") else r"(?<![\w-])" + pattern))
     for type_, score, pattern in (
-        ("person", 0.8, r"§ (?:often |always |usually |also |never |just |recently )?"
-                        r"(?:said|says|told|asked|thinks|thought|believes|believed|prefers|preferred|wants|"
-                        r"wanted|approved|reviewed|wrote|joined|left|quit|resigned|retired|signed off|"
-                        r"is on call|was on call|is on leave|was promoted|got promoted|replied|commented|"
-                        r"mentioned|suggested|proposed|recommended|noted|agreed|disagreed|explained|complained|"
-                        r"volunteered|paired|fixed|pushed|merged|reverted|created|founded|co-founded|"
-                        r"climbed|moved|relocated|lives|lived|was born|tweeted|emailed|called|emphasizes|emphasized|"
-                        r"emphasises|emphasised|argues|argued|insists|insisted|claims|claimed|warned|warns|"
-                        r"advocates|advocated|stressed|stresses)\b"),
-        ("person", 0.75, r"(?:check|checked|checking|talk|talked|talking|speak|spoke|speaking|chat|chatted|"
-                         r"meeting|a call|on a call|met|meet|catch up|caught up|paired|pairing|interview) with §"),
-        ("person", 0.75, r"(?:hired|ask|asked|thank|thanks|ping|pinged|cc|email|emailed|call|called|message|"
-                         r"messaged|tell|told|meet|met|congratulate|welcome|interview|interviewed|promote|"
-                         r"promoted|onboard|onboarded|according to) §"),
+        (
+            "person",
+            0.8,
+            r"§ (?:often |always |usually |also |never |just |recently )?"
+            r"(?:said|says|told|asked|thinks|thought|believes|believed|prefers|preferred|wants|"
+            r"wanted|approved|reviewed|wrote|joined|left|quit|resigned|retired|signed off|"
+            r"is on call|was on call|is on leave|was promoted|got promoted|replied|commented|"
+            r"mentioned|suggested|proposed|recommended|noted|agreed|disagreed|explained|complained|"
+            r"volunteered|paired|fixed|pushed|merged|reverted|created|founded|co-founded|"
+            r"climbed|moved|relocated|lives|lived|was born|tweeted|emailed|called|emphasizes|emphasized|"
+            r"emphasises|emphasised|argues|argued|insists|insisted|claims|claimed|warned|warns|"
+            r"advocates|advocated|stressed|stresses)\b",
+        ),
+        (
+            "person",
+            0.75,
+            r"(?:check|checked|checking|talk|talked|talking|speak|spoke|speaking|chat|chatted|"
+            r"meeting|a call|on a call|met|meet|catch up|caught up|paired|pairing|interview) with §",
+        ),
+        (
+            "person",
+            0.75,
+            r"(?:hired|ask|asked|thank|thanks|ping|pinged|cc|email|emailed|call|called|message|"
+            r"messaged|tell|told|meet|met|congratulate|welcome|interview|interviewed|promote|"
+            r"promoted|onboard|onboarded|according to) §",
+        ),
         ("person", 0.8, r"§,? who\b"),
-        ("person", 0.8, r"§ (?:should|will|can|could|must|would|might|needs to|has to|is going to|wants to|"
-                        r"is supposed to) (?:review|approve|merge|sign off|look|check|take|handle|own|lead|join|"
-                        r"decide|confirm|weigh in|chime in|pair|help|know|fix|present|own)\b"),
+        (
+            "person",
+            0.8,
+            r"§ (?:should|will|can|could|must|would|might|needs to|has to|is going to|wants to|"
+            r"is supposed to) (?:review|approve|merge|sign off|look|check|take|handle|own|lead|join|"
+            r"decide|confirm|weigh in|chime in|pair|help|know|fix|present|own)\b",
+        ),
         ("person", 0.8, r"§ to (?:approve|review|sign off|sign|merge|confirm|respond|reply|decide|weigh in)\b"),
-        ("person", 0.7, r"(?:send|sent|forward|forwarded|hand|handed|assign|assigned|reassign|reassigned|escalate|"
-                        r"escalated|introduce|introduced|pass|passed|give|gave) (?:[\w'-]+ ){0,5}(?:over )?to §"),
-        ("person", 0.75, r"(?:leadership|guidance|supervision|direction|approval|sign-off|blessing|mentorship) "
-                         r"of §"),
-        ("person", 0.65, r"(?:influenced|created|written|designed|invented|authored|reviewed|approved|"
-                         r"maintained|led) by §"),
+        (
+            "person",
+            0.7,
+            r"(?:send|sent|forward|forwarded|hand|handed|assign|assigned|reassign|reassigned|escalate|"
+            r"escalated|introduce|introduced|pass|passed|give|gave) (?:[\w'-]+ ){0,5}(?:over )?to §",
+        ),
+        (
+            "person",
+            0.75,
+            r"(?:leadership|guidance|supervision|direction|approval|sign-off|blessing|mentorship) "
+            r"of §",
+        ),
+        (
+            "person",
+            0.65,
+            r"(?:influenced|created|written|designed|invented|authored|reviewed|approved|"
+            r"maintained|led) by §",
+        ),
         ("person", 0.75, r"§ (?:[\w'-]+ ){0,4}(?:he|she|his|her|him|hers)\b"),
-        ("person", 0.85, r"§, (?:our|their|the|a|an|my|your) " + _N +
-                         r"(?:ceo|cto|cfo|coo|vp|founder|engineer|manager|lead|director|intern|designer|"
-                         r"developer|researcher|architect|colleague|teammate)\b"),
-        ("place", 0.8, r"(?:lives|lived|living|live|moved|relocated|relocating|based|located|headquartered|born|"
-                       r"grew up|flew|flying|travel+ed|travel+ing|traveling|commutes?|stationed|stays?|stayed|"
-                       r"office|offices|users|customers|team|datacenter|data center|region) (?:in|to|from|near) "
-                       r"(?:the )?§"),
-        ("place", 0.75, r"(?:the )?§ (?:office|offices|campus|headquarters|hq|branch|datacenter|data center|"
-                        r"region|area|airport|metro)\b"),
+        (
+            "person",
+            0.85,
+            r"§, (?:our|their|the|a|an|my|your) "
+            + _N
+            + r"(?:ceo|cto|cfo|coo|vp|founder|engineer|manager|lead|director|intern|designer|"
+            r"developer|researcher|architect|colleague|teammate)\b",
+        ),
+        (
+            "place",
+            0.8,
+            r"(?:lives|lived|living|live|moved|relocated|relocating|based|located|headquartered|born|"
+            r"grew up|flew|flying|travel+ed|travel+ing|traveling|commutes?|stationed|stays?|stayed|"
+            r"office|offices|users|customers|team|datacenter|data center|region) (?:in|to|from|near) "
+            r"(?:the )?§",
+        ),
+        (
+            "place",
+            0.75,
+            r"(?:the )?§ (?:office|offices|campus|headquarters|hq|branch|datacenter|data center|"
+            r"region|area|airport|metro)\b",
+        ),
         ("place", 0.7, r"(?:visit|visited|visiting|in|near|around|outside|across|throughout) (?:the )?§[,.]"),
         ("place", 0.6, r"(?:latency|traffic|users|flights?|trains?|drive|road) (?:from|to) §"),
-        ("place", 0.75, r"(?:laws|regulations|government|residents|citizens|weather|time zone|timezone|mayor|"
-                        r"council|police|stores?|warehouses?|airport|streets?|population) (?:in|of) §"),
-        ("organization", 0.85, r"(?:work|works|worked|working|job|jobs|interned|employed|internship) "
-                               r"(?:at|for|by) §"),
-        ("organization", 0.8, r"(?:acquired by|acquisition of|partnered with|partnership with|contract with|"
-                              r"funded by|backed by|invested in|investors? in|customers? of|clients? of|"
-                              r"joined|left) §"),
-        ("organization", 0.8, r"§ (?:acquired|raised|announced|released|open-sourced|open sourced|launched|"
-                              r"laid off|hired|ships|shipped|sells|sold|bought|signed (?:a |an |the )?"
-                              + _N + r"(?:contract|deal|agreement|partnership|lease)|went public|ipo'd|filed|"
-                              r"sued|was founded|is headquartered|employs|employed|publishes|published|"
-                              r"sponsors|sponsored|invested)\b"),
-        ("organization", 0.85, r"§ is (?:our|their|a|an|the) " + _N + r"(?:largest |biggest |main |key )?"
-                               r"(?:customer|client|vendor|supplier|partner|competitor|investor|"
-                               r"acquirer)\b"),
-        ("tool", 0.8, r"(?:use|uses|used|using|run|runs|ran|running|install|installs|installed|installing|"
-                      r"upgrade|upgraded|configure|configured|invoke|invoked|launch|via|pip install|"
-                      r"npm install|brew install|apt install|cargo install|go install|switch to|migrate to|"
-                      r"migrated to) §(?: to| with| for|$|[ .,])"),
-        ("tool", 0.75, r"§ (?:flags|flagged|bundles|bundled|formats|formatted|lints|linted|compiles|compiled|"
-                       r"transpiles|is configured|was configured|config|plugin|cli|command|version|"
-                       r"rule|rules|modules|cache dir)\b"),
+        (
+            "place",
+            0.75,
+            r"(?:laws|regulations|government|residents|citizens|weather|time zone|timezone|mayor|"
+            r"council|police|stores?|warehouses?|airport|streets?|population) (?:in|of) §",
+        ),
+        (
+            "organization",
+            0.85,
+            r"(?:work|works|worked|working|job|jobs|interned|employed|internship) "
+            r"(?:at|for|by) §",
+        ),
+        (
+            "organization",
+            0.8,
+            r"(?:acquired by|acquisition of|partnered with|partnership with|contract with|"
+            r"funded by|backed by|invested in|investors? in|customers? of|clients? of|"
+            r"joined|left) §",
+        ),
+        (
+            "organization",
+            0.8,
+            r"§ (?:acquired|raised|announced|released|open-sourced|open sourced|launched|"
+            r"laid off|hired|ships|shipped|sells|sold|bought|signed (?:a |an |the )?"
+            + _N
+            + r"(?:contract|deal|agreement|partnership|lease)|went public|ipo'd|filed|"
+            r"sued|was founded|is headquartered|employs|employed|publishes|published|"
+            r"sponsors|sponsored|invested)\b",
+        ),
+        (
+            "organization",
+            0.85,
+            r"§ is (?:our|their|a|an|the) " + _N + r"(?:largest |biggest |main |key )?"
+            r"(?:customer|client|vendor|supplier|partner|competitor|investor|"
+            r"acquirer)\b",
+        ),
+        (
+            "tool",
+            0.8,
+            r"(?:use|uses|used|using|run|runs|ran|running|install|installs|installed|installing|"
+            r"upgrade|upgraded|configure|configured|invoke|invoked|launch|via|pip install|"
+            r"npm install|brew install|apt install|cargo install|go install|switch to|migrate to|"
+            r"migrated to) §(?: to| with| for|$|[ .,])",
+        ),
+        (
+            "tool",
+            0.75,
+            r"§ (?:flags|flagged|bundles|bundled|formats|formatted|lints|linted|compiles|compiled|"
+            r"transpiles|is configured|was configured|config|plugin|cli|command|version|"
+            r"rule|rules|modules|cache dir)\b",
+        ),
         ("tool", 0.65, r"(?:with|in) §(?: modules| scripts| plugins| config|[.,]|$)"),
-        ("tool", 0.7, r"(?:rule|rules|plugin|plugins|config|configuration|flag|flags|option|options|extension|"
-                      r"preset|presets) (?:to|for|in|of) §"),
-        ("service", 0.8, r"§ (?:is|was|went|goes) (?:down|up|unavailable|unreachable|degraded|overloaded|"
-                         r"healthy|unhealthy|restarted|redeployed|scaled)\b"),
-        ("service", 0.8, r"§ (?:returns|returned|responds|responded|exposes|exposed|listens|serves|served|"
-                         r"times out|timed out|stores|stored|holds|caches|cached|replicates|indexes|"
-                         r"runs on|hosts|accepts|rejects|throttles|rate-limits) "),
-        ("service", 0.8, r"(?:hit|hits|query|queries|queried|call|calls|called|write|writes|written|wrote|"
-                         r"read|reads|stored|store|cached|queued|published|uploaded|backed up|flow|flows|"
-                         r"routed|sent|connect|connects|connected|persist|persisted|indexed|replicated) "
-                         r"(?:\w+ )?(?:to|in|into|from|through|via|on) §"),
-        ("service", 0.7, r"(?:push|pushed|enqueue|enqueued|write|writes|writing|load|loads|loading|fetch|fetches|"
-                         r"fetching|pull|pulls|stream|streams|streaming|send|sends|sending|upload|uploads|"
-                         r"uploading|dump|dumps|sync|syncs|syncing|replicate|replicating|store|storing|coming|"
-                         r"comes|serve|serving|proxy|proxied|route|routing) (?:[\w'-]+ ){0,3}"
-                         r"(?:to|into|from|in|via|through|over to) §"),
-        ("service", 0.7, r"(?:integration|integrations|webhooks?|sdk|client|connections?|calls?|requests?|"
-                         r"queries|outage|downtime|quota|credentials|api keys?) (?:with|to|from|for|against|on) §"),
-        ("service", 0.75, r"(?:restart|restarted|deploy|deployed|scale|scaled|provision|provisioned|"
-                          r"query|queried|hit|hits|rely on|relies on|depend on|depends on) (?:the )?§"),
+        (
+            "tool",
+            0.7,
+            r"(?:rule|rules|plugin|plugins|config|configuration|flag|flags|option|options|extension|"
+            r"preset|presets) (?:to|for|in|of) §",
+        ),
+        (
+            "service",
+            0.8,
+            r"§ (?:is|was|went|goes) (?:down|up|unavailable|unreachable|degraded|overloaded|"
+            r"healthy|unhealthy|restarted|redeployed|scaled)\b",
+        ),
+        (
+            "service",
+            0.8,
+            r"§ (?:returns|returned|responds|responded|exposes|exposed|listens|serves|served|"
+            r"times out|timed out|stores|stored|holds|caches|cached|replicates|indexes|"
+            r"runs on|hosts|accepts|rejects|throttles|rate-limits) ",
+        ),
+        (
+            "service",
+            0.8,
+            r"(?:hit|hits|query|queries|queried|call|calls|called|write|writes|written|wrote|"
+            r"read|reads|stored|store|cached|queued|published|uploaded|backed up|flow|flows|"
+            r"routed|sent|connect|connects|connected|persist|persisted|indexed|replicated) "
+            r"(?:\w+ )?(?:to|in|into|from|through|via|on) §",
+        ),
+        (
+            "service",
+            0.7,
+            r"(?:push|pushed|enqueue|enqueued|write|writes|writing|load|loads|loading|fetch|fetches|"
+            r"fetching|pull|pulls|stream|streams|streaming|send|sends|sending|upload|uploads|"
+            r"uploading|dump|dumps|sync|syncs|syncing|replicate|replicating|store|storing|coming|"
+            r"comes|serve|serving|proxy|proxied|route|routing) (?:[\w'-]+ ){0,3}"
+            r"(?:to|into|from|in|via|through|over to) §",
+        ),
+        (
+            "service",
+            0.7,
+            r"(?:integration|integrations|webhooks?|sdk|client|connections?|calls?|requests?|"
+            r"queries|outage|downtime|quota|credentials|api keys?) (?:with|to|from|for|against|on) §",
+        ),
+        (
+            "service",
+            0.75,
+            r"(?:restart|restarted|deploy|deployed|scale|scaled|provision|provisioned|"
+            r"query|queried|hit|hits|rely on|relies on|depend on|depends on) (?:the )?§",
+        ),
         # "raised a KeyError", "fails with ECONNRESET"; "Raise MAX_RETRIES to 5" is a setting.
         ("error", 0.85, r"(?:raise|raises|raised|throw|throws|threw|thrown) (?:a |an |the )§"),
         ("error", 0.85, r"(?:raise|raises|raised|throw|throws|threw|thrown) §(?! to \d)"),
-        ("error", 0.85, r"(?:hit|hits|hitting|see|sees|seeing|saw|get|gets|got|getting|report|reports|reported|"
-                        r"catch|catches|caught|fail|fails|failed|failing|crash|crashes|crashed|die|dies|died|"
-                        r"abort|aborts|aborted) (?:with |on |from )?(?:a |an |the )?§"),
-        ("error", 0.75, r"(?:caused|causes|cause|causing|trigger|triggers|triggered|fix|fixes|fixed|avoid|"
-                        r"prevent|prevents|prevented) (?:a |an |the )?§"),
-        ("error", 0.75, r"§ (?:crashes|crashed|occurs|occurred|happens|happened|is raised|was raised|"
-                        r"is thrown|was thrown|keeps happening)\b"),
-        ("event", 0.75, r"(?:during|throughout|ahead of|attend|attended|attending|at the time of) "
-                        r"(?:the )?§(?:[ .,]|$)"),
+        (
+            "error",
+            0.85,
+            r"(?:hit|hits|hitting|see|sees|seeing|saw|get|gets|got|getting|report|reports|reported|"
+            r"catch|catches|caught|fail|fails|failed|failing|crash|crashes|crashed|die|dies|died|"
+            r"abort|aborts|aborted) (?:with |on |from )?(?:a |an |the )?§",
+        ),
+        (
+            "error",
+            0.75,
+            r"(?:caused|causes|cause|causing|trigger|triggers|triggered|fix|fixes|fixed|avoid|"
+            r"prevent|prevents|prevented) (?:a |an |the )?§",
+        ),
+        (
+            "error",
+            0.75,
+            r"§ (?:crashes|crashed|occurs|occurred|happens|happened|is raised|was raised|"
+            r"is thrown|was thrown|keeps happening)\b",
+        ),
+        (
+            "event",
+            0.75,
+            r"(?:during|throughout|ahead of|attend|attended|attending|at the time of) "
+            r"(?:the )?§(?:[ .,]|$)",
+        ),
         ("event", 0.6, r"(?:before|after|since|over) (?:the )?§(?:[ .,]|$)"),
-        ("event", 0.85, r"§ (?:starts|started|begins|began|ends|ended|kicks off|kicked off|takes place|"
-                        r"took place|was held|is held|is scheduled|was scheduled|was postponed|"
-                        r"was cancelled|was canceled)\b"),
-        ("event", 0.75, r"(?:demoed|presented|spoke|talked|announced|keynote|booth) (?:[\w'-]+ ){0,3}(?:at|during) "
-                        r"(?:the )?§"),
+        (
+            "event",
+            0.85,
+            r"§ (?:starts|started|begins|began|ends|ended|kicks off|kicked off|takes place|"
+            r"took place|was held|is held|is scheduled|was scheduled|was postponed|"
+            r"was cancelled|was canceled)\b",
+        ),
+        (
+            "event",
+            0.75,
+            r"(?:demoed|presented|spoke|talked|announced|keynote|booth) (?:[\w'-]+ ){0,3}(?:at|during) "
+            r"(?:the )?§",
+        ),
         ("event", 0.85, r"(?:closed|raised|led|announced) (?:the |a |our |their )?§ (?:round|in)\b"),
-        ("event", 0.8, r"(?:registration|register|tickets?|talks?|sessions?|attendees|speakers|keynote|agenda|"
-                       r"booth|cfp|venue|recap|after-party) (?:for|at|of|to) (?:the )?§"),
-        ("event", 0.7, r"(?:travel+ing|registered|signed up|preparing|prepping|heading out|leaving) for "
-                       r"(?:the )?§"),
+        (
+            "event",
+            0.8,
+            r"(?:registration|register|tickets?|talks?|sessions?|attendees|speakers|keynote|agenda|"
+            r"booth|cfp|venue|recap|after-party) (?:for|at|of|to) (?:the )?§",
+        ),
+        (
+            "event",
+            0.7,
+            r"(?:travel+ing|registered|signed up|preparing|prepping|heading out|leaving) for "
+            r"(?:the )?§",
+        ),
         ("event", 0.7, r"(?:carried over|left over|rolled over|spilled over) from (?:the )?§"),
-        ("document", 0.8, r"§ (?:defines?|defined|specif(?:y|ies)|specified|recommends?|recommended|records|"
-                          r"recorded|describes?|described|proposes?|proposed|lists|listed|forbids?|forbade|"
-                          r"requires|mandates|outlines|documents|states|covers|explains|summarizes|summarises)\b"),
-        ("document", 0.75, r"(?:read|reading|follow|following|see|per|according to|as described in|"
-                           r"defined in|documented in|draft|drafted|wrote|written|publish|published|update|"
-                           r"updated|edit|edited|review|reviewed|reviewing|sign|signed|link to|linked|cite|"
-                           r"cites|cited|citing|quote|quoted|consult|consulted|licensed under) (?:the )?§"),
-        ("document", 0.75, r"(?:section|chapter|page|clause|paragraph|appendix|footnote|excerpt|passage|draft|"
-                           r"revision|author|authors|editor|sign-off) (?:[\w'-]+ ){0,4}(?:in|of|from) "
-                           r"(?:the )?§"),
+        (
+            "document",
+            0.8,
+            r"§ (?:defines?|defined|specif(?:y|ies)|specified|recommends?|recommended|records|"
+            r"recorded|describes?|described|proposes?|proposed|lists|listed|forbids?|forbade|"
+            r"requires|mandates|outlines|documents|states|covers|explains|summarizes|summarises)\b",
+        ),
+        (
+            "document",
+            0.75,
+            r"(?:read|reading|follow|following|see|per|according to|as described in|"
+            r"defined in|documented in|draft|drafted|wrote|written|publish|published|update|"
+            r"updated|edit|edited|review|reviewed|reviewing|sign|signed|link to|linked|cite|"
+            r"cites|cited|citing|quote|quoted|consult|consulted|licensed under) (?:the )?§",
+        ),
+        (
+            "document",
+            0.75,
+            r"(?:section|chapter|page|clause|paragraph|appendix|footnote|excerpt|passage|draft|"
+            r"revision|author|authors|editor|sign-off) (?:[\w'-]+ ){0,4}(?:in|of|from) "
+            r"(?:the )?§",
+        ),
     )
 )
 

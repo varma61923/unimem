@@ -21,9 +21,7 @@ def _app(*, max_concurrent: int, timeout_seconds: int, delay: float = 0.0) -> St
         return PlainTextResponse("ok")
 
     app = Starlette(routes=[Route("/x", handler)])
-    app.add_middleware(
-        LoadShedMiddleware, max_concurrent=max_concurrent, timeout_seconds=timeout_seconds
-    )
+    app.add_middleware(LoadShedMiddleware, max_concurrent=max_concurrent, timeout_seconds=timeout_seconds)
     return app
 
 

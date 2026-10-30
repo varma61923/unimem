@@ -15,10 +15,12 @@ def fake_model(reply: dict):
         def do_POST(self):
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             prompts.append(body["messages"][-1]["content"])
-            payload = json.dumps({
-                "choices": [{"message": {"role": "assistant", "content": json.dumps(reply)}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
-            }).encode()
+            payload = json.dumps(
+                {
+                    "choices": [{"message": {"role": "assistant", "content": json.dumps(reply)}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+                }
+            ).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))

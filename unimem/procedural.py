@@ -6,6 +6,7 @@ Adapted from Mem0 procedural memory and Letta episodic action logs:
 - Enforces token budgets and tokens-per-retrieval accounting to prevent benchmark gaming.
 - Supports serialization, parsing, retrieval, and disk persistence in the UniMem store.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -195,15 +196,17 @@ def list_procedural_memories(root: str, *, agent_id: str | None = None) -> list[
             if agent_id and data.get("agent_id") != agent_id:
                 continue
             mem = ProceduralMemory.from_dict(data)
-            items.append({
-                "id": mem.id,
-                "task_objective": mem.task_objective,
-                "progress_status": mem.progress_status,
-                "agent_id": mem.agent_id,
-                "steps_count": len(mem.steps),
-                "token_estimate": mem.token_count,
-                "updated_at": mem.updated_at,
-            })
+            items.append(
+                {
+                    "id": mem.id,
+                    "task_objective": mem.task_objective,
+                    "progress_status": mem.progress_status,
+                    "agent_id": mem.agent_id,
+                    "steps_count": len(mem.steps),
+                    "token_estimate": mem.token_count,
+                    "updated_at": mem.updated_at,
+                }
+            )
         except Exception:
             continue
     items.sort(key=lambda x: str(x.get("updated_at", "")), reverse=True)

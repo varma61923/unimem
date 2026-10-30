@@ -1,4 +1,5 @@
 """Retrieval telemetry reports raw score scales without leaking query contents."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -82,11 +83,21 @@ def test_empty_recall_reports_zero_raw_score_without_claiming_a_hit(tmp_path, mo
 def _conversation_options(**changes):
     from unimem.conversation import Options
 
-    return Options(**{
-        "embedder": None, "rerank": None, "entity_boost": 0.0, "recency_boost": 0.0,
-        "graph_hops": 0, "profile_facts": 0, "instructions": 0, "summaries": False,
-        "neighbours_before": 0, "neighbours_after": 0, **changes,
-    })
+    return Options(
+        **{
+            "embedder": None,
+            "rerank": None,
+            "entity_boost": 0.0,
+            "recency_boost": 0.0,
+            "graph_hops": 0,
+            "profile_facts": 0,
+            "instructions": 0,
+            "summaries": False,
+            "neighbours_before": 0,
+            "neighbours_after": 0,
+            **changes,
+        }
+    )
 
 
 def _conversation_spans(tracer):
@@ -101,10 +112,13 @@ def test_direct_conversation_quality_is_identical_on_fresh_and_cached_paths(tmp_
     query = "parser validates JSON"
     private_space = "private-user-space-uncaptured"
     with Store(str(tmp_path), private_space) as store:
-        store.add("private-session-uncaptured", [
-            {"speaker": "operator", "text": "The parser validates JSON before execution in the private vault."},
-            {"speaker": "operator", "text": "The parser validates JSON before saving state."},
-        ])
+        store.add(
+            "private-session-uncaptured",
+            [
+                {"speaker": "operator", "text": "The parser validates JSON before execution in the private vault."},
+                {"speaker": "operator", "text": "The parser validates JSON before saving state."},
+            ],
+        )
         fresh = conversation_recall(store, query, options=_conversation_options())
         assert len(fresh.turns) == 2
         # Public callers cannot poison the retained summary on the cache hit.
@@ -121,8 +135,13 @@ def test_direct_conversation_quality_is_identical_on_fresh_and_cached_paths(tmp_
             assert values["unimem.recall_abstained"] is False
             assert not any(key.endswith("recall_hit") for key in values)
             wire = repr(values)
-            for private in (query, private_space, "private-session-uncaptured", "private-secret-uncaptured",
-                            "The parser validates JSON before execution in the private vault."):
+            for private in (
+                query,
+                private_space,
+                "private-session-uncaptured",
+                "private-secret-uncaptured",
+                "The parser validates JSON before execution in the private vault.",
+            ):
                 assert private not in wire
         assert fields[1]["unimem.cached"] is True
         assert cached.explain["retrieval_score"]["top"] == pytest.approx(1 / 61)
@@ -170,14 +189,28 @@ def test_direct_conversation_quality_includes_delivered_second_pass_scores(tmp_p
     query = "Which tomatoes and peppers are on the trellis?"
     with Store(str(tmp_path), "garden") as store:
         for index in range(2):
-            store.add(f"tomatoes-{index}", [{
-                "speaker": "Ana", "text": f"Trellis tomatoes, trellis tomatoes: trellis {index} of tomatoes.",
-            }], session_at=f"2024-05-{index + 1:02d}")
+            store.add(
+                f"tomatoes-{index}",
+                [
+                    {
+                        "speaker": "Ana",
+                        "text": f"Trellis tomatoes, trellis tomatoes: trellis {index} of tomatoes.",
+                    }
+                ],
+                session_at=f"2024-05-{index + 1:02d}",
+            )
         for index in range(4):
-            store.add(f"peppers-{index}", [{
-                "speaker": "Ana", "text": f"Long chatter {index} about the weekend, the weather, the traffic, "
-                "the neighbours, the news and also some peppers.",
-            }], session_at=f"2024-06-{index + 10:02d}")
+            store.add(
+                f"peppers-{index}",
+                [
+                    {
+                        "speaker": "Ana",
+                        "text": f"Long chatter {index} about the weekend, the weather, the traffic, "
+                        "the neighbours, the news and also some peppers.",
+                    }
+                ],
+                session_at=f"2024-06-{index + 10:02d}",
+            )
         first = conversation_recall(store, query, options=_conversation_options(pool=2, budget=400))
         second = conversation_recall(store, query, options=_conversation_options(pool=2, budget=400, second_pass=True))
         cached = conversation_recall(store, query, options=_conversation_options(pool=2, budget=400, second_pass=True))
@@ -203,8 +236,9 @@ def test_direct_profile_only_context_has_no_invented_ranking_score(tmp_path, mon
     with Store(str(tmp_path), "profile") as store:
         store.add("s", [{"speaker": "Ana", "text": "I live in London."}], session_at="2025-01-01")
         for _ in range(2):
-            result = conversation_recall(store, "Where does Ana live?",
-                                         options=_conversation_options(pool=0, profile_facts=4))
+            result = conversation_recall(
+                store, "Where does Ana live?", options=_conversation_options(pool=0, profile_facts=4)
+            )
             assert "London" in result.context and not result.ranked
             assert result.explain["confidence"] == 1.0
     for fields in _conversation_spans(tracer):

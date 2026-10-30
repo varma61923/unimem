@@ -1,4 +1,5 @@
 """Verify the installed local CLI can store and recall a fact without a model or server."""
+
 from __future__ import annotations
 
 import argparse
@@ -24,8 +25,7 @@ def main() -> int:
     args = parser.parse_args()
     cli = shutil.which("unimem")
     if not cli:
-        print("unimem is not on PATH; install this checkout with `python -m pip install -e .` first.",
-              file=sys.stderr)
+        print("unimem is not on PATH; install this checkout with `python -m pip install -e .` first.", file=sys.stderr)
         return 2
 
     env = os.environ.copy()

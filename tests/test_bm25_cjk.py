@@ -67,8 +67,7 @@ class TestScorerIdentity:
             ("p2", _fm("other", "cache timeout retry backoff")),
         ]
         for scorer in ("adaptive-v1", "idf-v3", "idf-v2", "count-v1"):
-            ranked = retrieval.rank_lessons(
-                "payment refund failure", lessons, scorer=scorer, floor=0.0)
+            ranked = retrieval.rank_lessons("payment refund failure", lessons, scorer=scorer, floor=0.0)
             assert ranked[0].slug == "exact", scorer
             assert "other" not in [r.slug for r in ranked], scorer
 
@@ -83,21 +82,20 @@ class TestScorerIdentity:
 
     def test_bm25_cached_index_matches_fresh(self):
         lessons = [
-            ("p%d" % i, _fm(
-                "doc-%d" % i,
-                "payment refund ledger %s" % ("batch" if i % 2 else "checkout"),
-                tags=["billing"] if i % 3 == 0 else [],
-            ))
+            (
+                "p%d" % i,
+                _fm(
+                    "doc-%d" % i,
+                    "payment refund ledger %s" % ("batch" if i % 2 else "checkout"),
+                    tags=["billing"] if i % 3 == 0 else [],
+                ),
+            )
             for i in range(30)
         ]
-        tc = lesson_cache.TermCache(
-            {p: lesson_cache.field_terms(fm) for p, fm in lessons})
+        tc = lesson_cache.TermCache({p: lesson_cache.field_terms(fm) for p, fm in lessons})
         tc.stamps = {p: (1, i) for i, (p, _fm) in enumerate(lessons)}
-        fresh = retrieval.rank_lessons(
-            "payment refund", lessons, scorer="bm25-v1", top_k=10)
-        cached = retrieval.rank_lessons(
-            "payment refund", lessons, scorer="bm25-v1", top_k=10,
-            term_cache=tc)
+        fresh = retrieval.rank_lessons("payment refund", lessons, scorer="bm25-v1", top_k=10)
+        cached = retrieval.rank_lessons("payment refund", lessons, scorer="bm25-v1", top_k=10, term_cache=tc)
         assert [r.__dict__ for r in cached] == [r.__dict__ for r in fresh]
 
 
@@ -108,14 +106,12 @@ class TestBm25Saturation:
             ("p1", _fm("multi", "payment glitch here", "", ["payment"], "payment")),
         ]
         for i in range(6):
-            lessons.append(
-                ("f%d" % i, _fm("fill%d" % i, "payment processing notes %d" % i)))
+            lessons.append(("f%d" % i, _fm("fill%d" % i, "payment processing notes %d" % i)))
         return lessons
 
     def test_repeated_term_gives_diminishing_returns(self):
         lessons = self._corpus()
-        ranked = retrieval.rank_lessons(
-            "payment", lessons, scorer="bm25-v1", floor=0.0, top_k=10)
+        ranked = retrieval.rank_lessons("payment", lessons, scorer="bm25-v1", floor=0.0, top_k=10)
         rel = {r.slug: r.relevance for r in ranked}
         assert ranked[0].slug == "multi"
         assert rel["multi"] > rel["once"] > 0
@@ -123,8 +119,7 @@ class TestBm25Saturation:
 
     def test_count_scorer_stays_linear_as_contrast(self):
         lessons = self._corpus()
-        ranked = retrieval.rank_lessons(
-            "payment", lessons, scorer="count-v1", floor=0.0, top_k=10)
+        ranked = retrieval.rank_lessons("payment", lessons, scorer="count-v1", floor=0.0, top_k=10)
         rel = {r.slug: r.relevance for r in ranked}
         assert rel["multi"] / rel["once"] == pytest.approx(4.0)
 
@@ -151,8 +146,7 @@ class TestCjkLane:
             "snake_case and kebab-case 123",
         ]
         for text in samples:
-            want = [w for w in WORD_RE.findall(text.lower())
-                    if w not in STOPWORDS and len(w) > 1]
+            want = [w for w in WORD_RE.findall(text.lower()) if w not in STOPWORDS and len(w) > 1]
             assert _tokenize(text) == want, text
 
     def test_segment_cjk_bigrams(self):
@@ -167,8 +161,7 @@ class TestCjkLane:
             ("p1", _fm("en-pay", "Fix payment failure on checkout retry")),
         ]
         for scorer in retrieval.LEXICAL_SCORERS:
-            ranked = retrieval.rank_lessons(
-                "深度学习", lessons, scorer=scorer, floor=0.0)
+            ranked = retrieval.rank_lessons("深度学习", lessons, scorer=scorer, floor=0.0)
             assert [r.slug for r in ranked] == ["cjk-deep"], scorer
 
     def test_partial_compound_overlap_matches(self):
@@ -176,8 +169,7 @@ class TestCjkLane:
             ("p0", _fm("cjk-deep", "深度学习模型训练方法")),
             ("p1", _fm("en-pay", "Fix payment failure on checkout retry")),
         ]
-        ranked = retrieval.rank_lessons(
-            "学习模型", lessons, scorer="bm25-v1", floor=0.0)
+        ranked = retrieval.rank_lessons("学习模型", lessons, scorer="bm25-v1", floor=0.0)
         assert [r.slug for r in ranked] == ["cjk-deep"]
 
     def test_cjk_query_does_not_match_english_only_doc(self):
@@ -185,8 +177,7 @@ class TestCjkLane:
             ("p0", _fm("cjk-deep", "深度学习模型训练方法")),
             ("p1", _fm("en-pay", "Fix payment failure on checkout retry")),
         ]
-        ranked = retrieval.rank_lessons(
-            "payment failure", lessons, scorer="bm25-v1", floor=0.0)
+        ranked = retrieval.rank_lessons("payment failure", lessons, scorer="bm25-v1", floor=0.0)
         assert [r.slug for r in ranked] == ["en-pay"]
 
     def test_has_cjk(self):
@@ -197,15 +188,13 @@ class TestCjkLane:
 
 def _save_load_roundtrip(tmp_path, scorer):
     lessons = [
-        ("p0", _fm("a", "payment refund failure", "when payment fails",
-                   ["payment"], "billing")),
+        ("p0", _fm("a", "payment refund failure", "when payment fails", ["payment"], "billing")),
         ("p1", _fm("b", "cache timeout retry")),
         ("p2", _fm("cjk", "深度学习模型训练方法", domain="机器学习")),
     ]
     index = retrieval._build_index(lessons, None, scorer)
     cache_dir = str(tmp_path)
-    fingerprint = tuple((p, (1, 10 + i, 100 + i, 150 + i, 200 + i))
-                        for i, (p, _fm) in enumerate(lessons))
+    fingerprint = tuple((p, (1, 10 + i, 100 + i, 150 + i, 200 + i)) for i, (p, _fm) in enumerate(lessons))
     assert corpus_bin.save(cache_dir, scorer, fingerprint, index) is True
     loaded = corpus_bin.load(cache_dir, scorer, lessons, fingerprint)
     assert loaded is not None
@@ -233,8 +222,8 @@ class TestCorpusBinV3:
         for query in ("payment refund", "深度学习"):
             want = retrieval.rank_lessons(query, lessons, scorer=scorer, floor=0.0)
             assert [r.__dict__ for r in want] == [
-                r.__dict__ for r in retrieval.rank_lessons(
-                    query, lessons, scorer=scorer, floor=0.0)]
+                r.__dict__ for r in retrieval.rank_lessons(query, lessons, scorer=scorer, floor=0.0)
+            ]
 
     @pytest.mark.parametrize("version", [1, 2])
     def test_legacy_blob_falls_back_to_rebuild(self, tmp_path, version):
@@ -245,8 +234,7 @@ class TestCorpusBinV3:
         blob[4] = version
         Path(path).write_bytes(bytes(blob))
         assert corpus_bin.load(str(tmp_path), scorer, lessons, fingerprint) is None
-        ranked = retrieval.rank_lessons(
-            "payment refund", lessons, scorer=scorer, floor=0.0)
+        ranked = retrieval.rank_lessons("payment refund", lessons, scorer=scorer, floor=0.0)
         assert ranked[0].slug == "a"
 
     @pytest.mark.parametrize("identity_field", range(5))

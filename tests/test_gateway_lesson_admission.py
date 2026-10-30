@@ -1,4 +1,5 @@
 """Receipt and authoritative metadata checks survive warm gateway ranking/body caches."""
+
 from __future__ import annotations
 
 import os
@@ -20,9 +21,15 @@ def root(tmp_path, monkeypatch):
 
 
 def remember(gw, occasion: str):
-    status, response = call(gw, "POST", "/v1/recall", {
-        "occasion_id": occasion, "query": "payment retries stable idempotency key",
-    })
+    status, response = call(
+        gw,
+        "POST",
+        "/v1/recall",
+        {
+            "occasion_id": occasion,
+            "query": "payment retries stable idempotency key",
+        },
+    )
     assert status == 200
     return response
 
@@ -52,7 +59,7 @@ def test_durable_revocation_survives_old_active_file_restore(root):
     gw = gateway.Gateway(root, token=TOKEN)
     assert remember(gw, "warm")["deliver"]
     path = lesson_io.lesson_path(root, "lesson_good")
-    old = Path(path).read_text(encoding='utf-8')
+    old = Path(path).read_text(encoding="utf-8")
     lesson_admission.revoke(root, path, actor="console")
     assert remember(gw, "revoked")["deliver"] == []
     with open(path, "w", encoding="utf-8") as file:

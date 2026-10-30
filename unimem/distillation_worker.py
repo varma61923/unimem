@@ -1,4 +1,5 @@
 """Durable failure-to-lesson jobs over the ordinary guarded CLI pipeline."""
+
 from __future__ import annotations
 
 import math
@@ -26,9 +27,14 @@ def distill_job(root: str, payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(failed_only, bool) or not isinstance(semantic_dedup, bool):
         raise ValueError("distillation switches must be booleans")
     score, similarity = payload.get("min_validation_score", 0.7), payload.get("similarity", 0.3)
-    if (isinstance(score, bool) or not isinstance(score, (int, float))
-            or isinstance(similarity, bool) or not isinstance(similarity, (int, float))
-            or not math.isfinite(similarity) or not 0 <= similarity <= 1):
+    if (
+        isinstance(score, bool)
+        or not isinstance(score, (int, float))
+        or isinstance(similarity, bool)
+        or not isinstance(similarity, (int, float))
+        or not math.isfinite(similarity)
+        or not 0 <= similarity <= 1
+    ):
         raise ValueError("distillation scores must be finite numbers in [0, 1]")
     ExtractionPolicy(min_validation_score=float(score))
     minimum = payload.get("min_cluster", 2)
@@ -37,9 +43,21 @@ def distill_job(root: str, payload: dict[str, Any]) -> dict[str, Any]:
     agent_type = payload.get("agent_type", "")
     if not isinstance(agent_type, str) or len(agent_type) > 128:
         raise ValueError("agent_type must be a string of at most 128 characters")
-    argv = [sys.executable, "-m", "unimem.cli", "distill", "--dest", root, "--extract",
-            "--min-validation-score", str(score), "--similarity-threshold", str(similarity),
-            "--min-cluster-size", str(minimum)]
+    argv = [
+        sys.executable,
+        "-m",
+        "unimem.cli",
+        "distill",
+        "--dest",
+        root,
+        "--extract",
+        "--min-validation-score",
+        str(score),
+        "--similarity-threshold",
+        str(similarity),
+        "--min-cluster-size",
+        str(minimum),
+    ]
     if failed_only:
         argv.append("--failed")
     if semantic_dedup:

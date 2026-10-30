@@ -17,7 +17,7 @@ def test_t2_ingest_empty_file_rejection(tmp_path: Path):
 
 def test_t2_ingest_corrupt_jsonl_error_handling(tmp_path: Path):
     corrupt_file = tmp_path / "corrupt.jsonl"
-    corrupt_file.write_text("{\"title\": \"Valid line\"}\nNOT_VALID_JSON{{{\n", encoding="utf-8")
+    corrupt_file.write_text('{"title": "Valid line"}\nNOT_VALID_JSON{{{\n', encoding="utf-8")
 
     with pytest.raises(failure_import.FailureImportError, match="not valid JSON"):
         failure_import.read_failures(str(corrupt_file), fmt_override="jsonl")
@@ -46,7 +46,7 @@ def test_t2_ingest_unsupported_format_rejection(tmp_path: Path):
 
 def test_t2_ingest_duplicate_records_deduplication(tmp_path: Path):
     dup_file = tmp_path / "duplicates.jsonl"
-    record = "{\"title\": \"Database lock timeout\", \"text\": \"Lock timeout on accounts\"}\n"
+    record = '{"title": "Database lock timeout", "text": "Lock timeout on accounts"}\n'
     dup_file.write_text(record * 5, encoding="utf-8")
 
     failures, stats = failure_import.read_failures(str(dup_file))

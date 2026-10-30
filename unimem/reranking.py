@@ -22,6 +22,7 @@ weighted reciprocal-rank fusion of the two. A reranker that fails (no key, no
 network, offline mode, a malformed reply) leaves the first-stage order intact
 and says why; it never sinks the retrieval it was asked to improve.
 """
+
 from __future__ import annotations
 
 import math
@@ -56,7 +57,7 @@ def order_scores(scores: Sequence[float], top_n: int | None = None) -> list[Hit]
         raise RerankError("the reranker returned a non-finite score")
     ranked = sorted(range(len(values)), key=lambda i: (-values[i], i))
     if top_n is not None:
-        ranked = ranked[:max(0, top_n)]
+        ranked = ranked[: max(0, top_n)]
     return [Hit(i, values[i]) for i in ranked]
 
 
@@ -89,7 +90,7 @@ class TextReranker:
     max_chars = 4_000
 
     def clip(self, documents: Sequence[str]) -> list[str]:
-        return [str(d or " ")[:self.max_chars] for d in documents]
+        return [str(d or " ")[: self.max_chars] for d in documents]
 
     def score(self, query: str, documents: list[str]) -> list[float]:
         raise NotImplementedError
@@ -152,8 +153,10 @@ def resolve(choice) -> TextReranker | None:
 
         choice = providers.reranker(choice)
     if not callable(getattr(choice, "rerank", None)):
-        raise ConfigurationError("this reranker reorders lessons only; choose a text reranker such as "
-                                 "cross-encoder, bge-reranker-v2-m3, cohere, voyage, jina or llm")
+        raise ConfigurationError(
+            "this reranker reorders lessons only; choose a text reranker such as "
+            "cross-encoder, bge-reranker-v2-m3, cohere, voyage, jina or llm"
+        )
     return choice
 
 
@@ -170,8 +173,10 @@ def load(choice) -> tuple[TextReranker | None, str]:
         from unimem import providers
 
         if choice.partition(":")[0] not in providers.reranker_names():
-            raise ValueError(f"unknown reranker {choice!r}; choose from none, "
-                             + ", ".join(n for n in providers.reranker_names() if n != "mmr"))
+            raise ValueError(
+                f"unknown reranker {choice!r}; choose from none, "
+                + ", ".join(n for n in providers.reranker_names() if n != "mmr")
+            )
     try:
         return resolve(choice), ""
     except CapabilityError as exc:
@@ -187,9 +192,16 @@ def check_options(depth: object, blend: object) -> None:
         raise ValueError("rerank_blend must be a number between 0 and 1")
 
 
-def stage(query: str, ids: Sequence[str], text_of: Mapping[str, str], reranker: TextReranker, *,
-          depth: int = DEFAULT_DEPTH, blend: float = DEFAULT_BLEND,
-          scores: dict | None = None) -> tuple[list[str], dict]:
+def stage(
+    query: str,
+    ids: Sequence[str],
+    text_of: Mapping[str, str],
+    reranker: TextReranker,
+    *,
+    depth: int = DEFAULT_DEPTH,
+    blend: float = DEFAULT_BLEND,
+    scores: dict | None = None,
+) -> tuple[list[str], dict]:
     """Rerank the first `depth` of `ids` (first-stage order) and blend the two orders.
 
     Returns the new order of every id and a report for ``explain``: which
@@ -201,16 +213,25 @@ def stage(query: str, ids: Sequence[str], text_of: Mapping[str, str], reranker: 
     blend = float(blend)
     ids = list(ids)
     head = [i for i in ids[:depth] if i in text_of]
-    report: dict = {"reranker": getattr(reranker, "name", type(reranker).__name__), "depth": depth,
-                    "blend": blend, "items": len(head), "latency_ms": 0.0, "moved": 0}
+    report: dict = {
+        "reranker": getattr(reranker, "name", type(reranker).__name__),
+        "depth": depth,
+        "blend": blend,
+        "items": len(head),
+        "latency_ms": 0.0,
+        "moved": 0,
+    }
     if len(head) < 2:
         return ids, report
     started = time.perf_counter()
     try:
         hits = reranker.rerank(query, [text_of[i] for i in head], top_n=len(head))
     except Exception as exc:  # noqa: BLE001 - a failed reranker keeps the first stage, and says why
-        report.update(latency_ms=round((time.perf_counter() - started) * 1000, 1), items=0,
-                      error=f"{type(exc).__name__}: {exc}"[:300])
+        report.update(
+            latency_ms=round((time.perf_counter() - started) * 1000, 1),
+            items=0,
+            error=f"{type(exc).__name__}: {exc}"[:300],
+        )
         return ids, report
     report["latency_ms"] = round((time.perf_counter() - started) * 1000, 1)
     note = getattr(reranker, "last_fallback", "")

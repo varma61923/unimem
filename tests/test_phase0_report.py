@@ -1,4 +1,5 @@
 """Report claim boundaries, source consistency and untrusted-label escaping."""
+
 from __future__ import annotations
 
 import copy
@@ -21,34 +22,63 @@ def fixture(path, *, development=None, verified=False):
     path.mkdir()
     strict = development is not None
     identity = "q2" if strict else "q1"
-    contract = {"unit": "selected-tokenizer-context-text", "counter": {"name": "tiktoken:cl100k_base"},
-                "max_attempts": 16, "full_context": "uncapped"}
-    manifest = {"scope": ("unjudged excluded-question strict-budget confirmation" if strict
-                           else "unjudged development retrieval evidence"),
-                "budgets_text_tokens" if strict else "budgets_estimated": [1000, 2000],
-                "exact_text_counter": "tiktoken:cl100k_base", "attempts": [],
-                "selection": {"locomo": {"input_sha256": INPUTS["locomo"][1], "question_ids": [identity]}}}
+    contract = {
+        "unit": "selected-tokenizer-context-text",
+        "counter": {"name": "tiktoken:cl100k_base"},
+        "max_attempts": 16,
+        "full_context": "uncapped",
+    }
+    manifest = {
+        "scope": (
+            "unjudged excluded-question strict-budget confirmation"
+            if strict
+            else "unjudged development retrieval evidence"
+        ),
+        "budgets_text_tokens" if strict else "budgets_estimated": [1000, 2000],
+        "exact_text_counter": "tiktoken:cl100k_base",
+        "attempts": [],
+        "selection": {"locomo": {"input_sha256": INPUTS["locomo"][1], "question_ids": [identity]}},
+    }
     if strict:
         manifest.update(context_budget=contract, development_manifest_sha256=development["source_manifest_sha256"])
         manifest["selection"]["locomo"].update(excluded_ids=["q1"], question_exclusions_sha256="bound")
-    report = {"answer_accuracy": None, "conditions": {},
-              "comparisons": {"lexical-vs-dense": {}, "lexical-vs-graphiti-episodic": {}}}
-    for label, profile in (('<img src=x onerror=alert(1)>', {"profile": "unimem"}),
-                           ("graphiti", {"profile": "graphiti-episodic"})):
+    report = {
+        "answer_accuracy": None,
+        "conditions": {},
+        "comparisons": {"lexical-vs-dense": {}, "lexical-vs-graphiti-episodic": {}},
+    }
+    for label, profile in (
+        ("<img src=x onerror=alert(1)>", {"profile": "unimem"}),
+        ("graphiti", {"profile": "graphiti-episodic"}),
+    ):
         if verified and label == "graphiti":
             profile["group_namespace"] = "sha256-canonical-space-utf8"
         budgets, sources = {}, {}
         for budget in ("1000", "2000"):
-            summary = {"overall": {"n": 1, "accuracy": None, "evidence": .5,
-                       "context_text_tokens": 900, "exact_budget_exceedances": 0},
-                       "by_type": {}, "bootstrap_95ci": {}, "profile": profile}
+            summary = {
+                "overall": {
+                    "n": 1,
+                    "accuracy": None,
+                    "evidence": 0.5,
+                    "context_text_tokens": 900,
+                    "exact_budget_exceedances": 0,
+                },
+                "by_type": {},
+                "bootstrap_95ci": {},
+                "profile": profile,
+            }
             evaluation = {"answer_enabled": False, "context_text_tokenizer": "tiktoken:cl100k_base"}
             if strict:
                 evaluation["context_budget"] = contract
-            source = {"overall": summary["overall"], "by_type": {}, "bootstrap_95ci": {},
-                      "retrieval_profile": profile, "dataset": "locomo",
-                      "rows": [{"id": identity, "context_text_tokens": 900}],
-                      "provenance": {"evaluation": evaluation, "sampling": {"question_exclusions_sha256": "bound"}}}
+            source = {
+                "overall": summary["overall"],
+                "by_type": {},
+                "bootstrap_95ci": {},
+                "retrieval_profile": profile,
+                "dataset": "locomo",
+                "rows": [{"id": identity, "context_text_tokens": 900}],
+                "provenance": {"evaluation": evaluation, "sampling": {"question_exclusions_sha256": "bound"}},
+            }
             budgets[budget], sources[budget] = summary, source
         report["conditions"][label] = budgets
         sha = dump(path / (label + ".json"), sources)
@@ -80,7 +110,7 @@ def test_verified_graphiti_namespace_retained(tmp_path):
 def test_reader_accuracy_cannot_be_mislabeled_as_unjudged(tmp_path):
     path = tmp_path / "raw"
     raw = fixture(path)
-    raw["conditions"]["graphiti"]["1000"]["overall"]["accuracy"] = .9
+    raw["conditions"]["graphiti"]["1000"]["overall"]["accuracy"] = 0.9
     dump(path / "scorecard.json", raw)
     with pytest.raises(ValueError, match="reader accuracy"):
         reviewed_experiment(path)
@@ -92,10 +122,10 @@ def test_report_escapes_source_labels_and_refuses_existing_output(tmp_path):
     fixture(confirm, development=reviewed_experiment(dev), verified=True)
     write_report(dev, confirm, out)
     markup = (out / "index.html").read_text()
-    assert '<img src=x' not in markup
-    assert '&lt;img src=x' in markup
-    assert 'Reader accuracy' in markup and 'Not run' in markup
-    assert 'different questions and budget contracts' in markup
+    assert "<img src=x" not in markup
+    assert "&lt;img src=x" in markup
+    assert "Reader accuracy" in markup and "Not run" in markup
+    assert "different questions and budget contracts" in markup
     before = (out / "reviewed-scorecard.json").read_bytes()
     with pytest.raises(FileExistsError):
         write_report(dev, confirm, out)
@@ -131,10 +161,12 @@ def test_edited_summary_source_or_contract_cannot_misstate_results(tmp_path, fau
     if fault in ("namespace", "metric"):
         key = "profile" if fault == "namespace" else "overall"
         field = "group_namespace" if fault == "namespace" else "evidence"
-        report["conditions"]["graphiti"]["1000"][key][field] = "sha256-canonical-space-utf8" if fault == "namespace" else .99
+        report["conditions"]["graphiti"]["1000"][key][field] = (
+            "sha256-canonical-space-utf8" if fault == "namespace" else 0.99
+        )
         dump(path / "scorecard.json", report)
     elif fault == "manifest-hash":
-        (path / "graphiti.json").write_text('{}')
+        (path / "graphiti.json").write_text("{}")
     else:
         manifest = json.loads((path / "manifest.json").read_text())
         manifest["exact_text_counter"] = "other"

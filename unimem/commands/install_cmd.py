@@ -7,24 +7,54 @@ import shutil
 
 from unimem import mcp_tools, paths
 
-TARGETS = ["claude-code", "cursor", "devin", "windsurf", "generic-mcp", "generic",
-           "codex", "copilot", "gemini", "opencode"]
+TARGETS = [
+    "claude-code",
+    "cursor",
+    "devin",
+    "windsurf",
+    "generic-mcp",
+    "generic",
+    "codex",
+    "copilot",
+    "gemini",
+    "opencode",
+]
 
 _HUB_TOOLS = [
-            "get_traces_batch", "contribute_traces_batch", "delete_traces_batch",
-    "search_traces", "contribute_trace", "get_trace", "vote_trace", "amend_trace", "list_tags",
-    "fleet_outcomes", "holdout_assign", "record_occasion_outcome",
+    "get_traces_batch",
+    "contribute_traces_batch",
+    "delete_traces_batch",
+    "search_traces",
+    "contribute_trace",
+    "get_trace",
+    "vote_trace",
+    "amend_trace",
+    "list_tags",
+    "fleet_outcomes",
+    "holdout_assign",
+    "record_occasion_outcome",
     "value_delivered",
     "working_set",
     "account_usage",
-    "delete_trace", "request_account_deletion", "confirm_account_deletion",
+    "delete_trace",
+    "request_account_deletion",
+    "confirm_account_deletion",
     "cancel_account_deletion",
-    "commons_overlap", "commons_search", "commons_export",
-    "submit_kb_entry", "list_my_kb_submissions",
-    "add_comment", "list_comments", "assign_trace", "unassign_trace",
-    "list_my_notifications", "mark_notification_read",
+    "commons_overlap",
+    "commons_search",
+    "commons_export",
+    "submit_kb_entry",
+    "list_my_kb_submissions",
+    "add_comment",
+    "list_comments",
+    "assign_trace",
+    "unassign_trace",
+    "list_my_notifications",
+    "mark_notification_read",
     "search_trace_content",
-    "tag_trace_subjects", "find_traces_by_subject", "purge_traces_by_subject",
+    "tag_trace_subjects",
+    "find_traces_by_subject",
+    "purge_traces_by_subject",
 ]
 
 _GENERIC_POINTER_SKILL = """---
@@ -261,13 +291,13 @@ def run(args: argparse.Namespace) -> int:
         server = {"command": "unimem", "args": ["serve", "--dest", root]}
         if args.target == "codex":
             # A detached fragment avoids overwriting the user's existing TOML.
-            config = "[mcp_servers.unimem]\ncommand = \"unimem\"\nargs = "+json.dumps(server["args"])+"\n"
+            config = '[mcp_servers.unimem]\ncommand = "unimem"\nargs = ' + json.dumps(server["args"]) + "\n"
             filename = os.path.join(dest, ".codex", "unimem.mcp.toml")
         else:
             key = "servers" if args.target == "copilot" else "mcpServers"
             config = json.dumps({key: {"unimem": server}}, indent=2)
             filename = os.path.join(dest, directories[args.target], "unimem.mcp.json")
-        _write(filename, config+"\n", base_dir=dest)
+        _write(filename, config + "\n", base_dir=dest)
         print(f"  SDK skill installed; merge MCP fragment {filename} into your assistant configuration")
     elif args.target == "claude-code":
         out = os.path.join(dest, ".claude", "skills", "unimem", "SKILL.md")

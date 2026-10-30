@@ -82,8 +82,9 @@ class TestMarketplaceOAuthDiscovery:
         return app
 
     async def test_resource_metadata_and_bearer_challenge_enable_oauth_discovery(self):
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self._app()),
-                                     base_url="https://memory.example.test") as client:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self._app()), base_url="https://memory.example.test"
+        ) as client:
             metadata = await client.get("/.well-known/oauth-protected-resource/mcp")
             denied = await client.get("/mcp")
         assert metadata.status_code == 200

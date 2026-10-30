@@ -31,9 +31,18 @@ async def _contribute(session_factory, config, org_id, title, agent_id="", **kw)
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         return await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title=title, context_text="ctx", solution_text="fix",
-            tags=[], agent_type="support", agent_id=agent_id, actor="test", **kw,
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title=title,
+            context_text="ctx",
+            solution_text="fix",
+            tags=[],
+            agent_type="support",
+            agent_id=agent_id,
+            actor="test",
+            **kw,
         )
 
 
@@ -50,9 +59,9 @@ async def _agents(session_factory, org_id):
 async def _age_traces(session_factory, org_id, days):
     async with session_scope(session_factory) as session:
         await session.execute(
-            update(Trace).where(Trace.org_id == org_id).values(
-                created_at=datetime.now(timezone.utc) - timedelta(days=days)
-            )
+            update(Trace)
+            .where(Trace.org_id == org_id)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(days=days))
         )
 
 
@@ -60,8 +69,7 @@ class TestCounting:
     async def test_distinct_named_agents_are_counted_once_each(self, session_factory, config, orgs):
         for i in range(3):
             for run in range(4):
-                await _contribute(session_factory, config, orgs["fleet"], f"t{i}-{run}",
-                                  agent_id=f"agent-{i}")
+                await _contribute(session_factory, config, orgs["fleet"], f"t{i}-{run}", agent_id=f"agent-{i}")
         a = await _agents(session_factory, orgs["fleet"])
         assert a["active"] == 3
         assert a["named"] == 3
@@ -131,8 +139,7 @@ class TestEnforcementBlocksExpansionNotOperation:
 
         for round_ in range(3):
             for i in range(cap):
-                await _contribute(session_factory, config, orgs["fleet"],
-                                  f"again-{round_}-{i}", agent_id=f"a{i}")
+                await _contribute(session_factory, config, orgs["fleet"], f"again-{round_}-{i}", agent_id=f"a{i}")
         assert (await _agents(session_factory, orgs["fleet"]))["active"] == cap
 
     async def test_a_new_agent_beyond_the_cap_is_refused(self, session_factory, config, orgs):
@@ -193,10 +200,8 @@ class TestEnforcementBlocksExpansionNotOperation:
         cap = plans.get("free").max_agents
         for i in range(cap):
             await _contribute(session_factory, config, orgs["fleet"], f"t{i}", agent_id=f"a{i}")
-        first = await _contribute(session_factory, config, orgs["fleet"], "keyed",
-                                  agent_id="a0", idempotency_key="k1")
-        replay = await _contribute(session_factory, config, orgs["fleet"], "keyed",
-                                   agent_id="a0", idempotency_key="k1")
+        first = await _contribute(session_factory, config, orgs["fleet"], "keyed", agent_id="a0", idempotency_key="k1")
+        replay = await _contribute(session_factory, config, orgs["fleet"], "keyed", agent_id="a0", idempotency_key="k1")
         assert first["id"] == replay["id"]
 
 
@@ -240,9 +245,7 @@ class TestStorage:
 
         await _contribute(session_factory, config, orgs["fleet"], "t", agent_id="worker-7")
         async with session_scope(session_factory) as session:
-            stored = await session.scalar(
-                select(Trace.agent_id).where(Trace.org_id == orgs["fleet"])
-            )
+            stored = await session.scalar(select(Trace.agent_id).where(Trace.org_id == orgs["fleet"]))
         assert stored == "worker-7"
 
         with pytest.raises(TraceRejected):

@@ -6,6 +6,7 @@ the logged system. Clause mappings must be verified against the Official Journal
 Snapshots retain both valid and record time and the actual retrieval receipts;
 a later correction cannot silently rewrite an earlier decision's pinned bytes.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -16,7 +17,7 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterator, cast
+from typing import Any, Iterator
 
 from unimem import _jsonl, frontmatter, hierarchical, lesson_io, lineage, memory_authority, paths, receipts
 from unimem import frontier_protocol as fp
@@ -68,8 +69,9 @@ def _directory(root: str, identity: str) -> str:
 def _canonical(value: Any, limit: int = MAX_PART_BYTES) -> bytes:
     """Canonical JSON bytes without the 1 MiB record bound, under an explicit part bound."""
     try:
-        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                             allow_nan=False).encode("utf-8")
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode(
+            "utf-8"
+        )
     except (RecursionError, TypeError, ValueError) as exc:
         raise ValueError("incident evidence must be finite JSON data") from exc
     if len(encoded) > limit:
@@ -128,8 +130,14 @@ def _lessons(root: str) -> list[dict[str, Any]]:
         if filename.stat().st_size > MAX_PART_BYTES:
             raise ValueError("snapshot lesson exceeds the evidence part bound")
         fm, body = frontmatter.read(str(filename))
-        records.append({"id": lesson_io.canonical_slug(filename.name), "frontmatter": fm,
-                        "body": body, "revision": lesson_io.current_revision(str(filename))})
+        records.append(
+            {
+                "id": lesson_io.canonical_slug(filename.name),
+                "frontmatter": fm,
+                "body": body,
+                "revision": lesson_io.current_revision(str(filename)),
+            }
+        )
     return records
 
 
@@ -149,8 +157,10 @@ def freeze(root: str, incident_id: str, valid_time: str) -> dict[str, Any]:
         if os.path.exists(directory) or os.path.exists(_path(root, incident_id)):
             raise ValueError("incident id already frozen; use a new incident id")
         moment = fp.now()
-        believed = [f.to_dict() for f in hierarchical.list_facts(root, status="", as_of=valid_time,
-                                                                 known_at=min(valid_time, moment))]
+        believed = [
+            f.to_dict()
+            for f in hierarchical.list_facts(root, status="", as_of=valid_time, known_at=min(valid_time, moment))
+        ]
         known = [f.to_dict() for f in hierarchical.list_facts(root, status="", as_of=valid_time, known_at=moment)]
         lesson_records = _lessons(root)
         history, corrupt = lesson_io.read_revisions(root)
@@ -163,28 +173,36 @@ def freeze(root: str, incident_id: str, valid_time: str) -> dict[str, Any]:
         for slug, proposals in retention.trials(root).items():
             for proposal in proposals:
                 try:
-                    rewrites["rewrite:" + proposal["id"]] = {"body": retention._text(root, proposal, "body"),
-                                                             "slug": slug}
+                    rewrites["rewrite:" + proposal["id"]] = {
+                        "body": retention._text(root, proposal, "body"),
+                        "slug": slug,
+                    }
                 except ValueError:
                     continue  # erased rewrite text cannot be pinned
-        identities = sorted({str(f["id"]) for f in [*believed, *known]}
-                            | {str(lesson["id"]) for lesson in lesson_records})
-        from unimem import allocation, evidence, holdout_io, integrity, retrieval_io
+        identities = sorted(
+            {str(f["id"]) for f in [*believed, *known]} | {str(lesson["id"]) for lesson in lesson_records}
+        )
+        from unimem import allocation, evidence, holdout_io, retrieval_io
 
         analysis = evidence.analyse(root)
         parts: dict[str, Any] = {
-            "facts.json": known, "facts_believed.json": believed, "lessons.json": lesson_records,
-            "lesson_history.json": history, "retrievals.json": retrieved, "held_ids.json": identities,
+            "facts.json": known,
+            "facts_believed.json": believed,
+            "lessons.json": lesson_records,
+            "lesson_history.json": history,
+            "retrievals.json": retrieved,
+            "held_ids.json": identities,
             "rewrites.json": rewrites,
             "lineage.json": {identity: lineage.explain(root, identity) for identity in identities},
             "technical_documentation.json": {
                 "retrieval": asdict(retrieval_io.load_config(root)),
                 "experiment": asdict(holdout_io.load_config(root)),
-                "schedules": [row.body() for row in allocation.history(root)]},
+                "schedules": [row.body() for row in allocation.history(root)],
+            },
             "post_market_monitoring.json": {
                 "effects": [asdict(effect) for effect in analysis.effects],
-                "integrity": json.loads(json.dumps(asdict(cast(integrity.IntegrityReport, analysis.report)),
-                                                   default=str)) if analysis.report else None},
+                "integrity": json.loads(json.dumps(asdict(analysis.report), default=str)) if analysis.report else None,
+            },
         }
         from unimem import sycophancy_io
 
@@ -194,9 +212,15 @@ def freeze(root: str, incident_id: str, valid_time: str) -> dict[str, Any]:
         if sum(map(len, encoded.values())) > MAX_SNAPSHOT_BYTES:
             raise ValueError("incident evidence exceeds 64 MiB; freeze a narrower store")
         part_digests = {name: hashlib.sha256(data).hexdigest() for name, data in encoded.items()}
-        manifest = {"id": incident_id, "valid_time": valid_time, "known_at": moment, "parts": part_digests,
-                    "held_count": len(identities), "control_mapping": CONTROLS,
-                    "legal_note": "Verify clause mappings and applicability against the Official Journal."}
+        manifest = {
+            "id": incident_id,
+            "valid_time": valid_time,
+            "known_at": moment,
+            "parts": part_digests,
+            "held_count": len(identities),
+            "control_mapping": CONTROLS,
+            "legal_note": "Verify clause mappings and applicability against the Official Journal.",
+        }
         signed = fp.sign(root, manifest)
         staging = directory + ".partial"
         if os.path.lexists(staging):
@@ -212,9 +236,18 @@ def freeze(root: str, incident_id: str, valid_time: str) -> dict[str, Any]:
         _jsonl.write_json(os.path.join(staging, "manifest.json"), signed)
         os.replace(staging, directory)
         digest = fp.digest(signed)
-        fp.append(root, JOURNAL, {"kind": "freeze", "id": incident_id, "held_count": len(identities),
-                                  "held_ids_digest": part_digests["held_ids.json"],
-                                  "snapshot_digest": digest, "valid_time": valid_time})
+        fp.append(
+            root,
+            JOURNAL,
+            {
+                "kind": "freeze",
+                "id": incident_id,
+                "held_count": len(identities),
+                "held_ids_digest": part_digests["held_ids.json"],
+                "snapshot_digest": digest,
+                "valid_time": valid_time,
+            },
+        )
         anchor = log.append(root, "incident-freeze", {"id": incident_id, "snapshot_digest": digest})
         return {"id": incident_id, "held_ids": identities, "anchor": anchor}
 
@@ -254,8 +287,9 @@ def held(root: str) -> dict[str, list[str]]:
                 if "held_ids" in event:  # Legacy journal rows carried the ids inline.
                     active[event["id"]] = event["held_ids"]
                 else:
-                    active[event["id"]] = _read_part(_directory(root, event["id"]), "held_ids.json",
-                                                     event["held_ids_digest"])
+                    active[event["id"]] = _read_part(
+                        _directory(root, event["id"]), "held_ids.json", event["held_ids_digest"]
+                    )
             elif event["kind"] == "release":
                 active.pop(event["id"], None)
         _HELD[key] = (checkpoint, active)
@@ -286,17 +320,29 @@ def timeline(root: str, identity: str) -> dict[str, Any]:
     corrections = []
     for fact in {row["id"]: row for row in [*believed, *frozen["facts"]]}.values():
         current = live.get(fact["id"])
-        corrections.append({
-            "id": fact["id"], "then": fact["statement"],
-            "believed_at_incident": any(row["id"] == fact["id"] for row in believed),
-            "known_at_freeze": known.get(fact["id"], {}).get("status"),
-            "current_status": current.status if current else "erased",
-            "superseded_by": current.superseded_by if current else None})
-    approvals = {lesson["id"]: lesson["frontmatter"].get("approval_receipt") is not None
-                 for lesson in frozen["lessons"]}
-    return {"id": identity, "valid_time": frozen["valid_time"], "known_at": frozen["known_at"],
-            "retrievals": frozen["retrievals"], "lineage": frozen["lineage"], "corrections": corrections,
-            "approved_lessons": approvals, "held": identity in held(root)}
+        corrections.append(
+            {
+                "id": fact["id"],
+                "then": fact["statement"],
+                "believed_at_incident": any(row["id"] == fact["id"] for row in believed),
+                "known_at_freeze": known.get(fact["id"], {}).get("status"),
+                "current_status": current.status if current else "erased",
+                "superseded_by": current.superseded_by if current else None,
+            }
+        )
+    approvals = {
+        lesson["id"]: lesson["frontmatter"].get("approval_receipt") is not None for lesson in frozen["lessons"]
+    }
+    return {
+        "id": identity,
+        "valid_time": frozen["valid_time"],
+        "known_at": frozen["known_at"],
+        "retrievals": frozen["retrievals"],
+        "lineage": frozen["lineage"],
+        "corrections": corrections,
+        "approved_lessons": approvals,
+        "held": identity in held(root),
+    }
 
 
 def replay(root: str, identity: str, occasion_id: str) -> dict[str, Any]:
@@ -305,15 +351,16 @@ def replay(root: str, identity: str, occasion_id: str) -> dict[str, Any]:
     decisions = [r for r in frozen["retrievals"] if r["occasion_id"] == occasion_id]
     if len(decisions) != 1:
         raise ValueError("replay needs exactly one recorded retrieval occasion")
-    revisions = {row["revision"]: {"body": row["body"], "frontmatter": row["frontmatter"]}
-                 for row in frozen["lessons"]}
+    revisions = {row["revision"]: {"body": row["body"], "frontmatter": row["frontmatter"]} for row in frozen["lessons"]}
     for event in frozen["lesson_history"]:
         if "before_body" in event:
             revisions[event["from"]] = {"body": event["before_body"], "frontmatter": event["before_frontmatter"]}
     lessons = {row["id"]: row for row in frozen["lessons"]}
     for key, rewrite in frozen.get("rewrites", {}).items():
-        revisions[key] = {"body": rewrite["body"],
-                          "frontmatter": lessons.get(rewrite["slug"], {}).get("frontmatter", {})}
+        revisions[key] = {
+            "body": rewrite["body"],
+            "frontmatter": lessons.get(rewrite["slug"], {}).get("frontmatter", {}),
+        }
     delivered = []
     for row in decisions[0]["admitted"]:
         if row["revision"] not in revisions:
@@ -327,11 +374,21 @@ def pack(root: str, identity: str, *, framework: str = "eu-ai-act") -> dict[str,
     if framework not in CONTROLS:
         raise ValueError("unknown evidence framework")
     record = snapshot(root, identity)
-    document = {"snapshot": record, "timeline": timeline(root, identity), "framework": framework,
-                "control_ids": CONTROLS[framework], "attestation": "Evidence mapping; not a compliance certification",
-                "legal_note": "Verify against the Official Journal and applicable published standards."}
-    manifest = {"id": identity, "framework": framework, "files": {"evidence.json": large_digest(document)},
-                "held_count": len(record["held_ids"]), "issued_at": fp.now()}
+    document = {
+        "snapshot": record,
+        "timeline": timeline(root, identity),
+        "framework": framework,
+        "control_ids": CONTROLS[framework],
+        "attestation": "Evidence mapping; not a compliance certification",
+        "legal_note": "Verify against the Official Journal and applicable published standards.",
+    }
+    manifest = {
+        "id": identity,
+        "framework": framework,
+        "files": {"evidence.json": large_digest(document)},
+        "held_count": len(record["held_ids"]),
+        "issued_at": fp.now(),
+    }
     signed = fp.sign(root, manifest)
     anchor = log.append(root, "incident-evidence-pack", {"manifest_digest": fp.digest(signed)})
     return {"manifest": signed, "files": {"evidence.json": document}, "anchor": anchor}
@@ -340,11 +397,13 @@ def pack(root: str, identity: str, *, framework: str = "eu-ai-act") -> dict[str,
 def verify_pack(root: str, bundle: dict[str, Any]) -> bool:
     try:
         signed = bundle["manifest"]
-        return (fp.verify(root, signed) and log.verify(root, bundle["anchor"])
-                and bundle["anchor"]["statement"]["record"]["statement"]["manifest_digest"] == fp.digest(signed)
-                and set(signed["record"]["files"]) == set(bundle["files"])
-                and all(large_digest(bundle["files"][name]) == digest
-                        for name, digest in signed["record"]["files"].items()))
+        return (
+            fp.verify(root, signed)
+            and log.verify(root, bundle["anchor"])
+            and bundle["anchor"]["statement"]["record"]["statement"]["manifest_digest"] == fp.digest(signed)
+            and set(signed["record"]["files"]) == set(bundle["files"])
+            and all(large_digest(bundle["files"][name]) == digest for name, digest in signed["record"]["files"].items())
+        )
     except (ValueError, KeyError, TypeError):
         return False
 

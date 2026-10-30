@@ -122,9 +122,7 @@ def test_substring_replace_edge_cases(store):
 
     special_text = r"Price is $10.00 (discount [50%]*? + \path\to\file^$). End."
     b_spec = memory_blocks.set_block(store, "spec_block", special_text)
-    b_spec_rep = memory_blocks.replace_block(
-        store, "spec_block", r"[50%]*? + \path\to\file^$", r"[25%]"
-    )
+    b_spec_rep = memory_blocks.replace_block(store, "spec_block", r"[50%]*? + \path\to\file^$", r"[25%]")
     assert r"[25%]" in b_spec_rep.content
     assert r"\path\to\file" not in b_spec_rep.content
 
@@ -217,9 +215,7 @@ def test_rapid_sequential_writes(store):
     name = "rapid_seq"
     iterations = 50
     for i in range(iterations):
-        memory_blocks.set_block(
-            store, name, f"Content iteration {i}", actor="bench", reason=f"step {i}"
-        )
+        memory_blocks.set_block(store, name, f"Content iteration {i}", actor="bench", reason=f"step {i}")
 
     b = memory_blocks.get_block(store, name)
     assert b.content == f"Content iteration {iterations - 1}"

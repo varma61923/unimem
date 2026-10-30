@@ -47,10 +47,12 @@ def _analyze(root):
 class TestEndToEnd:
     def test_a_memory_that_helps_is_found_and_one_that_does_not_is_not(self, tmp_path):
         _configure(tmp_path, 0.5)
-        store = FakeStore([
-            {"id": "good", "memory": "set an idempotency key on webhook handlers"},
-            {"id": "neutral", "memory": "the office is closed on Fridays"},
-        ])
+        store = FakeStore(
+            [
+                {"id": "good", "memory": "set an idempotency key on webhook handlers"},
+                {"id": "neutral", "memory": "the office is closed on Fridays"},
+            ]
+        )
         memory = CausalMemory(store.search, root=str(tmp_path))
         rng = random.Random(1234)
 

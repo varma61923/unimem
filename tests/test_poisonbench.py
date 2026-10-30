@@ -1,10 +1,17 @@
 """PoisonBench: origin-bound authority keeps poisoned memory away from a sensitive action."""
+
 import pytest
 
 from benchmarks import poisonbench
 
-ORIGIN_ATTACKS = ["direct-external", "query-only-agent", "tool-echo", "summary-laundering",
-                  "self-corroboration", "salami-fragments"]
+ORIGIN_ATTACKS = [
+    "direct-external",
+    "query-only-agent",
+    "tool-echo",
+    "summary-laundering",
+    "self-corroboration",
+    "salami-fragments",
+]
 
 
 @pytest.fixture(scope="module")

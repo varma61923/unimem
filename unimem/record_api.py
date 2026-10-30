@@ -30,8 +30,12 @@ def operate(root: str, operation: str, body: dict, *, context: list[str], untrus
     if operation == "record-forget":
         from unimem import capabilities, policy_io, purpose, subject_policy
 
-        if (capabilities.CURRENT.get() is not None or policy_io.enabled(root) or purpose.enabled(root)
-                or subject_policy.enabled(root)):
+        if (
+            capabilities.CURRENT.get() is not None
+            or policy_io.enabled(root)
+            or purpose.enabled(root)
+            or subject_policy.enabled(root)
+        ):
             return journal.forget(body["id"], reason=body["reason"], scope=scope, exact_scope=untrusted)
         history = journal.history(body["id"])
         if not history:

@@ -116,9 +116,7 @@ class TestLLMContextualizer:
 
 class TestAliasCanonicalizer:
     def test_basic_alias_replacement(self):
-        canonicalizer = AliasCanonicalizer(
-            aliases={"UniMem": ["UM", "uni-mem"]}
-        )
+        canonicalizer = AliasCanonicalizer(aliases={"UniMem": ["UM", "uni-mem"]})
         from unimem.ingest import Chunk
 
         chunk = Chunk(
@@ -375,4 +373,3 @@ class TestMemorySubmitter:
 
         result = submitter.submit(chunks)
         assert result.chunks_extracted == 2
-

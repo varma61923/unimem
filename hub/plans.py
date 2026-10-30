@@ -1,4 +1,5 @@
 """Entitlements: what a plan actually permits, enforced in the Hub."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,7 +33,7 @@ PLANS: dict[str, Plan] = {
         max_agents=5,
         commons_access=True,
         summary="Evaluate on real memory, with Knowledge Base access included -- an "
-                "on-ramp nobody can try requires nothing to demonstrate its value.",
+        "on-ramp nobody can try requires nothing to demonstrate its value.",
     ),
     "team": Plan(
         name="team",
@@ -49,7 +50,7 @@ PLANS: dict[str, Plan] = {
         max_agents=UNLIMITED,
         commons_access=True,
         summary="Unmetered storage; Knowledge Base queries still metered, because "
-                "that corpus is a separate resource from this org's own memory.",
+        "that corpus is a separate resource from this org's own memory.",
     ),
     "operator": Plan(
         name="operator",
@@ -88,9 +89,7 @@ class EntitlementExceeded(Exception):
         self.used = used
         self.plan = plan
         self.remedy = remedy
-        super().__init__(
-            f"{metric} limit reached for plan '{plan}': {used}/{limit}. {remedy}"
-        )
+        super().__init__(f"{metric} limit reached for plan '{plan}': {used}/{limit}. {remedy}")
 
 
 def get(plan_name: str | None) -> Plan:

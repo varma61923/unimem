@@ -1,4 +1,5 @@
 """Bounded read-only conversation connections for long-lived service transports."""
+
 from __future__ import annotations
 
 import atexit
@@ -38,11 +39,20 @@ class ReadPool:
     """
 
     def __init__(self, maximum=16, per_path=4, idle_seconds=60.0, wait_seconds=1.0):
-        if (isinstance(maximum, bool) or not isinstance(maximum, int) or not 1 <= maximum <= 256
-                or isinstance(per_path, bool) or not isinstance(per_path, int) or not 1 <= per_path <= maximum
-                or isinstance(idle_seconds, bool) or not isinstance(idle_seconds, (int, float))
-                or isinstance(wait_seconds, bool) or not isinstance(wait_seconds, (int, float))
-                or not 0 < idle_seconds <= 3600 or not 0 < wait_seconds <= 30):
+        if (
+            isinstance(maximum, bool)
+            or not isinstance(maximum, int)
+            or not 1 <= maximum <= 256
+            or isinstance(per_path, bool)
+            or not isinstance(per_path, int)
+            or not 1 <= per_path <= maximum
+            or isinstance(idle_seconds, bool)
+            or not isinstance(idle_seconds, (int, float))
+            or isinstance(wait_seconds, bool)
+            or not isinstance(wait_seconds, (int, float))
+            or not 0 < idle_seconds <= 3600
+            or not 0 < wait_seconds <= 30
+        ):
             raise ValueError("invalid bounded read-pool limits")
         self.maximum, self.per_path = maximum, per_path
         self.idle_seconds, self.wait_seconds = idle_seconds, wait_seconds
@@ -74,8 +84,9 @@ class ReadPool:
                     raise PoolBusy("conversation read pool is closed")
                 now = time.monotonic()
                 for old in list(self._entries):
-                    if not old.leased and (old.retire or now - old.touched > self.idle_seconds
-                                          or old.key[0] == path and old.key != key):
+                    if not old.leased and (
+                        old.retire or now - old.touched > self.idle_seconds or old.key[0] == path and old.key != key
+                    ):
                         self._remove(old)
                 available = [old for old in self._entries if old.key == key and not old.leased and not old.retire]
                 if available:
@@ -112,8 +123,10 @@ class ReadPool:
                         except (OSError, sqlite3.OperationalError):
                             pass
                 with entry.store.read_snapshot():
-                    shape = (entry.store.db.execute("PRAGMA schema_version").fetchone()[0],
-                             entry.store.get_meta("units_identity"))
+                    shape = (
+                        entry.store.db.execute("PRAGMA schema_version").fetchone()[0],
+                        entry.store.get_meta("units_identity"),
+                    )
                     if shape == entry.shape:
                         with self._condition:
                             if self._closed or entry.retire:

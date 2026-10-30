@@ -1,4 +1,5 @@
 """The deployed-gateway benchmark writes and asks over HTTP and checks parity with in-process recall."""
+
 from __future__ import annotations
 
 import json
@@ -13,7 +14,8 @@ pytestmark = pytest.mark.e2e
 
 def _locomo(path):
     conversation = {
-        "speaker_a": "Ana", "speaker_b": "Ben",
+        "speaker_a": "Ana",
+        "speaker_b": "Ben",
         "session_1_date_time": "1:56 pm on 8 May, 2023",
         "session_1": [
             {"speaker": "Ana", "dia_id": "D1:1", "text": "I adopted a beagle named Pepper last week."},
@@ -25,8 +27,10 @@ def _locomo(path):
             {"speaker": "Ben", "dia_id": "D2:1", "text": "I started learning the cello in June."},
         ],
     }
-    qa = [{"question": "What is the name of Ana's dog?", "answer": "Pepper", "evidence": ["D1:1"], "category": 4},
-          {"question": "Which instrument is Ben learning?", "answer": "cello", "evidence": ["D2:1"], "category": 4}]
+    qa = [
+        {"question": "What is the name of Ana's dog?", "answer": "Pepper", "evidence": ["D1:1"], "category": 4},
+        {"question": "Which instrument is Ben learning?", "answer": "cello", "evidence": ["D2:1"], "category": 4},
+    ]
     path.write_text(json.dumps([{"sample_id": "conv-1", "conversation": conversation, "qa": qa}]))
 
 
@@ -46,9 +50,24 @@ def test_gateway_serves_the_same_contexts_as_in_process_recall(tmp_path, monkeyp
 
     monkeypatch.setattr(deployed_recall, "Gateway", TrackedGateway)
     root_args = ["--root", str(tmp_path / "store")] if persistent else []
-    code = deployed_recall.main(["--dataset", "locomo", "--data", str(data), *root_args,
-                                 "--budget", "200", "--adaptive-budget", "--max-budget", "400",
-                                 "--concurrency", "2", "--out", str(out)])
+    code = deployed_recall.main(
+        [
+            "--dataset",
+            "locomo",
+            "--data",
+            str(data),
+            *root_args,
+            "--budget",
+            "200",
+            "--adaptive-budget",
+            "--max-budget",
+            "400",
+            "--concurrency",
+            "2",
+            "--out",
+            str(out),
+        ]
+    )
     result = json.loads(out.read_text())
     assert code == 0
     assert result["parity"] == {"identical_contexts": 2, "of": 2}

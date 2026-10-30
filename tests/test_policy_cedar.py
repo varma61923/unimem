@@ -1,4 +1,5 @@
 """The optional adapter uses the actual pinned Cedar engine, never a mock."""
+
 from __future__ import annotations
 
 import pytest
@@ -27,7 +28,9 @@ def test_real_cedar_broad_permit_is_detected_as_widening_in_the_finite_domain():
 
 
 def test_real_cedar_schema_analysis_rejects_undeclared_attribute_or_bad_syntax():
-    for text in ('permit(principal,action,resource) when {principal.undeclared == "admin"};',
-                 'permit this is not a policy;'):
+    for text in (
+        'permit(principal,action,resource) when {principal.undeclared == "admin"};',
+        "permit this is not a policy;",
+    ):
         with pytest.raises(ValueError):
             policy_cedar.import_policy(text, example()["domain"])

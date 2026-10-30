@@ -1,4 +1,5 @@
 """Falsifiable original evidence contracts, without model/judge or gold leakage."""
+
 from __future__ import annotations
 
 import json
@@ -32,8 +33,9 @@ def test_selected_id_without_rendered_evidence_does_not_pass(tmp_path):
     case = fixtures()[0]
     source = case.sources[1]
     with Store(str(tmp_path), case.space) as store:
-        store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                  session_at=source.at)
+        store.add(
+            source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}], session_at=source.at
+        )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
         forged = replace(result, context="Unrelated text")
         metric = score(case, forged, tuple(store.turns(result.turns).values()), case.sources)
@@ -46,12 +48,15 @@ def test_correct_content_under_wrong_speaker_or_session_fails_attribution(tmp_pa
     case = fixtures()[0]
     source = case.sources[1]
     with Store(str(tmp_path), case.space) as store:
-        store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                  session_at=source.at)
+        store.add(
+            source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}], session_at=source.at
+        )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
         turns = tuple(store.turns(result.turns).values())
-        for forged in (replace(result, context=result.context.replace("Nia:", "Mira:")),
-                       replace(result, context=result.context.replace("[earlier ·", "[another ·"))):
+        for forged in (
+            replace(result, context=result.context.replace("Nia:", "Mira:")),
+            replace(result, context=result.context.replace("[earlier ·", "[another ·")),
+        ):
             metric = score(case, forged, turns, case.sources)
             assert metric.evidence_coverage == 1
             assert not metric.source_attribution
@@ -62,8 +67,9 @@ def test_forbidden_phrase_fails_even_without_a_forbidden_selected_id(tmp_path):
     case = fixtures()[0]
     source = case.sources[1]
     with Store(str(tmp_path), case.space) as store:
-        store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                  session_at=source.at)
+        store.add(
+            source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}], session_at=source.at
+        )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
         forged = replace(result, context=result.context + "\nPorto")
         metric = score(case, forged, tuple(store.turns(result.turns).values()), case.sources)
@@ -75,8 +81,9 @@ def test_unknown_observed_id_and_modified_source_fail_attribution(tmp_path):
     case = fixtures()[0]
     source = case.sources[1]
     with Store(str(tmp_path), case.space) as store:
-        store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                  session_at=source.at)
+        store.add(
+            source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}], session_at=source.at
+        )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
         turns = tuple(store.turns(result.turns).values())
         altered = (replace(turns[0], text="I live in a different city."),)
@@ -89,11 +96,19 @@ def test_state_correction_cannot_pass_with_superseded_live_fact(tmp_path):
     case = next(case for case in fixtures() if case.name == "current-update")
     with Store(str(tmp_path), case.space) as store:
         for source in case.sources:
-            store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                      session_at=source.at)
+            store.add(
+                source.session,
+                [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
+                session_at=source.at,
+            )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
-        stale = score(case, result, tuple(store.turns(result.turns).values()), case.sources,
-                      live_statements=(case.sources[1].text,))
+        stale = score(
+            case,
+            result,
+            tuple(store.turns(result.turns).values()),
+            case.sources,
+            live_statements=(case.sources[1].text,),
+        )
         assert stale.evidence_coverage == 1
         assert not stale.state_matches
         assert not stale.passed
@@ -103,8 +118,11 @@ def test_reverse_event_order_fails_even_with_complete_evidence(tmp_path):
     case = next(case for case in fixtures() if case.name == "event-ordering")
     with Store(str(tmp_path), case.space) as store:
         for source in case.sources:
-            store.add(source.session, [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
-                      session_at=source.at)
+            store.add(
+                source.session,
+                [{"id": source.ref, "speaker": source.speaker, "text": source.text}],
+                session_at=source.at,
+            )
         result = recall(store, case.question, now=case.now, options=Options(embedder=None, rerank=None))
         blocks = result.context.split("\n\n")
         forged = replace(result, context="\n\n".join(reversed(blocks)))
@@ -178,8 +196,14 @@ def test_cli_counts_case_error_in_denominator(monkeypatch, capsys):
 def test_executable_contract_gate_runs_offline_without_output_artifacts(tmp_path):
     environment = dict(os.environ)
     environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-    process = subprocess.run([sys.executable, "-m", "benchmarks.memory_contracts", "--case", "historical-cutoff"],
-                             capture_output=True, text=True, check=True, cwd=tmp_path, env=environment)
+    process = subprocess.run(
+        [sys.executable, "-m", "benchmarks.memory_contracts", "--case", "historical-cutoff"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+        env=environment,
+    )
     report = json.loads(process.stdout)
     assert report["passed"] == 1 and report["failed"] == 0
     assert process.stderr == ""

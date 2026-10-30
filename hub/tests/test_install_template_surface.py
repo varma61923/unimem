@@ -61,8 +61,10 @@ class TestInstallCmdStaysImportableWithoutTheClientDependencies:
         )
         return subprocess.run(
             [sys.executable, "-c", blocker],
-            capture_output=True, text=True,
-            cwd=str(pathlib.Path(__file__).resolve().parents[2]), check=False,
+            capture_output=True,
+            text=True,
+            cwd=str(pathlib.Path(__file__).resolve().parents[2]),
+            check=False,
         )
 
     def test_install_cmd_imports_without_pyyaml(self):

@@ -93,21 +93,24 @@ def main() -> int:
     model = SentenceTransformer(MODEL_NAME)
 
     print(f"corpus {len(corpus)} records | metric cosine over {MODEL_NAME}")
-    print(f"dev = probes-v1 ({sum(1 for p in dev if p['expect'] == 'covered')}+"
-          f"{sum(1 for p in dev if p['expect'] == 'uncovered')})  "
-          f"held-out = probes-v2 ({sum(1 for p in held if p['expect'] == 'covered')}+"
-          f"{sum(1 for p in held if p['expect'] == 'uncovered')})")
+    print(
+        f"dev = probes-v1 ({sum(1 for p in dev if p['expect'] == 'covered')}+"
+        f"{sum(1 for p in dev if p['expect'] == 'uncovered')})  "
+        f"held-out = probes-v2 ({sum(1 for p in held if p['expect'] == 'covered')}+"
+        f"{sum(1 for p in held if p['expect'] == 'uncovered')})"
+    )
     print()
-    print(f"{'cosine >=':>9} {'dev recall':>11} {'dev FP':>8} "
-          f"{'HELD recall':>12} {'HELD FP':>9}")
+    print(f"{'cosine >=':>9} {'dev recall':>11} {'dev FP':>8} {'HELD recall':>12} {'HELD FP':>9}")
     print("-" * 56)
 
     best_safe = None
     for t in THRESHOLDS:
         d = score(model, dev, corpus, t)
         h = score(model, held, corpus, t)
-        print(f"{t:>9.2f} {d['recall']:>10.1%} {d['false_positive']:>8.1%} "
-              f"{h['recall']:>11.1%} {h['false_positive']:>9.1%}")
+        print(
+            f"{t:>9.2f} {d['recall']:>10.1%} {d['false_positive']:>8.1%} "
+            f"{h['recall']:>11.1%} {h['false_positive']:>9.1%}"
+        )
         if d["false_positive"] == 0.0 and h["false_positive"] == 0.0:
             if best_safe is None or h["recall"] > best_safe[1]["recall"]:
                 best_safe = (t, h)

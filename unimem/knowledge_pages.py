@@ -5,6 +5,7 @@ Adapted from Hindsight mental models & curated pages architecture (#2 L):
 - Supports dry-run diffs so agents can inspect proposed line-by-line changes before committing updates.
 - Optimistic concurrency control via expected_version to avoid race conditions between agents.
 """
+
 from __future__ import annotations
 
 import difflib
@@ -90,8 +91,8 @@ class KnowledgePage:
 
 def dry_run_diff(old_content: str, new_content: str, slug: str = "page") -> str:
     """Generate a clean unified diff between old and new markdown content."""
-    old_lines = (old_content.splitlines(keepends=True) if old_content else [])
-    new_lines = (new_content.splitlines(keepends=True) if new_content else [])
+    old_lines = old_content.splitlines(keepends=True) if old_content else []
+    new_lines = new_content.splitlines(keepends=True) if new_content else []
     diff = difflib.unified_diff(
         old_lines,
         new_lines,
@@ -223,7 +224,7 @@ def update_page(
                 )
 
         diff = dry_run_diff(old_content, content, slug=clean)
-        changed = (old_content.strip() != content.strip())
+        changed = old_content.strip() != content.strip()
         if current and current.source_binding and source_binding is None and changed and not dry_run:
             raise PermissionError("source-bound wiki pages must be updated through their refresh registration")
 
@@ -242,9 +243,7 @@ def update_page(
         created_at = current.created_at if current else now_iso
         page_title = title.strip() or (current.title if current else clean)
         page_tags = (
-            [t.strip().lower() for t in tags if t.strip()]
-            if tags is not None
-            else (current.tags if current else [])
+            [t.strip().lower() for t in tags if t.strip()] if tags is not None else (current.tags if current else [])
         )
         prev_rev = current.revision if current else ""
         revision = hashlib.sha256(f"{clean}:{proposed_version}:{content}:{prev_rev}".encode()).hexdigest()[:16]
@@ -265,9 +264,16 @@ def update_page(
             from unimem import memory_authority
 
             binding = {k: v for k, v in binding.items() if k != "origin"}
-            binding.update(id=clean+":v"+str(proposed_version), kind="wiki-page", revision=revision,
-                           content=content, slug=clean, version=proposed_version, title=page_title,
-                           source_traces=binding["sources"])
+            binding.update(
+                id=clean + ":v" + str(proposed_version),
+                kind="wiki-page",
+                revision=revision,
+                content=content,
+                slug=clean,
+                version=proposed_version,
+                title=page_title,
+                source_traces=binding["sources"],
+            )
             binding["origin"] = memory_authority.bind(root, binding, sources=binding["sources"])
         meta["source_binding"] = binding
 
@@ -286,21 +292,24 @@ def update_page(
         os.replace(tmp_meta, meta_path)
 
         # Append to revision audit log
-        _jsonl.append_row(_history_file(root), {
-            "slug": clean,
-            "version": proposed_version,
-            "revision": revision,
-            "title": page_title,
-            "tags": page_tags,
-            "char_count": len(content),
-            "actor": actor,
-            "comment": comment,
-            "timestamp": now_iso,
-            "created_at": created_at,
-            "content": content,
-            "diff": diff,
-            "source_binding": binding,
-        })
+        _jsonl.append_row(
+            _history_file(root),
+            {
+                "slug": clean,
+                "version": proposed_version,
+                "revision": revision,
+                "title": page_title,
+                "tags": page_tags,
+                "char_count": len(content),
+                "actor": actor,
+                "comment": comment,
+                "timestamp": now_iso,
+                "created_at": created_at,
+                "content": content,
+                "diff": diff,
+                "source_binding": binding,
+            },
+        )
 
         updated_page = KnowledgePage(
             slug=clean,
@@ -342,14 +351,17 @@ def delete_page(root: str, slug: str, actor: str = "agent", comment: str = "") -
             except OSError:
                 pass
 
-        _jsonl.append_row(_history_file(root), {
-            "slug": clean,
-            "version": current.version + 1,
-            "action": "delete",
-            "actor": actor,
-            "comment": comment or "Page deleted",
-            "timestamp": _now(),
-        })
+        _jsonl.append_row(
+            _history_file(root),
+            {
+                "slug": clean,
+                "version": current.version + 1,
+                "action": "delete",
+                "actor": actor,
+                "comment": comment or "Page deleted",
+                "timestamp": _now(),
+            },
+        )
         return True
 
 
@@ -361,8 +373,9 @@ def _binding_live(root: str, row: dict) -> bool:
         return not any(r["text"] == row.get("slug") for r in memory_control.records(root, "wiki"))
     if any(binding.get(key) != row.get(key) for key in ("slug", "version", "revision", "content", "title")):
         return False
-    if not memory_authority.verify(root, binding.get("origin", {}),
-                                   {k: v for k, v in binding.items() if k != "origin"}):
+    if not memory_authority.verify(
+        root, binding.get("origin", {}), {k: v for k, v in binding.items() if k != "origin"}
+    ):
         return False
     try:
         digest, _facts = wiki.source_state(root, {"scopes": binding["scopes"], "data": binding})

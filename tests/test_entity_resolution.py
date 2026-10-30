@@ -1,5 +1,6 @@
 """Entity resolution beyond lexical aliases: n-gram fallback, faked embeddings,
 thresholds, type compatibility, merges with provenance, and the CLI."""
+
 import json
 
 import pytest
@@ -99,14 +100,16 @@ def test_report_only_without_apply_and_threshold_checks(root):
 
 
 def test_embedding_resolution_finds_semantic_duplicates(root):
-    graph.add_node(root, "organization:international_business_machines", "organization",
-                   name="International Business Machines")
+    graph.add_node(
+        root, "organization:international_business_machines", "organization", name="International Business Machines"
+    )
     graph.add_node(root, "concept:ibm", "concept", name="IBM")
     fake = FakeEmbedder({"International Business Machines": 1, "IBM": 1})
     out = entity_resolution.resolve(root, embedder=fake, apply=True)
     assert out["method"] == "embedding" and out["threshold"] == 0.85 and out["apply_threshold"] == 0.95
     assert [(m["kept"], m["merged"]) for m in out["merged"]] == [
-        ("organization:international_business_machines", "concept:ibm")]
+        ("organization:international_business_machines", "concept:ibm")
+    ]
     assert fake.calls == 1  # one batch for every entity
 
 
@@ -138,8 +141,10 @@ def test_cli_resolve(root, capsys, monkeypatch):
     assert cli.main(["graph", "resolve", "--threshold", "0.4", "--json", "--dest", root]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out["method"] == "ngram" and out["merged"] == []
-    assert cli.main(["graph", "resolve", "--threshold", "0.4", "--apply", "--apply-threshold", "0.45",
-                     "--dest", root]) == 0
+    assert (
+        cli.main(["graph", "resolve", "--threshold", "0.4", "--apply", "--apply-threshold", "0.45", "--dest", root])
+        == 0
+    )
     text = capsys.readouterr().out
     assert "merged concept:acme_corporation into organization:acme_corp" in text and "[blocked" in text
     assert cli.main(["graph", "resolve", "--embedder", "not a tag!", "--dest", root]) == 2
@@ -155,7 +160,11 @@ def test_tiered_minhash_threshold_is_explicit_and_observable(tmp_path):
 
     assert default["pairs"][0]["tier"] == "minhash"
     assert default["thresholds"] == {
-        "entropy": 2.0, "minhash": 0.8, "jaccard": 0.8, "cosine": 0.6, "top_k": 15,
+        "entropy": 2.0,
+        "minhash": 0.8,
+        "jaccard": 0.8,
+        "cosine": 0.6,
+        "top_k": 15,
     }
     assert strict["pairs"] == []
 
@@ -176,9 +185,7 @@ def test_tiered_lsh_shortlist_preserves_every_default_minhash_match():
         "Zebra migration deadline follows September release",
     ]
     surfaces = [entity_resolution._tiered_surface([name]) for name in names]
-    candidates = entity_resolution._tiered_minhash_pairs(
-        surfaces, entropy_threshold=2.0, minhash_threshold=0.8
-    )
+    candidates = entity_resolution._tiered_minhash_pairs(surfaces, entropy_threshold=2.0, minhash_threshold=0.8)
     from unimem import overlap
 
     eligible = [i for i, surface in enumerate(surfaces) if surface.entropy >= 2.0]
@@ -206,9 +213,7 @@ def test_tiered_lsh_falls_back_to_exhaustive_at_low_threshold():
         entity_resolution._tiered_surface(["Quasar rotates encrypted archives nightly"]),
     ]
     eligible = [i for i, surface in enumerate(surfaces) if surface.entropy >= 2.0]
-    pairs = entity_resolution._tiered_minhash_pairs(
-        surfaces, entropy_threshold=2.0, minhash_threshold=0.75
-    )
+    pairs = entity_resolution._tiered_minhash_pairs(surfaces, entropy_threshold=2.0, minhash_threshold=0.75)
     assert pairs == set(combinations(eligible, 2))
 
 
@@ -219,15 +224,17 @@ def test_tiered_exact_aliases_survive_entropy_gate(tmp_path):
 
     result = entity_resolution.tiered_candidates(root)
 
-    assert result["pairs"] == [{
-        "a": "concept:ibm_short",
-        "b": "concept:ibm_short_alias",
-        "score": 1.0,
-        "tier": "exact",
-        "a_type": "concept",
-        "b_type": "concept",
-        "compatible": True,
-    }]
+    assert result["pairs"] == [
+        {
+            "a": "concept:ibm_short",
+            "b": "concept:ibm_short_alias",
+            "score": 1.0,
+            "tier": "exact",
+            "a_type": "concept",
+            "b_type": "concept",
+            "compatible": True,
+        }
+    ]
 
 
 def test_tiered_embedding_candidates_are_batched_and_llm_sees_only_remainder(tmp_path):

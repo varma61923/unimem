@@ -13,7 +13,11 @@ except OverflowError:
     csv.field_size_limit(2**31 - 1)
 
 _OUTCOME_BOOL_FIELDS = (
-    "resolved", "escalated", "repeated_error", "frustration_signal", "baseline",
+    "resolved",
+    "escalated",
+    "repeated_error",
+    "frustration_signal",
+    "baseline",
 )
 _OUTCOME_INT_FIELDS = ("tokens_used", "llm_calls")
 
@@ -165,7 +169,10 @@ def parse_jsonl(lines: Iterator[str], mapping: FieldMapping) -> tuple[list[Impor
     imported: list[ImportedRow] = []
     skipped: list[SkippedRow] = []
     for result in iter_jsonl(lines, mapping):
-        (imported if isinstance(result, ImportedRow) else skipped).append(result)
+        if isinstance(result, ImportedRow):
+            imported.append(result)
+        else:
+            skipped.append(result)
     return imported, skipped
 
 
@@ -174,5 +181,8 @@ def parse_csv(fh, mapping: FieldMapping) -> tuple[list[ImportedRow], list[Skippe
     imported: list[ImportedRow] = []
     skipped: list[SkippedRow] = []
     for result in iter_csv(fh, mapping):
-        (imported if isinstance(result, ImportedRow) else skipped).append(result)
+        if isinstance(result, ImportedRow):
+            imported.append(result)
+        else:
+            skipped.append(result)
     return imported, skipped

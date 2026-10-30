@@ -34,7 +34,7 @@ from starlette.types import ASGIApp
 from hub import auth, collab, commons, crud, observability, plans, scheduler, scopes
 from hub.abuse import (
     RateLimited,
-    RateLimiter,
+    RateLimiterBackend,
     TraceRejected,
     make_auth_rate_limiter,
     make_named_limiter,
@@ -103,8 +103,8 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         session_factory: async_sessionmaker,
         protected_path: str,
-        auth_rate_limiter: RateLimiter,
-        read_rate_limiter: RateLimiter,
+        auth_rate_limiter: RateLimiterBackend,
+        read_rate_limiter: RateLimiterBackend,
         trusted_proxy_hops: int = 0,
         identity_provider=None,
         capability_config=None,
@@ -160,7 +160,9 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
             person = None
             async with self._session_factory() as session:
                 person = await auth.verify_user_token(
-                    session, raw_token, self._identity_provider,
+                    session,
+                    raw_token,
+                    self._identity_provider,
                     jwks_cache=self._jwks_cache,
                 )
                 await session.commit()
@@ -182,9 +184,12 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
                 if self._capability_config is not None:
                     from hub import delegation
 
-                    denied = await delegation.admit_request(request, auth.AuthenticatedKey(
-                        person.org_id, f"user:{person.id}", rbac.scopes_of(person.role)),
-                        self._capability_config, self._session_factory)
+                    denied = await delegation.admit_request(
+                        request,
+                        auth.AuthenticatedKey(person.org_id, f"user:{person.id}", rbac.scopes_of(person.role)),
+                        self._capability_config,
+                        self._session_factory,
+                    )
                     if denied is not None:
                         return denied
                 return await call_next(request)
@@ -217,8 +222,9 @@ class ApiKeyAuthMiddleware(BaseHTTPMiddleware):
             if self._capability_config is not None:
                 from hub import delegation
 
-                denied = await delegation.admit_request(request, authenticated, self._capability_config,
-                                                       self._session_factory)
+                denied = await delegation.admit_request(
+                    request, authenticated, self._capability_config, self._session_factory
+                )
                 if denied is not None:
                     return denied
             return await call_next(request)
@@ -311,13 +317,18 @@ class LoadShedMiddleware:
                 started = True
             await send(message)
 
-        task = asyncio.create_task(self.app(scope, receive, tracking_send))
+        async def handle_request() -> None:
+            await self.app(scope, receive, tracking_send)
+
+        task = asyncio.create_task(handle_request())
         try:
             await asyncio.wait_for(task, timeout=self._timeout)
         except asyncio.TimeoutError:
             logger.warning(
                 "request exceeded %ss and was cancelled: %s %s",
-                self._timeout, scope.get("method", "?"), scope.get("path", "?"),
+                self._timeout,
+                scope.get("method", "?"),
+                scope.get("path", "?"),
             )
             if not started:
                 await _send_json(send, 504, _timeout_body(self._timeout))
@@ -343,8 +354,7 @@ async def _send_json(send, status: int, body: dict, extra_headers=()) -> None:
     immediately.
     """
     payload = json.dumps(body).encode()
-    headers = [(b"content-type", b"application/json"),
-               (b"content-length", str(len(payload)).encode())]
+    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())]
     headers.extend(extra_headers)
     await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": payload})
@@ -538,9 +548,7 @@ class IpAllowlistMiddleware(BaseHTTPMiddleware):
                 status_code=403,
             )
         if not any(client_ip in network for network in self._networks):
-            return JSONResponse(
-                {"error": "forbidden", "detail": "source address not allowlisted"}, status_code=403
-            )
+            return JSONResponse({"error": "forbidden", "detail": "source address not allowlisted"}, status_code=403)
         return await call_next(request)
 
 
@@ -564,7 +572,7 @@ async def _join_background_tasks(tasks: list[asyncio.Task], grace_seconds: float
             logger.error("background task failed before shutdown", exc_info=result)
 
 
-def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rate_limiter: RateLimiter):
+def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rate_limiter: RateLimiterBackend):
     from mcp.server.mcpserver import MCPServer
 
     stripe_settings = StripeSettings(
@@ -588,17 +596,18 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             "cancel_account_deletion delete your ENTIRE organization -- two calls with "
             "a mandatory delay between them, by design; see request_account_deletion's "
             "own description before calling it. "
-            + ("commons_overlap/commons_search additionally let you consult the "
-               "UniMem Knowledge Base: commons_search looks up ranked candidate "
-               "answers to one failure, commons_overlap reports the conservative "
-               "coverage fraction across many. submit_kb_entry proposes a new entry "
-               "for operator review (list_my_kb_submissions checks status) -- an "
-               "accepted proposal raises your Knowledge Base query allowance, but "
-               "nothing you submit is published, or visible to any other org, until "
-               "an operator accepts it."
-               if config.commons_enabled else
-               "This deployment has HUB_COMMONS_ENABLED=false: no Knowledge Base "
-               "tools exist on this server.")
+            + (
+                "commons_overlap/commons_search additionally let you consult the "
+                "UniMem Knowledge Base: commons_search looks up ranked candidate "
+                "answers to one failure, commons_overlap reports the conservative "
+                "coverage fraction across many. submit_kb_entry proposes a new entry "
+                "for operator review (list_my_kb_submissions checks status) -- an "
+                "accepted proposal raises your Knowledge Base query allowance, but "
+                "nothing you submit is published, or visible to any other org, until "
+                "an operator accepts it."
+                if config.commons_enabled
+                else "This deployment has HUB_COMMONS_ENABLED=false: no Knowledge Base tools exist on this server."
+            )
         ),
     )
 
@@ -713,13 +722,24 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 result = await crud.search_traces(
-                    session, org_id, query=query, tags=tags, limit=limit, offset=offset, brief=brief,
-                    scope=scope, as_of=as_of or None,
+                    session,
+                    org_id,
+                    query=query,
+                    tags=tags,
+                    limit=limit,
+                    offset=offset,
+                    brief=brief,
+                    scope=scope,
+                    as_of=as_of or None,
                 )
                 if occasion_id:
                     result["holdout"] = await crud.holdout_for_results(
-                        session, org_id, result["traces"], occasion_id,
-                        actor=auth.get_current_actor(), pinned=pinned,
+                        session,
+                        org_id,
+                        result["traces"],
+                        occasion_id,
+                        actor=auth.get_current_actor(),
+                        pinned=pinned,
                     )
                 return result
         except Exception as exc:  # noqa: BLE001 - converted to a structured tool error below
@@ -832,7 +852,12 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 trace = await crud.vote_trace(
-                    session, org_id, id, vote, feedback_tag, feedback_text,
+                    session,
+                    org_id,
+                    id,
+                    vote,
+                    feedback_tag,
+                    feedback_text,
                     actor=auth.get_current_actor(),
                 )
             if trace is None:
@@ -996,9 +1021,7 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             return _error_response(exc)
 
     @scoped_tool(scopes.SCOPE_READ)
-    async def value_delivered(
-        value_per_occasion: float = 0.0, rate_tiers: list[dict] | None = None
-    ) -> dict:
+    async def value_delivered(value_per_occasion: float = 0.0, rate_tiers: list[dict] | None = None) -> dict:
         """What your fleet's memory has been worth, causally, in occasions.
 
         Not a usage number and not a correlational one. For each memory whose
@@ -1052,7 +1075,8 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 return await crud.value_delivered(
-                    session, org_id,
+                    session,
+                    org_id,
                     value_per_occasion=(value_per_occasion or None),
                     rate_tiers=rate_tiers,
                     signing_key=config.ledger_signing_key,
@@ -1061,9 +1085,7 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             return _error_response(exc)
 
     @scoped_tool(scopes.SCOPE_WRITE)
-    async def holdout_assign(
-        trace_ids: list, occasion_id: str, pinned: list[str] | None = None
-    ) -> dict:
+    async def holdout_assign(trace_ids: list, occasion_id: str, pinned: list[str] | None = None) -> dict:
         """Randomized holdout: for each trace eligible on this occasion,
         decide whether to inject it or deliberately withhold it, and record
         the decision so the two arms can later be compared.
@@ -1096,8 +1118,12 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 return await crud.holdout_assign(
-                    session, org_id, list(trace_ids), occasion_id,
-                    actor=auth.get_current_actor(), pinned=pinned,
+                    session,
+                    org_id,
+                    list(trace_ids),
+                    occasion_id,
+                    actor=auth.get_current_actor(),
+                    pinned=pinned,
                 )
         except Exception as exc:  # noqa: BLE001
             return _error_response(exc)
@@ -1115,11 +1141,14 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 return await crud.record_occasion_outcome(
-                    session, org_id, occasion_id, succeeded, actor=auth.get_current_actor(),
+                    session,
+                    org_id,
+                    occasion_id,
+                    succeeded,
+                    actor=auth.get_current_actor(),
                 )
         except Exception as exc:  # noqa: BLE001
             return _error_response(exc)
-
 
     @scoped_tool(scopes.SCOPE_READ)
     async def search_trace_content(pattern: str, regex: bool = False, limit: int = 100) -> dict:
@@ -1143,7 +1172,11 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 results = await crud.search_trace_content(
-                    session, org_id, pattern, regex=regex, limit=limit,
+                    session,
+                    org_id,
+                    pattern,
+                    regex=regex,
+                    limit=limit,
                 )
             return {"results": results}
         except Exception as exc:  # noqa: BLE001
@@ -1167,7 +1200,11 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 result = await crud.tag_trace_subjects(
-                    session, org_id, id, subject_ids, actor=auth.get_current_actor(),
+                    session,
+                    org_id,
+                    id,
+                    subject_ids,
+                    actor=auth.get_current_actor(),
                 )
             if result is None:
                 return {"error": "not_found", "detail": f"no trace with id {id}"}
@@ -1202,7 +1239,10 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 result = await crud.purge_traces_by_subject(
-                    session, org_id, subject_id, actor=auth.get_current_actor(),
+                    session,
+                    org_id,
+                    subject_id,
+                    actor=auth.get_current_actor(),
                 )
             return result
         except Exception as exc:  # noqa: BLE001
@@ -1274,7 +1314,10 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             org_id = auth.get_current_org_id()
             async with session_scope(session_factory) as session:
                 await crud.confirm_org_deletion(
-                    session, org_id, confirmation_token, actor=auth.get_current_actor(),
+                    session,
+                    org_id,
+                    confirmation_token,
+                    actor=auth.get_current_actor(),
                     stripe=stripe_settings,
                 )
             return {"deleted": True}
@@ -1282,6 +1325,7 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             return _error_response(exc)
 
     if config.commons_enabled:
+
         @scoped_tool(scopes.SCOPE_READ)
         async def commons_overlap(
             failures: list[dict] | None = None,
@@ -1305,8 +1349,11 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
                 org_id = auth.get_current_org_id()
                 async with session_scope(session_factory) as session:
                     return await crud.commons_overlap(
-                        session, org_id, failures or [],
-                        threshold=threshold, include_matches=include_matches,
+                        session,
+                        org_id,
+                        failures or [],
+                        threshold=threshold,
+                        include_matches=include_matches,
                         agent_type=agent_type,
                     )
             except Exception as exc:  # noqa: BLE001
@@ -1343,8 +1390,11 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
                 org_id = auth.get_current_org_id()
                 async with session_scope(session_factory) as session:
                     return await crud.commons_search(
-                        session, org_id, query_signature or [],
-                        limit=limit, agent_type=agent_type,
+                        session,
+                        org_id,
+                        query_signature or [],
+                        limit=limit,
+                        agent_type=agent_type,
                     )
             except Exception as exc:  # noqa: BLE001
                 return _error_response(exc)
@@ -1375,8 +1425,7 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             try:
                 org_id = auth.get_current_org_id()
                 async with session_scope(session_factory) as session:
-                    return await crud.export_commons(
-                        session, org_id, config, limit=limit)
+                    return await crud.export_commons(session, org_id, config, limit=limit)
             except Exception as exc:  # noqa: BLE001
                 return _error_response(exc)
 
@@ -1411,10 +1460,18 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
                 org_id = auth.get_current_org_id()
                 async with session_scope(session_factory) as session:
                     return await crud.submit_kb_entry(
-                        session, org_id, config, rate_limiter,
-                        title=title, context_text=context_text, solution_text=solution_text,
-                        tags=tags, agent_type=agent_type, rationale=rationale,
-                        actor=auth.get_current_actor(), idempotency_key=idempotency_key,
+                        session,
+                        org_id,
+                        config,
+                        rate_limiter,
+                        title=title,
+                        context_text=context_text,
+                        solution_text=solution_text,
+                        tags=tags,
+                        agent_type=agent_type,
+                        rationale=rationale,
+                        actor=auth.get_current_actor(),
+                        idempotency_key=idempotency_key,
                     )
             except Exception as exc:  # noqa: BLE001
                 return _error_response(exc)
@@ -1498,7 +1555,10 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
             person = auth.get_current_user()
             async with session_scope(session_factory) as session:
                 notifications = await collab.list_my_notifications(
-                    session, org_id, person, unread_only=unread_only,
+                    session,
+                    org_id,
+                    person,
+                    unread_only=unread_only,
                 )
             return {"notifications": notifications}
         except Exception as exc:  # noqa: BLE001
@@ -1563,14 +1623,18 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
         """
         return await run_batch(delete_trace, ids, field="id")
 
-    mcp.unimem_tool_scopes = dict(tool_scopes)
+    setattr(mcp, "unimem_tool_scopes", dict(tool_scopes))
     return mcp
 
 
 def build_app(config: HubConfig, session_factory: async_sessionmaker) -> Starlette:
     if config.ledger_signing_key:
-        session_factory.configure(info={"transparency_key": config.ledger_signing_key,
-                                        "transparency_algorithm": config.transparency_algorithm})
+        session_factory.configure(
+            info={
+                "transparency_key": config.ledger_signing_key,
+                "transparency_algorithm": config.transparency_algorithm,
+            }
+        )
     auth.configure_region(config.data_region)
     auth.configure_auth_cache(config.auth_cache_seconds, require_listener=True)
     rate_limiter = make_rate_limiter(config)
@@ -1634,8 +1698,10 @@ def build_app(config: HubConfig, session_factory: async_sessionmaker) -> Starlet
 
     if config.signup_enabled:
         add_signup_routes(
-            inner_app, session_factory,
-            trusted_proxy_hops=config.trusted_proxy_hops, console_path=CONSOLE_PATH,
+            inner_app,
+            session_factory,
+            trusted_proxy_hops=config.trusted_proxy_hops,
+            console_path=CONSOLE_PATH,
             config=config,
         )
 
@@ -1663,12 +1729,15 @@ def build_app(config: HubConfig, session_factory: async_sessionmaker) -> Starlet
 
     if config.connectors_enabled:
         add_connector_routes(
-            inner_app, session_factory, config=config,
+            inner_app,
+            session_factory,
+            config=config,
             trusted_proxy_hops=config.trusted_proxy_hops,
         )
 
     add_scim_routes(
-        inner_app, session_factory,
+        inner_app,
+        session_factory,
         auth_rate_limiter=make_scim_auth_rate_limiter(config),
         trusted_proxy_hops=config.trusted_proxy_hops,
     )
@@ -1717,38 +1786,42 @@ def build_app(config: HubConfig, session_factory: async_sessionmaker) -> Starlet
             stop_event = asyncio.Event()
             tasks = []
             if config.alert_scheduler_enabled:
-                tasks.append(asyncio.create_task(
-                    scheduler.run(
-                        session_factory,
-                        interval_seconds=config.alert_scheduler_interval_seconds,
-                        stop_event=stop_event,
+                tasks.append(
+                    asyncio.create_task(
+                        scheduler.run(
+                            session_factory,
+                            interval_seconds=config.alert_scheduler_interval_seconds,
+                            stop_event=stop_event,
+                        )
                     )
-                ))
+                )
             if config.webhook_scheduler_enabled:
-                tasks.append(asyncio.create_task(
-                    scheduler.run_webhook_delivery(
-                        session_factory,
-                        interval_seconds=config.webhook_scheduler_interval_seconds,
-                        stop_event=stop_event,
-                        signing_key=config.ledger_signing_key,
-                        cipher=config.cipher(),
-                        batch_size=config.webhook_scheduler_batch_size,
+                tasks.append(
+                    asyncio.create_task(
+                        scheduler.run_webhook_delivery(
+                            session_factory,
+                            interval_seconds=config.webhook_scheduler_interval_seconds,
+                            stop_event=stop_event,
+                            signing_key=config.ledger_signing_key,
+                            cipher=config.cipher(),
+                            batch_size=config.webhook_scheduler_batch_size,
+                        )
                     )
-                ))
+                )
             if config.auth_cache_seconds > 0:
                 from hub import auth_invalidation
 
-                tasks.append(asyncio.create_task(
-                    auth_invalidation.listen(config.database_url, stop_event)
-                ))
+                tasks.append(asyncio.create_task(auth_invalidation.listen(config.database_url, stop_event)))
             if config.connectors_enabled:
-                tasks.append(asyncio.create_task(
-                    scheduler.run_connector_sweep(
-                        session_factory,
-                        interval_seconds=config.connector_sweep_interval_seconds,
-                        stop_event=stop_event,
+                tasks.append(
+                    asyncio.create_task(
+                        scheduler.run_connector_sweep(
+                            session_factory,
+                            interval_seconds=config.connector_sweep_interval_seconds,
+                            stop_event=stop_event,
+                        )
                     )
-                ))
+                )
             if not tasks:
                 yield
                 return

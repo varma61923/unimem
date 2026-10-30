@@ -36,6 +36,7 @@ or neutral memory withdrawn), and the regret against the oracle.
 
     python -m benchmarks.causalmembench --seeds 5 --occasions 6000 --out run.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -145,8 +146,9 @@ class UniMem:
 
     name = "unimem"
 
-    def __init__(self, memories, *, rate: float = 0.1, check_every: int = CHECK_EVERY, graduate: bool = False,
-                 seed: int = 0):
+    def __init__(
+        self, memories, *, rate: float = 0.1, check_every: int = CHECK_EVERY, graduate: bool = False, seed: int = 0
+    ):
         from unimem import holdout_io
         from unimem.measure import CausalMemory
 
@@ -154,9 +156,14 @@ class UniMem:
         # A seed-derived salt makes the randomization -- and so every number -- reproducible.
         holdout_io.configure(self._root, rate=rate, note="CausalMemBench", salt=f"causalmembench-{seed}-{rate:g}")
         self._eligible: list[str] = []
-        self._memory = CausalMemory(lambda _q: [{"id": m, "text": m} for m in self._eligible],
-                                    root=self._root, on_harm="withdraw", check_every=check_every,
-                                    durable=False, graduate=graduate)
+        self._memory = CausalMemory(
+            lambda _q: [{"id": m, "text": m} for m in self._eligible],
+            root=self._root,
+            on_harm="withdraw",
+            check_every=check_every,
+            durable=False,
+            graduate=graduate,
+        )
         self._last_withdrawn: set[str] = set()
 
     def deliver(self, occasion_id, eligible):
@@ -216,8 +223,7 @@ def _takes_seed(factory: Callable) -> bool:
     return any(p.name == "seed" or p.kind is p.VAR_KEYWORD for p in params)
 
 
-def run_one(factory: Callable, memories: list[Memory], *, seed: int, occasions: int, lag: int,
-            missing: float) -> dict:
+def run_one(factory: Callable, memories: list[Memory], *, seed: int, occasions: int, lag: int, missing: float) -> dict:
     """One policy, one seed. Occasions, eligibility and outcome noise depend only on the seed,
     so every policy faces the identical world."""
     world = random.Random(seed)
@@ -231,9 +237,11 @@ def run_one(factory: Callable, memories: list[Memory], *, seed: int, occasions: 
         for t in range(occasions):
             hard = world.random() < HARD_SHARE
             base = BASE_HARD if hard else BASE_EASY
-            eligible = [m.id for m in memories
-                        if (m.only is None or m.only == ("hard" if hard else "easy"))
-                        and world.random() < m.eligibility]
+            eligible = [
+                m.id
+                for m in memories
+                if (m.only is None or m.only == ("hard" if hard else "easy")) and world.random() < m.eligibility
+            ]
             draw = noise.random()
             occasion = f"o{seed}-{t}"
             delivered = policy.deliver(occasion, eligible) if eligible else []
@@ -268,8 +276,11 @@ def _summary(values):
     values = [v for v in values if v is not None]
     if not values:
         return None
-    return {"mean": round(statistics.fmean(values), 4),
-            "sd": round(statistics.stdev(values), 4) if len(values) > 1 else 0.0, "n": len(values)}
+    return {
+        "mean": round(statistics.fmean(values), 4),
+        "sd": round(statistics.stdev(values), 4) if len(values) > 1 else 0.0,
+        "n": len(values),
+    }
 
 
 def run(policies: list[str], *, seeds: int, occasions: int, lag: int, missing: float) -> dict:
@@ -279,10 +290,12 @@ def run(policies: list[str], *, seeds: int, occasions: int, lag: int, missing: f
     per_policy: dict[str, list[dict]] = {}
     for spec in policies:
         factory = load_policy(spec)
-        per_policy[spec] = [run_one(factory, memories, seed=s, occasions=occasions, lag=lag, missing=missing)
-                            for s in range(seeds)]
-    oracle = per_policy.get("oracle") or [run_one(Oracle, memories, seed=s, occasions=occasions, lag=lag,
-                                                  missing=missing) for s in range(seeds)]
+        per_policy[spec] = [
+            run_one(factory, memories, seed=s, occasions=occasions, lag=lag, missing=missing) for s in range(seeds)
+        ]
+    oracle = per_policy.get("oracle") or [
+        run_one(Oracle, memories, seed=s, occasions=occasions, lag=lag, missing=missing) for s in range(seeds)
+    ]
     results = {}
     for spec, runs in per_policy.items():
         harmful_ids = [m.id for m in memories if m.effect < 0]
@@ -291,8 +304,7 @@ def run(policies: list[str], *, seeds: int, occasions: int, lag: int, missing: f
             "regret_vs_oracle": _summary([o["success_rate"] - r["success_rate"] for r, o in zip(runs, oracle)]),
             "harmful_deliveries": _summary([r["harmful_deliveries"] for r in runs]),
             "harmful_withdrawn_share": _summary([r["harmful_withdrawn"] for r in runs]),
-            "occasions_to_withdraw": {m: _summary([r["occasions_to_withdraw"][m] for r in runs])
-                                      for m in harmful_ids},
+            "occasions_to_withdraw": {m: _summary([r["occasions_to_withdraw"][m] for r in runs]) for m in harmful_ids},
             "false_withdrawals_per_run": _summary([len(r["false_withdrawals"]) for r in runs]),
             "helpful_withdrawn_runs": sum(bool(r["helpful_withdrawn"]) for r in runs),
             "runs": runs,
@@ -301,40 +313,59 @@ def run(policies: list[str], *, seeds: int, occasions: int, lag: int, missing: f
     with open(here, "rb") as fh:
         source = hashlib.sha256(fh.read()).hexdigest()
     return {
-        "benchmark": "CausalMemBench", "version": 1,
-        "manifest": {"seeds": seeds, "occasions": occasions, "lag": lag, "missing": missing,
-                     "hard_share": HARD_SHARE, "base_easy": BASE_EASY, "base_hard": BASE_HARD,
-                     "memories": [dataclasses.asdict(m) for m in memories], "source_sha256": source},
+        "benchmark": "CausalMemBench",
+        "version": 1,
+        "manifest": {
+            "seeds": seeds,
+            "occasions": occasions,
+            "lag": lag,
+            "missing": missing,
+            "hard_share": HARD_SHARE,
+            "base_easy": BASE_EASY,
+            "base_hard": BASE_HARD,
+            "memories": [dataclasses.asdict(m) for m in memories],
+            "source_sha256": source,
+        },
         "results": results,
         "note": "Seeded simulation of the measurement-and-withdrawal layer; it says nothing about "
-                "any system's recall quality or live business value.",
+        "any system's recall quality or live business value.",
     }
 
 
 def render(report: dict) -> str:
     m = report["manifest"]
-    lines = [f"CausalMemBench v{report['version']} -- {m['seeds']} seeds x {m['occasions']} occasions, "
-             f"outcome lag {m['lag']}, {m['missing']:.0%} never reported", "",
-             "| policy | success | regret vs oracle | harmful deliveries | harmful withdrawn | "
-             "false withdrawals / run | runs losing a helpful memory |",
-             "| --- | --: | --: | --: | --: | --: | --: |"]
+    lines = [
+        f"CausalMemBench v{report['version']} -- {m['seeds']} seeds x {m['occasions']} occasions, "
+        f"outcome lag {m['lag']}, {m['missing']:.0%} never reported",
+        "",
+        "| policy | success | regret vs oracle | harmful deliveries | harmful withdrawn | "
+        "false withdrawals / run | runs losing a helpful memory |",
+        "| --- | --: | --: | --: | --: | --: | --: |",
+    ]
 
     def fmt(s, pct=False):
         if s is None:
             return "-"
         return f"{s['mean']:.1%} ± {s['sd']:.1%}" if pct else f"{s['mean']:.1f} ± {s['sd']:.1f}"
+
     for name, r in report["results"].items():
-        lines.append(f"| {name} | {fmt(r['success_rate'], True)} | {fmt(r['regret_vs_oracle'], True)} | "
-                     f"{fmt(r['harmful_deliveries'])} | {fmt(r['harmful_withdrawn_share'], True)} | "
-                     f"{fmt(r['false_withdrawals_per_run'])} | {r['helpful_withdrawn_runs']}/{m['seeds']} |")
+        lines.append(
+            f"| {name} | {fmt(r['success_rate'], True)} | {fmt(r['regret_vs_oracle'], True)} | "
+            f"{fmt(r['harmful_deliveries'])} | {fmt(r['harmful_withdrawn_share'], True)} | "
+            f"{fmt(r['false_withdrawals_per_run'])} | {r['helpful_withdrawn_runs']}/{m['seeds']} |"
+        )
     lines += ["", report["note"]]
     return "\n".join(lines)
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--policy", action="append", default=None,
-                   help="built-in name or module:factory (repeatable; default: all built-ins)")
+    p.add_argument(
+        "--policy",
+        action="append",
+        default=None,
+        help="built-in name or module:factory (repeatable; default: all built-ins)",
+    )
     p.add_argument("--seeds", type=int, default=5)
     p.add_argument("--occasions", type=int, default=DEFAULT_OCCASIONS)
     p.add_argument("--lag", type=int, default=DEFAULT_LAG)
@@ -342,8 +373,9 @@ def main(argv=None) -> int:
     p.add_argument("--out", default=None, help="write the full JSON report here")
     args = p.parse_args(argv)
     try:
-        report = run(args.policy or list(BUILTIN), seeds=args.seeds, occasions=args.occasions,
-                     lag=args.lag, missing=args.missing)
+        report = run(
+            args.policy or list(BUILTIN), seeds=args.seeds, occasions=args.occasions, lag=args.lag, missing=args.missing
+        )
     except (ValueError, ImportError, AttributeError) as exc:
         print(f"causalmembench: {exc}", file=sys.stderr)
         return 2

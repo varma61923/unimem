@@ -9,16 +9,19 @@ from hub.config import HubConfig, _env_int_in_range
 
 
 class TestConfigRefusesNonsenseAtStartup:
-    @pytest.mark.parametrize("name,value", [
-        ("HUB_PORT", "99999"),
-        ("HUB_PORT", "0"),
-        ("HUB_DB_POOL_SIZE", "-1"),
-        ("HUB_MAX_TITLE_CHARS", "-5"),
-        ("HUB_MAX_REQUEST_BODY_BYTES", "0"),
-        ("HUB_TRUSTED_PROXY_HOPS", "-2"),
-        ("HUB_MAX_TAGS", "0"),
-        ("HUB_RATE_LIMIT_BURST", "-1"),
-    ])
+    @pytest.mark.parametrize(
+        "name,value",
+        [
+            ("HUB_PORT", "99999"),
+            ("HUB_PORT", "0"),
+            ("HUB_DB_POOL_SIZE", "-1"),
+            ("HUB_MAX_TITLE_CHARS", "-5"),
+            ("HUB_MAX_REQUEST_BODY_BYTES", "0"),
+            ("HUB_TRUSTED_PROXY_HOPS", "-2"),
+            ("HUB_MAX_TAGS", "0"),
+            ("HUB_RATE_LIMIT_BURST", "-1"),
+        ],
+    )
     def test_an_out_of_range_value_is_refused(self, monkeypatch, name, value):
         monkeypatch.setenv("HUB_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
         monkeypatch.setenv(name, value)
@@ -49,12 +52,15 @@ class TestConfigRefusesNonsenseAtStartup:
         with pytest.raises(ValueError, match="HUB_PORT"):
             HubConfig.from_env()
 
-    @pytest.mark.parametrize("name", [
-        "HUB_REQUIRE_RLS",
-        "HUB_REQUIRE_API_KEY_PEPPER",
-        "HUB_ALLOW_RLS_BYPASS",
-        "HUB_ALLOW_INSECURE_HTTP",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "HUB_REQUIRE_RLS",
+            "HUB_REQUIRE_API_KEY_PEPPER",
+            "HUB_ALLOW_RLS_BYPASS",
+            "HUB_ALLOW_INSECURE_HTTP",
+        ],
+    )
     def test_a_malformed_security_boolean_is_refused(self, monkeypatch, name):
         monkeypatch.setenv("HUB_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
         monkeypatch.setenv(name, "tru")
@@ -185,9 +191,7 @@ class TestSecretsCanComeFromAFileInsteadOfAPlainEnvVar:
         with pytest.raises(RuntimeError, match="HUB_DATABASE_URL_FILE"):
             HubConfig.from_env()
 
-    def test_encryption_key_can_come_from_a_file_and_the_cipher_works(
-        self, monkeypatch, tmp_path
-    ):
+    def test_encryption_key_can_come_from_a_file_and_the_cipher_works(self, monkeypatch, tmp_path):
         from hub.encryption import generate_key
 
         key = generate_key()
@@ -201,9 +205,7 @@ class TestSecretsCanComeFromAFileInsteadOfAPlainEnvVar:
         cipher = config.cipher()
         assert cipher.decrypt(cipher.encrypt("secret-url")) == "secret-url"
 
-    def test_admin_token_file_wins_over_a_plain_env_var_set_alongside_it(
-        self, monkeypatch, tmp_path
-    ):
+    def test_admin_token_file_wins_over_a_plain_env_var_set_alongside_it(self, monkeypatch, tmp_path):
         secret_file = tmp_path / "admin_token"
         secret_file.write_text("from-the-secret-store")
         monkeypatch.setenv("HUB_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
@@ -212,9 +214,7 @@ class TestSecretsCanComeFromAFileInsteadOfAPlainEnvVar:
         config = HubConfig.from_env()
         assert config.admin_token == "from-the-secret-store"
 
-    def test_stripe_price_ids_are_not_secrets_and_ignore_the_file_convention(
-        self, monkeypatch, tmp_path
-    ):
+    def test_stripe_price_ids_are_not_secrets_and_ignore_the_file_convention(self, monkeypatch, tmp_path):
         monkeypatch.setenv("HUB_DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
         monkeypatch.setenv("HUB_STRIPE_PRICE_TEAM", "price_team_123")
         monkeypatch.setenv("HUB_STRIPE_PRICE_TEAM_FILE", str(tmp_path / "unused"))
@@ -272,6 +272,7 @@ class TestRateLimiterMemoryIsBounded:
 class TestMetricsEndpoint:
     def _fresh(self):
         from hub.observability import Metrics
+
         return Metrics()
 
     def test_requests_are_counted_by_method_route_and_status(self):

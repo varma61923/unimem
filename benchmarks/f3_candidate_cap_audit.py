@@ -33,17 +33,30 @@ def _seed(root: str, count: int, target_rank: int) -> tuple[list[str], str]:
         index = hierarchical._statement_index(facts)
         for rank in range(1, count + 1):
             statement, category, valid_from, valid_until, expires_at = hierarchical.prepare_fact(
-                "Synthetic record " + " ".join(
-                    _alpha(rank * multiplier) for multiplier in (1, 13, 31, 101, 997)
-                ) + ".",
+                "Synthetic record " + " ".join(_alpha(rank * multiplier) for multiplier in (1, 13, 31, 101, 997)) + ".",
                 hierarchical.DEFAULT_CATEGORY,
-                None, None, None,
+                None,
+                None,
+                None,
             )
             fact, action = hierarchical._add_locked(
-                facts, statement, category,
+                facts,
+                statement,
+                category,
                 ["agent:a"] if rank == target_rank else ["agent:b"],
-                valid_from, valid_until, expires_at, 0.8, f"f3-candidate-cap-{rank:05d}", "", None,
-                None, 1, index=index, dedupe=hierarchical.dedup_mode(), root=root, conflicts=conflicts,
+                valid_from,
+                valid_until,
+                expires_at,
+                0.8,
+                f"f3-candidate-cap-{rank:05d}",
+                "",
+                None,
+                None,
+                1,
+                index=index,
+                dedupe=hierarchical.dedup_mode(),
+                root=root,
+                conflicts=conflicts,
             )
             if action != "ADD":
                 raise RuntimeError("bounded candidate fixture was not uniquely admitted")
@@ -57,10 +70,7 @@ def _seed(root: str, count: int, target_rank: int) -> tuple[list[str], str]:
 
 def _search(root: str, ids: list[str], target: str, dense_cap: int) -> list[dict]:
     def vector_search(_query: str, *, limit: int) -> list[tuple[str, float]]:
-        return [
-            (identity, 0.99 - rank * 0.00001)
-            for rank, identity in enumerate(ids[: min(limit, dense_cap)])
-        ]
+        return [(identity, 0.99 - rank * 0.00001) for rank, identity in enumerate(ids[: min(limit, dense_cap)])]
 
     return search_recipes.search(
         root,
@@ -97,18 +107,23 @@ def main() -> int:
         candidate_ids = [row["id"] for row in candidate]
         baseline_scope_safe = all(row["id"] == target for row in baseline)
         candidate_scope_safe = all(row["id"] == target for row in candidate)
-        print(json.dumps({
-            "fixture_facts": args.facts,
-            "current_candidate_cap": args.current_cap,
-            "candidate_cap": args.candidate_cap,
-            "eligible_dense_target_rank": args.target_rank,
-            "baseline_ids": baseline_ids,
-            "candidate_ids": candidate_ids,
-            "exact_ordered_output_parity": baseline == candidate,
-            "baseline_scope_isolated": baseline_scope_safe,
-            "candidate_scope_isolated": candidate_scope_safe,
-            "decision": "no-go" if baseline != candidate else "parity on this bounded fixture only",
-        }, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "fixture_facts": args.facts,
+                    "current_candidate_cap": args.current_cap,
+                    "candidate_cap": args.candidate_cap,
+                    "eligible_dense_target_rank": args.target_rank,
+                    "baseline_ids": baseline_ids,
+                    "candidate_ids": candidate_ids,
+                    "exact_ordered_output_parity": baseline == candidate,
+                    "baseline_scope_isolated": baseline_scope_safe,
+                    "candidate_scope_isolated": candidate_scope_safe,
+                    "decision": "no-go" if baseline != candidate else "parity on this bounded fixture only",
+                },
+                sort_keys=True,
+            )
+        )
         if not baseline_scope_safe or not candidate_scope_safe or baseline_ids != [target]:
             raise RuntimeError("scope isolation or expected baseline canary failed")
         return 0

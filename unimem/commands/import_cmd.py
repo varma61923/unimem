@@ -22,26 +22,31 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument("file", help="Path to a .jsonl, .csv, or cogx/v1 .json export.")
     p.add_argument(
-        "--format", choices=["jsonl", "csv", "cogx", "native"], default=None,
+        "--format",
+        choices=["jsonl", "csv", "cogx", "native"],
+        default=None,
         help="Default: auto-detect (a cogx/v1 envelope is recognized by content, "
-             "otherwise inferred from the file extension). 'native' is an alias for 'jsonl'.",
+        "otherwise inferred from the file extension). 'native' is an alias for 'jsonl'.",
     )
     p.add_argument(
-        "--source", choices=list(adapters.SOURCES), default=adapters.GENERIC,
+        "--source",
+        choices=list(adapters.SOURCES),
+        default=adapters.GENERIC,
         help=(
             "Which system produced this export. Anything but `generic` reads "
             "the vendor's own nested shape, so --title-field and friends are "
             "not needed (and are ignored): "
-            + "; ".join(f"{a.name} = {a.describe}" for a in adapters.ADAPTERS.values()
-                        if a.name != adapters.GENERIC)
+            + "; ".join(f"{a.name} = {a.describe}" for a in adapters.ADAPTERS.values() if a.name != adapters.GENERIC)
             + ". These read a FILE you already have -- no API key, no network "
             "call, nothing leaves your machine."
         ),
     )
     p.add_argument(
-        "--agent-type", type=_validators.agent_type, required=True,
+        "--agent-type",
+        type=_validators.agent_type,
+        required=True,
         help="Kind of fleet these traces came from, as a lowercase slug. Any "
-             "field works -- e.g. code, support, hr, robotics, legal.",
+        "field works -- e.g. code, support, hr, robotics, legal.",
     )
     p.add_argument("--profile", default="")
     p.add_argument("--title-field", default="title")
@@ -50,7 +55,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p.add_argument("--tags-field", default="tags")
     p.add_argument("--id-field", default="id", help="Source system's own id, recorded for traceability only.")
     p.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="Parse and report what would be imported, without writing any files.",
     )
     p.add_argument("--dest", default=None)
@@ -201,10 +207,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"[unimem] --dry-run: no files written. {n_written} trace(s) would be created.")
         return 1 if (all_rows_skipped or n_rejected) else 0
 
-    print(
-        f"[unimem] wrote {n_written} trace(s) to {tdir}. "
-        "Run `unimem distill` to find repeated patterns across them."
-    )
+    print(f"[unimem] wrote {n_written} trace(s) to {tdir}. Run `unimem distill` to find repeated patterns across them.")
     if n_rejected or all_rows_skipped:
         return 1
     return 0
@@ -232,10 +235,7 @@ def _run_cogx(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     counts = interop.apply_store(root, records, agent_type=args.agent_type)
     applied = sum(v for k, v in counts.items() if k != "skipped")
-    print(
-        f"[unimem] {args.file}: applied {applied} COGX record(s) "
-        f"({breakdown}), {counts['skipped']} skipped."
-    )
+    print(f"[unimem] {args.file}: applied {applied} COGX record(s) ({breakdown}), {counts['skipped']} skipped.")
     if applied == 0 and counts["skipped"] > 0:
         return 1
     return 0

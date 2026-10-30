@@ -1,4 +1,5 @@
 """Source-sensitive authorization and bounded, shared event-report work."""
+
 from __future__ import annotations
 
 import json
@@ -28,19 +29,32 @@ def fresh_caches():
     yield
 
 
-def write_lesson(root, slug="lesson_scoped", *, scope="container:alpha", description="Payments require retry keys",
-                 body="## Rule\nUse an idempotency key when retrying a payment.\n"):
+def write_lesson(
+    root,
+    slug="lesson_scoped",
+    *,
+    scope="container:alpha",
+    description="Payments require retry keys",
+    body="## Rule\nUse an idempotency key when retrying a payment.\n",
+):
     os.makedirs(paths.lessons_dir(str(root)), exist_ok=True)
     target = os.path.join(paths.lessons_dir(str(root)), slug + ".md")
-    fm = {"name": slug, "status": "active", "scopes": [scope], "description": description,
-          "applies_when": "Retrying a payment request", "importance": 3, "tags": ["payments"]}
+    fm = {
+        "name": slug,
+        "status": "active",
+        "scopes": [scope],
+        "description": description,
+        "applies_when": "Retrying a payment request",
+        "importance": 3,
+        "tags": ["payments"],
+    }
     frontmatter.write(target, fm, body)
     return target
 
 
 def replace_preserving_stamp(path, before, after, *, replacement=False):
     st = os.stat(path)
-    text = Path(path).read_text(encoding='utf-8')
+    text = Path(path).read_text(encoding="utf-8")
     assert len(before) == len(after) and before in text
     changed = text.replace(before, after)
     destination = path + ".new" if replacement else path
@@ -77,8 +91,9 @@ def test_persisted_metadata_and_binary_index_refresh_in_a_new_process(tmp_path, 
     path = write_lesson(tmp_path, description="asteroids tracking orbit")
     first, terms = lesson_cache.load_active_with_terms(str(tmp_path))
     retrieval.rank_lessons("asteroids", first, floor=0.0, term_cache=terms)
-    assert os.path.exists(corpus_bin.bin_path(os.path.join(str(tmp_path), "memory", ".cache"),
-                                            retrieval.SCORER_ADAPTIVE))
+    assert os.path.exists(
+        corpus_bin.bin_path(os.path.join(str(tmp_path), "memory", ".cache"), retrieval.SCORER_ADAPTIVE)
+    )
     replace_preserving_stamp(path, "container:alpha", "container:bravo", replacement=replacement)
     replace_preserving_stamp(path, "asteroids", "elephants", replacement=replacement)
     script = """
@@ -90,10 +105,14 @@ ranked=retrieval.rank_lessons('elephants',rows,floor=0.0,term_cache=terms)
 print(json.dumps({'scoped':len(scoped),'description':rows[0][1]['description'],
                  'matches':[r.slug for r in ranked]}))
 """
-    result = subprocess.run([sys.executable, "-c", script, str(tmp_path)], capture_output=True,
-                            text=True, check=True, timeout=15)
-    assert json.loads(result.stdout) == {"scoped": 0, "description": "elephants tracking orbit",
-                                        "matches": ["lesson_scoped"]}
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)], capture_output=True, text=True, check=True, timeout=15
+    )
+    assert json.loads(result.stdout) == {
+        "scoped": 0,
+        "description": "elephants tracking orbit",
+        "matches": ["lesson_scoped"],
+    }
 
 
 def test_public_listing_keeps_three_fields_and_old_binary_schema_rebuilds(tmp_path):
@@ -241,17 +260,29 @@ def test_identical_report_misses_share_work_but_unrelated_warm_hits_do_not_wait(
 
 
 def test_unscoped_recall_applies_temporal_validity_and_expiration(tmp_path):
-    for name, validity in [("current", {}), ("future", {"valid_from": "9999-01-01"}),
-                           ("past", {"valid_until": "0001-01-01"}),
-                           ("expired", {"expires": "0001-01-01"}),
-                           ("invalid", {"valid_until": "not-a-date"})]:
+    for name, validity in [
+        ("current", {}),
+        ("future", {"valid_from": "9999-01-01"}),
+        ("past", {"valid_until": "0001-01-01"}),
+        ("expired", {"expires": "0001-01-01"}),
+        ("invalid", {"valid_until": "not-a-date"}),
+    ]:
         path = write_lesson(tmp_path, "lesson_" + name, scope="")
         fm, body = frontmatter.read(path)
         frontmatter.write(path, {**fm, "scopes": [], **validity}, body)
     instance = gateway.Gateway(str(tmp_path), token="x" * 40)
-    response = instance.handle("POST", "/v1/recall", trusted=True, body=json.dumps({
-        "occasion_id": "one", "query": "payment retry keys", "top_k": 20,
-    }).encode())
+    response = instance.handle(
+        "POST",
+        "/v1/recall",
+        trusted=True,
+        body=json.dumps(
+            {
+                "occasion_id": "one",
+                "query": "payment retry keys",
+                "top_k": 20,
+            }
+        ).encode(),
+    )
     assert response.status == 200
     assert [item["id"] for item in json.loads(response.body)["deliver"]] == ["lesson_current"]
 
@@ -274,9 +305,18 @@ def test_scoped_index_reuses_ram_without_overwriting_the_full_disk_index(tmp_pat
     instance = gateway.Gateway(str(tmp_path), token="x" * 40)
     headers = {"Authorization": "Bearer " + "x" * 40, "Host": "localhost", "X-Container-Tag": "alpha"}
     for n in range(3):
-        response = instance.handle("POST", "/v1/recall", headers, json.dumps({
-            "occasion_id": str(n), "query": "payment retry keys", "top_k": 20,
-        }).encode())
+        response = instance.handle(
+            "POST",
+            "/v1/recall",
+            headers,
+            json.dumps(
+                {
+                    "occasion_id": str(n),
+                    "query": "payment retry keys",
+                    "top_k": 20,
+                }
+            ).encode(),
+        )
         assert [item["id"] for item in json.loads(response.body)["deliver"]] == ["lesson_alpha"]
     assert builds == [1]
     assert Path(path).read_bytes() == full_index
@@ -296,8 +336,16 @@ def test_source_change_between_scoped_ranking_and_body_read_is_withheld(tmp_path
     monkeypatch.setattr(retrieval, "rank_lessons", changed_after_ranking)
     instance = gateway.Gateway(str(tmp_path), token="x" * 40)
     headers = {"Authorization": "Bearer " + "x" * 40, "Host": "localhost", "X-Container-Tag": "alpha"}
-    response = instance.handle("POST", "/v1/recall", headers, json.dumps({
-        "occasion_id": "one", "query": "payment retry keys",
-    }).encode())
+    response = instance.handle(
+        "POST",
+        "/v1/recall",
+        headers,
+        json.dumps(
+            {
+                "occasion_id": "one",
+                "query": "payment retry keys",
+            }
+        ).encode(),
+    )
     assert response.status == 200 and json.loads(response.body)["deliver"] == []
     assert b"PRIVATE" not in response.body

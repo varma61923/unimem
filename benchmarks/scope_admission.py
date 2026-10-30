@@ -5,6 +5,7 @@ bulk memory views with many project/repository labels. Ordinary contexts usually
 have far fewer labels; all sizes are reported to show that boundary. This is
 exact admission with fresh principal checks, without authorization caching.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -20,8 +21,11 @@ from unimem import memory_control
 
 def original_matches(labels: list[str], context: list[str], *, governed: bool = True) -> bool:
     """Frozen pre-optimization admission oracle, including principal checks."""
-    if governed and memory_control.REQUIRED_PRINCIPAL_SCOPE.get() \
-            and memory_control.REQUIRED_PRINCIPAL_SCOPE.get() not in labels:
+    if (
+        governed
+        and memory_control.REQUIRED_PRINCIPAL_SCOPE.get()
+        and memory_control.REQUIRED_PRINCIPAL_SCOPE.get() not in labels
+    ):
         return False
     orthogonal = [s for s in labels if s.split(":", 1)[0] in memory_control.DIMENSIONS and ":" in s]
     legacy = [s for s in labels if s not in orthogonal]
@@ -29,14 +33,17 @@ def original_matches(labels: list[str], context: list[str], *, governed: bool = 
 
 
 def measure(*, labels: int, trials: int = 5, repetitions: int = 100) -> dict:
-    for name, value, upper in (("labels", labels, 10000), ("trials", trials, 100),
-                               ("repetitions", repetitions, 10000)):
+    for name, value, upper in (("labels", labels, 10000), ("trials", trials, 100), ("repetitions", repetitions, 10000)):
         if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= upper:
             raise ValueError(f"{name} must be an integer in 1..{upper}")
     scopes = [f"project:project-{i}" for i in range(labels)]
-    cases = [(scopes, scopes, True), (scopes, scopes[:-1], True),
-             ([*scopes, "legacy"], [*scopes, "legacy"], True),
-             ([*scopes, "legacy"], scopes, True), (scopes, scopes, False)]
+    cases = [
+        (scopes, scopes, True),
+        (scopes, scopes[:-1], True),
+        ([*scopes, "legacy"], [*scopes, "legacy"], True),
+        ([*scopes, "legacy"], scopes, True),
+        (scopes, scopes, False),
+    ]
     samples: dict[str, list[float]] = {"baseline": [], "candidate": []}
     digests = {}
     functions: dict[str, Callable] = {"baseline": original_matches, "candidate": memory_control.matches}
@@ -47,8 +54,11 @@ def measure(*, labels: int, trials: int = 5, repetitions: int = 100) -> dict:
             for variant in order:
                 function = functions[variant]
                 start = time.perf_counter_ns()
-                results = [function(row, context, governed=governed) for _ in range(repetitions)
-                           for row, context, governed in cases]
+                results = [
+                    function(row, context, governed=governed)
+                    for _ in range(repetitions)
+                    for row, context, governed in cases
+                ]
                 elapsed = (time.perf_counter_ns() - start) / 1_000_000
                 digests[variant] = hashlib.sha256(bytes(results)).hexdigest()
                 if trial:
@@ -56,11 +66,19 @@ def measure(*, labels: int, trials: int = 5, repetitions: int = 100) -> dict:
         if digests["baseline"] != digests["candidate"]:
             raise RuntimeError("scope admission results changed")
         medians = {variant: statistics.median(values) for variant, values in samples.items()}
-        return {"benchmark": "scope-admission-v1", "labels": labels, "trials": trials,
-                "calls_per_trial": len(cases) * repetitions, "python": platform.python_version(),
-                "baseline_median_ms": medians["baseline"], "candidate_median_ms": medians["candidate"],
-                "speedup": medians["baseline"] / medians["candidate"], "samples_ms": samples,
-                "admission_sha256": digests["candidate"], "excludes": "storage, ranking, network, model inference"}
+        return {
+            "benchmark": "scope-admission-v1",
+            "labels": labels,
+            "trials": trials,
+            "calls_per_trial": len(cases) * repetitions,
+            "python": platform.python_version(),
+            "baseline_median_ms": medians["baseline"],
+            "candidate_median_ms": medians["candidate"],
+            "speedup": medians["baseline"] / medians["candidate"],
+            "samples_ms": samples,
+            "admission_sha256": digests["candidate"],
+            "excludes": "storage, ranking, network, model inference",
+        }
     finally:
         memory_control.REQUIRED_PRINCIPAL_SCOPE.reset(token)
 

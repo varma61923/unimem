@@ -1,4 +1,5 @@
 """Temporal path evidence, traversal bounds and typed local query contracts."""
+
 from __future__ import annotations
 
 import json
@@ -13,11 +14,26 @@ BASE = "2024-01-01T00:00:00+00:00"
 
 def seed(root):
     nodes = {nid: graph.GraphNode(nid, "concept", nid, {}, BASE, BASE) for nid in ("a", "b", "c", "d", "x")}
-    edges = [graph.GraphEdge(source, target, relation, 1, BASE, None, None,
-                             properties={"source_document": f"document:{source}-{target}"}, created_at=BASE)
-             for source, target, relation in (("a", "b", "uses"), ("b", "c", "uses"),
-                                              ("a", "d", "depends_on"), ("d", "c", "depends_on"),
-                                              ("c", "a", "relates_to"))]
+    edges = [
+        graph.GraphEdge(
+            source,
+            target,
+            relation,
+            1,
+            BASE,
+            None,
+            None,
+            properties={"source_document": f"document:{source}-{target}"},
+            created_at=BASE,
+        )
+        for source, target, relation in (
+            ("a", "b", "uses"),
+            ("b", "c", "uses"),
+            ("a", "d", "depends_on"),
+            ("d", "c", "depends_on"),
+            ("c", "a", "relates_to"),
+        )
+    ]
     graph.save_nodes(root, nodes)
     graph.save_edges(root, edges)
     return nodes, edges
@@ -85,10 +101,21 @@ def test_work_budgets_are_inconclusive_and_bound_actual_work(tmp_path):
     assert result["status"] == "budget-exhausted" and result["visited_nodes"] == 1
 
 
-@pytest.mark.parametrize("options", [{"max_nodes": True}, {"max_nodes": 0}, {"max_nodes": 100001},
-                                     {"max_examined_edges": 0}, {"max_hops": 5}, {"max_hops": -1},
-                                     {"direction": "sideways"}, {"relations": "uses"},
-                                     {"relations": [1]}, {"relations": ["uses"] * 65}])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"max_nodes": True},
+        {"max_nodes": 0},
+        {"max_nodes": 100001},
+        {"max_examined_edges": 0},
+        {"max_hops": 5},
+        {"max_hops": -1},
+        {"direction": "sideways"},
+        {"relations": "uses"},
+        {"relations": [1]},
+        {"relations": ["uses"] * 65},
+    ],
+)
 def test_invalid_controls_fail_before_loading(tmp_path, monkeypatch, options):
     monkeypatch.setattr(graph, "_full_index", lambda *_: pytest.fail("invalid controls touched the store"))
     with pytest.raises(ValueError):
@@ -98,7 +125,10 @@ def test_invalid_controls_fail_before_loading(tmp_path, monkeypatch, options):
 def test_typed_neighbors_and_subgraphs_preserve_journal_order(tmp_path):
     root = str(tmp_path)
     _, edges = seed(root)
-    assert [row["neighbor_id"] for row in graph.get_neighbors(root, "a", relations=["uses", "depends_on"])] == ["b", "d"]
+    assert [row["neighbor_id"] for row in graph.get_neighbors(root, "a", relations=["uses", "depends_on"])] == [
+        "b",
+        "d",
+    ]
     assert graph.get_neighbors(root, "a", relation="uses", relations=["depends_on"]) == []
     sub = graph.multi_hop_subgraph(root, ["a"], relations=["uses"], direction="out")
     assert sub["edges"] == [edge.to_dict() for edge in edges[:2]]

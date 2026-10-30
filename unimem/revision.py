@@ -54,9 +54,7 @@ def revision_of(fm: dict, body: str = "") -> str:
     return digest[:REVISION_LENGTH]
 
 
-def revision_of_trace(
-    title: str, context_text: str, solution_text: str, tags: list[str] | None = None
-) -> str:
+def revision_of_trace(title: str, context_text: str, solution_text: str, tags: list[str] | None = None) -> str:
     """Content identity for a Hub trace, under the same rules as a lesson."""
     payload = {
         "title": _normalize(title or ""),

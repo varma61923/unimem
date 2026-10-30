@@ -43,19 +43,21 @@ class TestRendering:
             "n_commons_traces": 46,
             "n_commons_traces_total": 46,
             "corpus_truncated": False,
-            "candidates": [{
-                "rank": 1,
-                "similarity": 0.125,
-                "commons_hits": 3,
-                "trace": {
-                    "title": "Payment webhook delivered more than once",
-                    "context_text": "The provider re-delivers after a timeout",
-                    "solution_text": "Persist the provider event id",
-                    "tags": ["webhooks", "idempotency"],
-                    "agent_type": "code",
-                    "trust": 0.5,
-                },
-            }],
+            "candidates": [
+                {
+                    "rank": 1,
+                    "similarity": 0.125,
+                    "commons_hits": 3,
+                    "trace": {
+                        "title": "Payment webhook delivered more than once",
+                        "context_text": "The provider re-delivers after a timeout",
+                        "solution_text": "Persist the provider event id",
+                        "tags": ["webhooks", "idempotency"],
+                        "agent_type": "code",
+                        "trust": 0.5,
+                    },
+                }
+            ],
             "note": "Ranked CANDIDATES, not coverage.",
         }
         base.update(over)
@@ -75,31 +77,26 @@ class TestRendering:
         assert "not coverage" in out.lower()
 
     def test_no_candidates_against_a_populated_corpus_explains_why(self):
-        out = commons_cmd._render_candidates(
-            self._result(n_candidates=0, candidates=[]), "unrelated question"
-        )
+        out = commons_cmd._render_candidates(self._result(n_candidates=0, candidates=[]), "unrelated question")
         assert "lexical" in out.lower()
 
     def test_an_empty_commons_says_cold_start_not_no_answer(self):
         out = commons_cmd._render_candidates(
-            self._result(n_candidates=0, candidates=[], n_commons_traces=0,
-                         n_commons_traces_total=0),
+            self._result(n_candidates=0, candidates=[], n_commons_traces=0, n_commons_traces_total=0),
             "anything",
         )
         assert "cold start" in out.lower()
 
     def test_a_truncated_scan_is_disclosed(self):
         out = commons_cmd._render_candidates(
-            self._result(corpus_truncated=True, n_commons_traces=20_000,
-                         n_commons_traces_total=50_000),
+            self._result(corpus_truncated=True, n_commons_traces=20_000, n_commons_traces_total=50_000),
             "q",
         )
         assert "scan limit" in out.lower()
 
     def test_it_survives_a_candidate_missing_optional_fields(self):
         out = commons_cmd._render_candidates(
-            self._result(candidates=[{"rank": 1, "similarity": 0.1, "commons_hits": 0,
-                                       "trace": {}}]),
+            self._result(candidates=[{"rank": 1, "similarity": 0.1, "commons_hits": 0, "trace": {}}]),
             "q",
         )
         assert "(untitled)" in out
@@ -120,18 +117,15 @@ class TestArgWiring:
             raise AssertionError("resolved the hub for an empty question")
 
         monkeypatch.setattr(commons_cmd, "_resolve_hub", explode)
-        args = argparse.Namespace(question="   ", limit=None, agent_type="", json=False,
-                                  hub_url=None, hub_api_key=None)
+        args = argparse.Namespace(question="   ", limit=None, agent_type="", json=False, hub_url=None, hub_api_key=None)
         assert commons_cmd.run_ask(args) == 1
         assert "ask what?" in capsys.readouterr().err
 
     def test_json_mode_emits_parseable_json(self, monkeypatch, capsys):
         payload = {"n_candidates": 0, "candidates": [], "note": "n"}
         monkeypatch.setattr(commons_cmd, "_resolve_hub", lambda a: ("http://h/mcp", "k"))
-        monkeypatch.setattr(commons_cmd.hub_client, "commons_search",
-                            lambda *a, **kw: payload)
+        monkeypatch.setattr(commons_cmd.hub_client, "commons_search", lambda *a, **kw: payload)
         monkeypatch.setattr(commons_cmd.asyncio, "run", lambda coro: payload)
-        args = argparse.Namespace(question="q", limit=None, agent_type="", json=True,
-                                  hub_url=None, hub_api_key=None)
+        args = argparse.Namespace(question="q", limit=None, agent_type="", json=True, hub_url=None, hub_api_key=None)
         assert commons_cmd.run_ask(args) == 0
         assert json.loads(capsys.readouterr().out) == payload

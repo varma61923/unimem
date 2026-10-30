@@ -1,4 +1,5 @@
 """Temporal knowledge graph: typed nodes, bitemporal edges, multi-hop traversal."""
+
 from __future__ import annotations
 
 import bisect
@@ -19,8 +20,21 @@ from typing import Any
 from unimem import _jsonl, lesson_cache, paths
 
 ENTITY_TYPES = (
-    "service", "tool", "error", "concept", "lesson", "scope", "user", "file",
-    "symbol", "memory", "document", "person", "place", "organization", "event",
+    "service",
+    "tool",
+    "error",
+    "concept",
+    "lesson",
+    "scope",
+    "user",
+    "file",
+    "symbol",
+    "memory",
+    "document",
+    "person",
+    "place",
+    "organization",
+    "event",
 )
 RELATIONS = (
     "depends_on",
@@ -214,17 +228,23 @@ def batch(root: str) -> Iterator[_Txn]:
 def _provenance(txn: _Txn, kind: str, target_id: str, provenance: dict[str, Any] | None, detail=None) -> None:
     if provenance is None:
         return
-    txn.provenance.append({
-        "target_kind": kind,
-        "target_id": target_id,
-        "source_path": str(provenance.get("source_path", "")),
-        "run_id": str(provenance.get("run_id", "")),
-        "detail": provenance.get("detail", "") if detail is None else detail,
-    })
+    txn.provenance.append(
+        {
+            "target_kind": kind,
+            "target_id": target_id,
+            "source_path": str(provenance.get("source_path", "")),
+            "run_id": str(provenance.get("run_id", "")),
+            "detail": provenance.get("detail", "") if detail is None else detail,
+        }
+    )
 
 
 def _put_node(
-    txn: _Txn, node_id: str, entity_type: str, name: str, properties: dict[str, Any] | None,
+    txn: _Txn,
+    node_id: str,
+    entity_type: str,
+    name: str,
+    properties: dict[str, Any] | None,
     provenance: dict[str, Any] | None,
 ) -> GraphNode:
     clean_id = _clean_id(txn.onto.canonical_id(_clean_id(node_id)))
@@ -332,7 +352,8 @@ def add_edge(
             latest = max(matching, key=lambda e: lesson_cache.parse_moment(e.valid_at or e.created_at))
             restated = explicit_valid_at is None and latest.invalid_at is None and invalid_at is None
             if restated or lesson_cache.parse_moment(valid_at) <= lesson_cache.parse_moment(
-                    latest.valid_at or latest.created_at):
+                latest.valid_at or latest.created_at
+            ):
                 if weight > latest.weight:
                     latest.weight = weight
                     txn.edges_dirty = True
@@ -380,29 +401,39 @@ def _resolve_exclusive(txn: _Txn, new_edge: GraphEdge, now_iso: str) -> None:
     """An exclusive relation holds one target at a time: the latest valid_at wins. An
     older value ends where the newer begins; an assertion older than the current
     value is kept as history, ending where the current one begins."""
-    start = lesson_cache.parse_moment(new_edge.valid_at)
+    start_at = new_edge.valid_at
+    if start_at is None:
+        raise ValueError("an exclusive edge requires a valid_at instant")
+    start = lesson_cache.parse_moment(start_at)
     for edge in txn.by_source_relation.get((new_edge.source, new_edge.relation), []):
         if edge.target == new_edge.target or edge is new_edge:
             continue
         other_start = lesson_cache.parse_moment(edge.valid_at or edge.created_at)
         other_end = lesson_cache.parse_moment(edge.invalid_at) if edge.invalid_at else None
         if other_start <= start and (other_end is None or other_end > start):
-            _close(edge, new_edge.valid_at, now_iso, f"superseded by {new_edge.target}")
+            _close(edge, start_at, now_iso, f"superseded by {new_edge.target}")
             txn.edges_dirty = True
         elif other_start > start:
             end = new_edge.invalid_at
             if end is None or lesson_cache.parse_moment(end) > other_start:
                 new_edge.invalid_at = edge.valid_at
-                new_edge.properties = {**new_edge.properties, "closed_reason": f"superseded by {edge.target}",
-                                       "closed_recorded_at": now_iso}
+                new_edge.properties = {
+                    **new_edge.properties,
+                    "closed_reason": f"superseded by {edge.target}",
+                    "closed_recorded_at": now_iso,
+                }
 
 
 def _is_active_edge(
-    edge: GraphEdge, moment: datetime | None, known_at: datetime | None = None,
-    *, current_at: datetime | None = None,
+    edge: GraphEdge,
+    moment: datetime | None,
+    known_at: datetime | None = None,
+    *,
+    current_at: datetime | None = None,
 ) -> bool:
     """Valid at `moment` (valid time), as the store knew it at `known_at` (record time):
     an edge recorded later is unknown then, and a close recorded later had not happened."""
+
     def _at(value: str | None) -> datetime | None:
         if not value:
             return None
@@ -495,8 +526,9 @@ class _GraphFullIndex:
     def ends(self) -> list[Any]:
         result = []
         for edge in self.edges:
-            moments = [_parsed_moment(value, self._moment_memo)
-                       for value in (edge.invalid_at, edge.expired_at) if value]
+            moments = [
+                _parsed_moment(value, self._moment_memo) for value in (edge.invalid_at, edge.expired_at) if value
+            ]
             result.append(min((moment for moment in moments if moment is not None), default=None))
         return result
 
@@ -560,7 +592,9 @@ def _build_full_index(nodes: dict[str, GraphNode], all_edges: list[GraphEdge]) -
 
 
 def _cached_graph_full(
-    root: str, as_of: str | None = None, known_at: str | None = None,
+    root: str,
+    as_of: str | None = None,
+    known_at: str | None = None,
 ) -> tuple[dict[str, GraphNode], list[GraphEdge], dict[str, list[GraphEdge]], list[GraphEdge]]:
     """Cached (nodes, active, adj, all_edges); single load_nodes/load_edges per stamp."""
     index = _full_index(root)
@@ -588,7 +622,7 @@ def _cached_graph_full(
         if e.target != e.source:
             adj.setdefault(e.target, []).append(e)
     deadlines = []
-    if current:
+    if current and now is not None:
         # Scheduled facts can start or close without a file write, including
         # currently inactive edges. Evaluate every boundary against the same
         # instant used to construct this view.
@@ -701,15 +735,19 @@ def _incident_positions(index: _GraphFullIndex, node_id: str, relations: set[str
         return []
     if len(relations) == 1:
         return index.by_entity_relation.get((node_id, next(iter(relations))), [])
-    return sorted(position for relation in relations
-                  for position in index.by_entity_relation.get((node_id, relation), []))
+    return sorted(
+        position for relation in relations for position in index.by_entity_relation.get((node_id, relation), [])
+    )
 
 
 def _relation_filter(relations: list[str] | None) -> set[str] | None:
     if relations is None:
         return None
-    if (not isinstance(relations, (list, tuple)) or len(relations) > 64
-            or any(not isinstance(value, str) or not 1 <= len(value) <= 128 for value in relations)):
+    if (
+        not isinstance(relations, (list, tuple))
+        or len(relations) > 64
+        or any(not isinstance(value, str) or not 1 <= len(value) <= 128 for value in relations)
+    ):
         raise ValueError("relations must contain at most 64 bounded relation names")
     return set(relations)
 
@@ -749,14 +787,16 @@ def get_neighbors(
             if (side == "out" and edge.source != clean_id) or (side == "in" and edge.target != clean_id):
                 continue
             other_node = nodes.get(other)
-            results.append({
-                "neighbor_id": other,
-                "neighbor_name": other_node.name if other_node else other,
-                "neighbor_type": other_node.entity_type if other_node else "concept",
-                "direction": side,
-                "relation": edge.relation,
-                "weight": edge.weight,
-            })
+            results.append(
+                {
+                    "neighbor_id": other,
+                    "neighbor_name": other_node.name if other_node else other,
+                    "neighbor_type": other_node.entity_type if other_node else "concept",
+                    "direction": side,
+                    "relation": edge.relation,
+                    "weight": edge.weight,
+                }
+            )
             break
     return results
 
@@ -782,9 +822,16 @@ def feedback_edge(root: str, source: str, target: str, relation: str, *, event_i
         successes = sum(outcomes.values())
         # Beta(1,1) reliability; feedback is a ranking weight, not causal proof.
         weight = (1 + successes) / (2 + len(outcomes))
-        return add_edge(root, source, target, relation, weight=weight, valid_at=_now(),
-                        properties={**prior.properties, "feedback_outcomes": outcomes},
-                        provenance={"kind": "feedback", "event_id": event_id})
+        return add_edge(
+            root,
+            source,
+            target,
+            relation,
+            weight=weight,
+            valid_at=_now(),
+            properties={**prior.properties, "feedback_outcomes": outcomes},
+            provenance={"kind": "feedback", "event_id": event_id},
+        )
 
 
 def multi_hop_subgraph(
@@ -846,10 +893,17 @@ def multi_hop_subgraph(
 
 
 def shortest_path(
-    root: str, source: str, target: str, *, max_hops: int = MAX_HOPS,
-    relations: list[str] | None = None, direction: str = "both",
-    as_of: str | None = None, known_at: str | None = None,
-    max_nodes: int = 2000, max_examined_edges: int = 20_000,
+    root: str,
+    source: str,
+    target: str,
+    *,
+    max_hops: int = MAX_HOPS,
+    relations: list[str] | None = None,
+    direction: str = "both",
+    as_of: str | None = None,
+    known_at: str | None = None,
+    max_nodes: int = 2000,
+    max_examined_edges: int = 20_000,
 ) -> dict[str, Any]:
     """Shortest eligible unweighted path with original edge evidence and hard work bounds.
 
@@ -857,9 +911,11 @@ def shortest_path(
     inconclusive. Forgotten or missing nodes cannot bridge a path, including in
     historical views. This trusted-local API does not provide scope authorization.
     """
-    for name, value, lower, upper in (("max_hops", max_hops, 0, MAX_HOPS),
-                                      ("max_nodes", max_nodes, 1, 100_000),
-                                      ("max_examined_edges", max_examined_edges, 1, 1_000_000)):
+    for name, value, lower, upper in (
+        ("max_hops", max_hops, 0, MAX_HOPS),
+        ("max_nodes", max_nodes, 1, 100_000),
+        ("max_examined_edges", max_examined_edges, 1, 1_000_000),
+    ):
         if isinstance(value, bool) or not isinstance(value, int) or not lower <= value <= upper:
             raise ValueError(f"{name} must be an integer in {lower}..{upper}")
     if direction not in ("in", "out", "both"):
@@ -870,9 +926,18 @@ def shortest_path(
     current_at = datetime.now(timezone.utc) if moment is None and known is None else None
     index = _full_index(root)
     source, target = _clean_id(source), _clean_id(target)
-    result: dict[str, Any] = {"status": "not-found", "nodes": [], "edges": [], "steps": [],
-                              "hops": None, "visited_nodes": 0, "examined_edges": 0,
-                              "as_of": as_of, "known_at": known_at, "max_hops": max_hops}
+    result: dict[str, Any] = {
+        "status": "not-found",
+        "nodes": [],
+        "edges": [],
+        "steps": [],
+        "hops": None,
+        "visited_nodes": 0,
+        "examined_edges": 0,
+        "as_of": as_of,
+        "known_at": known_at,
+        "max_hops": max_hops,
+    }
     if any(identity not in index.nodes or index.nodes[identity].is_forgotten for identity in (source, target)):
         result["reason"] = "missing-or-forgotten-endpoint"
         return result
@@ -911,17 +976,26 @@ def shortest_path(
         result.update(status="budget-exhausted", reason=exhausted)
     elif found:
         identities, positions = [target], []
-        while parents[identities[-1]] is not None:
-            previous, position = parents[identities[-1]]
+        while (parent := parents[identities[-1]]) is not None:
+            previous, position = parent
             positions.append(position)
             identities.append(previous)
         identities.reverse()
         positions.reverse()
-        result.update(status="found", hops=len(positions), nodes=[index.nodes[nid].to_dict() for nid in identities],
-                      edges=[index.edges[position].to_dict() for position in positions],
-                      steps=[{"from": identities[i], "to": identities[i + 1],
-                              "direction": "out" if index.edges[position].source == identities[i] else "in"}
-                             for i, position in enumerate(positions)])
+        result.update(
+            status="found",
+            hops=len(positions),
+            nodes=[index.nodes[nid].to_dict() for nid in identities],
+            edges=[index.edges[position].to_dict() for position in positions],
+            steps=[
+                {
+                    "from": identities[i],
+                    "to": identities[i + 1],
+                    "direction": "out" if index.edges[position].source == identities[i] else "in",
+                }
+                for i, position in enumerate(positions)
+            ],
+        )
     else:
         result["reason"] = "no-path-within-hop-limit"
     return result
@@ -993,14 +1067,15 @@ def extract_entities_from_text(root: str, text: str) -> list[str]:
     if first_scan:
         norm = " " + " ".join(words) + " "
         return sorted(
-            nid for nid, node in snapshot.nodes.items()
+            nid
+            for nid, node in snapshot.nodes.items()
             if not node.is_forgotten and any(f" {' '.join(t)} " in norm for t in _node_terms(nid, node))
         )
     index = _phrase_index(root)
     matched: set[str] = set()
     for i, word in enumerate(words):
         for phrase, nid in index.get(word, ()):
-            if tuple(words[i:i + len(phrase)]) == phrase:
+            if tuple(words[i : i + len(phrase)]) == phrase:
                 matched.add(nid)
     return sorted(matched)
 
@@ -1021,7 +1096,11 @@ def graph_boost_for_lessons(
     if not entities:
         return boosts
     hop_distances = multi_hop_subgraph(
-        root, start_node_ids=entities, max_hops=max_hops, as_of=as_of, max_edges=max_edges,
+        root,
+        start_node_ids=entities,
+        max_hops=max_hops,
+        as_of=as_of,
+        max_edges=max_edges,
     ).get("hop_distances", {})
     for slug in candidate_slugs:
         hop = hop_distances.get(f"lesson:{slug}")
@@ -1031,7 +1110,12 @@ def graph_boost_for_lessons(
 
 
 def edges_between(
-    root: str, start: str | None, end: str | None, *, relation: str | None = None, entity: str | None = None,
+    root: str,
+    start: str | None,
+    end: str | None,
+    *,
+    relation: str | None = None,
+    entity: str | None = None,
 ) -> list[GraphEdge]:
     """Edges valid at some moment in [start, end] (either may be open), oldest first."""
     lo = lesson_cache.parse_moment(start) if start else None
@@ -1048,7 +1132,7 @@ def edges_between(
         by_rel = index.by_relation.get(relation, [])
         cand: Any = by_ent if len(by_ent) <= len(by_rel) else by_rel
     elif ent is not None:
-        cand: Any = index.by_entity.get(ent, [])
+        cand = index.by_entity.get(ent, [])
     elif relation is not None:
         cand = index.by_relation.get(relation, [])
     elif hi is not None:
@@ -1063,8 +1147,9 @@ def edges_between(
             continue
         if ent and ent not in (edge.source, edge.target):
             continue
-        begin = (begins[i] if begins is not None
-                 else _parsed_moment(edge.valid_at or edge.created_at, index._moment_memo))
+        begin = (
+            begins[i] if begins is not None else _parsed_moment(edge.valid_at or edge.created_at, index._moment_memo)
+        )
         if begin is None:
             begin = lesson_cache.parse_moment(edge.valid_at or edge.created_at)
         if hi is not None and begin > hi:
@@ -1072,8 +1157,9 @@ def edges_between(
         if ends is not None:
             finish = ends[i]
         else:
-            candidates = [_parsed_moment(value, index._moment_memo)
-                          for value in (edge.invalid_at, edge.expired_at) if value]
+            candidates = [
+                _parsed_moment(value, index._moment_memo) for value in (edge.invalid_at, edge.expired_at) if value
+            ]
             finish = min((moment for moment in candidates if moment is not None), default=None)
         if lo is not None and finish is not None and finish <= lo:
             continue
@@ -1094,27 +1180,58 @@ def timeline(root: str, entity: str) -> list[dict[str, Any]]:
         begin = _parsed_moment(edge.valid_at or edge.created_at, index._moment_memo)
         if begin is None:
             begin = lesson_cache.parse_moment(edge.valid_at or edge.created_at)
-        decorated.append((begin, True, {**base, "at": edge.valid_at or edge.created_at, "event": "began",
-                                        "recorded_at": edge.created_at}))
+        decorated.append(
+            (
+                begin,
+                True,
+                {**base, "at": edge.valid_at or edge.created_at, "event": "began", "recorded_at": edge.created_at},
+            )
+        )
         if edge.invalid_at:
             finish = lesson_cache.parse_moment(edge.invalid_at)
-            decorated.append((finish, False, {**base, "at": edge.invalid_at, "event": "ended",
-                                              "reason": (edge.properties or {}).get("closed_reason", ""),
-                                              "recorded_at": (edge.properties or {}).get("closed_recorded_at", "")}))
+            decorated.append(
+                (
+                    finish,
+                    False,
+                    {
+                        **base,
+                        "at": edge.invalid_at,
+                        "event": "ended",
+                        "reason": (edge.properties or {}).get("closed_reason", ""),
+                        "recorded_at": (edge.properties or {}).get("closed_recorded_at", ""),
+                    },
+                )
+            )
         if edge.expired_at and edge.expired_at != edge.invalid_at:
             finish = lesson_cache.parse_moment(edge.expired_at)
-            decorated.append((finish, False, {**base, "at": edge.expired_at, "event": "expired",
-                                              "reason": (edge.properties or {}).get("expired_reason", ""),
-                                              "recorded_at": edge.created_at}))
+            decorated.append(
+                (
+                    finish,
+                    False,
+                    {
+                        **base,
+                        "at": edge.expired_at,
+                        "event": "expired",
+                        "reason": (edge.properties or {}).get("expired_reason", ""),
+                        "recorded_at": edge.created_at,
+                    },
+                )
+            )
     decorated.sort(key=lambda t: (t[0], t[1]))
     return [event for _moment, _is_began, event in decorated]
 
 
 def _mermaid_label(text: str) -> str:
     return (
-        str(text).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
-        .replace(">", "&gt;").replace("[", "&#91;").replace("]", "&#93;")
-        .replace("|", "&#124;").replace("\n", " ")
+        str(text)
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("[", "&#91;")
+        .replace("]", "&#93;")
+        .replace("|", "&#124;")
+        .replace("\n", " ")
     )
 
 
@@ -1206,8 +1323,7 @@ def forget_node(
             elif not undo and invalidate_edges and edge.invalid_at is None:
                 edge.invalid_at = now_iso
                 txn.edges_dirty = True
-        _provenance(txn, "node", clean_id, provenance,
-                    detail=f"node {'restored' if undo else 'forgotten'}: {reason}")
+        _provenance(txn, "node", clean_id, provenance, detail=f"node {'restored' if undo else 'forgotten'}: {reason}")
         return node
 
 

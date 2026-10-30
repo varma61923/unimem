@@ -1,4 +1,5 @@
 """`unimem saga`: Manage ordered incident/migration narrative sagas."""
+
 from __future__ import annotations
 
 import argparse
@@ -105,7 +106,12 @@ def run_create(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
         saga = sagas.create_saga(
-            root, args.id, args.title, tags=args.tags, brief=args.brief, status=args.status,
+            root,
+            args.id,
+            args.title,
+            tags=args.tags,
+            brief=args.brief,
+            status=args.status,
         )
         print(f"[unimem] Created saga '{saga.id}': {saga.title}")
         return 0
@@ -118,7 +124,11 @@ def run_append(args: argparse.Namespace) -> int:
     root = paths.resolve_root(args.dest)
     try:
         saga = sagas.append_saga_event(
-            root, args.id, args.title, description=args.desc, actor=args.actor,
+            root,
+            args.id,
+            args.title,
+            description=args.desc,
+            actor=args.actor,
             new_brief=args.brief if args.brief else None,
             watermark=args.watermark if args.watermark else None,
         )

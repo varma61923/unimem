@@ -1,4 +1,5 @@
 """Randomized-holdout arm assignment and its append-only log."""
+
 from __future__ import annotations
 
 import datetime
@@ -8,6 +9,7 @@ import os
 import threading
 import uuid
 from dataclasses import dataclass, field
+from typing import SupportsIndex, SupportsInt
 
 from unimem import experiment, frontmatter, lesson_io, paths
 
@@ -84,9 +86,16 @@ def configure(
     with frontmatter.locked(path):
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(
-                {"rate": config.rate, "salt": config.salt, "detect": config.detect,
-                 "started_at": config.started_at, "note": config.note},
-                fh, indent=2, sort_keys=True,
+                {
+                    "rate": config.rate,
+                    "salt": config.salt,
+                    "detect": config.detect,
+                    "started_at": config.started_at,
+                    "note": config.note,
+                },
+                fh,
+                indent=2,
+                sort_keys=True,
             )
             fh.write("\n")
             fh.flush()
@@ -223,9 +232,19 @@ def assign_and_log(
     context: str = "",
 ) -> set[str]:
     """Decide and persist assignments; all legacy callers keep their existing behavior."""
-    withheld, rows = plan_assignments(root, slugs, occasion_id=occasion_id, rate=rate, salt=salt,
-        relevance=relevance, scorer=scorer, floor=floor, revisions=revisions, durable=durable,
-        context=context)
+    withheld, rows = plan_assignments(
+        root,
+        slugs,
+        occasion_id=occasion_id,
+        rate=rate,
+        salt=salt,
+        relevance=relevance,
+        scorer=scorer,
+        floor=floor,
+        revisions=revisions,
+        durable=durable,
+        context=context,
+    )
     path = holdout_log_path(root)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with frontmatter.locked(path):
@@ -234,9 +253,13 @@ def assign_and_log(
         from unimem import frontier_protocol as fp
         from unimem import transparency_log
 
-        transparency_log.append(root, "holdout-assignment", {"occasion_id": occasion_id,
-                                "assignments": {row["lesson"]: fp.digest(row) for row in rows}}, durable=durable,
-                                receipt=False)
+        transparency_log.append(
+            root,
+            "holdout-assignment",
+            {"occasion_id": occasion_id, "assignments": {row["lesson"]: fp.digest(row) for row in rows}},
+            durable=durable,
+            receipt=False,
+        )
     return withheld
 
 
@@ -294,10 +317,10 @@ def _outcomes_shared(path: str) -> dict[str, bool]:
         cache = _outcome_cache.get(path)
         with open(path, "rb") as fh:
             valid = cache is not None and cache.identity == identity and st.st_size >= cache.offset
-            if valid and cache.tail:
+            if valid and cache is not None and cache.tail:
                 fh.seek(cache.offset - len(cache.tail))
                 valid = fh.read(len(cache.tail)) == cache.tail
-            if not valid:
+            if not valid or cache is None:
                 cache = _OutcomeCache(identity=identity)
                 _outcome_cache[path] = cache
             fh.seek(cache.offset)
@@ -320,8 +343,14 @@ def read_outcomes(root: str) -> dict[str, bool]:
     return dict(_outcomes_shared(outcomes_log_path(root)))
 
 
-def record_outcome(root: str, occasion_id: str, succeeded: bool, durable: bool = True, *,
-                   secondary_metrics: dict[str, float | bool] | None = None) -> bool:
+def record_outcome(
+    root: str,
+    occasion_id: str,
+    succeeded: bool,
+    durable: bool = True,
+    *,
+    secondary_metrics: dict[str, float | bool] | None = None,
+) -> bool:
     """Record whether the task on `occasion_id` succeeded."""
     if not isinstance(occasion_id, str) or not occasion_id.strip():
         raise ValueError("occasion_id must be a non-empty string")
@@ -347,13 +376,15 @@ def record_outcome(root: str, occasion_id: str, succeeded: bool, durable: bool =
             )
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         _append_lines(
-            path, [json.dumps({"occasion_id": occasion_id, "succeeded": succeeded, "at": now})],
+            path,
+            [json.dumps({"occasion_id": occasion_id, "succeeded": succeeded, "at": now})],
             durable,
         )
     from unimem import transparency_log
 
-    transparency_log.append(root, "holdout-outcome", {"occasion_id": occasion_id, "succeeded": succeeded},
-                            durable=durable, receipt=False)
+    transparency_log.append(
+        root, "holdout-outcome", {"occasion_id": occasion_id, "succeeded": succeeded}, durable=durable, receipt=False
+    )
     from unimem import otel_memory
 
     otel_memory.outcome(root, occasion_id)
@@ -434,10 +465,10 @@ def read_log(root: str) -> tuple[list[LogRecord], int]:
         cache = _log_cache.get(path)
         with open(path, "rb") as fh:
             valid = cache is not None and cache.identity == identity and st.st_size >= cache.offset
-            if valid and cache.tail:
+            if valid and cache is not None and cache.tail:
                 fh.seek(cache.offset - len(cache.tail))
                 valid = fh.read(len(cache.tail)) == cache.tail
-            if not valid:
+            if not valid or cache is None:
                 cache = _LogCache(identity=identity)
                 _log_cache[path] = cache
             fh.seek(cache.offset)
@@ -487,8 +518,10 @@ def _opt_float(value: object) -> float | None:
 def _opt_int(value: object) -> int | None:
     if value is None:
         return None
+    if not isinstance(value, (str, bytes, bytearray, SupportsInt, SupportsIndex)):
+        return None
     try:
-        return int(value)  # type: ignore[arg-type]
+        return int(value)
     except (TypeError, ValueError, OverflowError):
         return None
 

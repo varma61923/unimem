@@ -26,8 +26,7 @@ def test_git_init_commit_log(tmp_path):
     assert again["ok"] and again.get("already") is True
 
     os.makedirs(os.path.join(root, "memory", "lessons"), exist_ok=True)
-    with open(os.path.join(root, "memory", "lessons", "lesson_alpha.md"), "w",
-              encoding="utf-8") as fh:
+    with open(os.path.join(root, "memory", "lessons", "lesson_alpha.md"), "w", encoding="utf-8") as fh:
         fh.write("# alpha\n")
     first = memory_git.commit_all(root, "first snapshot")
     assert first["ok"] and first["committed"] is True
@@ -138,8 +137,7 @@ def test_reconcile_rebuilds_lesson_cache(tmp_path):
     assert quiet["changed"] == [] and quiet["rebuilt"] is False
 
     time.sleep(0.02)
-    with open(os.path.join(root, "memory", "graph", "edges.jsonl"), "a",
-              encoding="utf-8") as fh:
+    with open(os.path.join(root, "memory", "graph", "edges.jsonl"), "a", encoding="utf-8") as fh:
         fh.write('{"source": "b", "target": "c"}\n')
     again = watch_mod.reconcile(root, state)
     assert again["changed"] == [os.path.join("memory", "graph", "edges.jsonl")]
@@ -173,8 +171,8 @@ def test_daemon_run_once_invokes_hooks(tmp_path, monkeypatch):
     calls: list[str] = []
 
     from unimem.commands import dream_cmd
-    monkeypatch.setattr(dream_cmd, "main_dream",
-                        lambda r, draft=False: calls.append(r) or 0)
+
+    monkeypatch.setattr(dream_cmd, "main_dream", lambda r, draft=False: calls.append(r) or 0)
     result = daemon_mod.run_once(root, "once")
     assert result["ok"] and result["ran"] is True
     assert calls == [os.path.abspath(root)]
@@ -189,6 +187,7 @@ def test_daemon_run_once_recovers_crash_marker(tmp_path, monkeypatch):
     root = str(tmp_path)
     os.makedirs(os.path.join(root, "memory", "lessons"), exist_ok=True)
     from unimem.commands import dream_cmd
+
     monkeypatch.setattr(dream_cmd, "main_dream", lambda r, draft=False: 0)
     mpath = daemon_mod.marker_path(root)
     os.makedirs(os.path.dirname(mpath), exist_ok=True)
@@ -248,8 +247,7 @@ def test_daemon_cli_parsers_exist(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     os.makedirs(os.path.join(str(tmp_path), "memory", "lessons"), exist_ok=True)
     parser = _parser_with(daemon_cmd)
-    args = parser.parse_args(["daemon", "--once", "--trigger", "cron",
-                              "--dest", str(tmp_path)])
+    args = parser.parse_args(["daemon", "--once", "--trigger", "cron", "--dest", str(tmp_path)])
     assert args.once is True and args.trigger == "cron"
     assert callable(args.func)
     assert daemon_cmd.run(args) == 0

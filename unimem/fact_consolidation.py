@@ -34,6 +34,7 @@ cluster through `memory_control` (kind ``proposal``, record id = cluster id,
 other proposal. Facts are never edited, superseded or deleted here; a rejected
 cluster is not proposed again while its members are unchanged.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -41,7 +42,7 @@ import json
 import math
 import re
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -63,8 +64,28 @@ CLUSTER_PREFIX = "fcl-"
 
 _WORD = re.compile(r"[a-z0-9]+")
 _ENTITY = re.compile(r"\b[A-Z][A-Za-z0-9&'-]*(?:\s+[A-Z][A-Za-z0-9&'-]*)*")
-_NOT_ENTITIES = frozenset({"The", "A", "An", "I", "We", "They", "He", "She", "It", "This", "That", "User",
-                           "Users", "My", "Our", "Their", "His", "Her"})
+_NOT_ENTITIES = frozenset(
+    {
+        "The",
+        "A",
+        "An",
+        "I",
+        "We",
+        "They",
+        "He",
+        "She",
+        "It",
+        "This",
+        "That",
+        "User",
+        "Users",
+        "My",
+        "Our",
+        "Their",
+        "His",
+        "Her",
+    }
+)
 
 SUMMARY_PROMPT = """These atomic facts were recorded separately but say the same thing.
 Write ONE sentence that states what they all say, keeping every name, number and date
@@ -110,6 +131,7 @@ def _tokens(normalized: str) -> frozenset[str]:
 
 def _lexical_pairs(norms: Sequence[str], threshold: float) -> dict[tuple[int, int], float]:
     tokens = [_tokens(n) for n in norms]
+    candidates: Iterable[tuple[int, int]]
     if len(norms) < LSH_MIN_ITEMS:
         candidates = ((i, j) for i in range(len(norms)) for j in range(i + 1, len(norms)))
     else:
@@ -120,11 +142,11 @@ def _lexical_pairs(norms: Sequence[str], threshold: float) -> dict[tuple[int, in
                 continue
             signature = minhash(text, num_perm=DEFAULT_NUM_PERM)
             for band in range(bands):
-                buckets[(band, tuple(signature[band * rows:(band + 1) * rows]))].append(index)
+                buckets[(band, tuple(signature[band * rows : (band + 1) * rows]))].append(index)
         seen: set[tuple[int, int]] = set()
         for members in buckets.values():
             for pos, i in enumerate(members):
-                for j in members[pos + 1:]:
+                for j in members[pos + 1 :]:
                     seen.add((i, j) if i < j else (j, i))
         candidates = iter(sorted(seen))
     out: dict[tuple[int, int], float] = {}
@@ -194,9 +216,16 @@ def _evidence(facts: list[hierarchical.AtomicFact]) -> list[dict[str, Any]]:
                 seen.setdefault(key, {"kind": "trace", "source_id": str(trace), "facts": []})["facts"].append(fact.id)
         for receipt in fact.evidence:
             key = (receipt.kind, receipt.source_id, receipt.revision, receipt.polarity)
-            seen.setdefault(key, {"kind": receipt.kind, "source_id": receipt.source_id,
-                                  "revision": receipt.revision, "polarity": receipt.polarity,
-                                  "facts": []})["facts"].append(fact.id)
+            seen.setdefault(
+                key,
+                {
+                    "kind": receipt.kind,
+                    "source_id": receipt.source_id,
+                    "revision": receipt.revision,
+                    "polarity": receipt.polarity,
+                    "facts": [],
+                },
+            )["facts"].append(fact.id)
     rows = [seen[k] for k in sorted(seen)]
     for row in rows:
         row["facts"] = sorted(set(row["facts"]))
@@ -264,8 +293,11 @@ def cluster_facts(
         # Only facts true now are candidates. A fact whose validity window has ended is history,
         # not a duplicate of its replacement ("works at Acme" until 2025, then "works at Initech").
         moment = datetime.now(timezone.utc)
-        pool = [fact for fact in hierarchical.list_facts(root, status="active", scope=scope)
-                if hierarchical._valid_at(fact, moment)]
+        pool = [
+            fact
+            for fact in hierarchical.list_facts(root, status="active", scope=scope)
+            if hierarchical._valid_at(fact, moment)
+        ]
     groups: dict[tuple[str, ...], list[hierarchical.AtomicFact]] = defaultdict(list)
     from unimem import safety, sentinel_io
 
@@ -289,11 +321,12 @@ def cluster_facts(
             links.setdefault(pair, {})["jaccard"] = score
         if provider is not None:
             if len(group) > MAX_EMBED_GROUP:
-                notes.append(f"scope {list(scope_key)}: {len(group)} facts exceed {MAX_EMBED_GROUP}; "
-                             "embedding similarity skipped for this scope")
+                notes.append(
+                    f"scope {list(scope_key)}: {len(group)} facts exceed {MAX_EMBED_GROUP}; "
+                    "embedding similarity skipped for this scope"
+                )
             else:
-                for pair, score in _embedding_pairs(provider, [f.statement for f in group],
-                                                    embed_threshold).items():
+                for pair, score in _embedding_pairs(provider, [f.statement for f in group], embed_threshold).items():
                     links.setdefault(pair, {})["cosine"] = score
         parent = list(range(len(group)))
         for i, j in links:
@@ -311,8 +344,11 @@ def cluster_facts(
             ids = sorted(f.id for f in members)
             digest = hashlib.sha256(json.dumps([list(scope_key), ids]).encode("utf-8")).hexdigest()[:16]
             index_set = set(indices)
-            cluster_links = [{"a": group[i].id, "b": group[j].id, **scores}
-                             for (i, j), scores in sorted(links.items()) if i in index_set and j in index_set]
+            cluster_links = [
+                {"a": group[i].id, "b": group[j].id, **scores}
+                for (i, j), scores in sorted(links.items())
+                if i in index_set and j in index_set
+            ]
             statements = [f.statement for f in sorted(members, key=lambda f: f.id)]
             entities = _entities(statements)
             summary, method = "", ""
@@ -325,18 +361,36 @@ def cluster_facts(
                     notes.append(f"model summary unavailable ({type(exc).__name__}: {exc}); used extractive")
             if summarize != "none" and not summary:
                 summary, method = extractive_summary(canonical.statement, statements, entities), "extractive"
-            clusters.append(FactCluster(
-                id=CLUSTER_PREFIX + digest, scopes=list(scope_key), canonical=canonical.id,
-                statement=canonical.statement,
-                members=[{"id": f.id, "statement": f.statement, "confirmations": int(f.confirmations or 0),
-                          "updated_at": _recency(f), "category": f.category}
-                         for f in sorted(members, key=lambda f: f.id)],
-                evidence=_evidence(members), links=cluster_links, summary=summary, summary_method=method,
-                entities=entities))
+            clusters.append(
+                FactCluster(
+                    id=CLUSTER_PREFIX + digest,
+                    scopes=list(scope_key),
+                    canonical=canonical.id,
+                    statement=canonical.statement,
+                    members=[
+                        {
+                            "id": f.id,
+                            "statement": f.statement,
+                            "confirmations": int(f.confirmations or 0),
+                            "updated_at": _recency(f),
+                            "category": f.category,
+                        }
+                        for f in sorted(members, key=lambda f: f.id)
+                    ],
+                    evidence=_evidence(members),
+                    links=cluster_links,
+                    summary=summary,
+                    summary_method=method,
+                    entities=entities,
+                )
+            )
     clusters.sort(key=lambda c: (-len(c.members), c.id))
     return {
-        "facts": len(pool), "scopes": len(groups), "threshold": threshold,
-        "embedder": tag or None, "embed_threshold": embed_threshold if provider is not None else None,
+        "facts": len(pool),
+        "scopes": len(groups),
+        "threshold": threshold,
+        "embedder": tag or None,
+        "embed_threshold": embed_threshold if provider is not None else None,
         "clusters": [c.to_dict() for c in clusters],
         "redundant_facts": sum(len(c.members) - 1 for c in clusters),
         "notes": notes,
@@ -380,32 +434,53 @@ def apply_clusters(root: str, report: dict[str, Any], *, actor: str = "consolida
                 continue
         text = cluster.get("summary") or cluster["statement"]
         record = memory_control.put(
-            root, "proposal", text, record_id=cluster["id"], labels=list(cluster["scopes"]), actor=actor,
-            data={"status": "review", "sources": sources, "kind": "fact-cluster",
-                  "canonical": cluster["canonical"], "statement": cluster["statement"],
-                  "summary_method": cluster.get("summary_method") or "",
-                  "entities": list(cluster.get("entities") or []),
-                  "evidence": list(cluster.get("evidence") or [])[:50],
-                  "links": list(cluster.get("links") or [])[:100],
-                  "threshold": report.get("threshold"), "embedder": report.get("embedder")})
+            root,
+            "proposal",
+            text,
+            record_id=cluster["id"],
+            labels=list(cluster["scopes"]),
+            actor=actor,
+            data={
+                "status": "review",
+                "sources": sources,
+                "kind": "fact-cluster",
+                "canonical": cluster["canonical"],
+                "statement": cluster["statement"],
+                "summary_method": cluster.get("summary_method") or "",
+                "entities": list(cluster.get("entities") or []),
+                "evidence": list(cluster.get("evidence") or [])[:50],
+                "links": list(cluster.get("links") or [])[:100],
+                "threshold": report.get("threshold"),
+                "embedder": report.get("embedder"),
+            },
+        )
         written.append({"id": record["id"], "revision": record["revision"]})
     return {"written": written, "unchanged": unchanged, "skipped_rejected": rejected}
 
 
 def render(report: dict[str, Any]) -> str:
     """Human-readable report."""
-    lines = ["# Fact consolidation report", "",
-             f"- Facts considered: **{report['facts']}** in {report['scopes']} scope group(s)",
-             f"- Lexical threshold (stemmed token Jaccard): {report['threshold']}"
-             + (f" · embedder `{report['embedder']}` at cosine {report['embed_threshold']}"
-                if report.get("embedder") else " · no embedder"),
-             f"- Clusters: **{len(report['clusters'])}** · redundant facts: **{report['redundant_facts']}**", ""]
+    lines = [
+        "# Fact consolidation report",
+        "",
+        f"- Facts considered: **{report['facts']}** in {report['scopes']} scope group(s)",
+        f"- Lexical threshold (stemmed token Jaccard): {report['threshold']}"
+        + (
+            f" · embedder `{report['embedder']}` at cosine {report['embed_threshold']}"
+            if report.get("embedder")
+            else " · no embedder"
+        ),
+        f"- Clusters: **{len(report['clusters'])}** · redundant facts: **{report['redundant_facts']}**",
+        "",
+    ]
     if not report["clusters"]:
         lines.append("No near-duplicate facts found.")
     for cluster in report["clusters"]:
         scope = ", ".join(cluster["scopes"]) or "global"
-        lines += [f"## `{cluster['id']}` ({cluster['size']} facts, scope: {scope})",
-                  f"Canonical: `{cluster['canonical']}` -- {cluster['statement']}"]
+        lines += [
+            f"## `{cluster['id']}` ({cluster['size']} facts, scope: {scope})",
+            f"Canonical: `{cluster['canonical']}` -- {cluster['statement']}",
+        ]
         if cluster.get("summary"):
             lines.append(f"Summary ({cluster['summary_method']}): {cluster['summary']}")
         for member in cluster["members"]:
@@ -418,10 +493,16 @@ def render(report: dict[str, Any]) -> str:
         lines.append(f"Note: {note}")
     if report.get("applied"):
         applied = report["applied"]
-        lines += ["", f"Proposed {len(applied['written'])} cluster(s) at status=review "
-                      f"({len(applied['unchanged'])} already pending, {len(applied['skipped_rejected'])} "
-                      "previously rejected). No fact was changed."]
+        lines += [
+            "",
+            f"Proposed {len(applied['written'])} cluster(s) at status=review "
+            f"({len(applied['unchanged'])} already pending, {len(applied['skipped_rejected'])} "
+            "previously rejected). No fact was changed.",
+        ]
     else:
-        lines += ["", "Report only: nothing was written. `--apply` proposes each cluster at status=review; "
-                      "facts are never changed or deleted."]
+        lines += [
+            "",
+            "Report only: nothing was written. `--apply` proposes each cluster at status=review; "
+            "facts are never changed or deleted.",
+        ]
     return "\n".join(lines)

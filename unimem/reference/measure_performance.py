@@ -33,6 +33,7 @@ any alert fires (including from --diff, when a metric moves more than 5 points).
 
 Falls back to regex parser if PyYAML is not installed.
 """
+
 import argparse
 import datetime
 import glob
@@ -45,16 +46,20 @@ import sys
 
 try:
     import yaml
+
     HAS_YAML = True
 except ImportError:
     HAS_YAML = False
 
 try:
-    import numpy as np
+    import numpy as _numpy
+
     HAS_NUMPY = True
 except ImportError:
     HAS_NUMPY = False
     np = None
+else:
+    np = _numpy
 
 SCHEMA_VERSION = "1.2.0"
 
@@ -95,7 +100,7 @@ def parse_frontmatter(content):
     delims = list(_DELIM_RE.finditer(content))
     if len(delims) < 2:
         return None
-    fm_text = content[delims[0].end():delims[1].start()]
+    fm_text = content[delims[0].end() : delims[1].start()]
     if HAS_YAML:
         try:
             return yaml.safe_load(fm_text)
@@ -310,7 +315,8 @@ def parse_yaml_minimal(text):
 
 def load_episodes(n=None):
     paths = sorted(
-        p for p in glob.glob(os.path.join(BASE_DIR, "episodes", "*.md"))
+        p
+        for p in glob.glob(os.path.join(BASE_DIR, "episodes", "*.md"))
         if os.path.basename(p) not in ("episode_template.md", "README.md")
     )
     if n is not None and n > 0:
@@ -500,8 +506,7 @@ def _safe_int(value, default=0):
 
 def compute_extras(episodes, lessons):
     by_uses = sorted(lessons.items(), key=lambda kv: _safe_int(kv[1].get("uses")), reverse=True)
-    top5 = [(n, _safe_int(lesson.get("uses"))) for n, lesson in by_uses[:5]
-            if _safe_int(lesson.get("uses")) > 0]
+    top5 = [(n, _safe_int(lesson.get("uses"))) for n, lesson in by_uses[:5] if _safe_int(lesson.get("uses")) > 0]
     never_hit = sorted(n for n, lesson in lessons.items() if _safe_int(lesson.get("uses")) == 0)
 
     all_proposed = set()
@@ -659,7 +664,7 @@ def compute_operational_cost(telemetry_path=None):
         return {
             "available": False,
             "message": f"Telemetry file at {path} exists but has no usable records "
-                       f"({n_lines} line(s) read, {n_malformed} malformed).",
+            f"({n_lines} line(s) read, {n_malformed} malformed).",
         }
     return {
         "available": True,
@@ -673,12 +678,12 @@ def compute_operational_cost(telemetry_path=None):
 
 
 def _chunked_pairwise_duplicates(
-    embeddings: "np.ndarray",
+    embeddings: "_numpy.ndarray",
     slugs: "list[str]",
     threshold: float = 0.85,
     chunk_size: int = 1000,
 ) -> "list[tuple[str, str, float]]":
-    if not HAS_NUMPY:
+    if not HAS_NUMPY or np is None:
         return []
     n = len(slugs)
     if n < 2 or embeddings.ndim != 2 or embeddings.shape[0] != n:
@@ -710,13 +715,18 @@ def _chunked_pairwise_duplicates(
 
 
 class SemanticDuplicatesResult(tuple):
-    """2-tuple (count, pairs) that also supports dict-like key access and attributes."""
+    """Two-tuple with mapping access and metadata.
+
+    ``count``, ``n_matches`` and ``["count"]`` expose the total.
+    """
 
     def __new__(cls, count: int, pairs: list, n_lessons: int = 0, threshold: float = 0.85):
         return super().__new__(cls, (count, pairs))
 
     def __init__(self, count: int, pairs: list, n_lessons: int = 0, threshold: float = 0.85):
-        self.count = count
+        self.n_matches = count
+        # Preserve the historical numeric attribute, which shadows tuple.count.
+        setattr(self, "count", count)
         self.pairs = pairs
         self.n_lessons = n_lessons
         self.threshold = threshold
@@ -727,7 +737,7 @@ class SemanticDuplicatesResult(tuple):
             if item == "pairs":
                 return self.pairs
             if item == "count":
-                return self.count
+                return self.n_matches
             if item == "n_lessons":
                 return self.n_lessons
             if item == "threshold":
@@ -821,16 +831,17 @@ FRESHNESS_WINDOW_DAYS = 90
 _COMPOSITE_COMPONENTS = ("lesson_quality", "implicit_retrieval", "lesson_coverage", "freshness")
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
-_LEXICAL_STOPWORDS = frozenset("""
+_LEXICAL_STOPWORDS = frozenset(
+    """
 a an and are as at be but by do does for from has have how if in into is it
 its not of on or that the their then there these this to was were what when
 where which while with you your
-""".split())
+""".split()
+)
 
 
 def _lexical_tokens(text):
-    return {t for t in _TOKEN_RE.findall(str(text or "").lower())
-            if len(t) > 2 and t not in _LEXICAL_STOPWORDS}
+    return {t for t in _TOKEN_RE.findall(str(text or "").lower()) if len(t) > 2 and t not in _LEXICAL_STOPWORDS}
 
 
 def compute_lexical_duplicates(lessons, threshold):
@@ -904,7 +915,7 @@ def _parse_last_hit(value):
         pass
     for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
         try:
-            return datetime.datetime.strptime(text[:len("2026-01-01T00:00:00")], fmt)
+            return datetime.datetime.strptime(text[: len("2026-01-01T00:00:00")], fmt)
         except ValueError:
             continue
     return None
@@ -1364,7 +1375,7 @@ def _md_to_html_fragment(md_text):
                 i += 1
                 continue
             if not in_table:
-                html_lines.append('<table><thead><tr>')
+                html_lines.append("<table><thead><tr>")
                 for c in cells:
                     html_lines.append(f"<th>{inline(c)}</th>")
                 html_lines.append("</tr></thead><tbody>")
@@ -1476,68 +1487,89 @@ def main():
     parser.add_argument("--html", action="store_true", help="Output HTML to memory/benchmark_reports/")
     parser.add_argument("--json", action="store_true", help="Raw JSON output to stdout")
     parser.add_argument(
-        "--save", action="store_true",
+        "--save",
+        action="store_true",
         help="Deprecated no-op: every run persists its JSON report by default now. "
-             "Kept only so old invocations that pass --save don't break. Use --no-save to opt out.",
+        "Kept only so old invocations that pass --save don't break. Use --no-save to opt out.",
     )
     parser.add_argument(
-        "--no-save", action="store_true",
+        "--no-save",
+        action="store_true",
         help="Do not persist the JSON report to memory/benchmark_reports/ (persisted by default)",
     )
     parser.add_argument(
-        "--diff", action="store_true",
+        "--diff",
+        action="store_true",
         help="Compare the 2 most recent stored runs under memory/benchmark_reports/ and flag deltas > 5pp",
     )
     parser.add_argument(
-        "--history", action="store_true",
+        "--history",
+        action="store_true",
         help="Print a compact table of the 3 main metrics across all stored runs",
     )
     parser.add_argument(
-        "--strict", action="store_true",
+        "--strict",
+        action="store_true",
         help="Exit non-zero (2) if any alert fires (or, with --diff, if any metric moved >5pp). "
-             "Without this flag alerts/deltas are informational only (exit 0).",
+        "Without this flag alerts/deltas are informational only (exit 0).",
     )
     parser.add_argument(
-        "--threshold-quality", type=float, default=DEFAULT_THRESHOLD_QUALITY,
+        "--threshold-quality",
+        type=float,
+        default=DEFAULT_THRESHOLD_QUALITY,
         metavar="FLOAT",
         help=f"lesson_quality alert threshold (default: {DEFAULT_THRESHOLD_QUALITY})",
     )
     parser.add_argument(
-        "--threshold-retrieval", type=float, default=DEFAULT_THRESHOLD_RETRIEVAL,
+        "--threshold-retrieval",
+        type=float,
+        default=DEFAULT_THRESHOLD_RETRIEVAL,
         metavar="FLOAT",
         help=f"implicit_retrieval strict alert threshold (default: {DEFAULT_THRESHOLD_RETRIEVAL})",
     )
     parser.add_argument(
-        "--threshold-never-hit", type=float, default=DEFAULT_THRESHOLD_NEVER_HIT,
+        "--threshold-never-hit",
+        type=float,
+        default=DEFAULT_THRESHOLD_NEVER_HIT,
         metavar="FLOAT",
         help=f"Never-hit lesson ratio alert threshold (default: {DEFAULT_THRESHOLD_NEVER_HIT})",
     )
     parser.add_argument(
-        "--threshold-unimodal", type=float, default=DEFAULT_THRESHOLD_UNIMODAL,
+        "--threshold-unimodal",
+        type=float,
+        default=DEFAULT_THRESHOLD_UNIMODAL,
         metavar="FLOAT",
         help=f"Unimodal importance-distribution alert threshold (default: {DEFAULT_THRESHOLD_UNIMODAL})",
     )
     parser.add_argument(
-        "--threshold-semantic", type=float, default=None,
+        "--threshold-semantic",
+        type=float,
+        default=None,
         metavar="FLOAT",
         help=f"Semantic similarity threshold (default: {SEMANTIC_DUP_THRESHOLD})",
     )
     parser.add_argument(
-        "--threshold-lexical", type=float, default=None,
+        "--threshold-lexical",
+        type=float,
+        default=None,
         metavar="FLOAT",
         help="Warn when two lessons' wording overlaps at or above this Jaccard "
-             "similarity (0-1). Needs no optional dependencies, unlike --threshold-semantic.",
+        "similarity (0-1). Needs no optional dependencies, unlike --threshold-semantic.",
     )
     parser.add_argument(
-        "--threshold-freshness", type=float, default=None,
+        "--threshold-freshness",
+        type=float,
+        default=None,
         metavar="FLOAT",
         help=f"Warn when the fraction of lessons hit in the last {FRESHNESS_WINDOW_DAYS} days falls below this (0-1).",
     )
     parser.add_argument(
-        "--threshold-composite", type=float, default=None,
+        "--threshold-composite",
+        type=float,
+        default=None,
         metavar="FLOAT",
         help="Warn when the combined health score (lesson quality, retrieval, "
-             "coverage, freshness) falls below this (0-1).",
+        "coverage, freshness) falls below this (0-1).",
     )
     args = parser.parse_args()
     if args.json and args.html:
@@ -1545,8 +1577,10 @@ def main():
     if args.diff and args.history:
         parser.error("--diff and --history are mutually exclusive.")
     if (args.diff or args.history) and (args.json or args.html):
-        parser.error("--diff/--history report on stored history, not a fresh computation -- "
-                      "cannot be combined with --json/--html.")
+        parser.error(
+            "--diff/--history report on stored history, not a fresh computation -- "
+            "cannot be combined with --json/--html."
+        )
 
     if args.diff:
         sys.exit(run_diff(strict=args.strict))
@@ -1558,8 +1592,14 @@ def main():
 
     if not episodes:
         if getattr(args, "json", False):
-            print(json.dumps({"error": "not_enough_episodes",
-                              "message": "Not enough episodes to compute. Run /unimem a few times first."}))
+            print(
+                json.dumps(
+                    {
+                        "error": "not_enough_episodes",
+                        "message": "Not enough episodes to compute. Run /unimem a few times first.",
+                    }
+                )
+            )
         else:
             print("Not enough episodes to compute. Run /unimem a few times first.")
         sys.exit(0)
@@ -1570,17 +1610,11 @@ def main():
     tg_value, tg_n, tg_untraceable = compute_transfer_gap(episodes, lessons)
     extras = compute_extras(episodes, lessons)
     operational_cost = compute_operational_cost()
-    dup_threshold = (
-        args.threshold_semantic
-        if args.threshold_semantic is not None
-        else SEMANTIC_DUP_THRESHOLD
-    )
+    dup_threshold = args.threshold_semantic if args.threshold_semantic is not None else SEMANTIC_DUP_THRESHOLD
     semantic_duplicates = compute_semantic_duplicates(threshold=dup_threshold)
     freshness_value, freshness_n = compute_freshness(lessons, now=now)
     lexical_duplicates = (
-        compute_lexical_duplicates(lessons, args.threshold_lexical)
-        if args.threshold_lexical is not None
-        else None
+        compute_lexical_duplicates(lessons, args.threshold_lexical) if args.threshold_lexical is not None else None
     )
 
     report = {

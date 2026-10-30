@@ -1,4 +1,5 @@
 """UniMem writer masking is a parent intervention, not memory non-delivery."""
+
 from __future__ import annotations
 
 import os
@@ -32,6 +33,7 @@ def clock(monkeypatch):
     def tick():
         nonlocal moment
         moment += timedelta(seconds=10)
+
     return tick
 
 
@@ -42,15 +44,18 @@ def test_nested_writer_mask_has_no_fake_memory_control_rows(tmp_path, clock):
         hazard, _ = hierarchical.append_facts(root, [{"statement": "Stop when a person enters the robot cell."}])[0]
     receipt = safety.review(root, hazard.id, reviewer="operator", reason="Safety interlock instruction")
     safety.mark(root, hazard.id, "human-proximity", receipt)
-    holdout_io.configure(root, rate=.5, salt="writers")
+    holdout_io.configure(root, rate=0.5, salt="writers")
     writers.register(root, "reviewers", members=["agent-a"], training_size=10, minimum_support=1)
     clock()
     masked = 0
     for i in range(24):
         occasion = str(i)
         with writers.reader(root, occasion) as parent:
-            inner = holdout_io.assign_and_log(root, [fact.id, hazard.id], occasion_id=occasion, rate=.5, salt="writers")
+            inner = holdout_io.assign_and_log(
+                root, [fact.id, hazard.id], occasion_id=occasion, rate=0.5, salt="writers"
+            )
             from unimem import search_recipes
+
             visible = search_recipes.admit(root, [fact.id, hazard.id])
             assert hazard.id in visible and hazard.id not in inner
             if not parent["writers"]["reviewers"]:
@@ -72,38 +77,38 @@ def test_writer_effect_coverage_and_nested_bias_mutation():
     for repeat in range(100):
         parent, inner, incorrect = [], [], []
         for i in range(400):
-            writer = rng.random() < .5
-            memory = rng.random() < .5
-            y = rng.random() < .1 + .3*writer + .5*(writer and memory)
-            parent.append(aipw.Observation(writer, y, .5))
+            writer = rng.random() < 0.5
+            memory = rng.random() < 0.5
+            y = rng.random() < 0.1 + 0.3 * writer + 0.5 * (writer and memory)
+            parent.append(aipw.Observation(writer, y, 0.5))
             if writer:
-                inner.append(aipw.Observation(memory, y, .5))
+                inner.append(aipw.Observation(memory, y, 0.5))
             # Deliberate mutation: writer-masked memories falsely counted as
             # independent memory control observations at propensity one-half.
-            incorrect.append(aipw.Observation(writer and memory, y, .5))
+            incorrect.append(aipw.Observation(writer and memory, y, 0.5))
         scores = aipw.aipw_scores(parent)
-        _, low, high = eprocess.interval(scores, bound=2, alpha=.05)
-        coverage += low <= .55 <= high
-        correct.append(sum(aipw.aipw_scores(inner))/len(inner))
-        mutated.append(sum(aipw.aipw_scores(incorrect))/len(incorrect))
+        _, low, high = eprocess.interval(scores, bound=2, alpha=0.05)
+        coverage += low <= 0.55 <= high
+        correct.append(sum(aipw.aipw_scores(inner)) / len(inner))
+        mutated.append(sum(aipw.aipw_scores(incorrect)) / len(incorrect))
     assert coverage >= 93
-    assert sum(correct)/len(correct) == pytest.approx(.5, abs=.025)
-    assert abs(sum(mutated)/len(mutated)-.5) > .1
+    assert sum(correct) / len(correct) == pytest.approx(0.5, abs=0.025)
+    assert abs(sum(mutated) / len(mutated) - 0.5) > 0.1
 
 
 def test_reliability_recovers_good_and_bad_writer(tmp_path, clock):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="ranking")
+    holdout_io.configure(root, rate=0.5, salt="ranking")
     for writer in ("good", "bad"):
         writers.register(root, writer, training_size=20, minimum_support=2)
     clock()
     for i in range(100):
-        with writers.reader(root, "good-"+str(i), identities=["good"]) as parent:
-            holdout_io.record_outcome(root, "good-"+str(i), parent["writers"]["good"])
-        with writers.reader(root, "bad-"+str(i), identities=["bad"]) as parent:
-            holdout_io.record_outcome(root, "bad-"+str(i), not parent["writers"]["bad"])
-    assert writers.reliability(root, "good")["score"] > .5
-    assert writers.reliability(root, "bad")["score"] < -.5
+        with writers.reader(root, "good-" + str(i), identities=["good"]) as parent:
+            holdout_io.record_outcome(root, "good-" + str(i), parent["writers"]["good"])
+        with writers.reader(root, "bad-" + str(i), identities=["bad"]) as parent:
+            holdout_io.record_outcome(root, "bad-" + str(i), not parent["writers"]["bad"])
+    assert writers.reliability(root, "good")["score"] > 0.5
+    assert writers.reliability(root, "bad")["score"] < -0.5
     with memory_authority.writer("good", "agent"):
         good, _ = hierarchical.append_facts(root, [{"statement": "Signed packages need verification."}])[0]
     with memory_authority.writer("bad", "agent"):
@@ -140,7 +145,7 @@ def test_cli_mask_delivers_nested_arm_and_route_prior(tmp_path, clock, capsys):
     root = str(tmp_path)
     with memory_authority.writer("reviewer", "agent"):
         fact, _ = hierarchical.append_facts(root, [{"statement": "Check package signature evidence."}])[0]
-    holdout_io.configure(root, rate=.5, salt="cli-writers")
+    holdout_io.configure(root, rate=0.5, salt="cli-writers")
     assert cli.main(["team", "register-writer", json.dumps({"writer": "reviewer"}), "--dest", root]) == 0
     capsys.readouterr()
     clock()
@@ -161,7 +166,7 @@ def test_mcp_writer_estimate_matches_canonical_report(tmp_path, clock):
     from unimem import mcp_server
 
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="mcp-writers")
+    holdout_io.configure(root, rate=0.5, salt="mcp-writers")
     writers.register(root, "reviewer")
     server = mcp_server.build_server(root)
     result = asyncio.run(server.call_tool("writer_reliability", {"writer": "reviewer"}))

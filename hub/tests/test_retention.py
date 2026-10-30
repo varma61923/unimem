@@ -41,9 +41,13 @@ async def _add_traces(session_factory, org_id, ages, **kwargs):
     async with session_scope(session_factory) as session:
         for i, age in enumerate(ages):
             t = Trace(
-                org_id=org_id, title=f"t{i}", context_text="c",
-                solution_text="s", agent_type="support",
-                created_at=_aged(age), **kwargs,
+                org_id=org_id,
+                title=f"t{i}",
+                context_text="c",
+                solution_text="s",
+                agent_type="support",
+                created_at=_aged(age),
+                **kwargs,
             )
             session.add(t)
             await session.flush()
@@ -97,9 +101,7 @@ class TestPolicies:
             plan = await retention.plan(session, org, now=NOW)
         assert plan.n_doomed == 0
 
-    async def test_setting_the_same_policy_twice_updates_rather_than_duplicates(
-        self, session_factory, org
-    ):
+    async def test_setting_the_same_policy_twice_updates_rather_than_duplicates(self, session_factory, org):
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
         async with session_scope(session_factory) as session:
@@ -117,7 +119,8 @@ class TestPolicies:
         async with session_scope(session_factory) as session:
             policies = await retention.policies_for(session, org)
         assert {(p.status, p.max_age_days) for p in policies} == {
-            ("active", 90), ("quarantined", 730),
+            ("active", 90),
+            ("quarantined", 730),
         }
 
 
@@ -138,9 +141,7 @@ class TestPlanning:
             plan = await retention.plan(session, org, now=NOW)
             assert plan.n_doomed == 2
         async with session_scope(session_factory) as session:
-            still_there = await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == org)
-            )
+            still_there = await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org))
         assert still_there == 3
         assert "Nothing has been deleted" in plan.render()
 
@@ -178,9 +179,7 @@ class TestPlanning:
         assert set(plan.buckets[0].doomed) == set(mine)
         assert theirs[0] not in plan.buckets[0].doomed
 
-    async def test_the_digest_distinguishes_different_sets_of_the_same_size(
-        self, session_factory, org
-    ):
+    async def test_the_digest_distinguishes_different_sets_of_the_same_size(self, session_factory, org):
         await _add_traces(session_factory, org, [400])
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
@@ -216,16 +215,10 @@ class TestApply:
             plan = await retention.plan(session, org, now=NOW)
             await retention.apply(session, org, plan.digest, now=NOW)
         async with session_scope(session_factory) as session:
-            left = set(
-                (await session.execute(
-                    select(Trace.id).where(Trace.org_id == org)
-                )).scalars()
-            )
+            left = set((await session.execute(select(Trace.id).where(Trace.org_id == org))).scalars())
         assert left == {ids[2]}
 
-    async def test_purged_traces_free_their_quota_and_leave_no_dangling_relations(
-        self, session_factory, org
-    ):
+    async def test_purged_traces_free_their_quota_and_leave_no_dangling_relations(self, session_factory, org):
         ids = await _add_traces(session_factory, org, [400, 400, 10])
         async with session_scope(session_factory) as session:
             (await session.get(Organization, org)).trace_count = 3
@@ -236,9 +229,11 @@ class TestApply:
             await retention.apply(session, org, plan.digest, now=NOW)
         async with session_scope(session_factory) as session:
             assert (await session.get(Organization, org)).trace_count == 1
-            dangling = (await session.execute(
-                select(func.count()).select_from(TraceRelation).where(TraceRelation.trace_id == ids[2])
-            )).scalar()
+            dangling = (
+                await session.execute(
+                    select(func.count()).select_from(TraceRelation).where(TraceRelation.trace_id == ids[2])
+                )
+            ).scalar()
         assert dangling == 0
 
     async def test_a_stale_digest_deletes_nothing(self, session_factory, org):
@@ -251,24 +246,22 @@ class TestApply:
             with pytest.raises(retention.StalePlanError) as exc:
                 await retention.apply(session, org, stale, now=NOW)
         async with session_scope(session_factory) as session:
-            survived = await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == org)
-            )
+            survived = await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org))
         assert survived == 2
         assert exc.value.planned == stale
         assert exc.value.current != stale
 
-    async def test_a_purge_is_audited_even_when_it_deletes_nothing(
-        self, session_factory, org
-    ):
+    async def test_a_purge_is_audited_even_when_it_deletes_nothing(self, session_factory, org):
         await self._one_policy(session_factory, org)
         async with session_scope(session_factory) as session:
             plan = await retention.plan(session, org, now=NOW)
             await retention.apply(session, org, plan.digest, now=NOW)
         async with session_scope(session_factory) as session:
-            entries = list((await session.execute(
-                select(AuditLogEntry).where(AuditLogEntry.action == "retention.purge")
-            )).scalars())
+            entries = list(
+                (
+                    await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "retention.purge"))
+                ).scalars()
+            )
         assert len(entries) == 1
         assert "nothing" in entries[0].summary
 
@@ -279,9 +272,9 @@ class TestApply:
             plan = await retention.plan(session, org, now=NOW)
             await retention.apply(session, org, plan.digest, now=NOW)
         async with session_scope(session_factory) as session:
-            entry = (await session.execute(
-                select(AuditLogEntry).where(AuditLogEntry.action == "retention.purge")
-            )).scalar_one()
+            entry = (
+                await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "retention.purge"))
+            ).scalar_one()
         assert "2 trace" in entry.summary
         assert entry.org_id == org
 
@@ -293,7 +286,10 @@ class TestLegalHold:
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
             await retention.place_hold(
-                session, org, reason="Ohio subpoena 2026-44", placed_by="ops",
+                session,
+                org,
+                reason="Ohio subpoena 2026-44",
+                placed_by="ops",
             )
         async with session_scope(session_factory) as session:
             plan = await retention.plan(session, org, now=NOW)
@@ -306,15 +302,16 @@ class TestLegalHold:
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
             await retention.place_hold(
-                session, org, reason="investigation", placed_by="ops",
+                session,
+                org,
+                reason="investigation",
+                placed_by="ops",
             )
         async with session_scope(session_factory) as session:
             plan = await retention.plan(session, org, now=NOW)
             await retention.apply(session, org, plan.digest, now=NOW)
         async with session_scope(session_factory) as session:
-            survived = await session.scalar(
-                select(func.count()).select_from(Trace).where(Trace.org_id == org)
-            )
+            survived = await session.scalar(select(func.count()).select_from(Trace).where(Trace.org_id == org))
         assert survived == 2
 
     async def test_a_hold_on_one_object_freezes_only_that_one(self, session_factory, org):
@@ -322,8 +319,12 @@ class TestLegalHold:
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
             await retention.place_hold(
-                session, org, reason="named in a claim", placed_by="ops",
-                object_type="trace", target_id=ids[0],
+                session,
+                org,
+                reason="named in a claim",
+                placed_by="ops",
+                object_type="trace",
+                target_id=ids[0],
             )
         async with session_scope(session_factory) as session:
             plan = await retention.plan(session, org, now=NOW)
@@ -333,14 +334,23 @@ class TestLegalHold:
     async def test_a_typed_hold_leaves_other_types_alone(self, session_factory, org):
         await _add_traces(session_factory, org, [400])
         async with session_scope(session_factory) as session:
-            session.add(KnowledgeBaseSubmission(
-                org_id=org, title="s", context_text="c", solution_text="s",
-                agent_type="support", created_at=_aged(400),
-            ))
+            session.add(
+                KnowledgeBaseSubmission(
+                    org_id=org,
+                    title="s",
+                    context_text="c",
+                    solution_text="s",
+                    agent_type="support",
+                    created_at=_aged(400),
+                )
+            )
             await retention.set_policy(session, org, "trace", 90)
             await retention.set_policy(session, org, "kb_submission", 90)
             await retention.place_hold(
-                session, org, reason="trace dispute", placed_by="ops",
+                session,
+                org,
+                reason="trace dispute",
+                placed_by="ops",
                 object_type="trace",
             )
         async with session_scope(session_factory) as session:
@@ -353,22 +363,30 @@ class TestLegalHold:
         async with session_scope(session_factory) as session:
             with pytest.raises(retention.RetentionError, match="reason"):
                 await retention.place_hold(
-                    session, org, reason="   ", placed_by="ops",
+                    session,
+                    org,
+                    reason="   ",
+                    placed_by="ops",
                 )
 
     async def test_a_targeted_hold_needs_a_type(self, session_factory, org):
         async with session_scope(session_factory) as session:
             with pytest.raises(retention.RetentionError, match="type as well as its id"):
                 await retention.place_hold(
-                    session, org, reason="r", placed_by="ops", target_id="abc",
+                    session,
+                    org,
+                    reason="r",
+                    placed_by="ops",
+                    target_id="abc",
                 )
 
-    async def test_releasing_keeps_the_row_so_the_freeze_stays_auditable(
-        self, session_factory, org
-    ):
+    async def test_releasing_keeps_the_row_so_the_freeze_stays_auditable(self, session_factory, org):
         async with session_scope(session_factory) as session:
             hold = await retention.place_hold(
-                session, org, reason="subpoena", placed_by="ops",
+                session,
+                org,
+                reason="subpoena",
+                placed_by="ops",
             )
             await session.flush()
             hold_id = hold.id
@@ -388,7 +406,10 @@ class TestLegalHold:
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "trace", 90)
             hold = await retention.place_hold(
-                session, org, reason="subpoena", placed_by="ops",
+                session,
+                org,
+                reason="subpoena",
+                placed_by="ops",
             )
             await session.flush()
             hold_id = hold.id
@@ -401,7 +422,10 @@ class TestLegalHold:
     async def test_releasing_twice_is_refused(self, session_factory, org):
         async with session_scope(session_factory) as session:
             hold = await retention.place_hold(
-                session, org, reason="subpoena", placed_by="ops",
+                session,
+                org,
+                reason="subpoena",
+                placed_by="ops",
             )
             await session.flush()
             hold_id = hold.id
@@ -417,15 +441,18 @@ class TestRunningExperiment:
     async def _observations(self, session_factory, org, n, age=400):
         async with session_scope(session_factory) as session:
             for i in range(n):
-                session.add(HoldoutObservation(
-                    org_id=org, trace_id=str(uuid.uuid4()),
-                    occasion_id=f"occ-{i}", injected=bool(i % 2),
-                    succeeded=True, created_at=_aged(age),
-                ))
+                session.add(
+                    HoldoutObservation(
+                        org_id=org,
+                        trace_id=str(uuid.uuid4()),
+                        occasion_id=f"occ-{i}",
+                        injected=bool(i % 2),
+                        succeeded=True,
+                        created_at=_aged(age),
+                    )
+                )
 
-    async def test_a_running_experiment_blocks_deletion_of_its_arms(
-        self, session_factory, org
-    ):
+    async def test_a_running_experiment_blocks_deletion_of_its_arms(self, session_factory, org):
         await self._observations(session_factory, org, 4)
         async with session_scope(session_factory) as session:
             o = await session.get(Organization, org)
@@ -447,9 +474,7 @@ class TestRunningExperiment:
             plan = await retention.plan(session, org, now=NOW)
         assert plan.n_doomed == 4
 
-    async def test_deleting_observations_warns_about_the_signed_ledger(
-        self, session_factory, org
-    ):
+    async def test_deleting_observations_warns_about_the_signed_ledger(self, session_factory, org):
         await self._observations(session_factory, org, 2)
         async with session_scope(session_factory) as session:
             await retention.set_policy(session, org, "holdout_observation", 90)
@@ -457,9 +482,7 @@ class TestRunningExperiment:
             plan = await retention.plan(session, org, now=NOW)
         assert "export-assignments" in plan.render()
 
-    async def test_a_running_experiment_does_not_block_other_types(
-        self, session_factory, org
-    ):
+    async def test_a_running_experiment_does_not_block_other_types(self, session_factory, org):
         await _add_traces(session_factory, org, [400])
         async with session_scope(session_factory) as session:
             o = await session.get(Organization, org)
@@ -510,10 +533,24 @@ class TestSchemaSafety:
         from hub.models import Base
 
         protected = {
-            *_SCOPED_TABLES, *_RETENTION_TABLES, *_WEBHOOK_TABLES,
-            *_USER_TABLES, *_COLLAB_TABLES, *_ALERT_TABLES, *_SCIM_GROUP_TABLES, *_CONNECTOR_TABLES,
-            *_MARKET_TABLES, *_MEMORY_TABLES, *_VECTOR_STREAM_TABLES, *_LOG_TABLES, *_INCIDENT_TABLES,
-            *_POOL_TABLES, *_CAPABILITY_TABLES, *_POLICY_TABLES, *_ATTESTED_KEY_TABLES, "traces",
+            *_SCOPED_TABLES,
+            *_RETENTION_TABLES,
+            *_WEBHOOK_TABLES,
+            *_USER_TABLES,
+            *_COLLAB_TABLES,
+            *_ALERT_TABLES,
+            *_SCIM_GROUP_TABLES,
+            *_CONNECTOR_TABLES,
+            *_MARKET_TABLES,
+            *_MEMORY_TABLES,
+            *_VECTOR_STREAM_TABLES,
+            *_LOG_TABLES,
+            *_INCIDENT_TABLES,
+            *_POOL_TABLES,
+            *_CAPABILITY_TABLES,
+            *_POLICY_TABLES,
+            *_ATTESTED_KEY_TABLES,
+            "traces",
         }
         exempt = {
             "api_keys",
@@ -521,10 +558,7 @@ class TestSchemaSafety:
             "audit_log",
             "trace_relations",
         }
-        org_scoped = {
-            table.name for table in Base.metadata.sorted_tables
-            if "org_id" in table.c
-        }
+        org_scoped = {table.name for table in Base.metadata.sorted_tables if "org_id" in table.c}
         assert org_scoped - exempt - protected == set()
 
     def test_every_purgeable_kind_names_a_real_model_column(self):
@@ -535,13 +569,16 @@ class TestSchemaSafety:
                 assert predicate() is not None, f"{name}/{status}"
 
     @pytest.mark.asyncio
-    async def test_a_policy_for_a_vanished_type_is_reported_not_ignored(
-        self, session_factory, org
-    ):
+    async def test_a_policy_for_a_vanished_type_is_reported_not_ignored(self, session_factory, org):
         async with session_scope(session_factory) as session:
-            session.add(RetentionPolicy(
-                org_id=org, object_type="sometable", status="any", max_age_days=90,
-            ))
+            session.add(
+                RetentionPolicy(
+                    org_id=org,
+                    object_type="sometable",
+                    status="any",
+                    max_age_days=90,
+                )
+            )
         async with session_scope(session_factory) as session:
             plan = await retention.plan(session, org, now=NOW)
         assert plan.buckets[0].blocked

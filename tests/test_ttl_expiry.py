@@ -9,16 +9,20 @@ from unimem import frontmatter, hierarchical, lesson_cache, paths, ttl
 from unimem.cli import main
 
 
-def _write_lesson(root, slug, description="force-push shared branch guidance",
-                  expires=None, status="active"):
+def _write_lesson(root, slug, description="force-push shared branch guidance", expires=None, status="active"):
     ldir = paths.lessons_dir(root)
     os.makedirs(ldir, exist_ok=True)
     path = os.path.join(ldir, f"{slug}.md")
     fm = {
-        "name": slug, "description": description,
+        "name": slug,
+        "description": description,
         "applies_when": "force-pushing shared history",
-        "tags": ["git", "safety"], "domain": "other", "importance": 3,
-        "uses": 0, "status": status, "agent_type": "code",
+        "tags": ["git", "safety"],
+        "domain": "other",
+        "importance": 3,
+        "uses": 0,
+        "status": status,
+        "agent_type": "code",
         "last_hit": "2026-07-01",
     }
     if expires is not None:
@@ -75,13 +79,9 @@ class TestExpiresValidation:
 class TestFilterEligibleExpiry:
     def test_expiry_boundary_exact_instant(self):
         lessons = [("p", {"expires": "2026-04-30T12:00:00Z"})]
-        assert len(lesson_cache.filter_eligible(
-            lessons, as_of="2026-04-30T11:59:59Z")) == 1
-        assert lesson_cache.filter_eligible(
-            lessons, as_of="2026-04-30T12:00:00Z") == []
-        assert len(lesson_cache.filter_eligible(
-            lessons, as_of="2026-04-30T12:00:00Z",
-            show_expired=True)) == 1
+        assert len(lesson_cache.filter_eligible(lessons, as_of="2026-04-30T11:59:59Z")) == 1
+        assert lesson_cache.filter_eligible(lessons, as_of="2026-04-30T12:00:00Z") == []
+        assert len(lesson_cache.filter_eligible(lessons, as_of="2026-04-30T12:00:00Z", show_expired=True)) == 1
 
     def test_expired_hidden_by_default_against_now(self):
         lessons = [
@@ -100,14 +100,15 @@ class TestFilterEligibleExpiry:
 
 class TestQueryShowExpired:
     def test_expired_hidden_with_notice_by_default(self, store, capsys):
-        _write_lesson(store, "lesson_live_ttl",
-                      description="Never force-push a shared branch")
-        _write_lesson(store, "lesson_old_ttl",
-                      description="Never force-push a shared branch, legacy wording",
-                      expires="2000-01-01")
+        _write_lesson(store, "lesson_live_ttl", description="Never force-push a shared branch")
+        _write_lesson(
+            store,
+            "lesson_old_ttl",
+            description="Never force-push a shared branch, legacy wording",
+            expires="2000-01-01",
+        )
         capsys.readouterr()
-        rc = main(["query", "force-push a shared branch", "--lexical",
-                   "--dest", store])
+        rc = main(["query", "force-push a shared branch", "--lexical", "--dest", store])
         assert rc == 0
         out = capsys.readouterr().out
         slugs = _result_slugs(out)
@@ -117,14 +118,15 @@ class TestQueryShowExpired:
         assert "--show-expired" in out
 
     def test_show_expired_includes_everything_without_notice(self, store, capsys):
-        _write_lesson(store, "lesson_live_ttl",
-                      description="Never force-push a shared branch")
-        _write_lesson(store, "lesson_old_ttl",
-                      description="Never force-push a shared branch, legacy wording",
-                      expires="2000-01-01")
+        _write_lesson(store, "lesson_live_ttl", description="Never force-push a shared branch")
+        _write_lesson(
+            store,
+            "lesson_old_ttl",
+            description="Never force-push a shared branch, legacy wording",
+            expires="2000-01-01",
+        )
         capsys.readouterr()
-        rc = main(["query", "force-push a shared branch", "--lexical",
-                   "--show-expired", "--dest", store])
+        rc = main(["query", "force-push a shared branch", "--lexical", "--show-expired", "--dest", store])
         assert rc == 0
         out = capsys.readouterr().out
         slugs = _result_slugs(out)
@@ -133,11 +135,9 @@ class TestQueryShowExpired:
         assert "hidden by TTL" not in out
 
     def test_no_notice_when_nothing_expired(self, store, capsys):
-        _write_lesson(store, "lesson_live_ttl",
-                      description="Never force-push a shared branch")
+        _write_lesson(store, "lesson_live_ttl", description="Never force-push a shared branch")
         capsys.readouterr()
-        rc = main(["query", "force-push a shared branch", "--lexical",
-                   "--dest", store])
+        rc = main(["query", "force-push a shared branch", "--lexical", "--dest", store])
         assert rc == 0
         assert "hidden by TTL" not in capsys.readouterr().out
 
@@ -145,7 +145,8 @@ class TestQueryShowExpired:
 class TestFactExpiry:
     def test_expires_at_stored_and_validated(self, store):
         fact, action = hierarchical.add_fact(
-            store, "Cache TTL for sessions is 300 seconds.",
+            store,
+            "Cache TTL for sessions is 300 seconds.",
             expires_at="2030-01-01",
         )
         assert action == "ADD"
@@ -156,7 +157,8 @@ class TestFactExpiry:
 
     def test_fact_is_expired_boundary(self, store):
         fact, _ = hierarchical.add_fact(
-            store, "Staging flag flips on 2026-05-01.",
+            store,
+            "Staging flag flips on 2026-05-01.",
             valid_from="2026-01-01T00:00:00Z",
             expires_at="2026-05-01T00:00:00Z",
         )
@@ -166,8 +168,7 @@ class TestFactExpiry:
 
     def test_update_fact_expires_at_set_and_clear(self, store):
         fact, _ = hierarchical.add_fact(store, "Mutable TTL fact.")
-        updated = hierarchical.update_fact(
-            store, fact.id, expires_at="2031-06-01")
+        updated = hierarchical.update_fact(store, fact.id, expires_at="2031-06-01")
         assert updated.expires_at is not None and "2031" in updated.expires_at
         cleared = hierarchical.update_fact(store, fact.id, expires_at=None)
         assert cleared.expires_at is None
@@ -183,8 +184,7 @@ class TestForgetUndo:
         assert forgotten.forgotten is True
         assert forgotten.revision != rev
         assert hierarchical.list_facts(store) == []
-        assert hierarchical.list_facts(store, as_of="2026-02-01T00:00:00Z",
-                                       status="") == []
+        assert hierarchical.list_facts(store, as_of="2026-02-01T00:00:00Z", status="") == []
         shown = hierarchical.list_facts(store, include_forgotten=True)
         assert [f.id for f in shown] == [fact.id]
         assert hierarchical.search_facts(store, "debug flag") == []
@@ -204,8 +204,7 @@ class TestForgetUndo:
         assert loaded.forgotten is True
 
     def test_fact_cli_forget_undo_and_marker(self, store, capsys):
-        assert main(["fact", "add", "Ephemeral CLI flag is set",
-                     "--dest", store]) == 0
+        assert main(["fact", "add", "Ephemeral CLI flag is set", "--dest", store]) == 0
         capsys.readouterr()
         assert main(["fact", "list", "--dest", store]) == 0
         out = capsys.readouterr().out
@@ -219,8 +218,7 @@ class TestForgetUndo:
         assert main(["fact", "list", "--dest", store]) == 0
         assert "Ephemeral CLI flag" not in capsys.readouterr().out
 
-        assert main(["fact", "list", "--include-forgotten",
-                     "--dest", store]) == 0
+        assert main(["fact", "list", "--include-forgotten", "--dest", store]) == 0
         out = capsys.readouterr().out
         assert "Ephemeral CLI flag" in out
         assert "[forgotten]" in out
@@ -261,12 +259,10 @@ class TestFactBackCompat:
         facts = hierarchical.load_facts(store)
         assert facts["fact-legacy0001"].expires_at is None
         assert facts["fact-legacy0001"].forgotten is False
-        assert any(f.id == "fact-legacy0001"
-                   for f in hierarchical.list_facts(store))
+        assert any(f.id == "fact-legacy0001" for f in hierarchical.list_facts(store))
 
     def test_new_row_round_trips_through_jsonl(self, store):
-        fact, _ = hierarchical.add_fact(
-            store, "Round-trip TTL fact.", expires_at="2030-05-05")
+        fact, _ = hierarchical.add_fact(store, "Round-trip TTL fact.", expires_at="2030-05-05")
         hierarchical.forget_fact(store, fact.id)
         reloaded = hierarchical.load_facts(store)[fact.id]
         assert reloaded.expires_at == fact.expires_at

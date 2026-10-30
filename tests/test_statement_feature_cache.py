@@ -1,4 +1,5 @@
 """Pure lexical reuse must stay bounded and end with its write transaction."""
+
 from __future__ import annotations
 
 import sys
@@ -17,7 +18,11 @@ def features(text):
 
 
 def test_cached_features_preserve_lexical_values_and_reuse_immutable_signature(tmp_path):
-    texts = ["  Vault does NOT retain 7.5 replicas  ", "Operator's journal stores 12,4 records", "部署 uses durable storage"]
+    texts = [
+        "  Vault does NOT retain 7.5 replicas  ",
+        "Operator's journal stores 12,4 records",
+        "部署 uses durable storage",
+    ]
     expected = [features(text) for text in texts]
     root = str(tmp_path)
     fact_store.migrate(root)

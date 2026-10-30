@@ -1,5 +1,6 @@
 """The store as a versioned filesystem: validation, the pre-commit hook, conflict
 repair, restore and signed handoffs."""
+
 import os
 import shutil
 import subprocess
@@ -72,8 +73,14 @@ def test_commit_refuses_invalid_memory_and_hook_blocks_git(store):
         memfs.commit(store, "bad")
     env = {**os.environ, "PYTHONPATH": os.path.dirname(os.path.dirname(os.path.abspath(memfs.__file__)))}
     _git(store, "add", "-A")
-    done = subprocess.run(["git", "commit", "-qm", "bad"], cwd=store, capture_output=True, text=True,  # nosec
-                          env=env, check=False)
+    done = subprocess.run(
+        ["git", "commit", "-qm", "bad"],
+        cwd=store,
+        capture_output=True,
+        text=True,  # nosec
+        env=env,
+        check=False,
+    )
     assert done.returncode != 0
     assert "not a JSON object" in done.stderr
     assert memfs.commit(store, "forced", verify=False)["committed"]
@@ -194,8 +201,13 @@ def test_forced_keygen_replaces_a_loose_key_privately_without_following_links(st
 
 def test_cli_memory_commands(store):
     def ct(*args):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "memory", *args, "--dest", store],  # nosec
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "memory", *args, "--dest", store],  # nosec
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     assert ct("status").stdout.startswith("head:")
     _append(store, "facts.jsonl", '{"id": "b"}\n')
     assert "committed" in ct("commit", "-m", "b").stdout

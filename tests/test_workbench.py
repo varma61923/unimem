@@ -18,17 +18,35 @@ def root(tmp_path, monkeypatch):
     return str(tmp_path)
 
 
-def _lesson(root, slug, *, status="review", rule="Send an idempotency key on every payment request.",
-            applies="Payments are retried after a timeout.", counter="The call is naturally idempotent.",
-            llm=False):
+def _lesson(
+    root,
+    slug,
+    *,
+    status="review",
+    rule="Send an idempotency key on every payment request.",
+    applies="Payments are retried after a timeout.",
+    counter="The call is naturally idempotent.",
+    llm=False,
+):
     fm = templates.lesson_frontmatter(
-        slug=slug, description=f"{slug} description", agent_type="support", domain="payments", tags=["pay"],
-        applies_when=applies, do_not_apply_when=counter, importance=3, importance_rationale="r",
-        source_traces=["t1", "t2"], status=status)
+        slug=slug,
+        description=f"{slug} description",
+        agent_type="support",
+        domain="payments",
+        tags=["pay"],
+        applies_when=applies,
+        do_not_apply_when=counter,
+        importance=3,
+        importance_rationale="r",
+        source_traces=["t1", "t2"],
+        status=status,
+    )
     if llm:
         fm["llm_draft"] = {"provider": "anthropic", "model": "m", "usage": {"input_tokens": 9, "output_tokens": 4}}
-    body = (f"## Rule\n{rule}\n\n## Why\nDuplicate charges.\n\n## How to apply\n{applies}\n\n"
-            f"## Counter-examples\n{counter}\n")
+    body = (
+        f"## Rule\n{rule}\n\n## Why\nDuplicate charges.\n\n## How to apply\n{applies}\n\n"
+        f"## Counter-examples\n{counter}\n"
+    )
     frontmatter.write(os.path.join(paths.lessons_dir(root), f"{slug}.md"), fm, body)
 
 
@@ -54,8 +72,14 @@ def _status_of(root, slug):
 def test_the_queue_lists_review_drafts_with_their_gate_results(root, gw):
     _lesson(root, "lesson_good", llm=True)
     _lesson(root, "lesson_todo", rule="TODO: one actionable sentence")
-    _lesson(root, "lesson_live", status="active", rule="Back off on 429 responses.", applies="Rate limited.",
-            counter="Never.")
+    _lesson(
+        root,
+        "lesson_live",
+        status="active",
+        rule="Back off on 429 responses.",
+        applies="Rate limited.",
+        counter="Never.",
+    )
     status, out = call(gw, "GET", "/v1/lessons?status=review")
     assert status == 200 and out["approval_enabled"] is False
     rows = {r["slug"]: r for r in out["lessons"]}
@@ -83,10 +107,14 @@ def test_the_detail_carries_text_provenance_and_history(root, gw, acting):
     assert "Payments are retried twice." in d["body"].split("## How to apply")[1].split("## Counter")[0]
 
 
-@pytest.mark.parametrize("path,body", [
-    ("/v1/lesson/edit", {"slug": "lesson_good", "rule": "x"}),
-    ("/v1/lesson/approve", {"slug": "lesson_good"}),
-    ("/v1/lesson/reject", {"slug": "lesson_good", "reason": "no"})])
+@pytest.mark.parametrize(
+    "path,body",
+    [
+        ("/v1/lesson/edit", {"slug": "lesson_good", "rule": "x"}),
+        ("/v1/lesson/approve", {"slug": "lesson_good"}),
+        ("/v1/lesson/reject", {"slug": "lesson_good", "reason": "no"}),
+    ],
+)
 def test_acting_is_refused_unless_the_operator_turned_it_on(root, gw, path, body):
     _lesson(root, "lesson_good")
     status, out = call(gw, "POST", path, body)
@@ -131,9 +159,11 @@ def test_reject_archives_a_draft_with_a_reason_and_needs_one(root, acting):
 
 def test_only_a_draft_can_be_edited_approved_or_rejected(root, acting):
     _lesson(root, "lesson_live", status="active")
-    for path, body in (("/v1/lesson/edit", {"slug": "lesson_live", "rule": "changed"}),
-                       ("/v1/lesson/approve", {"slug": "lesson_live"}),
-                       ("/v1/lesson/reject", {"slug": "lesson_live", "reason": "x"})):
+    for path, body in (
+        ("/v1/lesson/edit", {"slug": "lesson_live", "rule": "changed"}),
+        ("/v1/lesson/approve", {"slug": "lesson_live"}),
+        ("/v1/lesson/reject", {"slug": "lesson_live", "reason": "x"}),
+    ):
         status, out = call(acting, "POST", path, body)
         assert status == 409 and out["error"]["code"] == "not_in_review"
 
@@ -144,8 +174,10 @@ def test_a_hostile_slug_is_refused_not_resolved(root, gw, slug):
     assert status in (400, 404)
 
 
-@pytest.mark.parametrize("fields", [{}, {"nonsense": "x"}, {"rule": ""}, {"rule": "x" * 3000},
-                                    {"applies_when": "bad \x01 control"}, {"rule": 5}])
+@pytest.mark.parametrize(
+    "fields",
+    [{}, {"nonsense": "x"}, {"rule": ""}, {"rule": "x" * 3000}, {"applies_when": "bad \x01 control"}, {"rule": 5}],
+)
 def test_edit_validates_its_input(root, acting, fields):
     _lesson(root, "lesson_good")
     status, _ = call(acting, "POST", "/v1/lesson/edit", {"slug": "lesson_good", **fields})
@@ -155,9 +187,17 @@ def test_edit_validates_its_input(root, acting, fields):
 def test_editing_a_todo_draft_into_a_real_rule_makes_it_approvable(root, acting):
     _lesson(root, "lesson_todo", rule="TODO: one actionable sentence", applies="TODO: when", counter="TODO: when not")
     assert call(acting, "POST", "/v1/lesson/approve", {"slug": "lesson_todo"})[0] == 409
-    call(acting, "POST", "/v1/lesson/edit", {"slug": "lesson_todo", "rule": "Always send an idempotency key.",
-                                              "applies_when": "A payment call is retried.",
-                                              "do_not_apply_when": "The call is a read."})
+    call(
+        acting,
+        "POST",
+        "/v1/lesson/edit",
+        {
+            "slug": "lesson_todo",
+            "rule": "Always send an idempotency key.",
+            "applies_when": "A payment call is retried.",
+            "do_not_apply_when": "The call is a read.",
+        },
+    )
     assert call(acting, "POST", "/v1/lesson/approve", {"slug": "lesson_todo"})[0] == 200
 
 

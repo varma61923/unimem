@@ -31,7 +31,8 @@ def _zd_headers(body: bytes, secret=ZD_SECRET, stamp="2025-01-10T17:29:00Z"):
 def _gh_headers(body: bytes, event: str, secret=GH_SECRET, delivery="72d3162e-cc78-11e3-81ab-4c9367dc0958"):
     return {
         "X-Hub-Signature-256": "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest(),
-        "X-GitHub-Event": event, "X-GitHub-Delivery": delivery,
+        "X-GitHub-Event": event,
+        "X-GitHub-Delivery": delivery,
     }
 
 
@@ -56,9 +57,13 @@ class TestZendeskSignature:
         with pytest.raises(base.SignatureError):
             zendesk.verify(_zd_headers(self.BODY, secret=decoded), self.BODY, ZD_SECRET, now=NOW)
 
-    @pytest.mark.parametrize("mutate", [
-        lambda b: b + b" ", lambda b: b.replace(b"41960", b"41961") if b"41960" in b else b + b"x",
-    ])
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda b: b + b" ",
+            lambda b: b.replace(b"41960", b"41961") if b"41960" in b else b + b"x",
+        ],
+    )
     def test_a_tampered_body_is_refused(self, mutate):
         with pytest.raises(base.SignatureError):
             zendesk.verify(_zd_headers(self.BODY), mutate(self.BODY), ZD_SECRET, now=NOW)
@@ -73,12 +78,15 @@ class TestZendeskSignature:
         with pytest.raises(base.SignatureError):
             zendesk.verify(headers, self.BODY, ZD_SECRET, now=NOW)
 
-    @pytest.mark.parametrize("stamp, ok", [
-        ("2025-01-10T17:29:00Z", True),
-        ("2025-01-10T17:25:01Z", True),
-        ("2025-01-10T17:24:59Z", False),
-        ("2025-01-10T17:36:00Z", False),
-    ])
+    @pytest.mark.parametrize(
+        "stamp, ok",
+        [
+            ("2025-01-10T17:29:00Z", True),
+            ("2025-01-10T17:25:01Z", True),
+            ("2025-01-10T17:24:59Z", False),
+            ("2025-01-10T17:36:00Z", False),
+        ],
+    )
     def test_a_validly_signed_but_stale_delivery_is_a_replay(self, stamp, ok):
         headers = _zd_headers(self.BODY, stamp=stamp)
         if ok:
@@ -101,13 +109,16 @@ class TestZendeskSignature:
         assert exc.value.status == 400
 
 
-@pytest.mark.parametrize("text, expected", [
-    ("2025-01-10T17:27:48.105316520+00:00", "2025-01-10T17:27:48.105316+00:00"),
-    ("2025-01-10T17:27:48.999999999-05:00", "2025-01-10T17:27:48.999999-05:00"),
-    ("2025-01-10T17:27:48.1Z", "2025-01-10T17:27:48.100000+00:00"),
-    ("2025-01-10T17:27:48Z", "2025-01-10T17:27:48+00:00"),
-    ("2025-01-10T17:27:48", "2025-01-10T17:27:48+00:00"),
-])
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("2025-01-10T17:27:48.105316520+00:00", "2025-01-10T17:27:48.105316+00:00"),
+        ("2025-01-10T17:27:48.999999999-05:00", "2025-01-10T17:27:48.999999-05:00"),
+        ("2025-01-10T17:27:48.1Z", "2025-01-10T17:27:48.100000+00:00"),
+        ("2025-01-10T17:27:48Z", "2025-01-10T17:27:48+00:00"),
+        ("2025-01-10T17:27:48", "2025-01-10T17:27:48+00:00"),
+    ],
+)
 def test_vendor_timestamps_parse_on_every_supported_python(text, expected):
     assert base.parse_timestamp(text).isoformat() == expected
 
@@ -174,8 +185,7 @@ class TestGithubSignature:
 
     def test_it_matches_githubs_published_test_vector(self):
         body = b"Hello, World!"
-        headers = {"X-Hub-Signature-256":
-                   "sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17"}
+        headers = {"X-Hub-Signature-256": "sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17"}
         github.verify(headers, body, GH_SECRET, now=NOW)
 
     @pytest.mark.parametrize("supplied", ["", "sha1=abc", "sha256=", "sha256=" + "0" * 64, "nope"])
@@ -213,11 +223,10 @@ class TestGithubSignals:
     def test_a_push_with_gits_revert_message_is_a_reversal_by_sha(self):
         payload = _fixture("github_push_master.json")
         payload["commits"][0]["message"] = (
-            'Revert "Update the README"\n\nThis reverts commit '
-            "c4295bd74fb0f4fda03689c3df3f2803b658fd85.\n")
+            'Revert "Update the README"\n\nThis reverts commit c4295bd74fb0f4fda03689c3df3f2803b658fd85.\n'
+        )
         [sig] = github.signals(_gh_headers(b"", "push"), payload, self.CFG)
-        assert (sig.kind, sig.occasion_id, sig.ref) == (
-            base.REVERSAL, "", "c4295bd74fb0f4fda03689c3df3f2803b658fd85")
+        assert (sig.kind, sig.occasion_id, sig.ref) == (base.REVERSAL, "", "c4295bd74fb0f4fda03689c3df3f2803b658fd85")
 
     def test_the_vendors_own_push_example_is_not_a_reversal(self):
         assert github.signals(_gh_headers(b"", "push"), _fixture("github_push_master.json"), self.CFG) == []
@@ -240,11 +249,19 @@ class TestGithubSignals:
         assert len(github.signals(_gh_headers(b"", "pull_request"), _gh_merged(), cfg)) == 1
 
 
-@pytest.mark.parametrize("provider, config", [
-    ("zendesk", {"surprise": 1}), ("zendesk", {"window_days": -1}), ("zendesk", {"window_days": True}),
-    ("zendesk", {"occasion_prefix": 5}), ("zendesk", "text"), ("github", {"repository": "no-slash"}),
-    ("github", {"repository": "a/b/c"}), ("github", {"window_days": 9999}),
-])
+@pytest.mark.parametrize(
+    "provider, config",
+    [
+        ("zendesk", {"surprise": 1}),
+        ("zendesk", {"window_days": -1}),
+        ("zendesk", {"window_days": True}),
+        ("zendesk", {"occasion_prefix": 5}),
+        ("zendesk", "text"),
+        ("github", {"repository": "no-slash"}),
+        ("github", {"repository": "a/b/c"}),
+        ("github", {"window_days": 9999}),
+    ],
+)
 def test_bad_connector_config_is_refused(provider, config):
     with pytest.raises(base.ConfigError):
         PROVIDERS[provider].validate_config(config)
@@ -261,9 +278,14 @@ def test_the_reopen_window_arithmetic_is_not_off_by_a_tolerance():
     assert timedelta(seconds=base.TOLERANCE_SECONDS) == timedelta(minutes=5)
 
 
-@pytest.mark.parametrize("mutate", [
-    lambda p: p.update(detail="x"), lambda p: p.update(event=["x"]), lambda p: p.update(detail=None),
-])
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda p: p.update(detail="x"),
+        lambda p: p.update(event=["x"]),
+        lambda p: p.update(detail=None),
+    ],
+)
 def test_zendesk_payload_of_the_wrong_shape_raises_a_value_error_not_an_attribute_error(mutate):
     payload = _zd_status("SOLVED", "OPEN")
     mutate(payload)
@@ -302,9 +324,16 @@ class TestGreenhouse:
     def test_a_correctly_signed_delivery_verifies(self):
         greenhouse.verify(_ghs_headers(self.BODY), self.BODY, GHS_SECRET, now=NOW)
 
-    @pytest.mark.parametrize("supplied", [
-        "", "sha256=abc", "sha256", "sha1 " + "0" * 40, "sha256 " + "0" * 64,
-    ])
+    @pytest.mark.parametrize(
+        "supplied",
+        [
+            "",
+            "sha256=abc",
+            "sha256",
+            "sha1 " + "0" * 40,
+            "sha256 " + "0" * 64,
+        ],
+    )
     def test_a_bad_signature_is_refused(self, supplied):
         with pytest.raises(base.SignatureError):
             greenhouse.verify({"Signature": supplied}, self.BODY, GHS_SECRET, now=NOW)
@@ -324,13 +353,15 @@ class TestGreenhouse:
         assert a != greenhouse.delivery_id({}, {"x": 1, "y": 3})
 
     def test_a_hire_is_a_candidate_keyed_by_application_id(self):
-        [sig] = greenhouse.signals(_ghs_headers(b""), _fixture("greenhouse_hire_candidate.json"),
-                                   greenhouse.validate_config({}))
+        [sig] = greenhouse.signals(
+            _ghs_headers(b""), _fixture("greenhouse_hire_candidate.json"), greenhouse.validate_config({})
+        )
         assert (sig.kind, sig.occasion_id) == (base.CANDIDATE, "46194062")
 
     def test_a_rejection_is_a_failure(self):
-        [sig] = greenhouse.signals(_ghs_headers(b""), _fixture("greenhouse_reject_candidate.json"),
-                                   greenhouse.validate_config({}))
+        [sig] = greenhouse.signals(
+            _ghs_headers(b""), _fixture("greenhouse_reject_candidate.json"), greenhouse.validate_config({})
+        )
         assert (sig.kind, sig.occasion_id) == (base.FAILURE, "265293")
 
     def test_a_stage_change_counts_only_into_a_stage_the_customer_named(self):
@@ -358,8 +389,15 @@ class TestGreenhouse:
         with pytest.raises(ValueError):
             greenhouse.signals({}, {"action": "hire_candidate", "payload": "x"}, greenhouse.validate_config({}))
 
-    @pytest.mark.parametrize("bad", [{"success_stages": "Onsite"}, {"success_stages": [1]},
-                                     {"success_stages": [" "]}, {"success_stages": ["x"] * 51}])
+    @pytest.mark.parametrize(
+        "bad",
+        [
+            {"success_stages": "Onsite"},
+            {"success_stages": [1]},
+            {"success_stages": [" "]},
+            {"success_stages": ["x"] * 51},
+        ],
+    )
     def test_bad_stage_config_is_refused(self, bad):
         with pytest.raises(base.ConfigError):
             greenhouse.validate_config(bad)
@@ -400,11 +438,16 @@ class TestIntercom:
         with pytest.raises(base.SignatureError):
             intercom.verify(_ic_headers(body, secret="x"), body, IC_SECRET, now=IC_NOW)
 
-    @pytest.mark.parametrize("age, ok", [
-        (60, True), (2 * 3600, True),
-        (3 * 3600 + 5, False),
-        (-60, True), (-3600, False),
-    ])
+    @pytest.mark.parametrize(
+        "age, ok",
+        [
+            (60, True),
+            (2 * 3600, True),
+            (3 * 3600 + 5, False),
+            (-60, True),
+            (-3600, False),
+        ],
+    )
     def test_freshness_is_bounded_by_the_signed_created_at(self, age, ok):
         created = 1392731331
         body = json.dumps(_ic("conversation.admin.closed", created_at=created)).encode()

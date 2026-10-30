@@ -9,6 +9,7 @@ header; nothing is decoded or executed. Sensor readings become a sorted,
 bounded ``name: value`` table, so two episodes with the same readings produce
 the same text.
 """
+
 from __future__ import annotations
 
 import base64
@@ -23,11 +24,21 @@ from unimem import paths, trace_io
 MAX_SENSORS = 64
 MAX_MEDIA = 8
 MAX_MEDIA_BYTES = 2 * 1024 * 1024
-MEDIA_KINDS = {"image": ("image/png", "image/jpeg"), "audio": ("audio/wav", "audio/mpeg", "audio/ogg"),
-               "video": ("video/mp4", "video/webm")}
+MEDIA_KINDS = {
+    "image": ("image/png", "image/jpeg"),
+    "audio": ("audio/wav", "audio/mpeg", "audio/ogg"),
+    "video": ("video/mp4", "video/webm"),
+}
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,63}$")
-_EXT = {"image/png": "png", "image/jpeg": "jpg", "audio/wav": "wav", "audio/mpeg": "mp3", "audio/ogg": "ogg",
-        "video/mp4": "mp4", "video/webm": "webm"}
+_EXT = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "audio/wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/ogg": "ogg",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+}
 
 
 class EpisodeError(ValueError):
@@ -50,8 +61,7 @@ def _image_dims(data: bytes, mime: str) -> dict:
     from unimem.ingest import multimodal
 
     try:
-        width, height, _info = (multimodal._parse_png(data) if mime == "image/png"
-                                else multimodal._parse_jpeg(data))
+        width, height, _info = multimodal._parse_png(data) if mime == "image/png" else multimodal._parse_jpeg(data)
     except (ValueError, IndexError, Exception):  # noqa: BLE001 - a header we cannot read is refused below
         raise EpisodeError(f"the {mime} data does not parse as that format") from None
     return {"width": width, "height": height}
@@ -72,8 +82,13 @@ def _store_media(root: str, item: dict, n: int) -> dict:
         raise EpisodeError(f"media[{n}].data_b64 is not base64") from None
     if not data or len(data) > MAX_MEDIA_BYTES:
         raise EpisodeError(f"media[{n}] must be 1 byte to {MAX_MEDIA_BYTES // (1024 * 1024)} MiB")
-    described = {"kind": kind, "mime": mime, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
-                 "caption": caption}
+    described = {
+        "kind": kind,
+        "mime": mime,
+        "bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "caption": caption,
+    }
     if kind == "image":
         described.update(_image_dims(data, mime))
     directory = os.path.join(paths.memory_dir(root), "media")
@@ -87,8 +102,17 @@ def _store_media(root: str, item: dict, n: int) -> dict:
     return described
 
 
-def record(root: str, *, occasion_id: str, summary: str, agent_id: str = "", env: str | None = None,
-           sensors: dict | None = None, media: list | None = None, outcome: bool | None = None) -> dict:
+def record(
+    root: str,
+    *,
+    occasion_id: str,
+    summary: str,
+    agent_id: str = "",
+    env: str | None = None,
+    sensors: dict | None = None,
+    media: list | None = None,
+    outcome: bool | None = None,
+) -> dict:
     """Store one episode as a trace; returns its id and the media it described."""
     summary = (summary or "").strip()
     if not summary:
@@ -109,17 +133,37 @@ def record(root: str, *, occasion_id: str, summary: str, agent_id: str = "", env
         lines += ["", "Sensors:", *readings]
     for m in described:
         dims = f", {m['width']}x{m['height']}" if m.get("width") else ""
-        lines.append(f"{m['kind'].capitalize()} {m['sha256'][:12]} ({m['mime']}, {m['bytes']} bytes{dims})"
-                     + (f": {m['caption']}" if m["caption"] else ""))
+        lines.append(
+            f"{m['kind'].capitalize()} {m['sha256'][:12]} ({m['mime']}, {m['bytes']} bytes{dims})"
+            + (f": {m['caption']}" if m["caption"] else "")
+        )
     tags = ["episode"] + ([f"env:{env}"] if env else []) + sorted({f"media:{m['kind']}" for m in described})
     path = trace_io.write_new(
-        root, title=f"Episode {occasion_id}"[:200], context="\n".join(lines), solution=summary, tags=tags,
+        root,
+        title=f"Episode {occasion_id}"[:200],
+        context="\n".join(lines),
+        solution=summary,
+        tags=tags,
         outcome=None if outcome is None else {"resolved": bool(outcome)},
-        extra={**({"agent_id": agent_id} if agent_id else {}),
-               "extensions": {"episode": {"occasion_id": occasion_id, "env": env,
-                                          "sensors": {k: sensors[k] for k in sorted(sensors)}, "media": described}}})
+        extra={
+            **({"agent_id": agent_id} if agent_id else {}),
+            "extensions": {
+                "episode": {
+                    "occasion_id": occasion_id,
+                    "env": env,
+                    "sensors": {k: sensors[k] for k in sorted(sensors)},
+                    "media": described,
+                }
+            },
+        },
+    )
     if path is None:
         raise EpisodeError("the episode could not be written")
     trace, _ = trace_io.read(path)
-    return {"episode_id": trace["id"], "occasion_id": occasion_id, "media": described,
-            "sensors": len(readings), "env": env}
+    return {
+        "episode_id": trace["id"],
+        "occasion_id": occasion_id,
+        "media": described,
+        "sensors": len(readings),
+        "env": env,
+    }

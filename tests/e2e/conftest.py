@@ -152,10 +152,7 @@ def trace_factory() -> Callable[..., Path]:
             fm["outcome"] = outcome
         if extra_fm:
             fm.update(extra_fm)
-        content = (
-            f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n"
-            f"## Context\n{context}\n\n## Solution\n{solution}\n"
-        )
+        content = f"---\n{yaml.safe_dump(fm, sort_keys=False)}---\n\n## Context\n{context}\n\n## Solution\n{solution}\n"
         file_path.write_text(content, encoding="utf-8")
         return file_path
 
@@ -208,4 +205,3 @@ def episode_factory() -> Callable[..., Path]:
         return file_path
 
     return _create
-

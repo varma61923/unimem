@@ -27,6 +27,7 @@ async def _fake_public_resolve(hostname: str) -> list:
 def _skip_real_dns_for_webhook_hosts(monkeypatch):
     monkeypatch.setattr(events_module, "_default_resolve", _fake_public_resolve)
 
+
 pytestmark = pytest.mark.asyncio
 
 SECRET = "console-signing-secret"
@@ -37,13 +38,20 @@ def _explode(*a, **kw):
 
 
 def _app(
-    secret: str = SECRET, session_factory=_explode, stripe: StripeSettings | None = None,
-    signing_key: str = "", config=None,
+    secret: str = SECRET,
+    session_factory=_explode,
+    stripe: StripeSettings | None = None,
+    signing_key: str = "",
+    config=None,
 ) -> Starlette:
     app = Starlette()
     if secret:
         console.add_console_routes(
-            app, session_factory, console_secret=secret, stripe=stripe, signing_key=signing_key,
+            app,
+            session_factory,
+            console_secret=secret,
+            stripe=stripe,
+            signing_key=signing_key,
             config=config,
         )
     return app
@@ -86,8 +94,7 @@ async def org_and_readonly_key(session_factory):
 async def _revoke_keys(session_factory, org_id: str) -> None:
     async with session_scope(session_factory) as session:
         await session.execute(
-            sa_update(ApiKey).where(ApiKey.org_id == org_id)
-            .values(revoked_at=datetime.now(timezone.utc))
+            sa_update(ApiKey).where(ApiKey.org_id == org_id).values(revoked_at=datetime.now(timezone.utc))
         )
 
 
@@ -120,14 +127,17 @@ class TestTheSessionCannotBeForged:
         token = console.issue_session("attacker-guess", "org-1", "unimem_live_ab")
         assert console.read_session(SECRET, token) is None
 
-    @pytest.mark.parametrize("mangle", [
-        lambda t: t[:-4] + "AAAA",
-        lambda t: t.split(".")[0],
-        lambda t: "." + t.split(".")[1],
-        lambda t: t.replace(".", "", 1),
-        lambda t: "",
-        lambda t: "not-a-token",
-    ])
+    @pytest.mark.parametrize(
+        "mangle",
+        [
+            lambda t: t[:-4] + "AAAA",
+            lambda t: t.split(".")[0],
+            lambda t: "." + t.split(".")[1],
+            lambda t: t.replace(".", "", 1),
+            lambda t: "",
+            lambda t: "not-a-token",
+        ],
+    )
     async def test_a_mangled_token_is_rejected(self, mangle):
         token = console.issue_session(SECRET, "org-1", "unimem_live_ab")
         assert console.read_session(SECRET, mangle(token)) is None
@@ -140,9 +150,11 @@ class TestTheSessionCannotBeForged:
         body, _, signature = token.partition(".")
         claims = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
         claims["org"] = "org-theirs"
-        forged_body = base64.urlsafe_b64encode(
-            json.dumps(claims, separators=(",", ":"), sort_keys=True).encode()
-        ).decode().rstrip("=")
+        forged_body = (
+            base64.urlsafe_b64encode(json.dumps(claims, separators=(",", ":"), sort_keys=True).encode())
+            .decode()
+            .rstrip("=")
+        )
         assert console.read_session(SECRET, f"{forged_body}.{signature}") is None
 
     async def test_an_expired_session_is_rejected(self, monkeypatch):
@@ -154,6 +166,7 @@ class TestTheSessionCannotBeForged:
         token = console.issue_session(SECRET, "org-1", raw_key[:10])
         assert "SUPERSECRETVALUE" not in token
         import base64
+
         body = token.split(".")[0]
         decoded = base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)).decode()
         assert "SUPERSECRETVALUE" not in decoded
@@ -162,7 +175,10 @@ class TestTheSessionCannotBeForged:
 class TestSignIn:
     @pytest.mark.parametrize("scope", ["write", "admin", "scim"])
     async def test_keys_without_read_permission_cannot_open_the_console(
-        self, session_factory, org_and_key, scope,
+        self,
+        session_factory,
+        org_and_key,
+        scope,
     ):
         org_id, _ = org_and_key
         async with session_scope(session_factory) as session:
@@ -174,7 +190,9 @@ class TestSignIn:
         assert response.headers["location"].endswith("/signin")
 
     async def test_removing_read_scope_invalidates_an_existing_console_session(
-        self, session_factory, org_and_key,
+        self,
+        session_factory,
+        org_and_key,
     ):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
@@ -287,10 +305,13 @@ class TestSignIn:
         console.add_console_routes(app, session_factory, console_secret=SECRET, trusted_proxy_hops=1)
         async with _client(app) as client:
             texts = [
-                (await client.post(
-                    f"{console.CONSOLE_PATH}/signin", data={"api_key": "unimem_live_nope"},
-                    headers={"X-Forwarded-For": f"2001:db8:1:2::{i:x}"},
-                )).text
+                (
+                    await client.post(
+                        f"{console.CONSOLE_PATH}/signin",
+                        data={"api_key": "unimem_live_nope"},
+                        headers={"X-Forwarded-For": f"2001:db8:1:2::{i:x}"},
+                    )
+                ).text
                 for i in range(1, 21)
             ]
         assert any("Too many attempts" in t for t in texts)
@@ -304,9 +325,7 @@ class TestSignIn:
 
 
 class TestFaviconIsServedInline:
-    async def test_the_signed_in_page_declares_an_inline_icon(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_signed_in_page_declares_an_inline_icon(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -343,7 +362,8 @@ class TestRevocationEndsTheSession:
             await _signed_in(client, raw_key)
             async with session_scope(session_factory) as session:
                 await session.execute(
-                    sa_update(ApiKey).where(ApiKey.org_id == org_id)
+                    sa_update(ApiKey)
+                    .where(ApiKey.org_id == org_id)
                     .values(expires_at=datetime.now(timezone.utc) - timedelta(minutes=1))
                 )
             assert (await client.get(console.CONSOLE_PATH)).status_code == 303
@@ -356,30 +376,41 @@ class TestRevocationEndsTheSession:
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             async with session_scope(session_factory) as session:
-                prefix = (await session.execute(
-                    select(ApiKey.key_prefix).where(ApiKey.org_id == org_id)
-                )).scalars().first()
+                prefix = (
+                    (await session.execute(select(ApiKey.key_prefix).where(ApiKey.org_id == org_id))).scalars().first()
+                )
                 await session.execute(
-                    sa_update(ApiKey).where(ApiKey.org_id == org_id)
-                    .values(revoked_at=datetime.now(timezone.utc))
+                    sa_update(ApiKey).where(ApiKey.org_id == org_id).values(revoked_at=datetime.now(timezone.utc))
                 )
                 session.add(ApiKey(org_id=other_id, key_prefix=prefix, key_hash="x"))
             assert (await client.get(console.CONSOLE_PATH)).status_code == 303
 
 
 class TestOneSessionSeesOneOrg:
-    async def test_a_session_never_shows_another_orgs_traces(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_a_session_never_shows_another_orgs_traces(self, session_factory, org_and_key, other_org_and_key):
         org_id, raw_key = org_and_key
         other_id, other_key = other_org_and_key
         async with session_scope(session_factory) as session:
-            session.add(Trace(org_id=org_id, title="MINE-northwind-secret",
-                              context_text="c", solution_text="s", tags=["mine"],
-                              agent_type="support"))
-            session.add(Trace(org_id=other_id, title="THEIRS-acme-secret",
-                              context_text="c", solution_text="s", tags=["theirs"],
-                              agent_type="support"))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title="MINE-northwind-secret",
+                    context_text="c",
+                    solution_text="s",
+                    tags=["mine"],
+                    agent_type="support",
+                )
+            )
+            session.add(
+                Trace(
+                    org_id=other_id,
+                    title="THEIRS-acme-secret",
+                    context_text="c",
+                    solution_text="s",
+                    tags=["theirs"],
+                    agent_type="support",
+                )
+            )
 
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -393,40 +424,46 @@ class TestOneSessionSeesOneOrg:
                 text = (await client.get(f"{console.CONSOLE_PATH}{path}")).text
                 assert "MINE-northwind-secret" not in text, path
 
-    async def test_search_cannot_reach_across_orgs(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_search_cannot_reach_across_orgs(self, session_factory, org_and_key, other_org_and_key):
         org_id, raw_key = org_and_key
         other_id, _ = other_org_and_key
         async with session_scope(session_factory) as session:
-            session.add(Trace(org_id=other_id, title="THEIRS-acme-secret",
-                              context_text="a distinctive phrase about widgets",
-                              solution_text="s", tags=[], agent_type="support"))
+            session.add(
+                Trace(
+                    org_id=other_id,
+                    title="THEIRS-acme-secret",
+                    context_text="a distinctive phrase about widgets",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="support",
+                )
+            )
 
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            response = await client.get(
-                f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
+            response = await client.get(f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
         assert "THEIRS-acme-secret" not in response.text
 
 
 class TestMemoryPagination:
-    async def test_more_than_a_page_of_matches_offers_a_next_link(
-        self, session_factory, org_and_key
-    ):
+    async def test_more_than_a_page_of_matches_offers_a_next_link(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             for i in range(55):
-                session.add(Trace(
-                    org_id=org_id, title=f"widget failure {i}",
-                    context_text="a distinctive phrase about widgets", solution_text="s",
-                    tags=[], agent_type="support",
-                ))
+                session.add(
+                    Trace(
+                        org_id=org_id,
+                        title=f"widget failure {i}",
+                        context_text="a distinctive phrase about widgets",
+                        solution_text="s",
+                        tags=[],
+                        agent_type="support",
+                    )
+                )
 
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            first_page = await client.get(
-                f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
+            first_page = await client.get(f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
             assert "Older" in first_page.text
             assert "Newer" not in first_page.text
 
@@ -437,21 +474,23 @@ class TestMemoryPagination:
         assert "Newer" in second_page.text
         assert "Older" not in second_page.text
 
-    async def test_a_single_page_of_matches_offers_no_pagination_links(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_single_page_of_matches_offers_no_pagination_links(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
-            session.add(Trace(
-                org_id=org_id, title="one widget failure",
-                context_text="a distinctive phrase about widgets", solution_text="s",
-                tags=[], agent_type="support",
-            ))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title="one widget failure",
+                    context_text="a distinctive phrase about widgets",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="support",
+                )
+            )
 
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            response = await client.get(
-                f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
+            response = await client.get(f"{console.CONSOLE_PATH}/memory", params={"q": "distinctive widgets"})
         assert "Older" not in response.text
         assert "Newer" not in response.text
 
@@ -463,17 +502,17 @@ class TestItChangesNothing:
             await _signed_in(client, raw_key)
             for path in ("", "/proof", "/memory", "/kb"):
                 for method in ("POST", "PUT", "PATCH", "DELETE"):
-                    response = await client.request(
-                        method, f"{console.CONSOLE_PATH}{path}")
+                    response = await client.request(method, f"{console.CONSOLE_PATH}{path}")
                     assert response.status_code == 405, (method, path)
 
 
 def _every_visible_input_has_a_label(html: str) -> bool:
     import re
+
     label_targets = set(re.findall(r'<label[^>]*\bfor="([^"]+)"', html))
     labelledby_targets = set(re.findall(r'\baria-labelledby="([^"]+)"', html))
     named = label_targets | labelledby_targets
-    for tag in re.findall(r'<(?:input|select)\b[^>]*>', html):
+    for tag in re.findall(r"<(?:input|select)\b[^>]*>", html):
         if re.search(r'\btype="(hidden|submit|button|checkbox)"', tag):
             continue
         match = re.search(r'\bid="([^"]+)"', tag)
@@ -545,8 +584,16 @@ class TestCustomerContentIsEscaped:
         org_id, raw_key = org_and_key
         payload = '<script>alert("xss")</script>'
         async with session_scope(session_factory) as session:
-            session.add(Trace(org_id=org_id, title=payload, context_text="c",
-                              solution_text="s", tags=[payload], agent_type="support"))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title=payload,
+                    context_text="c",
+                    solution_text="s",
+                    tags=[payload],
+                    agent_type="support",
+                )
+            )
 
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -555,14 +602,11 @@ class TestCustomerContentIsEscaped:
                 assert "<script>alert" not in text, path
                 assert "&lt;script&gt;" in text, path
 
-    async def test_a_search_query_is_escaped_back_into_the_form(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_search_query_is_escaped_back_into_the_form(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            response = await client.get(
-                f"{console.CONSOLE_PATH}/memory", params={"q": '"><script>alert(1)</script>'})
+            response = await client.get(f"{console.CONSOLE_PATH}/memory", params={"q": '"><script>alert(1)</script>'})
         assert "<script>alert(1)" not in response.text
 
 
@@ -576,9 +620,16 @@ class TestTheKBPageShowsWhyASubmissionWasDeclined:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             submission = await crud.submit_kb_entry(
-                session, org_id, config, rate_limiter,
-                title="t", context_text="c", solution_text="s",
-                tags=[], agent_type="code", rationale="substrate knowledge",
+                session,
+                org_id,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                rationale="substrate knowledge",
             )
         async with session_scope(session_factory) as session:
             other_org = Organization(name="Operator Org")
@@ -587,7 +638,11 @@ class TestTheKBPageShowsWhyASubmissionWasDeclined:
             operator_org_id = other_org.id
         async with session_scope(session_factory) as session:
             await crud.review_kb_submission(
-                session, submission["id"], "reject", operator_org_id, reviewer="op",
+                session,
+                submission["id"],
+                "reject",
+                operator_org_id,
+                reviewer="op",
                 rejection_reason="this is your own business logic, not substrate knowledge",
             )
         async with session_scope(session_factory) as session:
@@ -605,19 +660,39 @@ class TestTheProofPageLeadsWithValidity:
         html = console._render_proof(
             {"headline": "Resolution is up.", "metrics": []},
             {
-                "experiment_running": True, "n_observations": 300, "n_occasions": 300,
+                "experiment_running": True,
+                "n_observations": 300,
+                "n_occasions": 300,
                 "integrity": {
-                    "verdict": "COMPROMISED", "effects_readable": False,
-                    "n_assignments": 400, "n_resolved": 300,
-                    "findings": [{"check": "differential_attrition", "severity": "INVALIDATES",
-                                  "headline": "The arms are not equally observed.",
-                                  "detail": "The withheld arm is losing occasions faster."}],
+                    "verdict": "COMPROMISED",
+                    "effects_readable": False,
+                    "n_assignments": 400,
+                    "n_resolved": 300,
+                    "findings": [
+                        {
+                            "check": "differential_attrition",
+                            "severity": "INVALIDATES",
+                            "headline": "The arms are not equally observed.",
+                            "detail": "The withheld arm is losing occasions faster.",
+                        }
+                    ],
                     "projections": [],
                 },
-                "effects": [{"trace_id": "t1", "title": "A memory", "verdict": "HURTS",
-                             "n_injected": 150, "n_withheld": 150, "rate_injected": 0.48,
-                             "rate_withheld": 0.65, "effect": -0.17, "ci_95": [-0.28, -0.07],
-                             "p_value": 0.002, "significant": True}],
+                "effects": [
+                    {
+                        "trace_id": "t1",
+                        "title": "A memory",
+                        "verdict": "HURTS",
+                        "n_injected": 150,
+                        "n_withheld": 150,
+                        "rate_injected": 0.48,
+                        "rate_withheld": 0.65,
+                        "effect": -0.17,
+                        "ci_95": [-0.28, -0.07],
+                        "p_value": 0.002,
+                        "significant": True,
+                    }
+                ],
             },
         )
         assert "COMPROMISED" in html
@@ -628,14 +703,32 @@ class TestTheProofPageLeadsWithValidity:
         html = console._render_proof(
             {"headline": "", "metrics": []},
             {
-                "experiment_running": True, "n_observations": 300, "n_occasions": 300,
-                "integrity": {"verdict": "SOUND", "effects_readable": True,
-                              "n_assignments": 300, "n_resolved": 300,
-                              "findings": [], "projections": []},
-                "effects": [{"trace_id": "t1", "title": "A memory", "verdict": "HELPS",
-                             "n_injected": 150, "n_withheld": 150, "rate_injected": 0.72,
-                             "rate_withheld": 0.55, "effect": 0.17, "ci_95": [0.07, 0.28],
-                             "p_value": 0.002, "significant": True}],
+                "experiment_running": True,
+                "n_observations": 300,
+                "n_occasions": 300,
+                "integrity": {
+                    "verdict": "SOUND",
+                    "effects_readable": True,
+                    "n_assignments": 300,
+                    "n_resolved": 300,
+                    "findings": [],
+                    "projections": [],
+                },
+                "effects": [
+                    {
+                        "trace_id": "t1",
+                        "title": "A memory",
+                        "verdict": "HELPS",
+                        "n_injected": 150,
+                        "n_withheld": 150,
+                        "rate_injected": 0.72,
+                        "rate_withheld": 0.55,
+                        "effect": 0.17,
+                        "ci_95": [0.07, 0.28],
+                        "p_value": 0.002,
+                        "significant": True,
+                    }
+                ],
             },
         )
         assert "SOUND" in html and "HELPS" in html
@@ -644,20 +737,37 @@ class TestTheProofPageLeadsWithValidity:
     async def test_it_states_what_cannot_be_checked(self):
         html = console._render_proof(
             {"headline": "", "metrics": []},
-            {"experiment_running": True, "n_observations": 1, "n_occasions": 1,
-             "integrity": {"verdict": "SOUND", "effects_readable": True, "findings": [],
-                           "projections": [], "n_assignments": 1, "n_resolved": 1},
-             "effects": []},
+            {
+                "experiment_running": True,
+                "n_observations": 1,
+                "n_occasions": 1,
+                "integrity": {
+                    "verdict": "SOUND",
+                    "effects_readable": True,
+                    "findings": [],
+                    "projections": [],
+                    "n_assignments": 1,
+                    "n_resolved": 1,
+                },
+                "effects": [],
+            },
         )
         assert "told to withhold" in html
 
     async def test_the_observational_half_says_it_is_not_causal(self):
         html = console._render_proof(
-            {"headline": "Resolution is up.",
-             "metrics": [{"metric": "resolution_rate",
-                          "baseline": {"rate": 0.5, "n": 100},
-                          "current": {"rate": 0.6, "n": 120},
-                          "delta": 0.1, "verdict": "improved"}]},
+            {
+                "headline": "Resolution is up.",
+                "metrics": [
+                    {
+                        "metric": "resolution_rate",
+                        "baseline": {"rate": 0.5, "n": 100},
+                        "current": {"rate": 0.6, "n": 120},
+                        "delta": 0.1,
+                        "verdict": "improved",
+                    }
+                ],
+            },
             {"experiment_running": False},
         )
         assert "OBSERVED change, not a causal effect" in html
@@ -665,14 +775,18 @@ class TestTheProofPageLeadsWithValidity:
 
     async def test_a_non_admin_viewer_sees_no_experiment_controls(self):
         html = console._render_proof(
-            {"headline": "", "metrics": []}, {"experiment_running": False}, is_admin=False,
+            {"headline": "", "metrics": []},
+            {"experiment_running": False},
+            is_admin=False,
         )
         assert "Start experiment" not in html
         assert "Stop experiment" not in html
 
     async def test_an_admin_viewer_sees_a_start_form_when_nothing_is_running(self):
         html = console._render_proof(
-            {"headline": "", "metrics": []}, {"experiment_running": False}, is_admin=True,
+            {"headline": "", "metrics": []},
+            {"experiment_running": False},
+            is_admin=True,
         )
         assert "Start experiment" in html
         assert "Stop experiment" not in html
@@ -680,10 +794,20 @@ class TestTheProofPageLeadsWithValidity:
     async def test_an_admin_viewer_sees_a_stop_button_when_running(self):
         html = console._render_proof(
             {"headline": "", "metrics": []},
-            {"experiment_running": True, "n_observations": 0, "n_occasions": 0,
-             "integrity": {"verdict": "SOUND", "effects_readable": True, "findings": [],
-                           "projections": [], "n_assignments": 0, "n_resolved": 0},
-             "effects": []},
+            {
+                "experiment_running": True,
+                "n_observations": 0,
+                "n_occasions": 0,
+                "integrity": {
+                    "verdict": "SOUND",
+                    "effects_readable": True,
+                    "findings": [],
+                    "projections": [],
+                    "n_assignments": 0,
+                    "n_resolved": 0,
+                },
+                "effects": [],
+            },
             is_admin=True,
         )
         assert "Stop experiment" in html
@@ -691,7 +815,9 @@ class TestTheProofPageLeadsWithValidity:
 
     async def test_an_experiment_error_is_shown_inline(self):
         html = console._render_proof(
-            {"headline": "", "metrics": []}, {"experiment_running": False}, is_admin=True,
+            {"headline": "", "metrics": []},
+            {"experiment_running": False},
+            is_admin=True,
             experiment_error="Holdout rate must be a number.",
         )
         assert "Holdout rate must be a number." in html
@@ -708,18 +834,22 @@ class TestTheOverviewIsHonestAboutMissingData:
 
     async def test_no_experiment_says_nothing_here_is_causal(self):
         html = console._render_overview(
-            {"entitlements": {"plan": "free", "traces": {}, "agents": {},
-                              "commons_queries": {}},
-             "search": {}, "recent": {"traces": []}},
+            {
+                "entitlements": {"plan": "free", "traces": {}, "agents": {}, "commons_queries": {}},
+                "search": {},
+                "recent": {"traces": []},
+            },
             {"experiment_running": False},
         )
         assert "nothing here is causal yet" in html
 
     async def test_an_experiment_with_no_outcomes_says_what_is_missing(self):
         html = console._render_overview(
-            {"entitlements": {"plan": "free", "traces": {}, "agents": {},
-                              "commons_queries": {}},
-             "search": {}, "recent": {"traces": []}},
+            {
+                "entitlements": {"plan": "free", "traces": {}, "agents": {}, "commons_queries": {}},
+                "search": {},
+                "recent": {"traces": []},
+            },
             {"experiment_running": True, "n_observations": 0},
         )
         assert "record_occasion_outcome" in html
@@ -735,14 +865,17 @@ class TestShareTokensAreDistinctFromSessions:
         token = console.issue_share_token("attacker-guess", "org-1")
         assert console.read_share_token(SECRET, token) is None
 
-    @pytest.mark.parametrize("mangle", [
-        lambda t: t[:-4] + "AAAA",
-        lambda t: t.split(".")[0],
-        lambda t: "." + t.split(".")[1],
-        lambda t: t.replace(".", "", 1),
-        lambda t: "",
-        lambda t: "not-a-token",
-    ])
+    @pytest.mark.parametrize(
+        "mangle",
+        [
+            lambda t: t[:-4] + "AAAA",
+            lambda t: t.split(".")[0],
+            lambda t: "." + t.split(".")[1],
+            lambda t: t.replace(".", "", 1),
+            lambda t: "",
+            lambda t: "not-a-token",
+        ],
+    )
     async def test_a_mangled_token_is_rejected(self, mangle):
         token = console.issue_share_token(SECRET, "org-1")
         assert console.read_share_token(SECRET, mangle(token)) is None
@@ -761,9 +894,7 @@ class TestShareTokensAreDistinctFromSessions:
 
 
 class TestProofSharing:
-    async def test_the_proof_page_offers_a_share_form_when_signed_in(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_proof_page_offers_a_share_form_when_signed_in(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -777,9 +908,7 @@ class TestProofSharing:
         assert response.status_code == 303
         assert response.headers["location"].endswith("/signin")
 
-    async def test_the_knowledge_base_page_says_only_what_the_console_wrote(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_knowledge_base_page_says_only_what_the_console_wrote(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -788,21 +917,16 @@ class TestProofSharing:
         assert "555-0100" not in spoofed.text
         assert "your vote was recorded" in real.text
 
-    async def test_a_link_in_the_url_is_never_presented_as_the_one_generated(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_link_in_the_url_is_never_presented_as_the_one_generated(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            response = await client.get(
-                f"{console.CONSOLE_PATH}/proof", params={"share_url": "https://evil.example/x"})
+            response = await client.get(f"{console.CONSOLE_PATH}/proof", params={"share_url": "https://evil.example/x"})
         assert response.status_code == 200
         assert "evil.example" not in response.text
         assert "Shareable link generated." not in response.text
 
-    async def test_a_signed_in_org_can_mint_and_then_view_its_own_link(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_signed_in_org_can_mint_and_then_view_its_own_link(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -812,24 +936,21 @@ class TestProofSharing:
             assert "location" not in proof_response.headers
 
         import re
+
         match = re.search(r'value="([^"]+)"', proof_response.text)
         assert match, proof_response.text
         share_url = match.group(1).replace("&amp;", "&")
         token = share_url.rsplit("/", 1)[-1]
 
         async with _client(_app(session_factory=session_factory)) as anon_client:
-            shared_response = await anon_client.get(
-                f"{console.CONSOLE_PATH}/proof/shared/{token}"
-            )
+            shared_response = await anon_client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")
         assert shared_response.status_code == 200
         assert "Shared, read-only report" in shared_response.text
         assert "Proof" in shared_response.text
         assert console.SESSION_COOKIE not in shared_response.cookies
         assert f"{console.CONSOLE_PATH}/memory" not in shared_response.text
 
-    async def test_a_share_link_only_ever_resolves_its_own_org(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_a_share_link_only_ever_resolves_its_own_org(self, session_factory, org_and_key, other_org_and_key):
         org_id, _raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         token = console.issue_share_token(SECRET, org_id)
@@ -849,20 +970,14 @@ class TestProofSharing:
             response = await client.get(f"{console.CONSOLE_PATH}/proof/shared/{forged}")
         assert response.status_code == 404
 
-    async def test_a_full_session_token_is_refused_at_the_shared_route(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_full_session_token_is_refused_at_the_shared_route(self, session_factory, org_and_key):
         org_id, _raw_key = org_and_key
         session_token = console.issue_session(SECRET, org_id, "unimem_live_ab")
         async with _client(_app(session_factory=session_factory)) as client:
-            response = await client.get(
-                f"{console.CONSOLE_PATH}/proof/shared/{session_token}"
-            )
+            response = await client.get(f"{console.CONSOLE_PATH}/proof/shared/{session_token}")
         assert response.status_code == 404
 
-    async def test_a_share_link_cannot_be_used_to_sign_in(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_share_link_cannot_be_used_to_sign_in(self, session_factory, org_and_key):
         org_id, _raw_key = org_and_key
         share_token = console.issue_share_token(SECRET, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -876,8 +991,7 @@ class TestProofSharing:
         token = console.issue_share_token(SECRET, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
             statuses = [
-                (await client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")).status_code
-                for _ in range(85)
+                (await client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")).status_code for _ in range(85)
             ]
         assert 429 in statuses
 
@@ -896,6 +1010,7 @@ class TestProofSharing:
 
             minted = await client.post(f"{console.CONSOLE_PATH}/proof/share")
         import re
+
         token = re.search(r'value="([^"]+)"', minted.text).group(1).rsplit("/", 1)[-1]
         async with _client(_app(session_factory=session_factory)) as anon:
             assert (await anon.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")).status_code == 200
@@ -910,9 +1025,11 @@ class TestProofSharing:
             await _signed_in(client, raw_key)
             await client.post(f"{console.CONSOLE_PATH}/proof/share/revoke")
         async with session_factory() as session:
-            actions = (await session.execute(
-                select(AuditLogEntry.action).where(AuditLogEntry.org_id == org_id)
-            )).scalars().all()
+            actions = (
+                (await session.execute(select(AuditLogEntry.action).where(AuditLogEntry.org_id == org_id)))
+                .scalars()
+                .all()
+            )
         assert "revoke_share_links" in actions
 
     async def test_revoking_without_a_session_redirects_to_signin(self, session_factory):
@@ -929,16 +1046,11 @@ class TestProofSharing:
             response = await client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")
         assert response.status_code == 404
 
-    async def test_a_rate_limited_view_names_when_to_come_back(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_rate_limited_view_names_when_to_come_back(self, session_factory, org_and_key):
         org_id, _raw_key = org_and_key
         token = console.issue_share_token(SECRET, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
-            responses = [
-                await client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}")
-                for _ in range(85)
-            ]
+            responses = [await client.get(f"{console.CONSOLE_PATH}/proof/shared/{token}") for _ in range(85)]
         limited = [r for r in responses if r.status_code == 429]
         assert limited
         assert "Retry-After" in limited[0].headers
@@ -967,9 +1079,7 @@ class TestBillingCheckoutAndPortal:
         assert response.status_code == 303
         assert response.headers["location"] == console.CONSOLE_PATH
 
-    async def test_checkout_redirects_home_when_stripe_is_not_configured(
-        self, session_factory, org_and_key
-    ):
+    async def test_checkout_redirects_home_when_stripe_is_not_configured(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -977,9 +1087,7 @@ class TestBillingCheckoutAndPortal:
         assert response.status_code == 303
         assert response.headers["location"] == console.CONSOLE_PATH
 
-    async def test_checkout_redirects_to_stripe_when_configured(
-        self, session_factory, org_and_key, monkeypatch
-    ):
+    async def test_checkout_redirects_to_stripe_when_configured(self, session_factory, org_and_key, monkeypatch):
         org_id, raw_key = org_and_key
         captured = {}
 
@@ -1079,9 +1187,7 @@ class TestBillingCheckoutAndPortal:
         assert response.status_code == 303
         assert response.headers["location"] == console.CONSOLE_PATH
 
-    async def test_portal_redirects_to_stripe_for_a_subscribed_org(
-        self, session_factory, org_and_key, monkeypatch
-    ):
+    async def test_portal_redirects_to_stripe_for_a_subscribed_org(self, session_factory, org_and_key, monkeypatch):
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
@@ -1145,9 +1251,7 @@ class TestBillingCheckoutAndPortal:
         assert "Upgrade to" not in response.text
         assert "Manage billing" not in response.text
 
-    async def test_the_overview_page_offers_manage_billing_for_a_subscribed_org(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_overview_page_offers_manage_billing_for_a_subscribed_org(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
@@ -1163,9 +1267,7 @@ class TestBillingCheckoutAndPortal:
 
 
 class TestAdminScopeGatesMutation:
-    async def test_a_read_only_key_can_view_the_users_page(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_can_view_the_users_page(self, session_factory, org_and_readonly_key):
         _org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1173,9 +1275,7 @@ class TestAdminScopeGatesMutation:
         assert response.status_code == 200
         assert "admin-scoped" in response.text
 
-    async def test_a_read_only_key_cannot_create_a_user(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_create_a_user(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1184,14 +1284,10 @@ class TestAdminScopeGatesMutation:
                 data={"email": "nope@example.com", "role": rbac.ROLE_VIEWER},
             )
         async with session_scope(session_factory) as session:
-            count = await session.scalar(
-                select(User).where(User.org_id == org_id).limit(1)
-            )
+            count = await session.scalar(select(User).where(User.org_id == org_id).limit(1))
         assert count is None
 
-    async def test_a_read_only_key_cannot_issue_a_key(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_issue_a_key(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1201,14 +1297,10 @@ class TestAdminScopeGatesMutation:
             )
         assert "shown once" not in response.text
         async with session_scope(session_factory) as session:
-            keys = (
-                await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))
-            ).scalars().all()
+            keys = (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))).scalars().all()
         assert len(keys) == 1
 
-    async def test_a_read_only_key_cannot_disable_a_user(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_read_only_key_cannot_disable_a_user(self, session_factory, org_and_key):
         org_id, _full_raw_key = org_and_key
         async with session_scope(session_factory) as session:
             user = User(org_id=org_id, email="a@example.com", role=rbac.ROLE_VIEWER)
@@ -1223,18 +1315,14 @@ class TestAdminScopeGatesMutation:
             row = await session.get(User, user_id)
         assert row.disabled_at is None
 
-    async def test_scope_narrowing_takes_effect_without_a_new_sign_in(
-        self, session_factory, org_and_key
-    ):
+    async def test_scope_narrowing_takes_effect_without_a_new_sign_in(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             still_admin = await client.get(f"{console.CONSOLE_PATH}/users")
             assert "Create a user" in still_admin.text
             async with session_scope(session_factory) as session:
-                await session.execute(
-                    sa_update(ApiKey).where(ApiKey.org_id == org_id).values(scopes=["read"])
-                )
+                await session.execute(sa_update(ApiKey).where(ApiKey.org_id == org_id).values(scopes=["read"]))
             narrowed = await client.get(f"{console.CONSOLE_PATH}/users")
             assert "Create a user" not in narrowed.text
             assert "admin-scoped" in narrowed.text
@@ -1252,9 +1340,7 @@ class TestUserManagement:
             )
         assert "ana@example.com" in response.text
         async with session_scope(session_factory) as session:
-            user = (
-                await session.execute(select(User).where(User.org_id == org_id))
-            ).scalar_one()
+            user = (await session.execute(select(User).where(User.org_id == org_id))).scalar_one()
         assert user.email == "ana@example.com"
         assert user.role == rbac.ROLE_ANALYST
         assert user.created_by.startswith("api-key:")
@@ -1294,9 +1380,7 @@ class TestUserManagement:
             row = await session.get(User, user_id)
         assert row.disabled_at is None
 
-    async def test_cannot_set_the_role_of_another_orgs_user(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_set_the_role_of_another_orgs_user(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
@@ -1314,9 +1398,7 @@ class TestUserManagement:
             row = await session.get(User, user_id)
         assert row.role == rbac.ROLE_VIEWER
 
-    async def test_cannot_disable_another_orgs_user(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_disable_another_orgs_user(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
@@ -1354,23 +1436,23 @@ class TestApiKeyManagement:
             )
         async with session_scope(session_factory) as session:
             issued = (
-                await session.execute(
-                    select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at.desc())
+                (
+                    await session.execute(
+                        select(ApiKey).where(ApiKey.org_id == org_id).order_by(ApiKey.created_at.desc())
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
         assert issued.scopes == ["read"]
 
-    async def test_issuing_with_no_scopes_checked_issues_nothing(
-        self, session_factory, org_and_key
-    ):
+    async def test_issuing_with_no_scopes_checked_issues_nothing(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             await client.post(f"{console.CONSOLE_PATH}/keys/issue", data={})
         async with session_scope(session_factory) as session:
-            keys = (
-                await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))
-            ).scalars().all()
+            keys = (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id))).scalars().all()
         assert len(keys) == 1
 
     async def test_revoking_a_key(self, session_factory, org_and_key):
@@ -1384,9 +1466,7 @@ class TestApiKeyManagement:
             row = await session.get(ApiKey, issued.key_id)
         assert row.revoked_at is not None
 
-    async def test_rotating_a_key_shows_the_new_raw_key_once(
-        self, session_factory, org_and_key
-    ):
+    async def test_rotating_a_key_shows_the_new_raw_key_once(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             issued = await auth.issue_api_key(session, org_id, scopes=["read"])
@@ -1398,9 +1478,7 @@ class TestApiKeyManagement:
             old_row = await session.get(ApiKey, issued.key_id)
         assert old_row.revoked_at is not None
 
-    async def test_cannot_revoke_another_orgs_key(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_revoke_another_orgs_key(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
@@ -1412,9 +1490,7 @@ class TestApiKeyManagement:
             row = await session.get(ApiKey, issued.key_id)
         assert row.revoked_at is None
 
-    async def test_cannot_rotate_another_orgs_key(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_rotate_another_orgs_key(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
@@ -1429,9 +1505,7 @@ class TestApiKeyManagement:
 
 
 class TestUsersAndKeysAreEscaped:
-    async def test_a_users_display_name_cannot_inject_script(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_users_display_name_cannot_inject_script(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         payload = '<script>alert("xss")</script>'
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1467,16 +1541,15 @@ class TestAlertRuleManagement:
         assert rules[0].cooldown_minutes == 30
         assert rules[0].created_by.startswith("api-key:")
 
-    async def test_an_unknown_metric_is_refused_with_an_inline_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_an_unknown_metric_is_refused_with_an_inline_error(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(
                 f"{console.CONSOLE_PATH}/alerts/create",
                 data={
-                    "metric": "not_a_real_metric", "comparator": alerts_module.COMPARATOR_GT,
+                    "metric": "not_a_real_metric",
+                    "comparator": alerts_module.COMPARATOR_GT,
                     "threshold": "0.2",
                 },
             )
@@ -1485,9 +1558,7 @@ class TestAlertRuleManagement:
             rules = await alerts_module.list_rules(session, org_id)
         assert rules == []
 
-    async def test_a_non_numeric_threshold_is_refused_with_an_inline_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_non_numeric_threshold_is_refused_with_an_inline_error(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1504,9 +1575,7 @@ class TestAlertRuleManagement:
             rules = await alerts_module.list_rules(session, org_id)
         assert rules == []
 
-    async def test_threshold_submitted_as_a_file_part_is_refused_not_a_500(
-        self, session_factory, org_and_key
-    ):
+    async def test_threshold_submitted_as_a_file_part_is_refused_not_a_500(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1528,8 +1597,11 @@ class TestAlertRuleManagement:
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             rule = await alerts_module.create_rule(
-                session, org_id, alerts_module.METRIC_QUARANTINE_RATE,
-                alerts_module.COMPARATOR_GT, 0.5,
+                session,
+                org_id,
+                alerts_module.METRIC_QUARANTINE_RATE,
+                alerts_module.COMPARATOR_GT,
+                0.5,
             )
             rule_id = rule.id
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1539,9 +1611,7 @@ class TestAlertRuleManagement:
             rules = await alerts_module.list_rules(session, org_id)
         assert rules == []
 
-    async def test_a_read_only_key_cannot_create_a_rule(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_create_a_rule(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1549,22 +1619,24 @@ class TestAlertRuleManagement:
                 f"{console.CONSOLE_PATH}/alerts/create",
                 data={
                     "metric": alerts_module.METRIC_QUARANTINE_RATE,
-                    "comparator": alerts_module.COMPARATOR_GT, "threshold": "0.2",
+                    "comparator": alerts_module.COMPARATOR_GT,
+                    "threshold": "0.2",
                 },
             )
         async with session_scope(session_factory) as session:
             rules = await alerts_module.list_rules(session, org_id)
         assert rules == []
 
-    async def test_cannot_delete_another_orgs_rule(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_delete_another_orgs_rule(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
             rule = await alerts_module.create_rule(
-                session, other_org_id, alerts_module.METRIC_QUARANTINE_RATE,
-                alerts_module.COMPARATOR_GT, 0.5,
+                session,
+                other_org_id,
+                alerts_module.METRIC_QUARANTINE_RATE,
+                alerts_module.COMPARATOR_GT,
+                0.5,
             )
             rule_id = rule.id
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1585,16 +1657,16 @@ class TestUsageReportFromTheConsole:
         assert "Report queued" in response.text
         assert "report.generated" in response.text
 
-    async def test_generating_a_report_queues_a_webhook_delivery(
-        self, session_factory, org_and_key
-    ):
+    async def test_generating_a_report_queues_a_webhook_delivery(self, session_factory, org_and_key):
         from hub import events as events_module
         from hub.models import WebhookDelivery
 
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             await events_module.add_endpoint(
-                session, org_id, "https://example.invalid/hooks/unimem",
+                session,
+                org_id,
+                "https://example.invalid/hooks/unimem",
                 signing_key="test-signing-key",
             )
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1602,27 +1674,27 @@ class TestUsageReportFromTheConsole:
             await client.post(f"{console.CONSOLE_PATH}/alerts/generate-report")
         async with session_scope(session_factory) as session:
             deliveries = (
-                await session.execute(
-                    select(WebhookDelivery).where(
-                        WebhookDelivery.org_id == org_id,
-                        WebhookDelivery.event_type == "report.generated",
+                (
+                    await session.execute(
+                        select(WebhookDelivery).where(
+                            WebhookDelivery.org_id == org_id,
+                            WebhookDelivery.event_type == "report.generated",
+                        )
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert len(deliveries) == 1
 
-    async def test_a_read_only_key_cannot_generate_a_report(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_generate_a_report(self, session_factory, org_and_readonly_key):
         _org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(f"{console.CONSOLE_PATH}/alerts/generate-report")
         assert "Report queued" not in response.text
 
-    async def test_generating_a_report_is_not_reachable_by_get(
-        self, session_factory, org_and_key
-    ):
+    async def test_generating_a_report_is_not_reachable_by_get(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1632,7 +1704,9 @@ class TestUsageReportFromTheConsole:
 
 class TestWebhookManagement:
     async def test_destination_credentials_never_reach_readonly_views_or_audit(
-        self, session_factory, org_and_key,
+        self,
+        session_factory,
+        org_and_key,
     ):
         from hub.models import AuditLogEntry
 
@@ -1644,7 +1718,8 @@ class TestWebhookManagement:
         async with _client(app) as client:
             await _signed_in(client, admin_key)
             response = await client.post(
-                f"{console.CONSOLE_PATH}/webhooks/create", data={"url": url},
+                f"{console.CONSOLE_PATH}/webhooks/create",
+                data={"url": url},
             )
             assert response.status_code == 200
             async with session_scope(session_factory) as session:
@@ -1658,10 +1733,18 @@ class TestWebhookManagement:
                     assert secret not in response.text
             assert "example.invalid" in (await client.get(f"{console.CONSOLE_PATH}/webhooks")).text
         async with session_scope(session_factory) as session:
-            summaries = (await session.execute(select(AuditLogEntry.summary).where(
-                AuditLogEntry.org_id == org_id,
-                AuditLogEntry.action.in_(["webhook.add", "webhook.disable"]),
-            ))).scalars().all()
+            summaries = (
+                (
+                    await session.execute(
+                        select(AuditLogEntry.summary).where(
+                            AuditLogEntry.org_id == org_id,
+                            AuditLogEntry.action.in_(["webhook.add", "webhook.disable"]),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
         assert len(summaries) == 2
         assert all("private-token" not in summary and "hook-password" not in summary for summary in summaries)
 
@@ -1708,9 +1791,7 @@ class TestWebhookManagement:
         assert len(endpoints) == 1
         assert sorted(endpoints[0].events) == ["experiment.verdict", "trace.quarantined"]
 
-    async def test_a_non_https_url_is_refused_with_an_inline_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_non_https_url_is_refused_with_an_inline_error(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1720,9 +1801,7 @@ class TestWebhookManagement:
             )
         assert "must be https" in response.text
 
-    async def test_a_read_only_key_cannot_add_an_endpoint(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_add_an_endpoint(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1738,7 +1817,9 @@ class TestWebhookManagement:
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             endpoint, _secret = await events_module.add_endpoint(
-                session, org_id, "https://example.invalid/hooks",
+                session,
+                org_id,
+                "https://example.invalid/hooks",
                 signing_key="test-signing-key",
             )
             endpoint_id, original_version = endpoint.id, endpoint.key_version
@@ -1751,14 +1832,14 @@ class TestWebhookManagement:
             row = await session.get(WebhookEndpoint, endpoint_id)
         assert row.key_version == original_version + 1
 
-    async def test_cannot_rotate_another_orgs_endpoint(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_rotate_another_orgs_endpoint(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
             endpoint, _secret = await events_module.add_endpoint(
-                session, other_org_id, "https://example.invalid/hooks",
+                session,
+                other_org_id,
+                "https://example.invalid/hooks",
                 signing_key="test-signing-key",
             )
             endpoint_id, original_version = endpoint.id, endpoint.key_version
@@ -1774,7 +1855,9 @@ class TestWebhookManagement:
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             endpoint, _secret = await events_module.add_endpoint(
-                session, org_id, "https://example.invalid/hooks",
+                session,
+                org_id,
+                "https://example.invalid/hooks",
                 signing_key="test-signing-key",
             )
             endpoint_id = endpoint.id
@@ -1785,14 +1868,14 @@ class TestWebhookManagement:
             row = await session.get(WebhookEndpoint, endpoint_id)
         assert row.enabled is False
 
-    async def test_cannot_disable_another_orgs_endpoint(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_cannot_disable_another_orgs_endpoint(self, session_factory, org_and_key, other_org_and_key):
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
             endpoint, _secret = await events_module.add_endpoint(
-                session, other_org_id, "https://example.invalid/hooks",
+                session,
+                other_org_id,
+                "https://example.invalid/hooks",
                 signing_key="test-signing-key",
             )
             endpoint_id = endpoint.id
@@ -1803,17 +1886,20 @@ class TestWebhookManagement:
             row = await session.get(WebhookEndpoint, endpoint_id)
         assert row.enabled is True
 
-    async def test_the_page_shows_only_this_orgs_endpoints(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_the_page_shows_only_this_orgs_endpoints(self, session_factory, org_and_key, other_org_and_key):
         org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
             await events_module.add_endpoint(
-                session, org_id, "https://mine.invalid/hooks", signing_key="test-signing-key",
+                session,
+                org_id,
+                "https://mine.invalid/hooks",
+                signing_key="test-signing-key",
             )
             await events_module.add_endpoint(
-                session, other_org_id, "https://theirs.invalid/hooks",
+                session,
+                other_org_id,
+                "https://theirs.invalid/hooks",
                 signing_key="test-signing-key",
             )
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1829,8 +1915,14 @@ class TestAuditLogPage:
 
         org_id, raw_key = org_and_readonly_key
         async with session_scope(session_factory) as session:
-            session.add(AuditLogEntry(actor="operator-cli", action="webhook.add", org_id=org_id,
-                                      summary="https://user:old-password@example.invalid/old-token"))
+            session.add(
+                AuditLogEntry(
+                    actor="operator-cli",
+                    action="webhook.add",
+                    org_id=org_id,
+                    summary="https://user:old-password@example.invalid/old-token",
+                )
+            )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.get(f"{console.CONSOLE_PATH}/audit")
@@ -1845,8 +1937,12 @@ class TestAuditLogPage:
         org_id, raw_key = org_and_key
         async with session_scope(session_factory) as session:
             await audit_module.record(
-                session, actor="api-key:unimem_test", action="issue_key",
-                org_id=org_id, target_type="api_key", target_id="abc123",
+                session,
+                actor="api-key:unimem_test",
+                action="issue_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id="abc123",
                 summary="prefix=unimem_test scopes=read",
             )
         async with _client(_app(session_factory=session_factory)) as client:
@@ -1855,17 +1951,19 @@ class TestAuditLogPage:
         assert "issue_key" in response.text
         assert "abc123" in response.text
 
-    async def test_does_not_show_another_orgs_entries(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_does_not_show_another_orgs_entries(self, session_factory, org_and_key, other_org_and_key):
         from hub import audit as audit_module
 
         _org_id, raw_key = org_and_key
         other_org_id, _other_raw_key = other_org_and_key
         async with session_scope(session_factory) as session:
             await audit_module.record(
-                session, actor="api-key:unimem_other", action="revoke_key",
-                org_id=other_org_id, target_type="api_key", target_id="xyz789",
+                session,
+                actor="api-key:unimem_other",
+                action="revoke_key",
+                org_id=other_org_id,
+                target_type="api_key",
+                target_id="xyz789",
             )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1878,8 +1976,12 @@ class TestAuditLogPage:
         org_id, raw_key = org_and_readonly_key
         async with session_scope(session_factory) as session:
             await audit_module.record(
-                session, actor="api-key:unimem_ro", action="issue_key",
-                org_id=org_id, target_type="api_key", target_id="ro123",
+                session,
+                actor="api-key:unimem_ro",
+                action="issue_key",
+                org_id=org_id,
+                target_type="api_key",
+                target_id="ro123",
             )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1905,8 +2007,12 @@ class TestAuditLogPage:
         async with session_scope(session_factory) as session:
             for i in range(55):
                 await audit_module.record(
-                    session, actor="api-key:unimem_test", action="issue_key",
-                    org_id=org_id, target_type="api_key", target_id=f"k{i}",
+                    session,
+                    actor="api-key:unimem_test",
+                    action="issue_key",
+                    org_id=org_id,
+                    target_type="api_key",
+                    target_id=f"k{i}",
                 )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1930,9 +2036,7 @@ class TestExperimentControlFromTheConsole:
         assert org.holdout_rate == 0.25
         assert org.holdout_salt
 
-    async def test_starting_an_experiment_is_audited_with_the_real_actor(
-        self, session_factory, org_and_key
-    ):
+    async def test_starting_an_experiment_is_audited_with_the_real_actor(self, session_factory, org_and_key):
         from hub.models import AuditLogEntry
 
         org_id, raw_key = org_and_key
@@ -1944,20 +2048,22 @@ class TestExperimentControlFromTheConsole:
             )
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(
-                        AuditLogEntry.org_id == org_id,
-                        AuditLogEntry.action == "start_experiment",
+                (
+                    await session.execute(
+                        select(AuditLogEntry).where(
+                            AuditLogEntry.org_id == org_id,
+                            AuditLogEntry.action == "start_experiment",
+                        )
                     )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.actor.startswith("api-key:")
         assert entry.actor != "operator-cli"
 
-    async def test_an_invalid_rate_is_refused_with_an_inline_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_an_invalid_rate_is_refused_with_an_inline_error(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1970,9 +2076,7 @@ class TestExperimentControlFromTheConsole:
             org = await session.get(Organization, org_id)
         assert org.holdout_rate == 0.0
 
-    async def test_a_non_numeric_rate_is_refused_with_an_inline_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_non_numeric_rate_is_refused_with_an_inline_error(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1982,9 +2086,7 @@ class TestExperimentControlFromTheConsole:
             )
         assert "must be a number" in response.text
 
-    async def test_a_read_only_key_cannot_start_an_experiment(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_start_an_experiment(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -1996,9 +2098,7 @@ class TestExperimentControlFromTheConsole:
             org = await session.get(Organization, org_id)
         assert org.holdout_rate == 0.0
 
-    async def test_stopping_an_experiment_clears_the_holdout_rate(
-        self, session_factory, org_and_key
-    ):
+    async def test_stopping_an_experiment_clears_the_holdout_rate(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -2007,25 +2107,22 @@ class TestExperimentControlFromTheConsole:
                 data={"rate": "0.25", "outcome": "resolved"},
             )
             response = await client.post(
-                f"{console.CONSOLE_PATH}/proof/experiment/stop", follow_redirects=True,
+                f"{console.CONSOLE_PATH}/proof/experiment/stop",
+                follow_redirects=True,
             )
         assert response.status_code == 200
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
         assert org.holdout_rate == 0.0
 
-    async def test_stopping_when_nothing_is_running_shows_an_error(
-        self, session_factory, org_and_key
-    ):
+    async def test_stopping_when_nothing_is_running_shows_an_error(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(f"{console.CONSOLE_PATH}/proof/experiment/stop")
         assert "No experiment is running" in response.text
 
-    async def test_a_read_only_key_cannot_stop_an_experiment(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_stop_an_experiment(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
@@ -2063,7 +2160,8 @@ class TestAssignmentsCsvExport:
     async def test_requires_sign_in(self, session_factory):
         async with _client(_app(session_factory=session_factory)) as client:
             response = await client.get(
-                f"{console.CONSOLE_PATH}/proof/assignments.csv", follow_redirects=False,
+                f"{console.CONSOLE_PATH}/proof/assignments.csv",
+                follow_redirects=False,
             )
         assert response.status_code in (302, 303)
 
@@ -2098,20 +2196,27 @@ class TestAutoRefresh:
 
 
 class TestKnowledgeBaseBrowse:
-    async def _seed_entry(self, session_factory, org_id, title="Pool exhausted",
-                          tags=None, *, trust=1.0, votes=0, hits=0):
+    async def _seed_entry(
+        self, session_factory, org_id, title="Pool exhausted", tags=None, *, trust=1.0, votes=0, hits=0
+    ):
         from hub import commons
+
         tags = tags if tags is not None else ["postgres"]
         async with session_scope(session_factory) as session:
             trace = Trace(
-                org_id=org_id, title=title,
+                org_id=org_id,
+                title=title,
                 context_text="requests queued behind a saturated pool",
                 solution_text="raise pool_size and set a command timeout",
-                tags=tags, agent_type="code",
-                shared_with_commons=True, shared_at=datetime.now(timezone.utc),
+                tags=tags,
+                agent_type="code",
+                shared_with_commons=True,
+                shared_at=datetime.now(timezone.utc),
                 shared_rationale="test fixture: operator-curated",
                 commons_signature=commons.signature_for(title, "ctx", tags),
-                commons_source="seed", trust=trust, commons_votes=votes,
+                commons_source="seed",
+                trust=trust,
+                commons_votes=votes,
                 commons_hits=hits,
             )
             session.add(trace)
@@ -2128,25 +2233,26 @@ class TestKnowledgeBaseBrowse:
         assert "Browse the open repository" in response.text
         assert "Deadlock on upsert" in response.text
 
-    async def test_it_never_shows_another_orgs_private_trace(
-        self, session_factory, org_and_key, other_org_and_key
-    ):
+    async def test_it_never_shows_another_orgs_private_trace(self, session_factory, org_and_key, other_org_and_key):
         org_id, raw_key = org_and_key
         other_id, _other_key = other_org_and_key
         async with session_scope(session_factory) as session:
-            session.add(Trace(
-                org_id=other_id, title="Acme private incident",
-                context_text="internal", solution_text="internal",
-                tags=["postgres"], agent_type="code",
-            ))
+            session.add(
+                Trace(
+                    org_id=other_id,
+                    title="Acme private incident",
+                    context_text="internal",
+                    solution_text="internal",
+                    tags=["postgres"],
+                    agent_type="code",
+                )
+            )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.get(f"{console.CONSOLE_PATH}/kb")
         assert "Acme private incident" not in response.text
 
-    async def test_an_entrys_standing_is_shown_to_the_reader(
-        self, session_factory, org_and_key
-    ):
+    async def test_an_entrys_standing_is_shown_to_the_reader(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         await self._seed_entry(session_factory, org_id, trust=1.0, votes=5)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2174,8 +2280,7 @@ class TestKnowledgeBaseBrowse:
 
     async def test_a_hostile_entry_title_renders_inert(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
-        await self._seed_entry(
-            session_factory, org_id, title="<script>alert('xss')</script>")
+        await self._seed_entry(session_factory, org_id, title="<script>alert('xss')</script>")
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.get(f"{console.CONSOLE_PATH}/kb")
@@ -2191,6 +2296,7 @@ class TestKnowledgeBaseBrowse:
 class TestKnowledgeBaseSubmitFromTheConsole:
     async def test_an_admin_key_can_propose_an_entry(self, session_factory, org_and_key, config):
         from hub.models import KnowledgeBaseSubmission
+
         org_id, raw_key = org_and_key
         app = _app(session_factory=session_factory, config=config)
         async with _client(app) as client:
@@ -2208,18 +2314,15 @@ class TestKnowledgeBaseSubmitFromTheConsole:
         assert response.status_code == 303
         async with session_scope(session_factory) as session:
             submission = (
-                await session.execute(
-                    select(KnowledgeBaseSubmission).where(
-                        KnowledgeBaseSubmission.org_id == org_id)
-                )
-            ).scalars().first()
+                (await session.execute(select(KnowledgeBaseSubmission).where(KnowledgeBaseSubmission.org_id == org_id)))
+                .scalars()
+                .first()
+            )
         assert submission is not None
         assert submission.title == "Retry storms after a failover"
         assert submission.status == "pending"
 
-    async def test_a_read_only_key_cannot_propose(
-        self, session_factory, org_and_readonly_key, config
-    ):
+    async def test_a_read_only_key_cannot_propose(self, session_factory, org_and_readonly_key, config):
         _org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory, config=config)) as client:
             await _signed_in(client, raw_key)
@@ -2229,9 +2332,7 @@ class TestKnowledgeBaseSubmitFromTheConsole:
             )
         assert "admin-scoped key" in response.text
 
-    async def test_a_missing_field_comes_back_as_an_inline_error(
-        self, session_factory, org_and_key, config
-    ):
+    async def test_a_missing_field_comes_back_as_an_inline_error(self, session_factory, org_and_key, config):
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory, config=config)) as client:
             await _signed_in(client, raw_key)
@@ -2255,12 +2356,19 @@ class TestKnowledgeBaseSubmitFromTheConsole:
 class TestKnowledgeBaseVotingFromTheConsole:
     async def _seed_entry(self, session_factory, org_id, title="Pool exhausted"):
         from hub import commons
+
         tags = ["postgres"]
         async with session_scope(session_factory) as session:
             trace = Trace(
-                org_id=org_id, title=title, context_text="ctx", solution_text="fix",
-                tags=tags, agent_type="code", shared_with_commons=True,
-                shared_at=datetime.now(timezone.utc), shared_rationale="seed",
+                org_id=org_id,
+                title=title,
+                context_text="ctx",
+                solution_text="fix",
+                tags=tags,
+                agent_type="code",
+                shared_with_commons=True,
+                shared_at=datetime.now(timezone.utc),
+                shared_rationale="seed",
                 commons_signature=commons.signature_for(title, "ctx", tags),
                 commons_source="seed",
             )
@@ -2268,9 +2376,7 @@ class TestKnowledgeBaseVotingFromTheConsole:
             await session.flush()
             return trace.id
 
-    async def test_an_upvote_is_recorded_and_moves_the_tally(
-        self, session_factory, org_and_key, establish_orgs
-    ):
+    async def test_an_upvote_is_recorded_and_moves_the_tally(self, session_factory, org_and_key, establish_orgs):
         org_id, raw_key = org_and_key
         entry_id = await self._seed_entry(session_factory, org_id)
         await establish_orgs(org_id)
@@ -2289,19 +2395,17 @@ class TestKnowledgeBaseVotingFromTheConsole:
 
     async def test_a_downvote_carries_its_reason(self, session_factory, org_and_key):
         from hub.models import Vote
+
         org_id, raw_key = org_and_key
         entry_id = await self._seed_entry(session_factory, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             await client.post(
                 f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "down",
-                      "feedback_tag": "security_concern"},
+                data={"trace_id": entry_id, "vote": "down", "feedback_tag": "security_concern"},
             )
         async with session_scope(session_factory) as session:
-            vote = (
-                await session.execute(select(Vote).where(Vote.trace_id == entry_id))
-            ).scalars().one()
+            vote = (await session.execute(select(Vote).where(Vote.trace_id == entry_id))).scalars().one()
         assert vote.vote_type == "down"
         assert vote.feedback_tag == "security_concern"
 
@@ -2314,19 +2418,17 @@ class TestKnowledgeBaseVotingFromTheConsole:
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""}
+            )
             await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "down", "feedback_tag": "wrong"})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": entry_id, "vote": "down", "feedback_tag": "wrong"}
+            )
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, entry_id)
         assert trace.commons_votes == 1
         assert trace.trust == 0.0
 
-    async def test_the_catalogue_shows_this_orgs_own_vote(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_catalogue_shows_this_orgs_own_vote(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         entry_id = await self._seed_entry(session_factory, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2334,8 +2436,8 @@ class TestKnowledgeBaseVotingFromTheConsole:
             before = await client.get(f"{console.CONSOLE_PATH}/kb")
             assert 'class="v voted"' not in before.text
             await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""}
+            )
             after = await client.get(f"{console.CONSOLE_PATH}/kb")
         assert 'class="v voted"' in after.text
 
@@ -2345,16 +2447,14 @@ class TestKnowledgeBaseVotingFromTheConsole:
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": entry_id, "vote": "up", "feedback_tag": ""}
+            )
         assert "Voting needs a key with" in response.text
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, entry_id)
         assert trace.commons_votes == 0
 
-    async def test_a_read_only_key_is_shown_no_vote_buttons(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_is_shown_no_vote_buttons(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         await self._seed_entry(session_factory, org_id)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2369,8 +2469,12 @@ class TestKnowledgeBaseVotingFromTheConsole:
         other_id, _other_key = other_org_and_key
         async with session_scope(session_factory) as session:
             private = Trace(
-                org_id=other_id, title="Acme private", context_text="c",
-                solution_text="s", tags=[], agent_type="code",
+                org_id=other_id,
+                title="Acme private",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
             session.add(private)
             await session.flush()
@@ -2378,23 +2482,21 @@ class TestKnowledgeBaseVotingFromTheConsole:
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": private_id, "vote": "up", "feedback_tag": ""})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": private_id, "vote": "up", "feedback_tag": ""}
+            )
         assert "no longer in the Knowledge Base" in response.text
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, private_id)
         assert trace.commons_votes == 0
 
-    async def test_a_tampered_vote_value_is_refused_cleanly(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_tampered_vote_value_is_refused_cleanly(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         entry_id = await self._seed_entry(session_factory, org_and_key[0])
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(
-                f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "sideways", "feedback_tag": ""})
+                f"{console.CONSOLE_PATH}/kb/vote", data={"trace_id": entry_id, "vote": "sideways", "feedback_tag": ""}
+            )
         assert response.status_code == 200
         assert "vote_type" in response.text
 
@@ -2417,21 +2519,27 @@ class TestTheDoubleSubmitGuardDoesNotBreakForms:
         assert "unimemSubmitting" in response.text, "the guard should be present at all"
         assert "disabled=true" not in response.text.replace(" ", "")
 
-    async def test_the_vote_form_keeps_its_action_in_the_button(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_vote_form_keeps_its_action_in_the_button(self, session_factory, org_and_key):
         from hub import commons
+
         org_id, raw_key = org_and_key
         tags = ["postgres"]
         async with session_scope(session_factory) as session:
-            session.add(Trace(
-                org_id=org_id, title="Pool exhausted", context_text="c",
-                solution_text="s", tags=tags, agent_type="code",
-                shared_with_commons=True, shared_at=datetime.now(timezone.utc),
-                shared_rationale="seed",
-                commons_signature=commons.signature_for("Pool exhausted", "c", tags),
-                commons_source="seed",
-            ))
+            session.add(
+                Trace(
+                    org_id=org_id,
+                    title="Pool exhausted",
+                    context_text="c",
+                    solution_text="s",
+                    tags=tags,
+                    agent_type="code",
+                    shared_with_commons=True,
+                    shared_at=datetime.now(timezone.utc),
+                    shared_rationale="seed",
+                    commons_signature=commons.signature_for("Pool exhausted", "c", tags),
+                    commons_source="seed",
+                )
+            )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.get(f"{console.CONSOLE_PATH}/kb")
@@ -2451,44 +2559,42 @@ class TestAutoContributeToggleFromTheConsole:
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            await client.post(
-                f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
+            await client.post(f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
             async with session_scope(session_factory) as session:
                 org = await session.get(Organization, org_id)
                 assert org.commons_auto_contribute is True
 
-            await client.post(
-                f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "0"})
+            await client.post(f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "0"})
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
         assert org.commons_auto_contribute is False
 
     async def test_it_is_audited(self, session_factory, org_and_key):
         from hub.models import AuditLogEntry
+
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            await client.post(
-                f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
+            await client.post(f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
         async with session_scope(session_factory) as session:
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(
-                        AuditLogEntry.action == "set_commons_auto_contribute")
+                (
+                    await session.execute(
+                        select(AuditLogEntry).where(AuditLogEntry.action == "set_commons_auto_contribute")
+                    )
                 )
-            ).scalars().first()
+                .scalars()
+                .first()
+            )
         assert entry is not None
         assert entry.org_id == org_id
         assert "enabled=True" in entry.summary
 
-    async def test_a_read_only_key_cannot_change_it(
-        self, session_factory, org_and_readonly_key
-    ):
+    async def test_a_read_only_key_cannot_change_it(self, session_factory, org_and_readonly_key):
         org_id, raw_key = org_and_readonly_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            response = await client.post(
-                f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
+            response = await client.post(f"{console.CONSOLE_PATH}/kb/auto-contribute", data={"enabled": "1"})
         assert "admin-scoped key" in response.text
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
@@ -2498,7 +2604,8 @@ class TestAutoContributeToggleFromTheConsole:
         async with _client(_app(session_factory=session_factory)) as client:
             response = await client.post(
                 f"{console.CONSOLE_PATH}/kb/auto-contribute",
-                data={"enabled": "1"}, follow_redirects=False,
+                data={"enabled": "1"},
+                follow_redirects=False,
             )
         assert response.status_code == 303
 
@@ -2506,15 +2613,22 @@ class TestAutoContributeToggleFromTheConsole:
 class TestTheConsoleSaysWhenAVoteDoesNotCountYet:
     async def _operator_entry(self, session_factory, title="Someone else's entry"):
         from hub import commons
+
         tags = ["substrate"]
         async with session_scope(session_factory) as session:
             operator = Organization(name="operator-org")
             session.add(operator)
             await session.flush()
             trace = Trace(
-                org_id=operator.id, title=title, context_text="ctx", solution_text="fix",
-                tags=tags, agent_type="code", shared_with_commons=True,
-                shared_at=datetime.now(timezone.utc), shared_rationale="seed",
+                org_id=operator.id,
+                title=title,
+                context_text="ctx",
+                solution_text="fix",
+                tags=tags,
+                agent_type="code",
+                shared_with_commons=True,
+                shared_at=datetime.now(timezone.utc),
+                shared_rationale="seed",
                 commons_signature=commons.signature_for(title, "ctx", tags),
                 commons_source="seed",
             )
@@ -2522,9 +2636,7 @@ class TestTheConsoleSaysWhenAVoteDoesNotCountYet:
             await session.flush()
             return trace.id
 
-    async def test_a_new_org_is_told_its_vote_is_recorded_but_not_counted(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_new_org_is_told_its_vote_is_recorded_but_not_counted(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         entry_id = await self._operator_entry(session_factory)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2558,9 +2670,7 @@ class TestTheConsoleSaysWhenAVoteDoesNotCountYet:
             trace = await session.get(Trace, entry_id)
         assert trace.commons_votes == 1
 
-    async def test_the_catalogue_states_the_bar_before_anyone_votes(
-        self, session_factory, org_and_key
-    ):
+    async def test_the_catalogue_states_the_bar_before_anyone_votes(self, session_factory, org_and_key):
         _org_id, raw_key = org_and_key
         await self._operator_entry(session_factory)
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2570,9 +2680,7 @@ class TestTheConsoleSaysWhenAVoteDoesNotCountYet:
         assert str(commons_module.COMMONS_VOTER_MIN_TRACES) in response.text
         assert str(commons_module.COMMONS_VOTER_MIN_AGE_HOURS) in response.text
 
-    async def test_an_established_org_is_not_shown_the_notice(
-        self, session_factory, org_and_key, establish_orgs
-    ):
+    async def test_an_established_org_is_not_shown_the_notice(self, session_factory, org_and_key, establish_orgs):
         org_id, raw_key = org_and_key
         await establish_orgs(org_id)
         await self._operator_entry(session_factory)
@@ -2585,15 +2693,22 @@ class TestTheConsoleSaysWhenAVoteDoesNotCountYet:
 class TestTheCatalogueShowsTheGroundsForAVerdict:
     async def _operator_entry(self, session_factory, title="Someone else's entry"):
         from hub import commons
+
         tags = ["substrate"]
         async with session_scope(session_factory) as session:
             operator = Organization(name="operator-org")
             session.add(operator)
             await session.flush()
             trace = Trace(
-                org_id=operator.id, title=title, context_text="ctx", solution_text="fix",
-                tags=tags, agent_type="code", shared_with_commons=True,
-                shared_at=datetime.now(timezone.utc), shared_rationale="seed",
+                org_id=operator.id,
+                title=title,
+                context_text="ctx",
+                solution_text="fix",
+                tags=tags,
+                agent_type="code",
+                shared_with_commons=True,
+                shared_at=datetime.now(timezone.utc),
+                shared_rationale="seed",
                 commons_signature=commons.signature_for(title, "ctx", tags),
                 commons_source="seed",
             )
@@ -2611,24 +2726,28 @@ class TestTheCatalogueShowsTheGroundsForAVerdict:
             await _signed_in(client, raw_key)
             await client.post(
                 f"{console.CONSOLE_PATH}/kb/vote",
-                data={"trace_id": entry_id, "vote": "down",
-                      "feedback_tag": "security_concern"})
+                data={"trace_id": entry_id, "vote": "down", "feedback_tag": "security_concern"},
+            )
             response = await client.get(f"{console.CONSOLE_PATH}/kb")
         assert "unproven" in response.text
         assert "security concern" in response.text
 
-    async def test_a_corrected_entry_says_so(
-        self, session_factory, org_and_key, config
-    ):
+    async def test_a_corrected_entry_says_so(self, session_factory, org_and_key, config):
         from hub.abuse import make_rate_limiter
+
         _org_id, raw_key = org_and_key
         entry_id = await self._operator_entry(session_factory)
         async with session_scope(session_factory) as session:
             operator_org = (await session.get(Trace, entry_id)).org_id
         async with session_scope(session_factory) as session:
             await crud.amend_trace(
-                session, operator_org, entry_id, config, make_rate_limiter(config),
-                solution_text="corrected advice", actor="operator-console",
+                session,
+                operator_org,
+                entry_id,
+                config,
+                make_rate_limiter(config),
+                solution_text="corrected advice",
+                actor="operator-console",
             )
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
@@ -2636,9 +2755,7 @@ class TestTheCatalogueShowsTheGroundsForAVerdict:
         assert "revised" in response.text
         assert "corrected advice" in response.text
 
-    async def test_an_unflagged_entry_shows_no_concern_pills(
-        self, session_factory, org_and_key
-    ):
+    async def test_an_unflagged_entry_shows_no_concern_pills(self, session_factory, org_and_key):
         await self._operator_entry(session_factory)
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2655,13 +2772,16 @@ class TestTheCatalogueShowsTheGroundsForAVerdict:
         await establish_orgs(org_id)
         async with session_scope(session_factory) as session:
             await crud.vote_trace(
-                session, org_id, entry_id, "down",
-                feedback_tag="wrong", feedback_text=secret, actor="mcp",
+                session,
+                org_id,
+                entry_id,
+                "down",
+                feedback_tag="wrong",
+                feedback_text=secret,
+                actor="mcp",
             )
         async with session_scope(session_factory) as session:
-            stored = (
-                await session.execute(select(Vote).where(Vote.trace_id == entry_id))
-            ).scalars().one()
+            stored = (await session.execute(select(Vote).where(Vote.trace_id == entry_id))).scalars().one()
         assert stored.feedback_text == secret, "premise: the text really is on the vote"
 
         async with _client(_app(session_factory=session_factory)) as client:
@@ -2705,7 +2825,8 @@ class TestKeyAndUserFormValidation:
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             response = await client.post(
-                f"{console.CONSOLE_PATH}/keys/issue", data={"scopes": ["read"], "expires_days": "7"})
+                f"{console.CONSOLE_PATH}/keys/issue", data={"scopes": ["read"], "expires_days": "7"}
+            )
         assert "shown once" in response.text
         fresh = [k for k in await self._keys(session_factory, org_id) if k.scopes == ["read"]]
         assert len(fresh) == 1 and fresh[0].expires_at is not None
@@ -2714,17 +2835,21 @@ class TestKeyAndUserFormValidation:
         _org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
-            first = await client.post(f"{console.CONSOLE_PATH}/users/create",
-                                      data={"email": "ada@example.com", "role": "viewer"})
+            first = await client.post(
+                f"{console.CONSOLE_PATH}/users/create", data={"email": "ada@example.com", "role": "viewer"}
+            )
             assert first.status_code == 303
-            again = await client.post(f"{console.CONSOLE_PATH}/users/create",
-                                      data={"email": "ada@example.com", "role": "viewer"})
+            again = await client.post(
+                f"{console.CONSOLE_PATH}/users/create", data={"email": "ada@example.com", "role": "viewer"}
+            )
             assert "already has a user" in again.text
-            bad_email = await client.post(f"{console.CONSOLE_PATH}/users/create",
-                                          data={"email": "not-an-email", "role": "viewer"})
+            bad_email = await client.post(
+                f"{console.CONSOLE_PATH}/users/create", data={"email": "not-an-email", "role": "viewer"}
+            )
             assert "valid email" in bad_email.text
-            bad_role = await client.post(f"{console.CONSOLE_PATH}/users/create",
-                                         data={"email": "bob@example.com", "role": "emperor"})
+            bad_role = await client.post(
+                f"{console.CONSOLE_PATH}/users/create", data={"email": "bob@example.com", "role": "emperor"}
+            )
             assert "Unknown role" in bad_role.text
 
     async def test_setting_an_unknown_role_is_reported(self, session_factory, org_and_key):
@@ -2743,20 +2868,18 @@ class TestKeyAndUserFormValidation:
 
 
 class TestSessionIsPinnedToItsKey:
-    async def test_a_sibling_key_sharing_the_prefix_does_not_keep_the_session(
-        self, session_factory, org_and_key
-    ):
+    async def test_a_sibling_key_sharing_the_prefix_does_not_keep_the_session(self, session_factory, org_and_key):
         org_id, raw_key = org_and_key
         async with _client(_app(session_factory=session_factory)) as client:
             await _signed_in(client, raw_key)
             async with session_scope(session_factory) as session:
                 await session.execute(
-                    sa_update(ApiKey).where(ApiKey.org_id == org_id)
-                    .values(revoked_at=datetime.now(timezone.utc))
+                    sa_update(ApiKey).where(ApiKey.org_id == org_id).values(revoked_at=datetime.now(timezone.utc))
                 )
                 # A different, live key of the same org that happens to share the displayed prefix.
-                session.add(ApiKey(org_id=org_id, key_prefix=raw_key[:auth._PREFIX_LEN],
-                                   key_hash="x", scopes=["admin"]))
+                session.add(
+                    ApiKey(org_id=org_id, key_prefix=raw_key[: auth._PREFIX_LEN], key_hash="x", scopes=["admin"])
+                )
             assert (await client.get(console.CONSOLE_PATH)).status_code == 303
 
     async def test_a_non_ascii_cookie_signature_is_not_a_server_error(self):

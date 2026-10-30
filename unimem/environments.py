@@ -13,8 +13,7 @@ PROTECTED_ENVIRONMENTS = ("prod",)
 ENVIRONMENTS_FILENAME = "environments.jsonl"
 
 
-class EnvironmentError(ValueError):
-    ...
+class EnvironmentError(ValueError): ...
 
 
 def environments_log_path(root: str) -> str:
@@ -45,15 +44,16 @@ def read_all(root: str) -> list[dict]:
 
 
 def promote(
-    root: str, release_id: str, environment: str, *,
-    actor: str = "", reason: str = "",
+    root: str,
+    release_id: str,
+    environment: str,
+    *,
+    actor: str = "",
+    reason: str = "",
     activate_at: datetime.datetime | None = None,
 ) -> dict:
     if environment not in ENVIRONMENTS:
-        raise EnvironmentError(
-            f"unknown environment {environment!r}; known environments: "
-            + ", ".join(ENVIRONMENTS)
-        )
+        raise EnvironmentError(f"unknown environment {environment!r}; known environments: " + ", ".join(ENVIRONMENTS))
     target = release.find(root, release_id)
     if target is None:
         raise EnvironmentError(f"no such release: {release_id}")
@@ -66,7 +66,9 @@ def promote(
         new_slugs = sorted({e.slug for e in target.entries} - previous_slugs)
         for slug in new_slugs:
             approval.check(
-                policy, slug=slug, approver=actor,
+                policy,
+                slug=slug,
+                approver=actor,
                 authors=approval.authors_of(root, slug),
             )
 
@@ -91,9 +93,9 @@ def promote(
 def current(root: str, environment: str, *, now: datetime.datetime | None = None) -> str | None:
     moment = now or _now()
     eligible = [
-        r for r in read_all(root)
-        if r["environment"] == environment
-        and datetime.datetime.fromisoformat(r["activate_at"]) <= moment
+        r
+        for r in read_all(root)
+        if r["environment"] == environment and datetime.datetime.fromisoformat(r["activate_at"]) <= moment
     ]
     if not eligible:
         return None
@@ -105,9 +107,9 @@ def pending(root: str, environment: str, *, now: datetime.datetime | None = None
     moment = now or _now()
     return sorted(
         (
-            r for r in read_all(root)
-            if r["environment"] == environment
-            and datetime.datetime.fromisoformat(r["activate_at"]) > moment
+            r
+            for r in read_all(root)
+            if r["environment"] == environment and datetime.datetime.fromisoformat(r["activate_at"]) > moment
         ),
         key=lambda r: r["activate_at"],
     )

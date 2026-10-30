@@ -1,4 +1,5 @@
 """Intercom: conversation notifications -> signals, for support agents."""
+
 from __future__ import annotations
 
 import hashlib
@@ -54,8 +55,11 @@ def signals(headers: Mapping[str, str], payload: dict, config: dict) -> list[bas
     occasion = config.get("occasion_prefix", "") + base.clean_id(item.get("id"), "conversation id")
     event_id = delivery_id(headers, payload)
     stamp = payload.get("created_at")
-    at = datetime.fromtimestamp(stamp, timezone.utc) if isinstance(stamp, (int, float)) \
-        and not isinstance(stamp, bool) else datetime.now(timezone.utc)
+    at = (
+        datetime.fromtimestamp(stamp, timezone.utc)
+        if isinstance(stamp, (int, float)) and not isinstance(stamp, bool)
+        else datetime.now(timezone.utc)
+    )
     if topic == "conversation.admin.closed":
         return [base.Signal(base.CANDIDATE, occasion, at, event_id, note="closed")]
     return [base.Signal(base.REVERSAL, occasion, at, event_id, note=topic.rsplit(".", 1)[-1])]

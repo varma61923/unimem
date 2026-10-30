@@ -18,47 +18,56 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--function",
         default=None,
         help="Business function kit: support, sales, hr, coding, marketing, robotics, legal, "
-             "finance, clinical (`unimem function list`), or 'custom' to take the slug "
-             f"from --agent-type. Without --function or --agent-type the store is "
-             f"'{paths.GENERAL_AGENT_TYPE}'.",
+        "finance, clinical (`unimem function list`), or 'custom' to take the slug "
+        f"from --agent-type. Without --function or --agent-type the store is "
+        f"'{paths.GENERAL_AGENT_TYPE}'.",
     )
     p.add_argument(
-        "--kit", default=None, metavar="FILE",
-        help="A function kit spec (JSON) for a function not built in; "
-             "validate it first with `unimem function check`.",
+        "--kit",
+        default=None,
+        metavar="FILE",
+        help="A function kit spec (JSON) for a function not built in; validate it first with `unimem function check`.",
     )
     p.add_argument(
         "--agent-type",
         type=_validators.agent_type,
         default=None,
         help="Kind of agent this store is for, as a lowercase slug (default: "
-             f"{paths.GENERAL_AGENT_TYPE}). Any field works -- e.g. code, support, sales, "
-             "hr, marketing, ops, robotics, legal. The taxonomy is open: see "
-             "protocol/PROTOCOL.md#7-taxonomy-open-not-closed.",
+        f"{paths.GENERAL_AGENT_TYPE}). Any field works -- e.g. code, support, sales, "
+        "hr, marketing, ops, robotics, legal. The taxonomy is open: see "
+        "protocol/PROTOCOL.md#7-taxonomy-open-not-closed.",
     )
     p.add_argument(
-        "--profile", default=None,
+        "--profile",
+        default=None,
         help="Reference pipeline this store runs, if any. 'code-review' (SKILL.md's "
-             "Implementer/Reviewer loop) is the one that writes memory/episodes/, so "
-             "naming it here scaffolds that directory. Defaults to 'code-review' for "
-             "--agent-type code, and to no profile otherwise.",
+        "Implementer/Reviewer loop) is the one that writes memory/episodes/, so "
+        "naming it here scaffolds that directory. Defaults to 'code-review' for "
+        "--agent-type code, and to no profile otherwise.",
     )
     p.add_argument(
-        "--git", action="store_true",
+        "--git",
+        action="store_true",
         help="Make the store its own git repository, so forgetting or restoring a fact "
-             "is recorded as a commit. Refused when the store sits inside another repository.",
+        "is recorded as a commit. Refused when the store sits inside another repository.",
     )
     p.add_argument(
-        "--fact-store", choices=FACT_STORES, default=None,
+        "--fact-store",
+        choices=FACT_STORES,
+        default=None,
         help="Where a new store keeps facts: 'sqlite' (default; WAL database with indexed dedup, "
-             "contradiction slots and FTS5, constant-time writes) or 'jsonl' (one append-only file, "
-             "rewritten per change; slows as facts grow). Default from UNIMEM_FACT_STORE.",
+        "contradiction slots and FTS5, constant-time writes) or 'jsonl' (one append-only file, "
+        "rewritten per change; slows as facts grow). Default from UNIMEM_FACT_STORE.",
     )
     p.add_argument("--dest", default=".", help="Directory to scaffold into (default: current directory)")
     p.add_argument("--agent", nargs="?", const="new", help="Mint a scoped local agent key after initialization.")
-    p.add_argument("--agent-caller", default=None, metavar="NAME",
-                   help="With --agent: which assistant is signing up (e.g. claude-code). Names a new "
-                        "agent '<NAME>-<random>' and records the scope 'caller:<NAME>'. The key prints once.")
+    p.add_argument(
+        "--agent-caller",
+        default=None,
+        metavar="NAME",
+        help="With --agent: which assistant is signing up (e.g. claude-code). Names a new "
+        "agent '<NAME>-<random>' and records the scope 'caller:<NAME>'. The key prints once.",
+    )
     p.set_defaults(func=run)
 
 
@@ -167,6 +176,7 @@ def run(args: argparse.Namespace) -> int:
                 )
         try:
             import numpy as np
+
             index_file = os.path.join(attention, "index.npz")
             if not os.path.exists(index_file):
                 np.savez(
@@ -209,10 +219,12 @@ def run(args: argparse.Namespace) -> int:
             )
 
         with open(paths.index_path(root), "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(templates.index_md(
-                args.agent_type,
-                has_episodes=os.path.isdir(paths.episodes_dir(root)),
-            ))
+            fh.write(
+                templates.index_md(
+                    args.agent_type,
+                    has_episodes=os.path.isdir(paths.episodes_dir(root)),
+                )
+            )
 
         if kit is not None:
             from unimem import functions
@@ -226,10 +238,13 @@ def run(args: argparse.Namespace) -> int:
             fact_store.migrate(root)
         print(f"[unimem] Initialized a {args.agent_type} store at {mem} (facts: {backend})")
         if kit is not None:
-            print(f"  Occasion: one {kit.occasion_label} (e.g. {kit.occasion_example}). "
-                  f"Success: {kit.outcome.success}.")
-            print(f"  `unimem function forecast {kit.key} --daily <occasions per day>` "
-                  "says how long a verdict takes at your volume.")
+            print(
+                f"  Occasion: one {kit.occasion_label} (e.g. {kit.occasion_example}). Success: {kit.outcome.success}."
+            )
+            print(
+                f"  `unimem function forecast {kit.key} --daily <occasions per day>` "
+                "says how long a verdict takes at your volume."
+            )
 
     if getattr(args, "agent_caller", None) and not getattr(args, "agent", None):
         args.agent = "new"  # naming the caller is asking for a new agent key
@@ -245,10 +260,9 @@ def run(args: argparse.Namespace) -> int:
             print("[unimem] --agent-caller must be 1-41 letters, digits, '.', '_' or '-'.", file=sys.stderr)
             return 2
         prefix = caller or "agent"
-        agent_id = prefix+"-"+uuid.uuid4().hex[:12] if args.agent == "new" else args.agent
+        agent_id = prefix + "-" + uuid.uuid4().hex[:12] if args.agent == "new" else args.agent
         try:
-            result = onboarding.install(root, agent_id, commits=0,
-                                        labels=["caller:" + caller] if caller else None)
+            result = onboarding.install(root, agent_id, commits=0, labels=["caller:" + caller] if caller else None)
         except ValueError as exc:
             print(f"[unimem] --agent refused: {exc}", file=sys.stderr)
             return 2

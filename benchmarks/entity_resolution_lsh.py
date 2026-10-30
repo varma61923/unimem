@@ -62,7 +62,10 @@ def _indexed(surfaces: list) -> set[tuple[int, int]]:
         if (a, b) in accepted:
             continue
         similarity = estimate_jaccard(surfaces[a].signature, surfaces[b].signature)
-        if similarity >= MINHASH_THRESHOLD and kg_similarity.jaccard(surfaces[a].grams, surfaces[b].grams) >= JACCARD_THRESHOLD:
+        if (
+            similarity >= MINHASH_THRESHOLD
+            and kg_similarity.jaccard(surfaces[a].grams, surfaces[b].grams) >= JACCARD_THRESHOLD
+        ):
             accepted.add((a, b))
     return accepted
 
@@ -73,9 +76,7 @@ def _sha256(path: Path) -> str:
 
 def _head() -> str | None:
     try:
-        return subprocess.run(
-            ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
-        ).stdout.strip()
+        return subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return None
 
@@ -120,8 +121,7 @@ def main() -> int:
         parser.error("repeats must be positive and sizes must be in 2..2000")
 
     root = Path(__file__).resolve().parents[1]
-    source_files = (root / "unimem/entity_resolution.py", root / "unimem/overlap.py",
-                    root / "unimem/kg_similarity.py")
+    source_files = (root / "unimem/entity_resolution.py", root / "unimem/overlap.py", root / "unimem/kg_similarity.py")
     report = {
         "measurement": "synthetic entity candidate-generation diagnostic",
         "command": "python -m benchmarks.entity_resolution_lsh " + " ".join(sys.argv[1:]),

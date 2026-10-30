@@ -1,4 +1,5 @@
 """Protect replayable history and exercise the template through Alembic itself."""
+
 from __future__ import annotations
 
 import ast
@@ -32,11 +33,15 @@ def test_reviewed_history_is_preserved_and_new_revisions_only_extend_it():
         previous = revision.revision
     for expected, actual in zip(snapshot["revisions"], history):
         assert (actual.revision, actual.down_revision, Path(actual.path).name) == (
-            expected["revision"], expected["parent"], expected["file"])
+            expected["revision"],
+            expected["parent"],
+            expected["file"],
+        )
         # Ignore checkout line-ending conversion; freeze the actual source text.
         source = Path(actual.path).read_text(encoding="utf-8").encode("utf-8")
         assert hashlib.sha256(source).hexdigest() == expected["sha256"], (
-            f"historical revision {actual.revision} changed; add a forward migration instead")
+            f"historical revision {actual.revision} changed; add a forward migration instead"
+        )
 
 
 def test_revision_replay_does_not_depend_on_mutable_application_modules():
@@ -50,7 +55,8 @@ def test_revision_replay_does_not_depend_on_mutable_application_modules():
                 assert node.level == 0, f"{path.name}: relative migration helper needs explicit review"
                 names = [node.module or ""]
             assert not any(name.split(".")[0] in {"hub", "unimem"} for name in names), (
-                f"{path.name}: freeze migration operations independently of runtime code")
+                f"{path.name}: freeze migration operations independently of runtime code"
+            )
 
 
 def test_template_generates_loadable_revisions_and_sequence_parent_metadata(tmp_path):

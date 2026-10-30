@@ -1,4 +1,5 @@
 """Provider protocol failures must use the API's recoverable error boundary."""
+
 import json
 import sys
 from types import SimpleNamespace
@@ -8,28 +9,34 @@ import pytest
 from unimem import llm
 
 
-@pytest.mark.parametrize("provider,reply", [
-    ("anthropic", {"content": [{"text": 123}]}),
-    ("anthropic", {"content": "wrong"}),
-    ("anthropic", {"content": [], "usage": "wrong"}),
-    ("anthropic", {"content": [], "usage": {"input_tokens": "100"}}),
-    ("openai-compatible", {"choices": {"wrong": True}}),
-    ("openai-compatible", {"choices": [{"message": "wrong"}]}),
-    ("openai-compatible", {"choices": [{"message": {"content": ["wrong"]}}]}),
-    ("openai-compatible", {"choices": [], "usage": {"completion_tokens": -1}}),
-    ("gemini", {"candidates": {"wrong": True}}),
-    ("gemini", []),
-    ("gemini", {"candidates": [{"content": "wrong"}]}),
-    ("gemini", {"candidates": [{"content": {"parts": [{"text": None}]}}]}),
-    ("gemini", {"candidates": [{"content": {}}], "usageMetadata": {"candidatesTokenCount": "2"}}),
-    ("bedrock", {"output": {"message": "wrong"}}),
-    ("bedrock", {"output": {"message": {"content": [{"text": False}]}}}),
-    ("bedrock", {"usage": {"inputTokens": True}}),
-])
+@pytest.mark.parametrize(
+    "provider,reply",
+    [
+        ("anthropic", {"content": [{"text": 123}]}),
+        ("anthropic", {"content": "wrong"}),
+        ("anthropic", {"content": [], "usage": "wrong"}),
+        ("anthropic", {"content": [], "usage": {"input_tokens": "100"}}),
+        ("openai-compatible", {"choices": {"wrong": True}}),
+        ("openai-compatible", {"choices": [{"message": "wrong"}]}),
+        ("openai-compatible", {"choices": [{"message": {"content": ["wrong"]}}]}),
+        ("openai-compatible", {"choices": [], "usage": {"completion_tokens": -1}}),
+        ("gemini", {"candidates": {"wrong": True}}),
+        ("gemini", []),
+        ("gemini", {"candidates": [{"content": "wrong"}]}),
+        ("gemini", {"candidates": [{"content": {"parts": [{"text": None}]}}]}),
+        ("gemini", {"candidates": [{"content": {}}], "usageMetadata": {"candidatesTokenCount": "2"}}),
+        ("bedrock", {"output": {"message": "wrong"}}),
+        ("bedrock", {"output": {"message": {"content": [{"text": False}]}}}),
+        ("bedrock", {"usage": {"inputTokens": True}}),
+    ],
+)
 def test_malformed_provider_reply_is_unavailable_for_text_and_vision(monkeypatch, provider, reply):
     monkeypatch.setattr(llm, "_post_json", lambda *_args, **_kwargs: reply)
-    monkeypatch.setitem(sys.modules, "boto3", SimpleNamespace(
-        client=lambda *_args, **_kwargs: SimpleNamespace(converse=lambda **_kwargs: reply)))
+    monkeypatch.setitem(
+        sys.modules,
+        "boto3",
+        SimpleNamespace(client=lambda *_args, **_kwargs: SimpleNamespace(converse=lambda **_kwargs: reply)),
+    )
     config = llm.Config(provider, "response-contract-test", "synthetic-key", base_url="https://provider.invalid")
     with pytest.raises(llm.LLMUnavailable):
         llm.complete("synthetic prompt", config)
@@ -58,14 +65,27 @@ def test_gateway_maps_malformed_model_reply_to_a_recoverable_503(tmp_path, monke
     gateway = Gateway(str(tmp_path), token=token)
     headers = {"Authorization": "Bearer " + token, "Host": "localhost"}
     try:
-        added = gateway.handle("POST", "/v1/conversation/add", headers, json.dumps({
-            "space": "review", "session": "session", "messages": [
-                {"speaker": "user", "text": "The staging review must finish before release."},
-            ],
-        }).encode())
+        added = gateway.handle(
+            "POST",
+            "/v1/conversation/add",
+            headers,
+            json.dumps(
+                {
+                    "space": "review",
+                    "session": "session",
+                    "messages": [
+                        {"speaker": "user", "text": "The staging review must finish before release."},
+                    ],
+                }
+            ).encode(),
+        )
         assert added.status == 200
-        response = gateway.handle("POST", "/v1/conversation/summarize", headers,
-            json.dumps({"space": "review", "session": "session", "mode": "model"}).encode())
+        response = gateway.handle(
+            "POST",
+            "/v1/conversation/summarize",
+            headers,
+            json.dumps({"space": "review", "session": "session", "mode": "model"}).encode(),
+        )
         assert response.status == 503
         assert json.loads(response.body)["error"]["code"] == "llm_unavailable"
     finally:

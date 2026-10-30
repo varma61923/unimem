@@ -89,18 +89,30 @@ class TestPolarity:
 
 def _lesson(slug, desc, applies, tags=None, status="active"):
     return {
-        "name": slug, "description": desc, "applies_when": applies,
-        "tags": tags or [], "domain": "other", "status": status,
+        "name": slug,
+        "description": desc,
+        "applies_when": applies,
+        "tags": tags or [],
+        "domain": "other",
+        "status": status,
     }
 
 
 class TestContradictions:
     def test_detects_opposite_rules_on_the_same_trigger(self):
         lessons = [
-            _lesson("always", "Always retry a failed webhook delivery",
-                    "a webhook delivery to the payments provider fails transiently", ["webhooks"]),
-            _lesson("never", "Never retry a failed webhook delivery",
-                    "a webhook delivery to the payments provider fails transiently", ["webhooks"]),
+            _lesson(
+                "always",
+                "Always retry a failed webhook delivery",
+                "a webhook delivery to the payments provider fails transiently",
+                ["webhooks"],
+            ),
+            _lesson(
+                "never",
+                "Never retry a failed webhook delivery",
+                "a webhook delivery to the payments provider fails transiently",
+                ["webhooks"],
+            ),
         ]
         found = rel.find_contradictions(lessons)
         assert len(found) == 1
@@ -116,8 +128,9 @@ class TestContradictions:
     def test_archived_lessons_are_ignored(self):
         lessons = [
             _lesson("a", "Always retry the webhook", "a webhook delivery fails transiently", ["webhooks"]),
-            _lesson("b", "Never retry the webhook", "a webhook delivery fails transiently",
-                    ["webhooks"], status="archived"),
+            _lesson(
+                "b", "Never retry the webhook", "a webhook delivery fails transiently", ["webhooks"], status="archived"
+            ),
         ]
         assert rel.find_contradictions(lessons) == []
 
@@ -179,14 +192,20 @@ class TestReliabilityCLI:
         assert "no retrieval evidence" in capsys.readouterr().err
 
     def test_holdout_only_evidence_is_reported_distinctly_from_no_evidence_at_all(
-        self, store, capsys,
+        self,
+        store,
+        capsys,
     ):
         from unimem import holdout_io
         from unimem.cli import main
 
         main(["init", "--agent-type", "code", "--dest", str(store)])
         holdout_io.assign_and_log(
-            str(store), ["never_captured"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["never_captured"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         capsys.readouterr()
         assert main(["reliability", "--dest", str(store)]) == 0
@@ -204,12 +223,19 @@ class TestReliabilityCLI:
         eps = store / "memory" / "episodes"
         eps.mkdir(parents=True, exist_ok=True)
         for i in range(10):
-            fm = {"name": f"ep{i}", "verdict": "CONFORM",
-                  "lessons_retrieved_by_alpha": ["scored"], "lessons_hit": ["scored"]}
-            (eps / f"ep{i}.md").write_text(
-                "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8")
+            fm = {
+                "name": f"ep{i}",
+                "verdict": "CONFORM",
+                "lessons_retrieved_by_alpha": ["scored"],
+                "lessons_hit": ["scored"],
+            }
+            (eps / f"ep{i}.md").write_text("---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8")
         holdout_io.assign_and_log(
-            str(store), ["never_captured"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["never_captured"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         capsys.readouterr()
         assert main(["reliability", "--dest", str(store)]) == 0
@@ -227,14 +253,21 @@ class TestReliabilityCLI:
         main(["init", "--agent-type", "code", "--dest", str(store)])
         eps = store / "memory" / "episodes"
         eps.mkdir(parents=True, exist_ok=True)
-        eps_fm = {"name": "ep0", "verdict": "CONFORM",
-                  "lessons_retrieved_by_alpha": ["scored"], "lessons_hit": ["scored"]}
+        eps_fm = {
+            "name": "ep0",
+            "verdict": "CONFORM",
+            "lessons_retrieved_by_alpha": ["scored"],
+            "lessons_hit": ["scored"],
+        }
         import yaml
 
-        (eps / "ep0.md").write_text(
-            "---\n" + yaml.safe_dump(eps_fm) + "---\n\nbody\n", encoding="utf-8")
+        (eps / "ep0.md").write_text("---\n" + yaml.safe_dump(eps_fm) + "---\n\nbody\n", encoding="utf-8")
         holdout_io.assign_and_log(
-            str(store), ["never_captured"], occasion_id="occ-1", rate=0.0, salt="s",
+            str(store),
+            ["never_captured"],
+            occasion_id="occ-1",
+            rate=0.0,
+            salt="s",
         )
         capsys.readouterr()
         assert main(["reliability", "--dest", str(store), "--json"]) == 0
@@ -251,8 +284,10 @@ class TestReliabilityCLI:
         eps.mkdir(parents=True, exist_ok=True)
         for i in range(10):
             fm = {
-                "name": f"ep{i}", "verdict": "CONFORM",
-                "lessons_retrieved_by_alpha": ["lesson_x"], "lessons_hit": ["lesson_x"],
+                "name": f"ep{i}",
+                "verdict": "CONFORM",
+                "lessons_retrieved_by_alpha": ["lesson_x"],
+                "lessons_hit": ["lesson_x"],
             }
             (eps / f"2026-01-{i + 1:02d}_ep{i}.md").write_text(
                 "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8"
@@ -274,15 +309,25 @@ class TestReliabilityCLI:
         eps = store / "memory" / "episodes"
         eps.mkdir(parents=True, exist_ok=True)
         for i in range(12):
-            fm = {"name": f"ok{i}", "verdict": "CONFORM",
-                  "lessons_retrieved_by_alpha": ["fine"], "lessons_hit": ["fine"]}
+            fm = {
+                "name": f"ok{i}",
+                "verdict": "CONFORM",
+                "lessons_retrieved_by_alpha": ["fine"],
+                "lessons_hit": ["fine"],
+            }
             (eps / f"2026-01-{i + 1:02d}_ok{i}.md").write_text(
-                "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8")
+                "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8"
+            )
         for i in range(8):
-            fm = {"name": f"bad{i}", "verdict": "ABANDON",
-                  "lessons_retrieved_by_alpha": ["bad"], "lessons_hit": ["bad"]}
+            fm = {
+                "name": f"bad{i}",
+                "verdict": "ABANDON",
+                "lessons_retrieved_by_alpha": ["bad"],
+                "lessons_hit": ["bad"],
+            }
             (eps / f"2026-02-{i + 1:02d}_bad{i}.md").write_text(
-                "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8")
+                "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8"
+            )
         capsys.readouterr()
         assert main(["reliability", "--dest", str(store), "--strict"]) == 1
         assert main(["reliability", "--dest", str(store)]) == 0
@@ -290,32 +335,68 @@ class TestReliabilityCLI:
 
 class TestRankingAdjustments:
     def test_harmful_gets_the_largest_penalty(self):
-        scores = [rel.LessonReliability(
-            slug="x", n_retrieved=10, n_hit=2, precision=0.2, precision_lower=0.05,
-            success_rate=0.3, lift=-0.4, verdict=rel.VERDICT_HARMFUL, rationale="",
-        )]
+        scores = [
+            rel.LessonReliability(
+                slug="x",
+                n_retrieved=10,
+                n_hit=2,
+                precision=0.2,
+                precision_lower=0.05,
+                success_rate=0.3,
+                lift=-0.4,
+                verdict=rel.VERDICT_HARMFUL,
+                rationale="",
+            )
+        ]
         assert rel.ranking_adjustments(scores) == {"x": -1.0}
 
     def test_miscalibrated_penalty_is_real_but_smaller_than_harmful(self):
-        scores = [rel.LessonReliability(
-            slug="x", n_retrieved=10, n_hit=2, precision=0.2, precision_lower=0.05,
-            success_rate=None, lift=None, verdict=rel.VERDICT_MISCALIBRATED, rationale="",
-        )]
+        scores = [
+            rel.LessonReliability(
+                slug="x",
+                n_retrieved=10,
+                n_hit=2,
+                precision=0.2,
+                precision_lower=0.05,
+                success_rate=None,
+                lift=None,
+                verdict=rel.VERDICT_MISCALIBRATED,
+                rationale="",
+            )
+        ]
         adj = rel.ranking_adjustments(scores)["x"]
         assert -1.0 < adj < 0.0
 
     def test_unproven_is_neutral(self):
-        scores = [rel.LessonReliability(
-            slug="x", n_retrieved=2, n_hit=2, precision=1.0, precision_lower=0.2,
-            success_rate=None, lift=None, verdict=rel.VERDICT_UNPROVEN, rationale="",
-        )]
+        scores = [
+            rel.LessonReliability(
+                slug="x",
+                n_retrieved=2,
+                n_hit=2,
+                precision=1.0,
+                precision_lower=0.2,
+                success_rate=None,
+                lift=None,
+                verdict=rel.VERDICT_UNPROVEN,
+                rationale="",
+            )
+        ]
         assert rel.ranking_adjustments(scores) == {"x": 0.0}
 
     def test_reliable_gets_the_largest_boost(self):
-        scores = [rel.LessonReliability(
-            slug="x", n_retrieved=10, n_hit=9, precision=0.9, precision_lower=0.6,
-            success_rate=0.9, lift=0.1, verdict=rel.VERDICT_RELIABLE, rationale="",
-        )]
+        scores = [
+            rel.LessonReliability(
+                slug="x",
+                n_retrieved=10,
+                n_hit=9,
+                precision=0.9,
+                precision_lower=0.6,
+                success_rate=0.9,
+                lift=0.1,
+                verdict=rel.VERDICT_RELIABLE,
+                rationale="",
+            )
+        ]
         assert rel.ranking_adjustments(scores) == {"x": 1.0}
 
     def test_a_slug_with_no_verdict_is_simply_absent(self):

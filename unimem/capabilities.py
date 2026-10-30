@@ -5,6 +5,7 @@ tokens-01, not JWT/AAT wire compatibility. Authentication pins keys externally.
 Local links require both the previous MAC and the parent's private holder key:
 portable prefix MACs alone cannot authorize an alternate delegation branch.
 """
+
 from __future__ import annotations
 
 import base64
@@ -116,16 +117,32 @@ def _prefix(token: Mapping[str, Any], count: int) -> dict[str, Any]:
     return {"version": 1, "algorithm": token["algorithm"], "links": token["links"][:count]}
 
 
-def grant(caveats: Mapping[str, Any], *, issuer: str, tenant: str, nonce: str,
-          now: str, algorithm: str, key: bytes) -> dict[str, Any]:
+def grant(
+    caveats: Mapping[str, Any], *, issuer: str, tenant: str, nonce: str, now: str, algorithm: str, key: bytes
+) -> dict[str, Any]:
     caveats = policy(caveats)
     issued = moment(now)
     if not issued < moment(caveats["expires_at"]) <= issued + timedelta(days=7):
         raise ValueError("UniMem root capability lifetime must be positive and at most seven days")
-    record = {"type": "unimem.capability.root.v1", "issuer": _label(issuer), "tenant": _label(tenant),
-              "nonce": _label(nonce), "issued_at": issued.isoformat(), "caveats": caveats}
-    return {"version": 1, "algorithm": algorithm, "links": [{"record": record,
-        "signature": _sign(algorithm, key, _bytes("unimem.capability.root.v1", record)), "authorization": ""}]}
+    record = {
+        "type": "unimem.capability.root.v1",
+        "issuer": _label(issuer),
+        "tenant": _label(tenant),
+        "nonce": _label(nonce),
+        "issued_at": issued.isoformat(),
+        "caveats": caveats,
+    }
+    return {
+        "version": 1,
+        "algorithm": algorithm,
+        "links": [
+            {
+                "record": record,
+                "signature": _sign(algorithm, key, _bytes("unimem.capability.root.v1", record)),
+                "authorization": "",
+            }
+        ],
+    }
 
 
 def attenuate(token: Mapping[str, Any], caveats: Mapping[str, Any], *, key: bytes) -> dict[str, Any]:
@@ -138,24 +155,40 @@ def attenuate(token: Mapping[str, Any], caveats: Mapping[str, Any], *, key: byte
     data = _bytes("unimem.capability.child.v1", record)
     if token["algorithm"] == "hmac-sha256":
         signature = _sign("hmac-sha256", bytes.fromhex(links[-1]["signature"]), data)
-        authorization = _sign("hmac-sha256", key, _bytes("unimem.capability.parent-holder.v1",
-                                                       {"record": record, "signature": signature}))
+        authorization = _sign(
+            "hmac-sha256", key, _bytes("unimem.capability.parent-holder.v1", {"record": record, "signature": signature})
+        )
     else:
         signature, authorization = _sign("ed25519", key, data), ""
-    result = {**dict(token), "links": [*links, {"record": record, "signature": signature,
-                                               "authorization": authorization}]}
+    result = {
+        **dict(token),
+        "links": [*links, {"record": record, "signature": signature, "authorization": authorization}],
+    }
     _token(result)
     return result
 
 
-def verify(token: Mapping[str, Any], *, issuer: str, tenant: str, algorithm: str, key: bytes,
-           holder_key: Callable[[str], bytes], now: str, revoked: Sequence[str] = ()) -> dict[str, Any]:
+def verify(
+    token: Mapping[str, Any],
+    *,
+    issuer: str,
+    tenant: str,
+    algorithm: str,
+    key: bytes,
+    holder_key: Callable[[str], bytes],
+    now: str,
+    revoked: Sequence[str] = (),
+) -> dict[str, Any]:
     links = _token(token)
     if token["algorithm"] != algorithm:
         raise PermissionError("UniMem capability algorithm differs from issuer pin")
     root = links[0]["record"]
-    if set(root) != {"type", "issuer", "tenant", "nonce", "issued_at", "caveats"} or root.get(
-            "type") != "unimem.capability.root.v1" or root["issuer"] != issuer or root["tenant"] != tenant:
+    if (
+        set(root) != {"type", "issuer", "tenant", "nonce", "issued_at", "caveats"}
+        or root.get("type") != "unimem.capability.root.v1"
+        or root["issuer"] != issuer
+        or root["tenant"] != tenant
+    ):
         raise PermissionError("UniMem capability issuer or tenant binding rejected")
     issued, stamp = moment(root["issued_at"]), moment(now)
     root_policy = policy(root["caveats"])
@@ -182,9 +215,12 @@ def verify(token: Mapping[str, Any], *, issuer: str, tenant: str, algorithm: str
             holder = holder_key(parent["audience"])
             if algorithm == "hmac-sha256":
                 _verify(algorithm, bytes.fromhex(links[index - 1]["signature"]), data, node["signature"])
-                _verify(algorithm, holder, _bytes("unimem.capability.parent-holder.v1",
-                                                {"record": record, "signature": node["signature"]}),
-                        node["authorization"])
+                _verify(
+                    algorithm,
+                    holder,
+                    _bytes("unimem.capability.parent-holder.v1", {"record": record, "signature": node["signature"]}),
+                    node["authorization"],
+                )
             else:
                 if node["authorization"] != "":
                     raise ValueError("UniMem Ed25519 link has an unexpected local authorization")
@@ -193,36 +229,81 @@ def verify(token: Mapping[str, Any], *, issuer: str, tenant: str, algorithm: str
         if chain_id in revoked:
             raise PermissionError("UniMem capability chain was revoked")
         chain_ids.append(chain_id)
-    return {"tenant": tenant, "issuer": issuer, "caveats": policy(links[-1]["record"]["caveats"]),
-            "chain_ids": chain_ids, "chain_digest": fp.digest(dict(token))}
+    return {
+        "tenant": tenant,
+        "issuer": issuer,
+        "caveats": policy(links[-1]["record"]["caveats"]),
+        "chain_ids": chain_ids,
+        "chain_digest": fp.digest(dict(token)),
+    }
 
 
-def permits(caveats: Mapping[str, Any], *, namespace: str, operation: str, memory_class: str,
-            purpose: str, labels: Sequence[str]) -> bool:
+def permits(
+    caveats: Mapping[str, Any],
+    *,
+    namespace: str,
+    operation: str,
+    memory_class: str,
+    purpose: str,
+    labels: Sequence[str],
+) -> bool:
     rules = policy(caveats)
-    return bool(namespace in rules["namespaces"] and operation in rules["operations"]
-                and memory_class in rules["classes"] and purpose in rules["purposes"]
-                and set(labels) <= set(rules["labels"]))
+    return bool(
+        namespace in rules["namespaces"]
+        and operation in rules["operations"]
+        and memory_class in rules["classes"]
+        and purpose in rules["purposes"]
+        and set(labels) <= set(rules["labels"])
+    )
 
 
 def request_digest(method: str, target: str, raw: bytes, *, purpose: str) -> str:
-    return fp.digest({"method": _label(method), "target": fp.text(target, "request target", 8192),
-                      "body_sha256": hashlib.sha256(raw).hexdigest(), "purpose": _label(purpose)})
+    return fp.digest(
+        {
+            "method": _label(method),
+            "target": fp.text(target, "request target", 8192),
+            "body_sha256": hashlib.sha256(raw).hexdigest(),
+            "purpose": _label(purpose),
+        }
+    )
 
 
-def prove(token: Mapping[str, Any], *, key: bytes, algorithm: str, audience: str, tenant: str,
-          request_digest: str, nonce: str, now: str) -> dict[str, Any]:
+def prove(
+    token: Mapping[str, Any],
+    *,
+    key: bytes,
+    algorithm: str,
+    audience: str,
+    tenant: str,
+    request_digest: str,
+    nonce: str,
+    now: str,
+) -> dict[str, Any]:
     _token(token)
     issued = moment(now)
-    record = {"type": "unimem.capability.possession.v1", "chain_digest": fp.digest(dict(token)),
-              "audience": _label(audience), "tenant": _label(tenant), "request_digest": _label(request_digest),
-              "nonce": _label(nonce), "issued_at": issued.isoformat(),
-              "expires_at": (issued + timedelta(seconds=30)).isoformat()}
+    record = {
+        "type": "unimem.capability.possession.v1",
+        "chain_digest": fp.digest(dict(token)),
+        "audience": _label(audience),
+        "tenant": _label(tenant),
+        "request_digest": _label(request_digest),
+        "nonce": _label(nonce),
+        "issued_at": issued.isoformat(),
+        "expires_at": (issued + timedelta(seconds=30)).isoformat(),
+    }
     return {"record": record, "signature": _sign(algorithm, key, _bytes("unimem.capability.possession.v1", record))}
 
 
-def verify_proof(token: Mapping[str, Any], verified: Mapping[str, Any], proof: Mapping[str, Any], *,
-                 key: bytes, algorithm: str, request_digest: str, now: str) -> str:
+def verify_proof(
+    token: Mapping[str, Any],
+    verified: Mapping[str, Any],
+    proof: Mapping[str, Any],
+    *,
+    key: bytes,
+    algorithm: str,
+    request_digest: str,
+    now: str,
+) -> str:
     if not isinstance(proof, Mapping) or set(proof) != {"record", "signature"}:
         raise ValueError("UniMem invalid possession proof")
     record = proof["record"]
@@ -230,36 +311,75 @@ def verify_proof(token: Mapping[str, Any], verified: Mapping[str, Any], proof: M
     if not isinstance(record, dict) or set(record) != fields or len(fp.wire(dict(proof))) > 4096:
         raise ValueError("UniMem invalid possession proof fields")
     issued, expiry, stamp = moment(record["issued_at"]), moment(record["expires_at"]), moment(now)
-    if (record["type"] != "unimem.capability.possession.v1" or not issued <= stamp < expiry
-            or expiry > issued + timedelta(seconds=30) or record["chain_digest"] != fp.digest(dict(token))
-            or record["audience"] != verified["caveats"]["audience"] or record["tenant"] != verified["tenant"]
-            or record["request_digest"] != request_digest):
+    if (
+        record["type"] != "unimem.capability.possession.v1"
+        or not issued <= stamp < expiry
+        or expiry > issued + timedelta(seconds=30)
+        or record["chain_digest"] != fp.digest(dict(token))
+        or record["audience"] != verified["caveats"]["audience"]
+        or record["tenant"] != verified["tenant"]
+        or record["request_digest"] != request_digest
+    ):
         raise PermissionError("UniMem possession proof binding or freshness rejected")
     _verify(algorithm, key, _bytes("unimem.capability.possession.v1", record), proof["signature"])
     return _label(record["nonce"])
 
 
-def headers(token: Mapping[str, Any], *, key: bytes, holder_algorithm: str, method: str, target: str,
-            raw: bytes, purpose: str, nonce: str, now: str) -> dict[str, str]:
+def headers(
+    token: Mapping[str, Any],
+    *,
+    key: bytes,
+    holder_algorithm: str,
+    method: str,
+    target: str,
+    raw: bytes,
+    purpose: str,
+    nonce: str,
+    now: str,
+) -> dict[str, str]:
     links = _token(token)
-    proof = prove(token, key=key, algorithm=holder_algorithm, audience=links[-1]["record"]["caveats"]["audience"],
-                  tenant=links[0]["record"]["tenant"],
-                  request_digest=request_digest(method, target, raw, purpose=purpose),
-                  nonce=nonce, now=now)
-    return {"X-UniMem-Capability": base64.urlsafe_b64encode(fp.wire(dict(token))).decode().rstrip("="),
-            "X-UniMem-Capability-Proof": base64.urlsafe_b64encode(fp.wire(proof)).decode().rstrip("="),
-            "X-UniMem-Purpose": purpose}
+    proof = prove(
+        token,
+        key=key,
+        algorithm=holder_algorithm,
+        audience=links[-1]["record"]["caveats"]["audience"],
+        tenant=links[0]["record"]["tenant"],
+        request_digest=request_digest(method, target, raw, purpose=purpose),
+        nonce=nonce,
+        now=now,
+    )
+    return {
+        "X-UniMem-Capability": base64.urlsafe_b64encode(fp.wire(dict(token))).decode().rstrip("="),
+        "X-UniMem-Capability-Proof": base64.urlsafe_b64encode(fp.wire(proof)).decode().rstrip("="),
+        "X-UniMem-Purpose": purpose,
+    }
 
 
 def header_parameters() -> list[dict[str, Any]]:
     """Optional transport metadata; primary authentication remains required."""
-    return [{"in": "header", "name": name, "required": False, "description": description,
-             "schema": {"type": "string", "minLength": 1, "maxLength": bound}} for name, bound, description in (
-        ("X-UniMem-Capability", 98304,
-         "Base64url UniMem attenuating token. Enrolled delegates must supply all three UniMem headers in addition "
-         "to primary authentication; an unconfigured server rejects delegated requests."),
-        ("X-UniMem-Capability-Proof", 8192,
-         "Base64url holder signature bound to the token, tenant, exact method/target/body, purpose and fresh nonce. "
-         "Regenerate for every HTTP request; proofs expire after at most 30 seconds."),
-        ("X-UniMem-Purpose", 256, "Declared purpose, authorized by the leaf capability and signed by the holder."),
-    )]
+    return [
+        {
+            "in": "header",
+            "name": name,
+            "required": False,
+            "description": description,
+            "schema": {"type": "string", "minLength": 1, "maxLength": bound},
+        }
+        for name, bound, description in (
+            (
+                "X-UniMem-Capability",
+                98304,
+                "Base64url UniMem attenuating token. Enrolled delegates must supply all three UniMem headers "
+                "in addition "
+                "to primary authentication; an unconfigured server rejects delegated requests.",
+            ),
+            (
+                "X-UniMem-Capability-Proof",
+                8192,
+                "Base64url holder signature bound to the token, tenant, exact method/target/body, purpose and fresh "
+                "nonce. "
+                "Regenerate for every HTTP request; proofs expire after at most 30 seconds.",
+            ),
+            ("X-UniMem-Purpose", 256, "Declared purpose, authorized by the leaf capability and signed by the holder."),
+        )
+    ]

@@ -36,13 +36,16 @@ def _client(app: Starlette) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
-@pytest.mark.parametrize("body", [
-    b'{"x":1,"x":2}',
-    b'{"outer":{"x":1,"x":2}}',
-    b'{"x":NaN}',
-    b'{"x":Infinity}',
-    b'{"x":-Infinity}',
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"x":1,"x":2}',
+        b'{"outer":{"x":1,"x":2}}',
+        b'{"x":NaN}',
+        b'{"x":Infinity}',
+        b'{"x":-Infinity}',
+    ],
+)
 async def test_rest_json_reader_rejects_ambiguous_and_non_finite_json(body):
     delivered = False
 
@@ -64,32 +67,44 @@ async def test_memory_runtime_turn_scopes_and_permission_requirements(session_fa
     _org, raw_key = await _org_with_key(session_factory)
     async with _client(_app(session_factory, config)) as client:
         headers = _key(raw_key)
-        response = await client.post("/v1/memory/turn", headers=headers, json={
-            "session_id": "s", "query": "parser", "text": "I prefer concise answers.",
-            "context": ["agent:a", "user:u"],
-        })
+        response = await client.post(
+            "/v1/memory/turn",
+            headers=headers,
+            json={
+                "session_id": "s",
+                "query": "parser",
+                "text": "I prefer concise answers.",
+                "context": ["agent:a", "user:u"],
+            },
+        )
         assert response.status_code == 200
         assert response.json()["profile"]["dynamic"][0]["text"] == "I prefer concise answers"
-        response = await client.post("/v1/memory/profile", headers=headers,
-                                     json={"context": ["agent:b", "user:u"]})
+        response = await client.post("/v1/memory/profile", headers=headers, json={"context": ["agent:b", "user:u"]})
         assert not response.json()["dynamic"]
-        response = await client.post("/v1/memory/record-put", headers=headers, json={
-            "record": MemoryRecord("mine", "fact", 1, {"text": "Parser validates fields."}).to_dict(),
-            "context": ["agent:a"],
-        })
+        response = await client.post(
+            "/v1/memory/record-put",
+            headers=headers,
+            json={
+                "record": MemoryRecord("mine", "fact", 1, {"text": "Parser validates fields."}).to_dict(),
+                "context": ["agent:a"],
+            },
+        )
         assert response.status_code == 200
         assert response.json()["record"]["scope"]["agent"] == "a"
-        response = await client.post("/v1/memory/record-forget", headers=headers,
-                                     json={"id": "mine", "reason": "erase", "context": ["agent:b"]})
+        response = await client.post(
+            "/v1/memory/record-forget", headers=headers, json={"id": "mine", "reason": "erase", "context": ["agent:b"]}
+        )
         assert response.status_code == 403
-        response = await client.post("/v1/memory/record-forget", headers=headers,
-                                     json={"id": "mine", "reason": "erase", "context": ["agent:a"]})
+        response = await client.post(
+            "/v1/memory/record-forget", headers=headers, json={"id": "mine", "reason": "erase", "context": ["agent:a"]}
+        )
         assert response.status_code == 200
 
     _org, write_key = await _org_with_key(session_factory, scopes=[scopes.SCOPE_WRITE])
     async with _client(_app(session_factory, config)) as client:
-        response = await client.post("/v1/memory/turn", headers=_key(write_key),
-                                     json={"session_id": "s", "query": "parser"})
+        response = await client.post(
+            "/v1/memory/turn", headers=_key(write_key), json={"session_id": "s", "query": "parser"}
+        )
         assert response.status_code == 403
 
 
@@ -112,8 +127,11 @@ async def test_memory_erasure_rechecks_scope_after_identifier_reuse(session_fact
 
     monkeypatch.setattr(PostgresJournal, "forget", concurrent_reuse)
     async with _client(_app(session_factory, config)) as client:
-        response = await client.post("/v1/memory/record-forget", headers=_key(raw_key), json={
-            "id": "reused", "reason": "Erase original.", "context": ["agent:a"]})
+        response = await client.post(
+            "/v1/memory/record-forget",
+            headers=_key(raw_key),
+            json={"id": "reused", "reason": "Erase original.", "context": ["agent:a"]},
+        )
         assert response.status_code == 403, response.text
     async with session_scope(session_factory, org_id=org) as session:
         row = await session.get(MemoryRecordProjection, (org, "reused"))
@@ -127,11 +145,22 @@ async def test_memory_erasure_cannot_cascade_from_an_unowned_missing_identifier(
 
     org, raw_key = await _org_with_key(session_factory)
     journal = PostgresJournal(session_factory, org)
-    await journal.put(MemoryRecord("orphan", "observation", 1, {"text": "Forward reference."},
-                                   scope={"agent": "b"}, relations={"derives": ["missing"]}))
+    await journal.put(
+        MemoryRecord(
+            "orphan",
+            "observation",
+            1,
+            {"text": "Forward reference."},
+            scope={"agent": "b"},
+            relations={"derives": ["missing"]},
+        )
+    )
     async with _client(_app(session_factory, config)) as client:
-        response = await client.post("/v1/memory/record-forget", headers=_key(raw_key), json={
-            "id": "missing", "reason": "Unowned target.", "context": ["agent:a"]})
+        response = await client.post(
+            "/v1/memory/record-forget",
+            headers=_key(raw_key),
+            json={"id": "missing", "reason": "Unowned target.", "context": ["agent:a"]},
+        )
         assert response.status_code == 400, response.text
     async with session_scope(session_factory, org_id=org) as session:
         assert await session.get(MemoryRecordProjection, (org, "orphan")) is not None
@@ -162,9 +191,7 @@ async def test_record_expiration_reaper_requires_admin_and_stays_tenant_bound(se
         )
 
     async with _client(_app(session_factory, config)) as client:
-        response = await client.post(
-            "/v1/memory/record-reap-due", headers=_key(owner_key), json={"limit": 1}
-        )
+        response = await client.post("/v1/memory/record-reap-due", headers=_key(owner_key), json={"limit": 1})
         assert response.status_code == 200
         assert response.json()["results"][0]["deleted"] == ["owned-expired"]
         denied = await client.post("/v1/memory/record-reap-due", headers=_key(reader_key), json={})
@@ -208,7 +235,10 @@ async def test_oidc_rest_auth_is_role_scoped_without_an_api_key(monkeypatch):
     async def verify(_session, _token, provider, *, jwks_cache=None):
         assert provider.issuer == config.oidc_issuer
         return AuthenticatedUser(
-            id="user-1", org_id="org-1", role="viewer", email="reader@example.test",
+            id="user-1",
+            org_id="org-1",
+            role="viewer",
+            email="reader@example.test",
         )
 
     monkeypatch.setattr(rest, "session_scope", unused_session_scope)
@@ -226,13 +256,16 @@ async def test_oidc_rest_auth_is_role_scoped_without_an_api_key(monkeypatch):
 
 
 async def test_linked_oidc_bearer_authenticates_rest_with_the_users_role_scopes(
-    session_factory, config, monkeypatch,
+    session_factory,
+    config,
+    monkeypatch,
 ):
     from hub.auth import AuthenticatedUser
 
     org_id, _raw_key = await _org_with_key(session_factory, name="OIDC REST")
     provider = IdentityProvider(
-        issuer="https://login.example.test/", audience="https://hub.example.test/mcp",
+        issuer="https://login.example.test/",
+        audience="https://hub.example.test/mcp",
         jwks={"keys": []},
     )
     config = replace(
@@ -251,9 +284,15 @@ async def test_linked_oidc_bearer_authenticates_rest_with_the_users_role_scopes(
     async with _client(_app(session_factory, config)) as client:
         headers = {"Authorization": "Bearer header.payload.signature"}
         read = await client.post("/api/v1/traces/search", headers=headers, json={"q": "parser"})
-        write = await client.post("/api/v1/traces", headers=headers, json={
-            "title": "trace", "context_text": "context", "solution_text": "solution",
-        })
+        write = await client.post(
+            "/api/v1/traces",
+            headers=headers,
+            json={
+                "title": "trace",
+                "context_text": "context",
+                "solution_text": "solution",
+            },
+        )
     assert read.status_code == 200
     assert write.status_code == 403
 
@@ -264,9 +303,7 @@ class TestAbsentUnlessEnabled:
             for path in ("/api/v1/traces", "/api/v1/traces/search", "/api/v1/keys"):
                 assert (await client.post(path, json={})).status_code == 404, path
 
-    async def test_key_provisioning_is_absent_when_signup_is_disabled(
-        self, session_factory, config
-    ):
+    async def test_key_provisioning_is_absent_when_signup_is_disabled(self, session_factory, config):
         app = _app(session_factory, config, signup_enabled=False)
         async with _client(app) as client:
             provision = await client.post("/api/v1/keys", json={"display_name": "x"})
@@ -276,14 +313,11 @@ class TestAbsentUnlessEnabled:
 
 
 class TestKeyProvisioning:
-    async def test_it_creates_an_org_and_returns_a_key_that_actually_works(
-        self, session_factory, config
-    ):
+    async def test_it_creates_an_org_and_returns_a_key_that_actually_works(self, session_factory, config):
         async with _client(_app(session_factory, config)) as client:
             provision = await client.post(
                 "/api/v1/keys",
-                json={"email": "agent-ab12cd34@unimem.auto",
-                      "display_name": "Claude Code Agent"},
+                json={"email": "agent-ab12cd34@unimem.auto", "display_name": "Claude Code Agent"},
             )
             assert provision.status_code == 201
             body = provision.json()
@@ -291,28 +325,26 @@ class TestKeyProvisioning:
             assert body["org_id"]
 
             search = await client.post(
-                "/api/v1/traces/search", json={"q": "anything"}, headers=_key(body["api_key"]),
+                "/api/v1/traces/search",
+                json={"q": "anything"},
+                headers=_key(body["api_key"]),
             )
         assert search.status_code == 200
 
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, body["org_id"])
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.org_id == body["org_id"])
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.org_id == body["org_id"])))
+                .scalars()
+                .first()
+            )
         assert org.name == "Claude Code Agent"
         assert entry is not None
         assert entry.actor == rest.ACTOR_REST_SIGNUP
 
-    async def test_the_org_is_named_from_the_email_when_no_display_name_is_sent(
-        self, session_factory, config
-    ):
+    async def test_the_org_is_named_from_the_email_when_no_display_name_is_sent(self, session_factory, config):
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/keys", json={"email": "agent-99ff@unimem.auto"}
-            )
+            response = await client.post("/api/v1/keys", json={"email": "agent-99ff@unimem.auto"})
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, response.json()["org_id"])
         assert org.name == "agent-99ff"
@@ -345,25 +377,21 @@ class TestAuthentication:
     async def test_an_unknown_key_is_refused(self, session_factory, config):
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_not_a_real_key"),
+                "/api/v1/traces/search",
+                json={"q": "x"},
+                headers=_key("unimem_not_a_real_key"),
             )
         assert response.status_code == 401
 
-    async def test_the_refusal_does_not_say_which_failure_mode_it_was(
-        self, session_factory, config
-    ):
+    async def test_the_refusal_does_not_say_which_failure_mode_it_was(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         async with session_scope(session_factory) as session:
-            key_row = (
-                await session.execute(select(auth.ApiKey).where(auth.ApiKey.org_id == org_id))
-            ).scalars().one()
+            key_row = (await session.execute(select(auth.ApiKey).where(auth.ApiKey.org_id == org_id))).scalars().one()
             await auth.revoke_api_key(session, key_row.id)
 
         async with _client(_app(session_factory, config)) as client:
-            revoked = await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key(raw_key))
-            unknown = await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_nope"))
+            revoked = await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key(raw_key))
+            unknown = await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_nope"))
         assert revoked.status_code == unknown.status_code == 401
         assert revoked.json() == unknown.json()
 
@@ -374,13 +402,11 @@ class TestAuthAttemptBudget:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, tight)) as client:
             for _ in range(5):
-                response = await client.post(
-                    "/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
+                response = await client.post("/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
                 assert response.status_code == 200
             for _ in range(2):
                 await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_live_wrong"))
-            refused = await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_live_wrong"))
+            refused = await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key("unimem_live_wrong"))
         assert refused.status_code == 429
 
 
@@ -390,11 +416,9 @@ class TestPerOrgRequestBudget:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, tight)) as client:
             for _ in range(3):
-                response = await client.post(
-                    "/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
+                response = await client.post("/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
                 assert response.status_code == 200
-            refused = await client.post(
-                "/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
+            refused = await client.post("/api/v1/traces/search", json={"q": "anything"}, headers=_key(raw_key))
         assert refused.status_code == 429
         assert int(refused.headers["Retry-After"]) >= 1
 
@@ -403,12 +427,9 @@ class TestPerOrgRequestBudget:
         _a, key_a = await _org_with_key(session_factory, name="A")
         _b, key_b = await _org_with_key(session_factory, name="B")
         async with _client(_app(session_factory, tight)) as client:
-            assert (await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key(key_a))).status_code == 200
-            assert (await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key(key_a))).status_code == 429
-            assert (await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key(key_b))).status_code == 200
+            assert (await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key(key_a))).status_code == 200
+            assert (await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key(key_a))).status_code == 429
+            assert (await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key(key_b))).status_code == 200
 
 
 class TestScopes:
@@ -426,15 +447,12 @@ class TestScopes:
     async def test_a_write_only_key_cannot_search(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory, scopes=["write"])
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces/search", json={"q": "x"}, headers=_key(raw_key))
+            response = await client.post("/api/v1/traces/search", json={"q": "x"}, headers=_key(raw_key))
         assert response.status_code == 403
 
 
 class TestContributing:
-    async def test_it_stores_a_real_trace_attributed_to_this_surface(
-        self, session_factory, config
-    ):
+    async def test_it_stores_a_real_trace_attributed_to_this_surface(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
@@ -453,10 +471,10 @@ class TestContributing:
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, trace_id)
             entry = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.target_id == trace_id)
-                )
-            ).scalars().first()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.target_id == trace_id)))
+                .scalars()
+                .first()
+            )
         assert trace.org_id == org_id
         assert trace.title == "Flaky asyncpg pool under load"
         assert sorted(trace.tags) == ["asyncpg", "pool"]
@@ -464,15 +482,12 @@ class TestContributing:
         assert entry is not None
         assert entry.actor == rest.ACTOR_REST_API
 
-    async def test_tags_are_accepted_as_a_comma_separated_string_too(
-        self, session_factory, config
-    ):
+    async def test_tags_are_accepted_as_a_comma_separated_string_too(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
                 "/api/v1/traces",
-                json={"title": "t", "context_text": "c", "solution_text": "s",
-                      "tags": "alpha, beta"},
+                json={"title": "t", "context_text": "c", "solution_text": "s", "tags": "alpha, beta"},
                 headers=_key(raw_key),
             )
         async with session_scope(session_factory) as session:
@@ -482,8 +497,7 @@ class TestContributing:
     async def test_a_missing_required_field_is_a_400_naming_it(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces", json={"title": "t"}, headers=_key(raw_key))
+            response = await client.post("/api/v1/traces", json={"title": "t"}, headers=_key(raw_key))
         assert response.status_code == 400
         detail = response.json()["detail"]
         assert "context_text" in detail and "solution_text" in detail
@@ -509,13 +523,16 @@ class TestContributing:
             )
         assert response.status_code == 400
 
-    @pytest.mark.parametrize("body", [
-        b"{not json at all",
-        b'{"title":"first","title":"second"}',
-        b'{"metadata_json":{"x":1,"x":2}}',
-        b'{"title":NaN}',
-        b'{"title":Infinity}',
-    ])
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b"{not json at all",
+            b'{"title":"first","title":"second"}',
+            b'{"metadata_json":{"x":1,"x":2}}',
+            b'{"title":NaN}',
+            b'{"title":Infinity}',
+        ],
+    )
     async def test_a_malformed_body_is_a_400_not_a_500(self, session_factory, config, body):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
@@ -529,8 +546,7 @@ class TestContributing:
     async def test_a_json_array_body_is_a_400_not_a_500(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces", json=["not", "an", "object"], headers=_key(raw_key))
+            response = await client.post("/api/v1/traces", json=["not", "an", "object"], headers=_key(raw_key))
         assert response.status_code == 400
 
     async def test_metadata_json_is_accepted_and_ignored(self, session_factory, config):
@@ -538,8 +554,12 @@ class TestContributing:
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
                 "/api/v1/traces",
-                json={"title": "t", "context_text": "c", "solution_text": "s",
-                      "metadata_json": {"pattern": "debug_loop", "minutes": 12}},
+                json={
+                    "title": "t",
+                    "context_text": "c",
+                    "solution_text": "s",
+                    "metadata_json": {"pattern": "debug_loop", "minutes": 12},
+                },
                 headers=_key(raw_key),
             )
         assert response.status_code == 201
@@ -548,19 +568,25 @@ class TestContributing:
 class TestSearching:
     async def _seed(self, session_factory, config, org_id, title="Postgres deadlock on upsert"):
         from hub import crud
+
         async with session_scope(session_factory) as session:
             return await crud.contribute_trace(
-                session, org_id, config, make_rate_limiter(config),
-                title=title, context_text="two writers, same row",
-                solution_text="ordered the writes", tags=["postgres"], agent_type="code",
+                session,
+                org_id,
+                config,
+                make_rate_limiter(config),
+                title=title,
+                context_text="two writers, same row",
+                solution_text="ordered the writes",
+                tags=["postgres"],
+                agent_type="code",
             )
 
     async def test_it_finds_this_orgs_trace(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         await self._seed(session_factory, config, org_id)
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces/search", json={"q": "deadlock"}, headers=_key(raw_key))
+            response = await client.post("/api/v1/traces/search", json={"q": "deadlock"}, headers=_key(raw_key))
         assert response.status_code == 200
         results = response.json()["results"]
         assert results
@@ -571,38 +597,32 @@ class TestSearching:
         _other_id, other_key = await _org_with_key(session_factory, name="Other")
         await self._seed(session_factory, config, owner_id)
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces/search", json={"q": "deadlock"}, headers=_key(other_key))
+            response = await client.post("/api/v1/traces/search", json={"q": "deadlock"}, headers=_key(other_key))
         assert response.status_code == 200
         assert response.json()["results"] == []
 
     async def test_a_missing_query_is_refused(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
-            response = await client.post(
-                "/api/v1/traces/search", json={}, headers=_key(raw_key))
+            response = await client.post("/api/v1/traces/search", json={}, headers=_key(raw_key))
         assert response.status_code == 400
 
-    async def test_an_absurd_limit_is_clamped_rather_than_rejected(
-        self, session_factory, config
-    ):
+    async def test_an_absurd_limit_is_clamped_rather_than_rejected(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         await self._seed(session_factory, config, org_id)
         async with _client(_app(session_factory, config)) as client:
             huge = await client.post(
-                "/api/v1/traces/search", json={"q": "deadlock", "limit": 10_000},
-                headers=_key(raw_key))
+                "/api/v1/traces/search", json={"q": "deadlock", "limit": 10_000}, headers=_key(raw_key)
+            )
             junk = await client.post(
-                "/api/v1/traces/search", json={"q": "deadlock", "limit": "lots"},
-                headers=_key(raw_key))
+                "/api/v1/traces/search", json={"q": "deadlock", "limit": "lots"}, headers=_key(raw_key)
+            )
         assert huge.status_code == 200 and huge.json()["results"]
         assert junk.status_code == 200 and junk.json()["results"]
 
 
 class TestThePluginsOwnRequestShapes:
-    async def test_search_returns_the_four_fields_format_results_reads(
-        self, session_factory, config
-    ):
+    async def test_search_returns_the_four_fields_format_results_reads(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         await TestSearching()._seed(session_factory, config, org_id)
         async with _client(_app(session_factory, config)) as client:
@@ -615,41 +635,32 @@ class TestThePluginsOwnRequestShapes:
         for field in ("id", "title", "solution_text", "contributor_name"):
             assert field in result, field
 
-    async def test_search_accepts_the_context_object_the_plugin_sends(
-        self, session_factory, config
-    ):
+    async def test_search_accepts_the_context_object_the_plugin_sends(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         await TestSearching()._seed(session_factory, config, org_id)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
                 "/api/v1/traces/search",
-                json={"q": "deadlock", "limit": 3,
-                      "context": {"cwd": "/repo", "tool": "Bash"}},
+                json={"q": "deadlock", "limit": 3, "context": {"cwd": "/repo", "tool": "Bash"}},
                 headers=_key(raw_key),
             )
         assert response.status_code == 200
         assert response.json()["results"]
 
-    async def test_provisioning_returns_the_api_key_field_the_plugin_stores(
-        self, session_factory, config
-    ):
+    async def test_provisioning_returns_the_api_key_field_the_plugin_stores(self, session_factory, config):
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
                 "/api/v1/keys",
-                json={"email": "agent-ab12cd34@unimem.auto",
-                      "display_name": "Claude Code Agent"},
+                json={"email": "agent-ab12cd34@unimem.auto", "display_name": "Claude Code Agent"},
             )
         assert "api_key" in response.json()
 
-    async def test_contribute_returns_an_id_the_receipt_can_print(
-        self, session_factory, config
-    ):
+    async def test_contribute_returns_an_id_the_receipt_can_print(self, session_factory, config):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
                 "/api/v1/traces",
-                json={"title": "t", "context_text": "c", "solution_text": "s",
-                      "tags": ["x"], "metadata_json": {}},
+                json={"title": "t", "context_text": "c", "solution_text": "s", "tags": ["x"], "metadata_json": {}},
                 headers=_key(raw_key),
             )
         assert response.json()["id"]
@@ -660,13 +671,11 @@ class TestTelemetry:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             for beacon, payload in (
-                ("install", {"platform": "Claude Code", "skill_version": "1.0",
-                             "install_source": "plugin"}),
+                ("install", {"platform": "Claude Code", "skill_version": "1.0", "install_source": "plugin"}),
                 ("ping", {}),
                 ("triggers", {"triggers": ["domain_entry"]}),
             ):
-                response = await client.post(
-                    f"/api/v1/telemetry/{beacon}", json=payload, headers=_key(raw_key))
+                response = await client.post(f"/api/v1/telemetry/{beacon}", json=payload, headers=_key(raw_key))
                 assert response.status_code == 204, beacon
 
     async def test_they_still_require_a_valid_key(self, session_factory, config):

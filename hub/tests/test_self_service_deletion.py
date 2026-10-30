@@ -32,8 +32,15 @@ class TestDeleteTrace:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             trace = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
         async with session_scope(session_factory) as session:
             deleted = await crud.delete_trace(session, orgs["a"], trace["id"])
@@ -41,14 +48,19 @@ class TestDeleteTrace:
         async with session_scope(session_factory) as session:
             assert await session.get(Trace, trace["id"]) is None
 
-    async def test_another_orgs_trace_is_reported_not_found_not_deleted(
-        self, session_factory, config, orgs
-    ):
+    async def test_another_orgs_trace_is_reported_not_found_not_deleted(self, session_factory, config, orgs):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             trace = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
         async with session_scope(session_factory) as session:
             deleted = await crud.delete_trace(session, orgs["b"], trace["id"])
@@ -65,13 +77,25 @@ class TestDeleteTrace:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             original = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="MARKER-ORIGINAL", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="MARKER-ORIGINAL",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
         async with session_scope(session_factory) as session:
             amended = await amend_trace(
-                session, orgs["a"], original["id"], config, rate_limiter,
-                title="MARKER-AMENDED", actor="test",
+                session,
+                orgs["a"],
+                original["id"],
+                config,
+                rate_limiter,
+                title="MARKER-AMENDED",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             await crud.delete_trace(session, orgs["a"], original["id"])
@@ -83,12 +107,25 @@ class TestDeleteTrace:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             original = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
         async with session_scope(session_factory) as session:
             amended = await amend_trace(
-                session, orgs["a"], original["id"], config, rate_limiter, title="amended", actor="test",
+                session,
+                orgs["a"],
+                original["id"],
+                config,
+                rate_limiter,
+                title="amended",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             await crud.delete_trace(session, orgs["a"], amended["id"])
@@ -100,40 +137,69 @@ class TestDeleteTrace:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             original = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="original", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="original",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
             amended = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="amended", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="amended",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
-            session.add(TraceRelation(
-                trace_id=original["id"], related_trace_id=amended["id"], relationship_type="SUPERSEDED_BY",
-            ))
+            session.add(
+                TraceRelation(
+                    trace_id=original["id"],
+                    related_trace_id=amended["id"],
+                    relationship_type="SUPERSEDED_BY",
+                )
+            )
 
         async with session_scope(session_factory) as session:
             await crud.delete_trace(session, orgs["a"], amended["id"])
 
         async with session_scope(session_factory) as session:
             dangling = (
-                await session.execute(select(TraceRelation).where(TraceRelation.related_trace_id == amended["id"]))
-            ).scalars().all()
+                (await session.execute(select(TraceRelation).where(TraceRelation.related_trace_id == amended["id"])))
+                .scalars()
+                .all()
+            )
         assert dangling == []
 
     async def test_is_audited(self, session_factory, config, orgs):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             trace = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
         async with session_scope(session_factory) as session:
             await crud.delete_trace(session, orgs["a"], trace["id"], actor="api-key:unimem_live_abcd")
 
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "delete_trace"))
-            ).scalars().all()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "delete_trace")))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         assert rows[0].actor == "api-key:unimem_live_abcd"
         assert rows[0].org_id == orgs["a"]
@@ -145,16 +211,34 @@ class TestDeleteTrace:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             mine = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="mine", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="mine",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
             theirs = await contribute_trace(
-                session, orgs["b"], config, rate_limiter,
-                title="theirs", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["b"],
+                config,
+                rate_limiter,
+                title="theirs",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
-            session.add(TraceRelation(
-                trace_id=theirs["id"], related_trace_id=theirs["id"], relationship_type="SUPERSEDED_BY",
-            ))
+            session.add(
+                TraceRelation(
+                    trace_id=theirs["id"],
+                    related_trace_id=theirs["id"],
+                    relationship_type="SUPERSEDED_BY",
+                )
+            )
 
         async def _fake_chain(session, trace_id):
             return {mine["id"], theirs["id"]}
@@ -169,10 +253,10 @@ class TestDeleteTrace:
             assert await session.get(Trace, mine["id"]) is None
             assert await session.get(Trace, theirs["id"]) is not None
             surviving = (
-                await session.execute(
-                    select(TraceRelation).where(TraceRelation.related_trace_id == theirs["id"])
-                )
-            ).scalars().all()
+                (await session.execute(select(TraceRelation).where(TraceRelation.related_trace_id == theirs["id"])))
+                .scalars()
+                .all()
+            )
             assert len(surviving) == 1, "another org's TraceRelation row must survive too"
 
 
@@ -201,16 +285,12 @@ class TestRequestOrgDeletion:
             first = await crud.request_org_deletion(session, orgs["a"])
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["a"])
-            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(
-                seconds=crud.DELETION_GRACE_SECONDS + 10
-            )
+            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(seconds=crud.DELETION_GRACE_SECONDS + 10)
         async with session_scope(session_factory) as session:
             await crud.request_org_deletion(session, orgs["a"])
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["a"])
-            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(
-                seconds=crud.DELETION_GRACE_SECONDS + 10
-            )
+            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(seconds=crud.DELETION_GRACE_SECONDS + 10)
         with pytest.raises(crud.DeletionNotReady):
             async with session_scope(session_factory) as session:
                 await crud.confirm_org_deletion(session, orgs["a"], first["confirmation_token"])
@@ -220,10 +300,10 @@ class TestRequestOrgDeletion:
             await crud.request_org_deletion(session, orgs["a"], actor="api-key:unimem_live_abcd")
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "request_org_deletion")
-                )
-            ).scalars().all()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "request_org_deletion")))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         assert rows[0].org_id == orgs["a"]
 
@@ -251,9 +331,7 @@ class TestCancelOrgDeletion:
             result = await crud.request_org_deletion(session, orgs["a"])
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["a"])
-            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(
-                seconds=crud.DELETION_GRACE_SECONDS + 10
-            )
+            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(seconds=crud.DELETION_GRACE_SECONDS + 10)
         async with session_scope(session_factory) as session:
             await crud.cancel_org_deletion(session, orgs["a"])
         with pytest.raises(crud.DeletionNotReady):
@@ -269,9 +347,7 @@ class TestConfirmOrgDeletion:
             result = await crud.request_org_deletion(session, org_id)
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
-            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(
-                seconds=crud.DELETION_GRACE_SECONDS + 10
-            )
+            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(seconds=crud.DELETION_GRACE_SECONDS + 10)
         return result["confirmation_token"]
 
     async def test_no_pending_request_raises(self, session_factory, orgs):
@@ -309,12 +385,12 @@ class TestConfirmOrgDeletion:
         with pytest.raises(ValueError):
             async with session_scope(session_factory) as session:
                 await crud.confirm_org_deletion(
-                    session, "00000000-0000-0000-0000-000000000000", "whatever",
+                    session,
+                    "00000000-0000-0000-0000-000000000000",
+                    "whatever",
                 )
 
-    async def test_the_correct_token_after_the_grace_period_deletes_the_org(
-        self, session_factory, orgs
-    ):
+    async def test_the_correct_token_after_the_grace_period_deletes_the_org(self, session_factory, orgs):
         token = await self._requested_and_ready(session_factory, orgs["a"])
         async with session_scope(session_factory) as session:
             result = await crud.confirm_org_deletion(session, orgs["a"], token)
@@ -322,14 +398,19 @@ class TestConfirmOrgDeletion:
         async with session_scope(session_factory) as session:
             assert await session.get(Organization, orgs["a"]) is None
 
-    async def test_deletion_cascades_to_traces_votes_and_api_keys(
-        self, session_factory, config, orgs
-    ):
+    async def test_deletion_cascades_to_traces_votes_and_api_keys(self, session_factory, config, orgs):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             trace = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
             session.add(Vote(trace_id=trace["id"], org_id=orgs["a"], vote_type="up"))
             session.add(ApiKey(org_id=orgs["a"], key_prefix="unimem_live_x", key_hash="h"))
@@ -341,9 +422,7 @@ class TestConfirmOrgDeletion:
         async with session_scope(session_factory) as session:
             assert await session.get(Trace, trace["id"]) is None
             n_votes = await session.scalar(select(func.count()).select_from(Vote))
-            n_keys = await session.scalar(
-                select(func.count()).select_from(ApiKey).where(ApiKey.org_id == orgs["a"])
-            )
+            n_keys = await session.scalar(select(func.count()).select_from(ApiKey).where(ApiKey.org_id == orgs["a"]))
         assert n_votes == 0
         assert n_keys == 0
 
@@ -351,16 +430,34 @@ class TestConfirmOrgDeletion:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             original = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="original", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="original",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
             amended = await contribute_trace(
-                session, orgs["a"], config, rate_limiter,
-                title="amended", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["a"],
+                config,
+                rate_limiter,
+                title="amended",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
-            session.add(TraceRelation(
-                trace_id=original["id"], related_trace_id=amended["id"], relationship_type="SUPERSEDED_BY",
-            ))
+            session.add(
+                TraceRelation(
+                    trace_id=original["id"],
+                    related_trace_id=amended["id"],
+                    relationship_type="SUPERSEDED_BY",
+                )
+            )
 
         token = await self._requested_and_ready(session_factory, orgs["a"])
         async with session_scope(session_factory) as session:
@@ -368,16 +465,25 @@ class TestConfirmOrgDeletion:
 
         async with session_scope(session_factory) as session:
             dangling = (
-                await session.execute(select(TraceRelation).where(TraceRelation.related_trace_id == amended["id"]))
-            ).scalars().all()
+                (await session.execute(select(TraceRelation).where(TraceRelation.related_trace_id == amended["id"])))
+                .scalars()
+                .all()
+            )
         assert dangling == []
 
     async def test_another_orgs_data_is_untouched(self, session_factory, config, orgs):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             other_trace = await contribute_trace(
-                session, orgs["b"], config, rate_limiter,
-                title="t", context_text="c", solution_text="s", tags=[], agent_type="code",
+                session,
+                orgs["b"],
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
             )
 
         token = await self._requested_and_ready(session_factory, orgs["a"])
@@ -394,10 +500,10 @@ class TestConfirmOrgDeletion:
             await crud.confirm_org_deletion(session, orgs["a"], token, actor="api-key:unimem_live_abcd")
         async with session_scope(session_factory) as session:
             rows = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.action == "confirm_org_deletion")
-                )
-            ).scalars().all()
+                (await session.execute(select(AuditLogEntry).where(AuditLogEntry.action == "confirm_org_deletion")))
+                .scalars()
+                .all()
+            )
         assert len(rows) == 1
         assert rows[0].org_id == orgs["a"]
         assert "irreversible" in rows[0].summary
@@ -409,9 +515,7 @@ class TestConfirmOrgDeletionCancelsALiveStripeSubscriptionFirst:
             result = await crud.request_org_deletion(session, org_id)
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
-            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(
-                seconds=crud.DELETION_GRACE_SECONDS + 10
-            )
+            org.deletion_requested_at = datetime.now(timezone.utc) - timedelta(seconds=crud.DELETION_GRACE_SECONDS + 10)
         return result["confirmation_token"]
 
     async def test_no_subscription_never_calls_stripe(self, session_factory, orgs, monkeypatch):
@@ -424,9 +528,7 @@ class TestConfirmOrgDeletionCancelsALiveStripeSubscriptionFirst:
             result = await crud.confirm_org_deletion(session, orgs["a"], token)
         assert result is True
 
-    async def test_a_live_subscription_is_cancelled_before_the_org_is_deleted(
-        self, session_factory, orgs, monkeypatch
-    ):
+    async def test_a_live_subscription_is_cancelled_before_the_org_is_deleted(self, session_factory, orgs, monkeypatch):
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["a"])
             org.stripe_customer_id = "cus_1"
@@ -446,9 +548,7 @@ class TestConfirmOrgDeletionCancelsALiveStripeSubscriptionFirst:
         async with session_scope(session_factory) as session:
             assert await session.get(Organization, orgs["a"]) is None
 
-    async def test_a_failed_cancellation_blocks_deletion_entirely(
-        self, session_factory, orgs, monkeypatch
-    ):
+    async def test_a_failed_cancellation_blocks_deletion_entirely(self, session_factory, orgs, monkeypatch):
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["a"])
             org.stripe_customer_id = "cus_1"

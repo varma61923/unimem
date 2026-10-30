@@ -81,6 +81,7 @@ def _verify_argon2(secret: str, stored_hash: str) -> bool:
     except (VerifyMismatchError, InvalidHashError, Exception):
         return False
 
+
 _LAST_USED_AT_UPDATE_INTERVAL = timedelta(minutes=5)
 
 # Far enough out for any real rotation policy, and well inside datetime's
@@ -123,27 +124,29 @@ async def issue_api_key(
 
     raw_key = generate_raw_key()
     if not _has_argon2 or PasswordHasher is None or _hasher is None:
-        raise RuntimeError(
-            "argon2-cffi is required for API key issuance. Install with: pip install argon2-cffi"
-        )
+        raise RuntimeError("argon2-cffi is required for API key issuance. Install with: pip install argon2-cffi")
     key_hash = await asyncio.to_thread(_hasher.hash, raw_key)
     api_key = ApiKey(
-        org_id=org_id, key_prefix=raw_key[:_PREFIX_LEN], key_hash=key_hash,
-        key_hmac=_key_hmac(raw_key), expires_at=expires_at,
+        org_id=org_id,
+        key_prefix=raw_key[:_PREFIX_LEN],
+        key_hash=key_hash,
+        key_hmac=_key_hmac(raw_key),
+        expires_at=expires_at,
         scopes=list(granted_scopes),
     )
     session.add(api_key)
     await session.flush()
     return IssuedKey(
-        key_id=api_key.id, org_id=org_id, raw_key=raw_key,
-        key_prefix=api_key.key_prefix, scopes=granted_scopes,
+        key_id=api_key.id,
+        org_id=org_id,
+        raw_key=raw_key,
+        key_prefix=api_key.key_prefix,
+        scopes=granted_scopes,
     )
 
 
 async def rotate_api_key(session: AsyncSession, old_key_id: str) -> IssuedKey:
-    old = (await session.execute(
-        select(ApiKey).where(ApiKey.id == old_key_id).with_for_update()
-    )).scalar_one_or_none()
+    old = (await session.execute(select(ApiKey).where(ApiKey.id == old_key_id).with_for_update())).scalar_one_or_none()
     if old is None:
         raise ValueError(f"no such api key: {old_key_id}")
     if old.revoked_at is not None:
@@ -157,15 +160,16 @@ async def rotate_api_key(session: AsyncSession, old_key_id: str) -> IssuedKey:
         span = old.expires_at - old.created_at
         expires_days = min(MAX_KEY_EXPIRY_DAYS, max(1, round(span.total_seconds() / 86400)))
     return await issue_api_key(
-        session, old.org_id, expires_days=expires_days, scopes=list(old.scopes),
+        session,
+        old.org_id,
+        expires_days=expires_days,
+        scopes=list(old.scopes),
     )
 
 
 async def revoke_api_key(session: AsyncSession, key_id: str) -> None:
     await announce_auth_change(session)
-    await session.execute(
-        update(ApiKey).where(ApiKey.id == key_id).values(revoked_at=datetime.now(timezone.utc))
-    )
+    await session.execute(update(ApiKey).where(ApiKey.id == key_id).values(revoked_at=datetime.now(timezone.utc)))
 
 
 def _scopes_of(raw: object) -> tuple[str, ...] | None:
@@ -270,8 +274,12 @@ async def _region_ok(session: AsyncSession, org_id: str) -> bool:
     pinned = normalize_region(await session.scalar(select(Organization.data_region).where(Organization.id == org_id)))
     if not pinned or pinned == _DEPLOYMENT_REGION:
         return True
-    logger.warning("refused a key for org %s: it is pinned to region %r and this deployment serves %r",
-                   hashlib.sha256(org_id.encode()).hexdigest()[:12], pinned, _DEPLOYMENT_REGION)
+    logger.warning(
+        "refused a key for org %s: it is pinned to region %r and this deployment serves %r",
+        hashlib.sha256(org_id.encode()).hexdigest()[:12],
+        pinned,
+        _DEPLOYMENT_REGION,
+    )
     return False
 
 
@@ -294,8 +302,13 @@ async def _verify_by_hmac(session: AsyncSession, raw_key: str, now: datetime) ->
     row = (
         await session.execute(
             select(
-                ApiKey.id, ApiKey.org_id, ApiKey.key_prefix, ApiKey.key_hmac,
-                ApiKey.revoked_at, ApiKey.expires_at, ApiKey.last_used_at,
+                ApiKey.id,
+                ApiKey.org_id,
+                ApiKey.key_prefix,
+                ApiKey.key_hmac,
+                ApiKey.revoked_at,
+                ApiKey.expires_at,
+                ApiKey.last_used_at,
                 ApiKey.scopes,
             ).where(ApiKey.key_hmac == _key_hmac(raw_key))
         )
@@ -311,8 +324,11 @@ async def _verify_by_hmac(session: AsyncSession, raw_key: str, now: datetime) ->
     if row.last_used_at is None or (now - row.last_used_at) >= _LAST_USED_AT_UPDATE_INTERVAL:
         await session.execute(update(ApiKey).where(ApiKey.id == row.id).values(last_used_at=now))
     return AuthenticatedKey(
-        org_id=row.org_id, key_prefix=row.key_prefix, scopes=_scopes_of(row.scopes),
-        expires_at=row.expires_at, key_id=row.id,
+        org_id=row.org_id,
+        key_prefix=row.key_prefix,
+        scopes=_scopes_of(row.scopes),
+        expires_at=row.expires_at,
+        key_id=row.id,
     )
 
 
@@ -323,10 +339,10 @@ async def _verify_by_legacy_scan(session: AsyncSession, raw_key: str, now: datet
 
     prefix = raw_key[:_PREFIX_LEN]
     candidates = (
-        await session.execute(
-            select(ApiKey).where(ApiKey.key_prefix == prefix, ApiKey.revoked_at.is_(None))
-        )
-    ).scalars().all()
+        (await session.execute(select(ApiKey).where(ApiKey.key_prefix == prefix, ApiKey.revoked_at.is_(None))))
+        .scalars()
+        .all()
+    )
     if not candidates:
         try:
             await asyncio.to_thread(_hasher.verify, _DUMMY_HASH, raw_key)
@@ -351,8 +367,10 @@ async def _verify_by_legacy_scan(session: AsyncSession, raw_key: str, now: datet
         if candidate.key_hmac != current_hmac:
             candidate.key_hmac = current_hmac
         return AuthenticatedKey(
-            org_id=candidate.org_id, key_prefix=candidate.key_prefix,
-            scopes=_scopes_of(candidate.scopes), expires_at=candidate.expires_at,
+            org_id=candidate.org_id,
+            key_prefix=candidate.key_prefix,
+            scopes=_scopes_of(candidate.scopes),
+            expires_at=candidate.expires_at,
             key_id=candidate.id,
         )
     return None
@@ -362,9 +380,7 @@ current_org_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("cur
 
 current_actor: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_actor", default=None)
 
-current_scopes: contextvars.ContextVar[tuple[str, ...] | None] = contextvars.ContextVar(
-    "current_scopes", default=None
-)
+current_scopes: contextvars.ContextVar[tuple[str, ...] | None] = contextvars.ContextVar("current_scopes", default=None)
 
 
 class ScopeDenied(PermissionError):
@@ -400,9 +416,7 @@ def get_current_org_id() -> str:
     return org_id
 
 
-current_user: contextvars.ContextVar[AuthenticatedUser | None] = contextvars.ContextVar(
-    "current_user", default=None
-)
+current_user: contextvars.ContextVar[AuthenticatedUser | None] = contextvars.ContextVar("current_user", default=None)
 
 
 @dataclass(frozen=True)
@@ -414,14 +428,20 @@ class AuthenticatedUser:
 
 
 async def verify_user_token(
-    session: AsyncSession, raw_token: str, provider, *, jwks_cache=None,
+    session: AsyncSession,
+    raw_token: str,
+    provider,
+    *,
+    jwks_cache=None,
 ) -> AuthenticatedUser | None:
     """Verify `raw_token` as an OIDC bearer JWT and resolve it to a `User`."""
     from hub import sso as sso_module
 
     try:
         claims = await asyncio.to_thread(
-            sso_module.verify_bearer_token, raw_token, provider,
+            sso_module.verify_bearer_token,
+            raw_token,
+            provider,
             jwks_cache=jwks_cache,
         )
     except sso_module.IdentityError:
@@ -481,8 +501,7 @@ def get_current_actor() -> str:
     return actor_for_api_key(raw)
 
 
-class PersonRequiredError(PermissionError):
-    ...
+class PersonRequiredError(PermissionError): ...
 
 
 def get_current_user() -> AuthenticatedUser:

@@ -12,19 +12,23 @@ import pytest
 from unimem.gateway import Gateway, serve_stdio
 
 
-@pytest.mark.parametrize("message", [
-    {"op": []},
-    {"op": {}},
-    {"op": None},
-    {"method": [], "path": "/v1/health"},
-    {"method": "GET", "path": []},
-    {"method": "GET", "path": {}},
-    {"method": "GET", "path": None},
-    {"method": "POST", "path": "/v1/recall", "body": []},
-    {"method": "POST", "path": "/v1/recall", "body": "text"},
-])
+@pytest.mark.parametrize(
+    "message",
+    [
+        {"op": []},
+        {"op": {}},
+        {"op": None},
+        {"method": [], "path": "/v1/health"},
+        {"method": "GET", "path": []},
+        {"method": "GET", "path": {}},
+        {"method": "GET", "path": None},
+        {"method": "POST", "path": "/v1/recall", "body": []},
+        {"method": "POST", "path": "/v1/recall", "body": "text"},
+    ],
+)
 def test_invalid_request_shape_preserves_following_requests(
-    tmp_path: Path, message: dict[str, Any],
+    tmp_path: Path,
+    message: dict[str, Any],
 ) -> None:
     """An error is one response, followed by successful ordinary traffic."""
     gateway = Gateway(str(tmp_path), token="test-only-token")
@@ -58,7 +62,7 @@ def test_invalid_json_preserves_following_requests(tmp_path: Path) -> None:
 
 def test_excessively_nested_json_preserves_following_requests(tmp_path: Path) -> None:
     gateway = Gateway(str(tmp_path), token="test-only-token")
-    nested = '{"body":' + '[' * 2000 + '0' + ']' * 2000 + '}'
+    nested = '{"body":' + "[" * 2000 + "0" + "]" * 2000 + "}"
     stdin = io.StringIO(nested + '\n{"id": "next", "op": "health"}\n')
     stdout = io.StringIO()
 

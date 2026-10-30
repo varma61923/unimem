@@ -38,8 +38,7 @@ def _store(tmp_path):
     os.makedirs(ldir, exist_ok=True)
     for slug, (desc, imp) in LESSONS.items():
         with open(os.path.join(ldir, f"lesson_{slug}.md"), "w", encoding="utf-8") as fh:
-            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\n"
-                     "status: active\n---\nbody\n")
+            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\nstatus: active\n---\nbody\n")
     _write_index(root)
     return root
 
@@ -52,11 +51,13 @@ def _write_index(root, drop=()):
         slugs=np.array(slugs),
         embeddings=np.stack([model.encode(LESSONS[s][0]) for s in slugs]),
         model_name=np.array("multi-qa-mpnet-base-dot-v1"),
-        encoded_field=np.array("x"), timestamp=np.array("2026-01-01T00:00:00"),
+        encoded_field=np.array("x"),
+        timestamp=np.array("2026-01-01T00:00:00"),
         n_lessons=np.array(len(slugs)),
     )
-    future = max(os.path.getmtime(os.path.join(paths.lessons_dir(root), f)) for f in
-                 os.listdir(paths.lessons_dir(root))) + 5
+    future = (
+        max(os.path.getmtime(os.path.join(paths.lessons_dir(root), f)) for f in os.listdir(paths.lessons_dir(root))) + 5
+    )
     os.utime(semantic_arm.index_path(root), (future, future))
 
 
@@ -87,9 +88,14 @@ def _printed_slugs(script, root, query, top_k, monkeypatch):
     return _slugs_from_semantic_output(buf.getvalue())
 
 
-@pytest.mark.parametrize("query,top_k", [
-    ("uploads keep failing so retry", 2), ("kubernetes deploy", 1), ("refund request", 3),
-])
+@pytest.mark.parametrize(
+    "query,top_k",
+    [
+        ("uploads keep failing so retry", 2),
+        ("kubernetes deploy", 1),
+        ("refund request", 3),
+    ],
+)
 def test_in_process_ranking_is_what_the_subprocess_prints(tmp_path, arm, monkeypatch, query, top_k):
     script, _ = arm
     root = _store(tmp_path)
@@ -148,16 +154,16 @@ def wide_arm(monkeypatch):
     script = semantic_arm._script(os.getcwd())
     monkeypatch.setattr(script, "SentenceTransformer", fake_st)
     builder = semantic_arm._builder(os.getcwd())
-    monkeypatch.setattr(builder, "SentenceTransformer",
-                        lambda name: pytest.fail("the builder must reuse the held model"))
+    monkeypatch.setattr(
+        builder, "SentenceTransformer", lambda name: pytest.fail("the builder must reuse the held model")
+    )
     return loads
 
 
 def _add_lesson(root, slug, desc, importance=3):
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     with open(path, "w", encoding="utf-8") as fh:
-        fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {importance}\n"
-                 "status: active\n---\nbody\n")
+        fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {importance}\nstatus: active\n---\nbody\n")
     past = os.path.getmtime(path) - 60
     os.utime(semantic_arm.index_path(root), (past, past))
 
@@ -169,10 +175,8 @@ def test_a_stale_index_is_refreshed_before_ranking(tmp_path, wide_arm):
     os.makedirs(paths.lessons_dir(root))
     os.makedirs(os.path.dirname(semantic_arm.index_path(root)))
     for slug, (desc, imp) in LESSONS.items():
-        with open(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\n"
-                     "status: active\n---\nbody\n")
+        with open(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), "w", encoding="utf-8") as fh:
+            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\nstatus: active\n---\nbody\n")
     assert semantic_arm.ensure_fresh(root) == ""
     _add_lesson(root, "refund-password-check", "password check before a refund")
     assert _index_is_unusable(root)
@@ -233,8 +237,9 @@ def recording_arm(monkeypatch):
     script = semantic_arm._script(os.getcwd())
     monkeypatch.setattr(script, "SentenceTransformer", fake_st)
     builder = semantic_arm._builder(os.getcwd())
-    monkeypatch.setattr(builder, "SentenceTransformer",
-                        lambda name: pytest.fail("the builder must reuse the held model"))
+    monkeypatch.setattr(
+        builder, "SentenceTransformer", lambda name: pytest.fail("the builder must reuse the held model")
+    )
     return loads, seen
 
 
@@ -243,10 +248,8 @@ def _fresh_store(tmp_path):
     os.makedirs(paths.lessons_dir(root))
     os.makedirs(os.path.dirname(semantic_arm.index_path(root)))
     for slug, (desc, imp) in LESSONS.items():
-        with open(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), "w",
-                  encoding="utf-8") as fh:
-            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\n"
-                     "status: active\n---\nbody\n")
+        with open(os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md"), "w", encoding="utf-8") as fh:
+            fh.write(f"---\nname: {slug}\ndescription: {desc}\nimportance: {imp}\nstatus: active\n---\nbody\n")
     return root
 
 
@@ -255,8 +258,9 @@ def test_an_index_keeps_the_model_it_was_built_with(tmp_path, recording_arm):
     root = _fresh_store(tmp_path)
     builder = semantic_arm._builder(os.getcwd())
     model = semantic_arm._model(semantic_arm._script(os.getcwd()), MPNET)
-    builder.build_or_update_index(paths.lessons_dir(root), semantic_arm.index_path(root),
-                                  model_name=MPNET, model=model, log=lambda *a, **k: None)
+    builder.build_or_update_index(
+        paths.lessons_dir(root), semantic_arm.index_path(root), model_name=MPNET, model=model, log=lambda *a, **k: None
+    )
     _add_lesson(root, "refund-password-check", "password check before a refund")
 
     assert semantic_arm.ensure_fresh(root) == ""
@@ -295,8 +299,7 @@ def test_an_index_naming_an_untrusted_model_loads_nothing(tmp_path, recording_ar
 def test_an_empty_index_pins_no_model_but_the_log_does(tmp_path):
     builder = semantic_arm._builder(os.getcwd())
     path = str(tmp_path / "index.npz")
-    np.savez(path, slugs=np.array([], dtype=str), embeddings=np.zeros((0, 768), np.float32),
-             model_name=np.array(MPNET))
+    np.savez(path, slugs=np.array([], dtype=str), embeddings=np.zeros((0, 768), np.float32), model_name=np.array(MPNET))
     assert builder.index_model(path) == ARCTIC
     assert builder.index_model(path, MPNET) == MPNET
     assert builder.index_model(str(tmp_path / "missing.npz"), MPNET) == MPNET

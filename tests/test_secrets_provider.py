@@ -72,8 +72,9 @@ def test_file_precedence_and_rotation_and_aws_opt_in(tmp_path, monkeypatch):
     monkeypatch.setenv("TEST_SECRET_AWS_SECRET_FIELD", "key")
     client = Client()
     client.value = '{"key": "aws-secret"}'
-    monkeypatch.setattr(secrets, "_AWS_PROVIDERS", SimpleNamespace(
-        get_or_load=lambda *_a: secrets.AWSSecretsProvider(client)))
+    monkeypatch.setattr(
+        secrets, "_AWS_PROVIDERS", SimpleNamespace(get_or_load=lambda *_a: secrets.AWSSecretsProvider(client))
+    )
     assert secrets.env_secret("TEST_SECRET") == "file-secret"
     path.write_text("rotated-file\n")
     assert secrets.env_secret("TEST_SECRET") == "rotated-file"

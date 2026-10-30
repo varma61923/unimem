@@ -1,5 +1,6 @@
 """The DolphinBench harness without DolphinBench: ingestion into UniMem, frozen
 read-only memory, a scripted tool loop, checkpoint verification and cost accounting."""
+
 import asyncio
 import dataclasses
 import importlib.util
@@ -9,8 +10,7 @@ import types
 
 import pytest
 
-HARNESS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "benchmarks", "dolphinbench",
-                       "unimem_harness.py")
+HARNESS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "benchmarks", "dolphinbench", "unimem_harness.py")
 
 
 @dataclasses.dataclass
@@ -51,8 +51,9 @@ def H(monkeypatch):
 
 
 def _tool(name, props):
-    return types.SimpleNamespace(name=name, description=f"{name} tool",
-                                 inputSchema={"type": "object", "properties": props})
+    return types.SimpleNamespace(
+        name=name, description=f"{name} tool", inputSchema={"type": "object", "properties": props}
+    )
 
 
 def test_ingest_freeze_test_and_cost(H, tmp_path, monkeypatch):
@@ -65,20 +66,30 @@ def test_ingest_freeze_test_and_cost(H, tmp_path, monkeypatch):
         steps = sum(1 for m in messages if m["role"] == "assistant")
         if steps == 0:
             seen["memory"] = messages[0]["content"]
-            return {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "c1", "name": "search_memory", "arguments": {"query": "coffee"}}]}, usage
+            return {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "c1", "name": "search_memory", "arguments": {"query": "coffee"}}],
+            }, usage
         if steps == 1:
             seen["search"] = messages[-1]["content"]
-            return {"role": "assistant", "content": "", "tool_calls": [
-                {"id": "c2", "name": "place_order", "arguments": {"restaurant": "Blue Bottle"}}]}, usage
+            return {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "c2", "name": "place_order", "arguments": {"restaurant": "Blue Bottle"}}],
+            }, usage
         return {"role": "assistant", "content": "Ordered from Blue Bottle."}, usage
 
     monkeypatch.setattr(H.ChatModel, "complete", fake_complete)
-    h = H.BenchmarkHarness({"model": "scripted", "embedder": "none", "rerank": "none",
-                            "prices": {"input": 1.0, "output": 4.0}}, str(tmp_path))
-    history = [("000001", "2023-01-09T08:00:00-08:00", "still doing blue bottle if i'm out early enough"),
-               ("000002", "2023-01-10T08:30:00-08:00", "Q1 all-hands first thing."),
-               ("000003", "2023-01-10T19:00:00-08:00", "Kibo is asleep on the couch.")]
+    h = H.BenchmarkHarness(
+        {"model": "scripted", "embedder": "none", "rerank": "none", "prices": {"input": 1.0, "output": 4.0}},
+        str(tmp_path),
+    )
+    history = [
+        ("000001", "2023-01-09T08:00:00-08:00", "still doing blue bottle if i'm out early enough"),
+        ("000002", "2023-01-10T08:30:00-08:00", "Q1 all-hands first thing."),
+        ("000003", "2023-01-10T19:00:00-08:00", "Kibo is asleep on the couch."),
+    ]
     for sid, when, text in history:
         record = h.run_interaction(Interaction("morgan", "ingestion", sid, text, when, {}, str(tmp_path)))
         assert record.messages[1]["content"] == f"[{when}] {text}"
@@ -93,8 +104,15 @@ def test_ingest_freeze_test_and_cost(H, tmp_path, monkeypatch):
         calls.append((name, arguments))
         return types.SimpleNamespace(content=[types.SimpleNamespace(text='{"ok": true}')], isError=False)
 
-    request = Interaction("morgan", "tests", "001", "I'm out early. Please order one small latte for pickup.",
-                          "2026-09-14", {}, str(tmp_path))
+    request = Interaction(
+        "morgan",
+        "tests",
+        "001",
+        "I'm out early. Please order one small latte for pickup.",
+        "2026-09-14",
+        {},
+        str(tmp_path),
+    )
     record = asyncio.run(h.run_agent(request, [_tool("place_order", {"restaurant": {"type": "string"}})], call_app))
     roles = [m["role"] for m in record.messages]
     assert roles == ["system", "developer", "user", "assistant", "tool", "assistant", "tool", "assistant"]
@@ -109,9 +127,11 @@ def test_ingest_freeze_test_and_cost(H, tmp_path, monkeypatch):
 
 
 def test_changed_memory_fails_verification(H, tmp_path, monkeypatch):
-    monkeypatch.setattr(H.ChatModel, "complete",
-                        lambda self, *a, **k: ({"role": "assistant", "content": "ok"}, {"input_tokens": 1,
-                                                                                         "output_tokens": 1}))
+    monkeypatch.setattr(
+        H.ChatModel,
+        "complete",
+        lambda self, *a, **k: ({"role": "assistant", "content": "ok"}, {"input_tokens": 1, "output_tokens": 1}),
+    )
     h = H.BenchmarkHarness({"model": "m", "embedder": "none", "prices": {"input": 1, "output": 1}}, str(tmp_path))
     h.run_interaction(Interaction("alex", "ingestion", "1", "hello", "2023-03-05T09:30:00-05:00", {}, str(tmp_path)))
     checkpoint = h.freeze("alex")

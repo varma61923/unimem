@@ -1,4 +1,5 @@
 """Git-backed audit trail for a store that is its own git repository."""
+
 from __future__ import annotations
 
 import os
@@ -75,29 +76,53 @@ def commit_all(root: str, message: str) -> dict:
     """Commit every change under *root* when *root* owns its repository."""
     root = os.path.abspath(root)
     if _git_binary() is None:
-        return {"ok": False, "git_available": False, "committed": False,
-                "error": "git not found on PATH"}
+        return {"ok": False, "git_available": False, "committed": False, "error": "git not found on PATH"}
     if not owns_repo(root):
-        return {"ok": False, "git_available": True, "committed": False,
-                "error": "not the top level of its own git repository", "root": root}
+        return {
+            "ok": False,
+            "git_available": True,
+            "committed": False,
+            "error": "not the top level of its own git repository",
+            "root": root,
+        }
     message = (message or "").strip() or "unimem: snapshot"
     ok, _out, err = _run_git(["add", "-A", "--", "."], root)
     if not ok:
-        return {"ok": False, "git_available": True, "committed": False,
-                "error": err.strip() or "git add failed", "root": root}
+        return {
+            "ok": False,
+            "git_available": True,
+            "committed": False,
+            "error": err.strip() or "git add failed",
+            "root": root,
+        }
     ok, out, err = _run_git(["status", "--porcelain", "--", "."], root)
     if not ok:
-        return {"ok": False, "git_available": True, "committed": False,
-                "error": err.strip() or "git status failed", "root": root}
+        return {
+            "ok": False,
+            "git_available": True,
+            "committed": False,
+            "error": err.strip() or "git status failed",
+            "root": root,
+        }
     if not out.strip():
-        return {"ok": True, "git_available": True, "committed": False,
-                "reason": "clean", "root": root}
+        return {"ok": True, "git_available": True, "committed": False, "reason": "clean", "root": root}
     ok, _out, err = _run_git(["commit", "-q", "-m", message, "--", "."], root)
     if not ok:
-        return {"ok": False, "git_available": True, "committed": False,
-                "error": err.strip() or "git commit failed", "root": root}
-    return {"ok": True, "git_available": True, "committed": True,
-            "message": message, "commit": head_hash(root), "root": root}
+        return {
+            "ok": False,
+            "git_available": True,
+            "committed": False,
+            "error": err.strip() or "git commit failed",
+            "root": root,
+        }
+    return {
+        "ok": True,
+        "git_available": True,
+        "committed": True,
+        "message": message,
+        "commit": head_hash(root),
+        "root": root,
+    }
 
 
 def head_hash(root: str) -> str | None:
@@ -111,11 +136,9 @@ def log(root: str, n: int = 10) -> dict:
     """The last *n* commits, newest first."""
     root = os.path.abspath(root)
     if _git_binary() is None:
-        return {"ok": False, "git_available": False, "entries": [],
-                "error": "git not found on PATH"}
+        return {"ok": False, "git_available": False, "entries": [], "error": "git not found on PATH"}
     if not is_repo(root):
-        return {"ok": False, "git_available": True, "entries": [],
-                "error": "not a git repository", "root": root}
+        return {"ok": False, "git_available": True, "entries": [], "error": "not a git repository", "root": root}
     try:
         count = max(1, int(n))
     except (TypeError, ValueError):
@@ -128,18 +151,24 @@ def log(root: str, n: int = 10) -> dict:
     if not ok:
         text = (err.strip() or out.strip()).lower()
         if "does not have any commits yet" in text or "bad default revision" in text:
-            return {"ok": True, "git_available": True, "entries": [],
-                    "reason": "no commits yet", "root": root}
-        return {"ok": False, "git_available": True, "entries": [],
-                "error": err.strip() or "git log failed", "root": root}
+            return {"ok": True, "git_available": True, "entries": [], "reason": "no commits yet", "root": root}
+        return {
+            "ok": False,
+            "git_available": True,
+            "entries": [],
+            "error": err.strip() or "git log failed",
+            "root": root,
+        }
     entries: list[dict] = []
     for chunk in out.split(sep_rec):
         parts = chunk.strip().split(sep_unit)
         if len(parts) < 2 or not parts[0].strip():
             continue
-        entries.append({
-            "hash": parts[0].strip(),
-            "subject": parts[1].strip(),
-            "date": parts[2].strip() if len(parts) > 2 else "",
-        })
+        entries.append(
+            {
+                "hash": parts[0].strip(),
+                "subject": parts[1].strip(),
+                "date": parts[2].strip() if len(parts) > 2 else "",
+            }
+        )
     return {"ok": True, "git_available": True, "entries": entries, "root": root}

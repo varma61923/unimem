@@ -1,4 +1,5 @@
 """The gates a drafted lesson must pass before it can be activated, as one function."""
+
 from __future__ import annotations
 
 import math
@@ -17,8 +18,10 @@ def gate_failures(fm: dict[str, Any], body: str, active_texts: list[tuple[str, s
         failed.append("scaffolding")
     if memory_guard.scan_fields(_guard_fields(fm, body)).should_block:
         failed.append("safety")
-    if redundancy.closest(redundancy.comparable_text(fm, body), active_texts,
-                          threshold=redundancy.DEFAULT_THRESHOLD) is not None:
+    if (
+        redundancy.closest(redundancy.comparable_text(fm, body), active_texts, threshold=redundancy.DEFAULT_THRESHOLD)
+        is not None
+    ):
         failed.append("redundancy")
     return failed
 
@@ -45,8 +48,11 @@ class CandidateDuplicate:
 
 
 def find_candidate_duplicate(
-    text: str, existing: Sequence[tuple[str, str]], *,
-    semantic_dedup: bool = False, semantic_threshold: float = 0.9,
+    text: str,
+    existing: Sequence[tuple[str, str]],
+    *,
+    semantic_dedup: bool = False,
+    semantic_threshold: float = 0.9,
 ) -> CandidateDuplicate | None:
     """Find duplicate *proposals*, retaining every underlying source trace.
 
@@ -54,8 +60,7 @@ def find_candidate_duplicate(
     comparison still operates. This is admission screening, not a declaration
     that semantically similar rules are interchangeable or safe to activate.
     """
-    if isinstance(semantic_threshold, bool) or not math.isfinite(semantic_threshold) \
-            or not 0 < semantic_threshold <= 1:
+    if isinstance(semantic_threshold, bool) or not math.isfinite(semantic_threshold) or not 0 < semantic_threshold <= 1:
         raise ValueError("semantic_threshold must be finite and in (0, 1]")
     duplicate = redundancy.closest(text, existing, threshold=0.8)
     if duplicate is not None:
@@ -68,10 +73,11 @@ def find_candidate_duplicate(
         return None
     # Bound each inference batch and score matrix independently of corpus size.
     for start in range(0, len(existing), 128):
-        batch = existing[start:start + 128]
+        batch = existing[start : start + 128]
         try:
-            match = semantic.best_matches([text], [value[:20_000] for _name, value in batch],
-                                          threshold=semantic_threshold, top_k=1)[0]
+            match = semantic.best_matches(
+                [text], [value[:20_000] for _name, value in batch], threshold=semantic_threshold, top_k=1
+            )[0]
         except semantic.SemanticUnavailable:
             return None
         if match["matches"]:

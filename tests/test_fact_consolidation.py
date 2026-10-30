@@ -1,4 +1,5 @@
 """Fact-cluster consolidation: lexical and embedding links, canonical choice, review-only proposals."""
+
 from __future__ import annotations
 
 import json
@@ -151,8 +152,13 @@ def test_cli_report_and_apply(root):
     _add(root, "User lives in Paris")
 
     def cli(*argv):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "consolidate", *argv, "--dest", root],
-                              capture_output=True, text=True, cwd=REPO, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "consolidate", *argv, "--dest", root],
+            capture_output=True,
+            text=True,
+            cwd=REPO,
+            check=False,
+        )
 
     res = cli("facts", "--json")
     assert res.returncode == 0, res.stderr
@@ -166,8 +172,9 @@ def test_cli_report_and_apply(root):
 
 
 def test_a_fact_whose_validity_ended_is_history_not_a_duplicate_of_its_replacement(root):
-    hierarchical.add_fact(root, "Dana works at Acme as the platform lead",
-                          valid_from="2024-01-01", valid_until="2025-06-30")
+    hierarchical.add_fact(
+        root, "Dana works at Acme as the platform lead", valid_from="2024-01-01", valid_until="2025-06-30"
+    )
     hierarchical.add_fact(root, "Dana works at Initech as the platform lead", valid_from="2025-07-01")
     report = fc.cluster_facts(root)
     assert report["clusters"] == [] and report["facts"] == 1

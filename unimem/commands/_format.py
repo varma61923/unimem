@@ -1,4 +1,5 @@
 """Shared rendering helpers for the listing commands."""
+
 from __future__ import annotations
 
 import sys

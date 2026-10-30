@@ -28,10 +28,7 @@ _UPLIFT_THRESHOLD = 0.05
 
 def _planned_task_slots(tasks: list[dict], occasions: int) -> dict[str, int]:
     base, remainder = divmod(occasions, len(tasks))
-    return {
-        task["id"]: base + int(index < remainder)
-        for index, task in enumerate(tasks)
-    }
+    return {task["id"]: base + int(index < remainder) for index, task in enumerate(tasks)}
 
 
 def _normalize_task_weights(
@@ -75,11 +72,7 @@ def _stratified_uplift(
     weighting: str,
 ) -> dict:
     """Build a weighted estimate with preplanned, simultaneous anytime intervals."""
-    observed = {
-        effect["lesson_slug"]: effect
-        for effect in effects
-        if effect.get("effect") is not None
-    }
+    observed = {effect["lesson_slug"]: effect for effect in effects if effect.get("effect") is not None}
     effect_rows = {effect["lesson_slug"]: effect for effect in effects}
     target_tasks = [task for task in tasks if weights[task["id"]] > 0]
     task_counts = {}
@@ -124,44 +117,48 @@ def _stratified_uplift(
                 all_testable = False
             task_effect = effect_rows.get(task_id)
             if task_effect is not None:
-                task_effect.update({
-                    "n_injected": injected_n,
-                    "n_withheld": withheld_n,
+                task_effect.update(
+                    {
+                        "n_injected": injected_n,
+                        "n_withheld": withheld_n,
+                        "planned_occasions": planned_slots[task_id],
+                        "target_n_per_arm": target_n,
+                        "unresolved_randomized_occasions": counts["unresolved"],
+                        "ci_low": None,
+                        "ci_high": None,
+                        "significant": False,
+                        "verdict": experiment.VERDICT_UNDERPOWERED,
+                        "interval_method": "withheld: task has no resolved observations in both arms",
+                        "note": (
+                            "Unresolved randomized outcomes prevent a task-level interval."
+                            if counts["unresolved"]
+                            else "Resolved outcomes are missing from one randomized arm."
+                        ),
+                    }
+                )
+            per_task.append(
+                {
+                    "task": task_id,
+                    "weight": weights[task_id],
+                    "randomized_occasions": counts["randomized"],
+                    "unresolved_occasions": counts["unresolved"],
                     "planned_occasions": planned_slots[task_id],
                     "target_n_per_arm": target_n,
-                    "unresolved_randomized_occasions": counts["unresolved"],
+                    "n_injected": injected_n,
+                    "n_withheld": withheld_n,
+                    "effect": (
+                        round(
+                            counts["injected_successes"] / injected_n - counts["withheld_successes"] / withheld_n,
+                            4,
+                        )
+                        if has_estimate
+                        else None
+                    ),
                     "ci_low": None,
                     "ci_high": None,
-                    "significant": False,
-                    "verdict": experiment.VERDICT_UNDERPOWERED,
-                    "interval_method": "withheld: task has no resolved observations in both arms",
-                    "note": (
-                        "Unresolved randomized outcomes prevent a task-level interval."
-                        if counts["unresolved"] else
-                        "Resolved outcomes are missing from one randomized arm."
-                    ),
-                })
-            per_task.append({
-                "task": task_id,
-                "weight": weights[task_id],
-                "randomized_occasions": counts["randomized"],
-                "unresolved_occasions": counts["unresolved"],
-                "planned_occasions": planned_slots[task_id],
-                "target_n_per_arm": target_n,
-                "n_injected": injected_n,
-                "n_withheld": withheld_n,
-                "effect": (
-                    round(
-                        counts["injected_successes"] / injected_n
-                        - counts["withheld_successes"] / withheld_n,
-                        4,
-                    )
-                    if has_estimate else None
-                ),
-                "ci_low": None,
-                "ci_high": None,
-                "status": "no_resolved_randomized_outcomes",
-            })
+                    "status": "no_resolved_randomized_outcomes",
+                }
+            )
             continue
         testable = injected_n >= experiment.DEFAULT_MIN_ARM and withheld_n >= experiment.DEFAULT_MIN_ARM
         unresolved_task = counts["unresolved"] > 0
@@ -176,10 +173,7 @@ def _stratified_uplift(
                 alpha=_UPLIFT_ALPHA / len(tasks),
                 target_n_per_arm=target_n,
             )
-        raw_effects[task_id] = (
-            counts["injected_successes"] / injected_n
-            - counts["withheld_successes"] / withheld_n
-        )
+        raw_effects[task_id] = counts["injected_successes"] / injected_n - counts["withheld_successes"] / withheld_n
         effect["planned_occasions"] = planned_slots[task_id]
         effect["target_n_per_arm"] = target_n
         effect["unresolved_randomized_occasions"] = counts["unresolved"]
@@ -197,7 +191,9 @@ def _stratified_uplift(
                 effect["note"] = "The fixed-horizon anytime-valid interval supports a negative task effect."
             else:
                 effect["verdict"] = experiment.VERDICT_UNDERPOWERED
-                effect["note"] = "The fixed-horizon anytime-valid interval spans zero; no directional verdict is established."
+                effect["note"] = (
+                    "The fixed-horizon anytime-valid interval spans zero; no directional verdict is established."
+                )
         else:
             effect["ci_low"] = None
             effect["ci_high"] = None
@@ -210,32 +206,31 @@ def _stratified_uplift(
                     f"At least {experiment.DEFAULT_MIN_ARM} resolved outcomes in each arm are required "
                     "before reporting an anytime-valid task interval."
                 )
-        per_task.append({
-            "task": task_id,
-            "weight": weights[task_id],
-            "randomized_occasions": counts["randomized"],
-            "unresolved_occasions": counts["unresolved"],
-            "planned_occasions": planned_slots[task_id],
-            "target_n_per_arm": target_n,
-            "n_injected": injected_n,
-            "n_withheld": withheld_n,
-            "effect": round(
-                counts["injected_successes"] / injected_n
-                - counts["withheld_successes"] / withheld_n,
-                4,
-            ),
-            "ci_low": raw_intervals.get(task_id, (None, None))[0],
-            "ci_high": raw_intervals.get(task_id, (None, None))[1],
-            "status": "testable" if testable else "underpowered",
-        })
+        per_task.append(
+            {
+                "task": task_id,
+                "weight": weights[task_id],
+                "randomized_occasions": counts["randomized"],
+                "unresolved_occasions": counts["unresolved"],
+                "planned_occasions": planned_slots[task_id],
+                "target_n_per_arm": target_n,
+                "n_injected": injected_n,
+                "n_withheld": withheld_n,
+                "effect": round(
+                    counts["injected_successes"] / injected_n - counts["withheld_successes"] / withheld_n,
+                    4,
+                ),
+                "ci_low": raw_intervals.get(task_id, (None, None))[0],
+                "ci_high": raw_intervals.get(task_id, (None, None))[1],
+                "status": "testable" if testable else "underpowered",
+            }
+        )
 
     target_unresolved = sum(task_counts[task["id"]]["unresolved"] for task in target_tasks)
     point = (
-        sum(
-            weights[task["id"]] * raw_effects[task["id"]]
-            for task in target_tasks
-        )
-        if all_have_estimate and target_unresolved == 0 else None
+        sum(weights[task["id"]] * raw_effects[task["id"]] for task in target_tasks)
+        if all_have_estimate and target_unresolved == 0
+        else None
     )
     interval_available = all_have_estimate and all_testable and target_unresolved == 0
     for row in per_task:
@@ -243,14 +238,8 @@ def _stratified_uplift(
             row["ci_low"] = math.floor(row["ci_low"] * 10000 + 1e-10) / 10000
             row["ci_high"] = math.ceil(row["ci_high"] * 10000 - 1e-10) / 10000
     if interval_available:
-        ci_low = sum(
-            weights[task["id"]] * raw_intervals[task["id"]][0]
-            for task in target_tasks
-        )
-        ci_high = sum(
-            weights[task["id"]] * raw_intervals[task["id"]][1]
-            for task in target_tasks
-        )
+        ci_low = sum(weights[task["id"]] * raw_intervals[task["id"]][0] for task in target_tasks)
+        ci_high = sum(weights[task["id"]] * raw_intervals[task["id"]][1] for task in target_tasks)
         # Keep displayed confidence bounds conservative by rounding out.
         ci_low = math.floor(ci_low * 10000 + 1e-10) / 10000
         ci_high = math.ceil(ci_high * 10000 - 1e-10) / 10000
@@ -332,9 +321,7 @@ class _HarmfulRetirementTracker:
                 note="Isolated CodingLessonBench randomized lifecycle trial.",
             )
             journal = Journal(root)
-            record = journal.put(
-                MemoryRecord(identity, "lesson", 1, {"text": task["lesson"]}, status="shadow")
-            )
+            record = journal.put(MemoryRecord(identity, "lesson", 1, {"text": task["lesson"]}, status="shadow"))
             journal.authorize_evaluation(
                 identity,
                 actor="CodingLessonBench",
@@ -448,8 +435,11 @@ class _HarmfulRetirementTracker:
             row = {
                 "task": task["id"],
                 "status": (
-                    "censored_execution_error" if entry["halted"]
-                    else record.status if record is not None else "missing"
+                    "censored_execution_error"
+                    if entry["halted"]
+                    else record.status
+                    if record is not None
+                    else "missing"
                 ),
                 "N": count if type(count) is int else None,
                 "assigned_occasions": entry["assigned"],
@@ -462,8 +452,7 @@ class _HarmfulRetirementTracker:
             per_task.append(row)
             harmful.append(row)
         all_retired = bool(harmful) and all(
-            row["status"] == "retired" and row["N"] is not None and row["integrity"] == "SOUND"
-            for row in harmful
+            row["status"] == "retired" and row["N"] is not None and row["integrity"] == "SOUND" for row in harmful
         )
         observed = [row["N"] for row in harmful if row["N"] is not None]
         return {
@@ -592,9 +581,7 @@ def run(
             retirement_tracker.observe(task, index, randomized, outcome, error)
             lifecycle_ms = assignment_ms + (time.perf_counter() - lifecycle_started) * 1000
             if randomized and outcome is not None:
-                observation = experiment.HoldoutObservation(
-                    task["id"], str(index), injected, outcome, rate=0.5
-                )
+                observation = experiment.HoldoutObservation(task["id"], str(index), injected, outcome, rate=0.5)
                 observations.append(observation)
             rows.append(
                 {
@@ -609,7 +596,9 @@ def run(
                     "lifecycle_ms": lifecycle_ms,
                     "usage": usage,
                     "cost_usd": cost,
-                    "label_relevant": task.get("lesson_relevant") if type(task.get("lesson_relevant")) is bool else None,
+                    "label_relevant": task.get("lesson_relevant")
+                    if type(task.get("lesson_relevant")) is bool
+                    else None,
                     "label_harmful": task.get("lesson_harmful") if type(task.get("lesson_harmful")) is bool else None,
                 }
             )
@@ -626,29 +615,27 @@ def run(
             if effect_row is not None:
                 effects_by_task.append(effect_row)
                 continue
-            assignment_rows = [
-                row for row in rows if row["task"] == task["id"] and row["randomized"]
-            ]
-            effects_by_task.append({
-                "lesson_slug": task["id"],
-                "planned_occasions": planned_slots[task["id"]],
-                "target_n_per_arm": target_n_by_task[task["id"]],
-                "n_injected": 0,
-                "n_withheld": 0,
-                "rate_injected": 0.0,
-                "rate_withheld": 0.0,
-                "effect": None,
-                "ci_low": None,
-                "ci_high": None,
-                "p_value": None,
-                "significant": False,
-                "min_detectable_effect": None,
-                "verdict": experiment.VERDICT_UNDERPOWERED,
-                "note": "No resolved randomized outcome for this task.",
-                "unresolved_randomized_occasions": sum(
-                    row["succeeded"] is None for row in assignment_rows
-                ),
-            })
+            assignment_rows = [row for row in rows if row["task"] == task["id"] and row["randomized"]]
+            effects_by_task.append(
+                {
+                    "lesson_slug": task["id"],
+                    "planned_occasions": planned_slots[task["id"]],
+                    "target_n_per_arm": target_n_by_task[task["id"]],
+                    "n_injected": 0,
+                    "n_withheld": 0,
+                    "rate_injected": 0.0,
+                    "rate_withheld": 0.0,
+                    "effect": None,
+                    "ci_low": None,
+                    "ci_high": None,
+                    "p_value": None,
+                    "significant": False,
+                    "min_detectable_effect": None,
+                    "verdict": experiment.VERDICT_UNDERPOWERED,
+                    "note": "No resolved randomized outcome for this task.",
+                    "unresolved_randomized_occasions": sum(row["succeeded"] is None for row in assignment_rows),
+                }
+            )
         effect = observed_effects.get(tasks[0]["id"]) if len(tasks) == 1 else None
         aggregate = _stratified_uplift(
             tasks,
@@ -678,15 +665,15 @@ def run(
             "cost": {
                 "known_usd": sum(row["cost_usd"] for row in priced),
                 "unpriced_occasions": len(rows) - len(priced),
-                "tokens": {key: sum(row["usage"].get(key, 0) for row in rows) for key in ("input_tokens", "output_tokens")},
+                "tokens": {
+                    key: sum(row["usage"].get(key, 0) for row in rows) for key in ("input_tokens", "output_tokens")
+                },
             },
             **retirement,
             "precision_gate_met": precision is not None and precision >= 0.8,
             "uplift_gate_evaluated": uplift_gate_evaluated,
             "uplift_gate_met": bool(
-                uplift_gate_evaluated
-                and aggregate["effect_unrounded"] >= _UPLIFT_THRESHOLD
-                and aggregate["ci_low"] > 0
+                uplift_gate_evaluated and aggregate["effect_unrounded"] >= _UPLIFT_THRESHOLD and aggregate["ci_low"] > 0
             ),
             "uplift_gate_reason": (
                 aggregate["reason"]

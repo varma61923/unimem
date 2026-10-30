@@ -4,6 +4,7 @@ Transport framing, TLS, socket timeouts and response serialization live here;
 authentication and store operations remain in :mod:`unimem.gateway`.
 The gateway's public factory functions are compatibility facades.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,8 +24,16 @@ logger = logging.getLogger("unimem.gateway")
 
 __all__ = ["make_http_server", "serve_stdio"]
 
-def make_http_server(gateway: Gateway, host: str, port: int, *, tls: tuple[str, str] | None = None,
-                     request_timeout: float = 10.0, max_connections: int = 128) -> ThreadingHTTPServer:
+
+def make_http_server(
+    gateway: Gateway,
+    host: str,
+    port: int,
+    *,
+    tls: tuple[str, str] | None = None,
+    request_timeout: float = 10.0,
+    max_connections: int = 128,
+) -> ThreadingHTTPServer:
     """Create an HTTP/TLS server with bounded bodies and active connections.
 
     Excess connections close immediately, without allocating waiting workers.
@@ -135,7 +144,8 @@ def make_http_server(gateway: Gateway, host: str, port: int, *, tls: tuple[str, 
             self._send(gateway.handle("POST", self.path, dict(self.headers.items()), body))
 
         do_PUT = do_DELETE = do_PATCH = lambda self: self._fail(  # noqa: E731
-            405, "method_not_allowed", "only GET and POST are used")
+            405, "method_not_allowed", "only GET and POST are used"
+        )
 
     class Server(ThreadingHTTPServer):
         daemon_threads = True
@@ -185,21 +195,32 @@ def make_http_server(gateway: Gateway, host: str, port: int, *, tls: tuple[str, 
 
 def serve_stdio(gateway: Gateway, stdin: TextIO, stdout: TextIO) -> int:
     """One JSON object per line in, one per line out, until EOF."""
-    shorthand = {"recall": ("POST", "/v1/recall"), "outcome": ("POST", "/v1/outcome"),
-                 "status": ("GET", "/v1/status"), "memories": ("GET", "/v1/memories"),
-                 "occasions": ("GET", "/v1/occasions"), "agents": ("GET", "/v1/agents"),
-                 "health": ("GET", "/v1/health"),
-                 "remember": ("POST", "/v1/conversation/add"), "converse": ("POST", "/v1/conversation/recall"),
-                 "conversation_add": ("POST", "/v1/conversation/add"),
-                 "conversation_recall": ("POST", "/v1/conversation/recall"),
-                 "sessions": ("GET", "/v1/conversation/sessions"),
-                 "summarize": ("POST", "/v1/conversation/summarize"),
-                 "working_memory": ("POST", "/v1/working-memory"),
-                 "lessons": ("GET", "/v1/lessons"), "lesson": ("GET", "/v1/lesson"),
-                 "lesson_edit": ("POST", "/v1/lesson/edit"), "edit": ("POST", "/v1/lesson/edit"),
-                 "lesson_approve": ("POST", "/v1/lesson/approve"), "approve": ("POST", "/v1/lesson/approve"),
-                 "lesson_reject": ("POST", "/v1/lesson/reject"), "reject": ("POST", "/v1/lesson/reject"),
-                 "proof": ("GET", "/v1/status"), "proof_status": ("GET", "/v1/status")}
+    shorthand = {
+        "recall": ("POST", "/v1/recall"),
+        "outcome": ("POST", "/v1/outcome"),
+        "status": ("GET", "/v1/status"),
+        "memories": ("GET", "/v1/memories"),
+        "occasions": ("GET", "/v1/occasions"),
+        "agents": ("GET", "/v1/agents"),
+        "health": ("GET", "/v1/health"),
+        "remember": ("POST", "/v1/conversation/add"),
+        "converse": ("POST", "/v1/conversation/recall"),
+        "conversation_add": ("POST", "/v1/conversation/add"),
+        "conversation_recall": ("POST", "/v1/conversation/recall"),
+        "sessions": ("GET", "/v1/conversation/sessions"),
+        "summarize": ("POST", "/v1/conversation/summarize"),
+        "working_memory": ("POST", "/v1/working-memory"),
+        "lessons": ("GET", "/v1/lessons"),
+        "lesson": ("GET", "/v1/lesson"),
+        "lesson_edit": ("POST", "/v1/lesson/edit"),
+        "edit": ("POST", "/v1/lesson/edit"),
+        "lesson_approve": ("POST", "/v1/lesson/approve"),
+        "approve": ("POST", "/v1/lesson/approve"),
+        "lesson_reject": ("POST", "/v1/lesson/reject"),
+        "reject": ("POST", "/v1/lesson/reject"),
+        "proof": ("GET", "/v1/status"),
+        "proof_status": ("GET", "/v1/status"),
+    }
 
     def with_query(base: str, params: dict) -> str:
         clean = {k: v for k, v in params.items() if v is not None}
@@ -235,25 +256,29 @@ def serve_stdio(gateway: Gateway, stdin: TextIO, stdout: TextIO) -> int:
                     raise ValueError("method must be a nonempty string")
                 if not isinstance(path, str) or not path:
                     raise ValueError("path must be a nonempty string")
-                body = req.get("body")
-                if body is None:
+                raw_body = req.get("body")
+                if raw_body is None:
                     body = {}
-                elif not isinstance(body, dict):
+                elif not isinstance(raw_body, dict):
                     raise ValueError("body must be a JSON object")
+                else:
+                    body = raw_body
                 if method == "GET" and body:
                     path, body = with_query(path, body), {}
             response = gateway.handle(
-                method, path, body=json.dumps(body).encode("utf-8") if method == "POST" else None,
-                trusted=True)
+                method, path, body=json.dumps(body).encode("utf-8") if method == "POST" else None, trusted=True
+            )
             if response.stream is None:
                 response_body = json.loads(response.body)
             else:
-                response_body = {"content_type": response.content_type,
-                                 "data": b"".join(response.stream).decode("utf-8"), "headers": response.headers}
+                response_body = {
+                    "content_type": response.content_type,
+                    "data": b"".join(response.stream).decode("utf-8"),
+                    "headers": response.headers,
+                }
             reply = {"id": request_id, "status": response.status, "body": response_body}
         except (ValueError, KeyError, RecursionError) as exc:
-            reply = {"id": request_id, "status": 400,
-                     "body": {"error": {"code": "bad_request", "message": str(exc)}}}
+            reply = {"id": request_id, "status": 400, "body": {"error": {"code": "bad_request", "message": str(exc)}}}
         stdout.write(json.dumps(reply, separators=(",", ":")) + "\n")
         stdout.flush()
     return 0

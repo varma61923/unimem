@@ -8,24 +8,24 @@ from unimem import frontier_protocol as fp
 from unimem import holdout_io, interference, lineage, search_recipes
 
 
-def _fleet(rng, clusters, tasks, *, design, direct=.1, spillover=.3, base=.3):
+def _fleet(rng, clusters, tasks, *, design, direct=0.1, spillover=0.3, base=0.3):
     """Simulate write-back contamination: a treated run writes a learned workaround
     into its cluster's shared cache, and the workaround helps every later task in
     that cluster whatever its own arm. Returns per-task rows and per-cluster rows."""
     task_rows, cluster_rows = [], []
     for c in range(clusters):
-        cluster_treated = rng.random() < .5
+        cluster_treated = rng.random() < 0.5
         cache = False
         outcomes = []
         for _ in range(tasks):
-            treated = cluster_treated if design == "cluster" else rng.random() < .5
+            treated = cluster_treated if design == "cluster" else rng.random() < 0.5
             # Write-path diversion: holdout-arm tasks cannot read treated derivations.
             visible = cache and (treated or design != "diverted")
             success = rng.random() < base + direct * treated + spillover * visible
             task_rows.append((treated, success))
             outcomes.append(success)
             cache = cache or treated
-        cluster_rows.append(interference.Cluster(str(c), cluster_treated, sum(outcomes) / tasks, .5))
+        cluster_rows.append(interference.Cluster(str(c), cluster_treated, sum(outcomes) / tasks, 0.5))
     return task_rows, cluster_rows
 
 
@@ -33,8 +33,10 @@ def _difference(rows):
     treated = [y for a, y in rows if a]
     control = [y for a, y in rows if not a]
     effect = sum(treated) / len(treated) - sum(control) / len(control)
-    se = (sum(treated) / len(treated) * (1 - sum(treated) / len(treated)) / len(treated)
-          + sum(control) / len(control) * (1 - sum(control) / len(control)) / len(control)) ** .5
+    se = (
+        sum(treated) / len(treated) * (1 - sum(treated) / len(treated)) / len(treated)
+        + sum(control) / len(control) * (1 - sum(control) / len(control)) / len(control)
+    ) ** 0.5
     return effect, se
 
 
@@ -45,45 +47,54 @@ def test_write_back_contamination_biases_task_estimates_and_is_flagged():
     tasks = 20
     # Fleet-wide deployment effect: direct lift on every task, plus the cache from
     # the first treated task onward (tasks 2..20 of a treated cluster).
-    total = .1 + .3 * (tasks - 1) / tasks
+    total = 0.1 + 0.3 * (tasks - 1) / tasks
     contaminated, _ = _fleet(rng, 400, tasks, design="task")
     task_effect, task_se = _difference(contaminated)
     _, clusters = _fleet(rng, 1500, tasks, design="cluster")
-    clustered = interference.cluster_effect(clusters, propensity_floor=.5)
+    clustered = interference.cluster_effect(clusters, propensity_floor=0.5)
     diverted, _ = _fleet(rng, 400, tasks, design="diverted")
     diverted_effect, _ = _difference(diverted)
-    assert abs(task_effect - total) > .15  # both arms read the treated cache: biased toward the direct effect
-    assert abs(clustered["estimate"] - total) < .05
+    assert abs(task_effect - total) > 0.15  # both arms read the treated cache: biased toward the direct effect
+    assert abs(clustered["estimate"] - total) < 0.05
     assert clustered["confidence_sequence"][0] <= total <= clustered["confidence_sequence"][1]
     assert abs(diverted_effect - total) < abs(task_effect - total)  # diversion removes most of the bias
     cluster_se = (clustered["confidence_sequence"][1] - clustered["estimate"]) / 4
     flag = interference.symbiosis_bias(task_effect, clustered["estimate"], task_se, cluster_se)
     assert flag["flagged"]
-    report = integrity.audit([], cluster_comparison={"task_effect": task_effect,
-                                                     "cluster_effect": clustered["estimate"],
-                                                     "task_se": task_se, "cluster_se": cluster_se})
+    report = integrity.audit(
+        [],
+        cluster_comparison={
+            "task_effect": task_effect,
+            "cluster_effect": clustered["estimate"],
+            "task_se": task_se,
+            "cluster_se": cluster_se,
+        },
+    )
     finding = next(f for f in report.findings if f.check == "symbiosis_bias")
     assert finding.severity == integrity.SEVERITY_WEAKENS
     # Mutation guard: an unequal design needs Horvitz-Thompson weights.
     skewed = []
     for c in range(3000):
-        treated = rng.random() < .2
-        skewed.append(interference.Cluster(str(c), treated, min(1, (.6 if treated else .3) + rng.random() * .1), .2))
-    weighted = interference.cluster_effect(skewed, propensity_floor=.2)["estimate"]
+        treated = rng.random() < 0.2
+        skewed.append(
+            interference.Cluster(str(c), treated, min(1, (0.6 if treated else 0.3) + rng.random() * 0.1), 0.2)
+        )
+    weighted = interference.cluster_effect(skewed, propensity_floor=0.2)["estimate"]
     unweighted = sum(c.outcome if c.treated else -c.outcome for c in skewed) / len(skewed)
-    assert abs(weighted - .3) < .05 and abs(unweighted - .3) > .2
+    assert abs(weighted - 0.3) < 0.05 and abs(unweighted - 0.3) > 0.2
     with pytest.raises(ValueError, match="one bounded"):
         interference.cluster_effect([clusters[0], clusters[0]])
 
 
 def test_treated_derivations_cannot_cross_holdout_read_boundary(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="fleet")
+    holdout_io.configure(root, rate=0.5, salt="fleet")
     interference.publish(root, "design", "shared")
     assignments = [interference.assign_cluster(root, "design", str(i)) for i in range(20)]
     treated = next(row["cluster"] for row in assignments if row["treated"])
     control = next(row["cluster"] for row in assignments if not row["treated"])
     from unimem import hierarchical
+
     with interference.reader_scope(root, "design", treated):
         fact, _ = hierarchical.add_fact(root, "Shared treated-arm learned workaround")
         body = {"id": fact.id, "statement": fact.statement}
@@ -106,7 +117,7 @@ def test_treated_derivations_cannot_cross_holdout_read_boundary(tmp_path):
 
 def test_switchbacks_pin_blocks_and_exclude_burn_in(tmp_path):
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="switchbacks")
+    holdout_io.configure(root, rate=0.5, salt="switchbacks")
     interference.publish(root, "sb", "policy", block_length=5, burn_in=2)
     rows = [interference.assign_cluster(root, "sb", "cell", period=i) for i in range(10)]
     assert [r["eligible"] for r in rows] == [False, False, True, True, True] * 2

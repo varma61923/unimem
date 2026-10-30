@@ -30,8 +30,12 @@ def test_common_operation_alias_executes_the_existing_fact_handler(tmp_path, cap
 
 def test_noninteractive_dry_run_does_not_create_a_store(tmp_path, capsys):
     destination = tmp_path / "new store"
-    assert cli.main(["setup", "--workflow", "runtime", "--dest", str(destination), "--non-interactive",
-                     "--dry-run", "--json"]) == 0
+    assert (
+        cli.main(
+            ["setup", "--workflow", "runtime", "--dest", str(destination), "--non-interactive", "--dry-run", "--json"]
+        )
+        == 0
+    )
     result = json.loads(capsys.readouterr().out)
     assert result["applied"] is False and result["steps"] == []
     assert result["commands"][0][:2] == ["up", "--setup-only"]
@@ -40,8 +44,25 @@ def test_noninteractive_dry_run_does_not_create_a_store(tmp_path, capsys):
 
 def test_guided_runtime_initialization_is_real_and_does_not_start_a_server(tmp_path, capsys):
     destination = tmp_path / "store"
-    assert cli.main(["setup", "--workflow", "runtime", "--dest", str(destination), "--profile", "local",
-                     "--agent", "codex", "--non-interactive", "--apply", "--json"]) == 0
+    assert (
+        cli.main(
+            [
+                "setup",
+                "--workflow",
+                "runtime",
+                "--dest",
+                str(destination),
+                "--profile",
+                "local",
+                "--agent",
+                "codex",
+                "--non-interactive",
+                "--apply",
+                "--json",
+            ]
+        )
+        == 0
+    )
     result = json.loads(capsys.readouterr().out)
     assert result["applied"] and result["steps"][0]["exit_code"] == 0
     assert (destination / "memory" / "INDEX.md").is_file()
@@ -55,8 +76,27 @@ def test_guided_ingestion_preserves_argument_boundaries_and_writes_evidence(tmp_
     destination = tmp_path / "store"
     destination.mkdir()
     (destination / "unimem.yaml").write_text("profiles:\n  local:\n    embedding: none\n")
-    assert cli.main(["setup", "--workflow", "ingest", "--source", str(source), "--context", "release",
-                     "--space", "notes", "--dest", str(destination), "--non-interactive", "--apply", "--json"]) == 0
+    assert (
+        cli.main(
+            [
+                "setup",
+                "--workflow",
+                "ingest",
+                "--source",
+                str(source),
+                "--context",
+                "release",
+                "--space",
+                "notes",
+                "--dest",
+                str(destination),
+                "--non-interactive",
+                "--apply",
+                "--json",
+            ]
+        )
+        == 0
+    )
     result = json.loads(capsys.readouterr().out)
     assert result["steps"][0]["command"][1] == str(source)
     with Store(str(destination), "notes", create=False) as store:
@@ -72,8 +112,7 @@ def test_interactive_plan_requires_explicit_application(tmp_path, monkeypatch, c
     assert not (tmp_path / "new").exists()
 
 
-@pytest.mark.parametrize("arguments", [[], ["--workflow", "ingest"],
-                                       ["--workflow", "migrate", "--source", "missing"]])
+@pytest.mark.parametrize("arguments", [[], ["--workflow", "ingest"], ["--workflow", "migrate", "--source", "missing"]])
 def test_invalid_guided_workflows_fail_before_writes(tmp_path, arguments):
     assert cli.main(["setup", "--non-interactive", "--dest", str(tmp_path / "new"), *arguments]) != 0
     assert not (tmp_path / "new").exists()

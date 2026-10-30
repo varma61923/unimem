@@ -1,4 +1,5 @@
 """Batch/timestamp/alias guards shared by local and HTTP ADD-only admission."""
+
 from __future__ import annotations
 
 import re
@@ -27,8 +28,9 @@ def batch(root: str, items: list[dict], *, context: list[str] | None = None) -> 
         text = row["statement"]
         for canonical, variants in aliases.items():
             for alias in sorted(variants, key=len, reverse=True):
-                text = re.sub(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", lambda _match: canonical,
-                              text, flags=re.IGNORECASE)
+                text = re.sub(
+                    r"(?<!\w)" + re.escape(alias) + r"(?!\w)", lambda _match: canonical, text, flags=re.IGNORECASE
+                )
         row["statement"] = text
         if context is not None:
             row["scopes"] = context

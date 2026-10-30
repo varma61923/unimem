@@ -1,4 +1,5 @@
 """Signed op-based site mesh using an observed-remove set and multi-value registers."""
+
 from __future__ import annotations
 
 import base64
@@ -52,14 +53,24 @@ def revoke_robot(root: str, robot_id: str, *, reason: str) -> dict[str, Any]:
         raise KeyError("cannot revoke an unregistered mesh robot")
     if any(row["robot_id"] == robot_id for row in fp.journal(root, REVOKED)):
         return next(row for row in fp.journal(root, REVOKED) if row["robot_id"] == robot_id)
-    return cast(dict[str, Any], fp.append(root, REVOKED,
-                                          {"robot_id": robot_id, "reason": reason, "at": fp.now()})["record"])
+    return cast(
+        dict[str, Any], fp.append(root, REVOKED, {"robot_id": robot_id, "reason": reason, "at": fp.now()})["record"]
+    )
 
 
-def sign_operation(robot_id: str, private_key: str, *, counter: int, operation: str,
-                    entity: str, value: Any = None, field: str = "value",
-                    parents: list[str] | None = None, targets: list[str] | None = None,
-                    safety: bool = False) -> dict[str, Any]:
+def sign_operation(
+    robot_id: str,
+    private_key: str,
+    *,
+    counter: int,
+    operation: str,
+    entity: str,
+    value: Any = None,
+    field: str = "value",
+    parents: list[str] | None = None,
+    targets: list[str] | None = None,
+    safety: bool = False,
+) -> dict[str, Any]:
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     except ImportError:
@@ -74,11 +85,15 @@ def sign_operation(robot_id: str, private_key: str, *, counter: int, operation: 
         raise ValueError("mesh safety marker must be boolean")
     if operation not in {"add", "remove", "put"}:
         raise ValueError("mesh operation must be add, remove or put")
-    body = {"robot_id": fp.text(robot_id, "robot id", 128),
-            "counter": fp.count(counter, 1, 2**63-1), "operation": operation,
-            "entity": fp.text(entity, "site entity", 128), "field": fp.text(field, "register field", 128),
-            "parents": sorted(set(fp.text(item, "parent operation", 64) for item in (parents or []))),
-            "safety": bool(safety)}
+    body = {
+        "robot_id": fp.text(robot_id, "robot id", 128),
+        "counter": fp.count(counter, 1, 2**63 - 1),
+        "operation": operation,
+        "entity": fp.text(entity, "site entity", 128),
+        "field": fp.text(field, "register field", 128),
+        "parents": sorted(set(fp.text(item, "parent operation", 64) for item in (parents or []))),
+        "safety": bool(safety),
+    }
     if operation in {"add", "put"}:
         fp.wire(value)
         body["value"] = value
@@ -92,8 +107,11 @@ def sign_operation(robot_id: str, private_key: str, *, counter: int, operation: 
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
     public = Ed25519PrivateKey.from_private_bytes(secret).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    return {"body": signed_body, "signature": base64.b64encode(signature).decode(),
-            "public_key_digest": fp.digest(public.hex())}
+    return {
+        "body": signed_body,
+        "signature": base64.b64encode(signature).decode(),
+        "public_key_digest": fp.digest(public.hex()),
+    }
 
 
 def _robot_keys(root: str) -> dict[str, str]:
@@ -107,19 +125,26 @@ def _verify(root: str, signed: dict[str, Any]) -> dict[str, Any]:
     robot = body.get("robot_id")
     keys = _robot_keys(root)
     if robot not in keys or fp.digest(keys[robot]) != signed["public_key_digest"]:
-        fp.append(root, TAINTS, {"robot_id": str(robot), "operation_id": body.get("id", ""),
-                                 "reason": "unknown or mismatched robot key"})
+        fp.append(
+            root,
+            TAINTS,
+            {"robot_id": str(robot), "operation_id": body.get("id", ""), "reason": "unknown or mismatched robot key"},
+        )
         raise PermissionError("mesh operation key is unknown; operation was tainted")
     if any(row["robot_id"] == robot for row in fp.journal(root, REVOKED)):
-        fp.append(root, TAINTS, {"robot_id": robot, "operation_id": body.get("id", ""),
-                                 "reason": "revoked robot operation"})
+        fp.append(
+            root, TAINTS, {"robot_id": robot, "operation_id": body.get("id", ""), "reason": "revoked robot operation"}
+        )
         raise PermissionError("revoked robot operation was rejected and tainted")
     try:
         signature = base64.b64decode(signed["signature"], validate=True)
         _ed25519().from_public_bytes(bytes.fromhex(keys[robot])).verify(signature, fp.wire(body))
     except Exception:
-        fp.append(root, TAINTS, {"robot_id": robot, "operation_id": body.get("id", ""),
-                                 "reason": "invalid operation signature"})
+        fp.append(
+            root,
+            TAINTS,
+            {"robot_id": robot, "operation_id": body.get("id", ""), "reason": "invalid operation signature"},
+        )
         raise PermissionError("forged mesh operation was rejected and tainted") from None
     expected = fp.digest({key: value for key, value in body.items() if key != "id"})
     if body.get("id") != expected:
@@ -135,8 +160,9 @@ def apply(root: str, signed_ops: list[dict[str, Any]]) -> dict[str, Any]:
         body = _verify(root, signed)
         if body["id"] in prior:
             continue
-        row = fp.append(root, OPS, {**body, "signature": signed["signature"],
-                                    "public_key_digest": signed["public_key_digest"]})["record"]
+        row = fp.append(
+            root, OPS, {**body, "signature": signed["signature"], "public_key_digest": signed["public_key_digest"]}
+        )["record"]
         prior.add(body["id"])
         accepted.append(row["id"])
     return {"accepted": accepted, "count": len(accepted)}
@@ -151,8 +177,15 @@ def merge_views(operations: list[dict[str, Any]], *, revoked: set[str] | None = 
     entities: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for tag, op in adds.items():
         if tag not in removed or op.get("safety"):
-            entities[op["entity"]].append({"tag": tag, "value": op.get("value"), "safety": op.get("safety", False),
-                                           "robot_id": op["robot_id"], "counter": op["counter"]})
+            entities[op["entity"]].append(
+                {
+                    "tag": tag,
+                    "value": op.get("value"),
+                    "safety": op.get("safety", False),
+                    "robot_id": op["robot_id"],
+                    "counter": op["counter"],
+                }
+            )
     registers: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for op in live:
         if op["operation"] == "put":
@@ -186,13 +219,23 @@ def merge_views(operations: list[dict[str, Any]], *, revoked: set[str] | None = 
         if len(maximal_values) == 1:
             register_values[f"{entity}/{field}"] = maximal[0]["value"]
         else:
-            conflicts.append({"entity": entity, "field": field,
-                              "values": sorted(((row["robot_id"], row["value"]) for row in maximal),
-                                               key=lambda item: (item[0], fp.digest(item[1])))})
-    return {"entities": {key: sorted(value, key=lambda item: item["tag"])
-                         for key, value in sorted(entities.items())},
-            "registers": register_values, "contradictions": conflicts,
-            "active_operations": len(live), "kind": "observed-remove set and multi-value registers"}
+            conflicts.append(
+                {
+                    "entity": entity,
+                    "field": field,
+                    "values": sorted(
+                        ((row["robot_id"], row["value"]) for row in maximal),
+                        key=lambda item: (item[0], fp.digest(item[1])),
+                    ),
+                }
+            )
+    return {
+        "entities": {key: sorted(value, key=lambda item: item["tag"]) for key, value in sorted(entities.items())},
+        "registers": register_values,
+        "contradictions": conflicts,
+        "active_operations": len(live),
+        "kind": "observed-remove set and multi-value registers",
+    }
 
 
 def merge(root: str) -> dict[str, Any]:
@@ -201,8 +244,15 @@ def merge(root: str) -> dict[str, Any]:
     tainted = {row.get("operation_id") for row in fp.journal(root, TAINTS)}
     for row in ops:
         if row["robot_id"] in revoked and row["id"] not in tainted:
-            fp.append(root, TAINTS, {"robot_id": row["robot_id"], "operation_id": row["id"],
-                                     "reason": "historical operation invalidated by robot revocation"})
+            fp.append(
+                root,
+                TAINTS,
+                {
+                    "robot_id": row["robot_id"],
+                    "operation_id": row["id"],
+                    "reason": "historical operation invalidated by robot revocation",
+                },
+            )
     # Revalidate source signatures and remove every op from newly revoked peers.
     accepted = [row for row in ops if row["robot_id"] not in revoked]
     try:
@@ -213,17 +263,28 @@ def merge(root: str) -> dict[str, Any]:
         view = merge_views(accepted, revoked=revoked)
         view["automerge_used"] = False
     else:
-        ROOT, Document, ObjType, ScalarType = (automerge.ROOT, automerge.Document,
-                                               automerge.ObjType, automerge.ScalarType)
+        ROOT, Document, ObjType, ScalarType = (
+            automerge.ROOT,
+            automerge.Document,
+            automerge.ObjType,
+            automerge.ScalarType,
+        )
         # Each robot's signed operation stream is a list in an Automerge
         # document. The CRDT library unions offline changes; our reducer then
         # enforces UniMem's safety and semantic-conflict policies.
         by_robot: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in accepted:
-            by_robot[row["robot_id"]].append({"body": {key: value for key, value in row.items()
-                if key not in {"signature", "public_key_digest", "sequence", "previous", "recorded_at"}},
-                "signature": row["signature"],
-                "public_key_digest": row["public_key_digest"]})
+            by_robot[row["robot_id"]].append(
+                {
+                    "body": {
+                        key: value
+                        for key, value in row.items()
+                        if key not in {"signature", "public_key_digest", "sequence", "previous", "recorded_at"}
+                    },
+                    "signature": row["signature"],
+                    "public_key_digest": row["public_key_digest"],
+                }
+            )
         documents = []
         for robot_id, rows in sorted(by_robot.items()):
             document = Document()

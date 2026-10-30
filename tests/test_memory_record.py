@@ -1,4 +1,5 @@
 """Optional record-envelope vectors; the causal v1 vectors are untouched."""
+
 from __future__ import annotations
 
 import json
@@ -62,11 +63,15 @@ def test_memory_envelope_has_a_bounded_json_wire_size():
         MemoryRecord("large", "fact", 1, {"text": "x" * MAX_RECORD_BYTES})
 
 
-@pytest.mark.parametrize("changes", [
-    {field: value}
-    for field in ("created_at", "valid_from", "valid_until", "retracted_at")
-    for value in (False, 0, [], {})
-] + [{"created_at": None}, {"evidence": [None]}, {"evidence": ["citation"]}])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {field: value}
+        for field in ("created_at", "valid_from", "valid_until", "retracted_at")
+        for value in (False, 0, [], {})
+    ]
+    + [{"created_at": None}, {"evidence": [None]}, {"evidence": ["citation"]}],
+)
 def test_untrusted_record_put_rejects_invalid_envelopes_before_persistence(tmp_path, changes):
     from unimem.memory_journal import Journal
     from unimem.record_api import operate

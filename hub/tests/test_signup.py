@@ -72,9 +72,7 @@ class TestSuccessfulSignup:
         console_app = Starlette()
         console.add_console_routes(console_app, session_factory, console_secret="test-secret")
         async with _client(console_app) as client:
-            signin_response = await client.post(
-                f"{console.CONSOLE_PATH}/signin", data={"api_key": raw_key}
-            )
+            signin_response = await client.post(f"{console.CONSOLE_PATH}/signin", data={"api_key": raw_key})
         assert signin_response.status_code == 303
         assert signin_response.headers["location"] == console.CONSOLE_PATH
 
@@ -83,10 +81,14 @@ class TestSuccessfulSignup:
             await client.post(signup.SIGNUP_PATH, data={"org_name": "Acme"})
         async with session_scope(session_factory) as session:
             entries = (
-                await session.execute(
-                    select(AuditLogEntry).where(AuditLogEntry.actor == signup.ACTOR_SELF_SERVE_SIGNUP)
+                (
+                    await session.execute(
+                        select(AuditLogEntry).where(AuditLogEntry.actor == signup.ACTOR_SELF_SERVE_SIGNUP)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
         assert len(entries) == 1
         assert entries[0].action == "create_org"
 
@@ -138,19 +140,14 @@ class TestHoneypot:
 
     async def test_an_empty_honeypot_field_is_a_normal_signup(self, session_factory):
         async with _client(_app(session_factory)) as client:
-            response = await client.post(
-                signup.SIGNUP_PATH, data={"org_name": "Real Co", "website": ""}
-            )
+            response = await client.post(signup.SIGNUP_PATH, data={"org_name": "Real Co", "website": ""})
         assert "Account created" in response.text
 
 
 class TestSignupIsRateLimited:
     async def test_a_flood_from_one_address_eventually_gets_refused(self, session_factory):
         async with _client(_app(session_factory)) as client:
-            texts = [
-                (await client.post(signup.SIGNUP_PATH, data={"org_name": f"Org {i}"})).text
-                for i in range(10)
-            ]
+            texts = [(await client.post(signup.SIGNUP_PATH, data={"org_name": f"Org {i}"})).text for i in range(10)]
         assert any("Too many signups" in t for t in texts)
 
     async def test_a_refused_attempt_still_creates_no_org(self, session_factory):

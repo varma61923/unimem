@@ -185,7 +185,10 @@ async def _seed_holdout(session, org_id: str, salt: str, n: int, start: int) -> 
             """
         ),
         {
-            "org_id": org_id, "salt": salt, "start": start, "end": start + n - 1,
+            "org_id": org_id,
+            "salt": salt,
+            "start": start,
+            "end": start + n - 1,
             "lesson_ids": lesson_ids,
         },
     )
@@ -235,9 +238,7 @@ async def run(sizes: list[int], as_json: bool) -> int:
             "search_traces (matches all)": lambda: crud.search_traces(
                 session, org_id, query="production run", limit=20
             ),
-            "search_traces (by tag)": lambda: crud.search_traces(
-                session, org_id, tags=["postgres"], limit=20
-            ),
+            "search_traces (by tag)": lambda: crud.search_traces(session, org_id, tags=["postgres"], limit=20),
             "list_tags": lambda: crud.list_tags(session, org_id),
             "entitlements": lambda: crud.entitlements(session, org_id),
             "agents_under_management": lambda: crud.agents_under_management(session, org_id),
@@ -264,7 +265,7 @@ async def run(sizes: list[int], as_json: bool) -> int:
         if not as_json:
             print(f"  measured at {target:,} traces", file=sys.stderr)
 
-    report = []
+    report: list[dict] = []
     for name, by_size in results.items():
         xs = sorted(by_size)
         ys = [by_size[x] for x in xs]
@@ -281,32 +282,33 @@ async def run(sizes: list[int], as_json: bool) -> int:
         )
 
     async with session_scope(session_factory) as session:
-        org = await session.get(Organization, org_id)
-        if org is not None:
-            await session.delete(org)
+        final_org = await session.get(Organization, org_id)
+        if final_org is not None:
+            await session.delete(final_org)
     await engine.dispose()
 
     if as_json:
         print(json.dumps({"sizes": sizes, "reps": REPS, "paths": report}, indent=2))
         return 0
 
-    print(f"\ncorpus sizes: {', '.join(f'{s:,}' for s in sizes)}   "
-          f"({sizes[-1] // sizes[0]}x range, median of {REPS} runs)\n")
+    print(
+        f"\ncorpus sizes: {', '.join(f'{s:,}' for s in sizes)}   "
+        f"({sizes[-1] // sizes[0]}x range, median of {REPS} runs)\n"
+    )
     header = f"{'read path':<26} " + " ".join(f"{s:>9,}" for s in sizes) + f" {'x':>7} {'alpha':>7}  verdict"
     print(header)
     print("-" * len(header))
     for row in report:
         cells = " ".join(f"{row['latency_ms'][str(s)]:>9.2f}" for s in sizes)
-        alpha = f"{row['exponent']:>7.2f}" if row["exponent"] is not None else f"{'-':>7}"
+        alpha_label = f"{row['exponent']:>7.2f}" if row["exponent"] is not None else f"{'-':>7}"
         growth = f"{row['growth_factor']:>6.1f}x" if row["growth_factor"] is not None else f"{'-':>7}"
-        print(f"{row['path']:<26} {cells} {growth} {alpha}  {row['verdict']}")
+        print(f"{row['path']:<26} {cells} {growth} {alpha_label}  {row['verdict']}")
     print()
-    print(f"alpha is the fitted exponent in latency ~ size**alpha over a "
-          f"{sizes[-1] // sizes[0]}x corpus range.")
+    print(f"alpha is the fitted exponent in latency ~ size**alpha over a {sizes[-1] // sizes[0]}x corpus range.")
     print(f"  <= {FLAT_EXPONENT}   flat        cost per call ignores how much history the customer has")
     print(f"  <  {LINEAR_EXPONENT}   sublinear   grows, but slower than the corpus")
     print(f"  >= {LINEAR_EXPONENT}   LINEAR      every doubling of their corpus doubles the cost of")
-    print( "                            serving them -- the product strategy's failure mode")
+    print("                            serving them -- the product strategy's failure mode")
     bad = [r["path"] for r in report if r["verdict"] == "LINEAR-OR-WORSE"]
     if bad:
         print(f"\nLinear-or-worse: {', '.join(bad)}")
@@ -318,9 +320,7 @@ async def run(sizes: list[int], as_json: bool) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="python -m hub.bench_scaling", description=__doc__.split("\n\n")[0]
-    )
+    parser = argparse.ArgumentParser(prog="python -m hub.bench_scaling", description=__doc__.split("\n\n")[0])
     parser.add_argument(
         "--sizes",
         default=",".join(str(s) for s in DEFAULT_SIZES),

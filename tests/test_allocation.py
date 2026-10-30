@@ -1,4 +1,5 @@
 """Adaptive holdout allocation: schedules, the AIPW confidence sequence, audit and proof round trip."""
+
 from __future__ import annotations
 
 import datetime
@@ -40,10 +41,16 @@ def clock(monkeypatch):
         def now(cls, tz=None):
             return c.now
 
-    monkeypatch.setattr(holdout_io, "datetime", types.SimpleNamespace(
-        datetime=Frozen, timezone=datetime.timezone, timedelta=datetime.timedelta))
-    monkeypatch.setattr(allocation, "datetime", types.SimpleNamespace(
-        datetime=Frozen, timezone=datetime.timezone, timedelta=datetime.timedelta))
+    monkeypatch.setattr(
+        holdout_io,
+        "datetime",
+        types.SimpleNamespace(datetime=Frozen, timezone=datetime.timezone, timedelta=datetime.timedelta),
+    )
+    monkeypatch.setattr(
+        allocation,
+        "datetime",
+        types.SimpleNamespace(datetime=Frozen, timezone=datetime.timezone, timedelta=datetime.timedelta),
+    )
     return c
 
 
@@ -94,8 +101,9 @@ def _occasions(root, start, n, clock, rng, *, truth):
     config = holdout_io.load_config(root)
     for i in range(start, start + n):
         slug = list(truth)[i % len(truth)]
-        withheld = holdout_io.assign_and_log(root, [slug], occasion_id=f"T-{i}", rate=config.rate,
-                                             salt=config.salt, revisions={slug: "r1"})
+        withheld = holdout_io.assign_and_log(
+            root, [slug], occasion_id=f"T-{i}", rate=config.rate, salt=config.salt, revisions={slug: "r1"}
+        )
         holdout_io.record_outcome(root, f"T-{i}", rng.random() < 0.5 + (truth[slug] if slug not in withheld else 0))
         clock.tick(30)
 
@@ -147,14 +155,27 @@ def test_eras_move_a_proven_memory_to_monitoring_and_the_whole_run_verifies(tmp_
 
 
 def test_a_rate_that_disagrees_with_its_schedule_invalidates(clock, tmp_path):
-    schedule = allocation.Schedule(version=0, salt="s", effective_from=T0.isoformat(), default_rate=0.5,
-                                   rates={"a": 0.05}, policy={}, basis={}, previous="", created_at=T0.isoformat())
+    schedule = allocation.Schedule(
+        version=0,
+        salt="s",
+        effective_from=T0.isoformat(),
+        default_rate=0.5,
+        rates={"a": 0.05},
+        policy={},
+        basis={},
+        previous="",
+        created_at=T0.isoformat(),
+    )
     later = T0 + datetime.timedelta(minutes=1)
     rows = [integrity.Assignment("a", f"o{i}", True, rate=0.05, salt="s", at=later, schedule="x") for i in range(5)]
     rows += [integrity.Assignment("a", "o9", True, rate=0.5, salt="s", at=later, schedule="x")]
     assert integrity.check_assignment_drift(rows, [schedule]).severity == integrity.SEVERITY_INVALIDATES
-    assert integrity.check_assignment_drift(rows[:5] + [integrity.Assignment(
-        "b", "o8", True, rate=0.5, salt="s", at=later)], [schedule]).severity == integrity.SEVERITY_OK
+    assert (
+        integrity.check_assignment_drift(
+            rows[:5] + [integrity.Assignment("b", "o8", True, rate=0.5, salt="s", at=later)], [schedule]
+        ).severity
+        == integrity.SEVERITY_OK
+    )
 
 
 def test_disable_returns_to_the_fixed_rate(tmp_path, clock):
@@ -172,8 +193,7 @@ def test_disable_returns_to_the_fixed_rate(tmp_path, clock):
 
 
 def test_the_simulation_reports_power_coverage_and_cost():
-    report = bench.run(reps=6, designs=("fixed50-aipw", "adaptive-aipw-strata"), strata=("flat",),
-                       effects=(0.0, 0.1))
+    report = bench.run(reps=6, designs=("fixed50-aipw", "adaptive-aipw-strata"), strata=("flat",), effects=(0.0, 0.1))
     assert {c["design"] for c in report["cells"]} == {"fixed50-aipw", "adaptive-aipw-strata"}
     adaptive = next(c for c in report["cells"] if c["design"].startswith("adaptive") and c["effect"] == 0.1)
     assert 0 <= adaptive["withheld_share_of_helpful"] <= 0.5 and adaptive["time_uniform_coverage"] <= 1

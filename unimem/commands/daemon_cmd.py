@@ -1,4 +1,5 @@
 """`unimem daemon`: one guarded consolidation pass (cron/idle/event)."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,15 +13,16 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser(
         "daemon",
         help="Run one guarded consolidation pass (file lock + crash marker; "
-             "calls the dream/consolidate entry points). Schedule via cron/systemd.",
+        "calls the dream/consolidate entry points). Schedule via cron/systemd.",
     )
-    p.add_argument("--once", action="store_true",
-                   help="Run one pass and exit (the only mode).")
-    p.add_argument("--trigger", default="once",
-                   choices=("once", "cron", "manual", "event", "idle"),
-                   help="Which trigger semantics gate this pass.")
-    p.add_argument("--json", action="store_true",
-                   help="Print the pass status dict as JSON.")
+    p.add_argument("--once", action="store_true", help="Run one pass and exit (the only mode).")
+    p.add_argument(
+        "--trigger",
+        default="once",
+        choices=("once", "cron", "manual", "event", "idle"),
+        help="Which trigger semantics gate this pass.",
+    )
+    p.add_argument("--json", action="store_true", help="Print the pass status dict as JSON.")
     p.add_argument("--dest", default=None)
     p.set_defaults(func=run)
 

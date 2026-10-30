@@ -32,7 +32,7 @@ def _jwk(pub, kid: str, alg: str = "RS256") -> dict:
 
 
 def _provider(jwks: dict, **overrides) -> sso.IdentityProvider:
-    kwargs = dict(issuer=ISSUER, audience=AUDIENCE, jwks=jwks)
+    kwargs: dict = dict(issuer=ISSUER, audience=AUDIENCE, jwks=jwks)
     kwargs.update(overrides)
     return sso.IdentityProvider(**kwargs)
 
@@ -40,8 +40,11 @@ def _provider(jwks: dict, **overrides) -> sso.IdentityProvider:
 def _token(key, kid: str, *, alg="RS256", now=None, **claims) -> str:
     now = now if now is not None else int(time.time())
     payload = {
-        "iss": ISSUER, "aud": AUDIENCE, "sub": "user-1",
-        "iat": now, "exp": now + 300,
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": "user-1",
+        "iat": now,
+        "exp": now + 300,
     }
     payload.update(claims)
     return jwt.encode(payload, key, algorithm=alg, headers={"kid": kid})
@@ -93,10 +96,17 @@ class TestAlgorithmConfusion:
         )
         now = int(time.time())
         header = b64u(json.dumps({"alg": "HS256", "kid": kid, "typ": "JWT"}).encode())
-        payload = b64u(json.dumps({
-            "iss": ISSUER, "aud": AUDIENCE, "sub": "attacker",
-            "iat": now, "exp": now + 300,
-        }).encode())
+        payload = b64u(
+            json.dumps(
+                {
+                    "iss": ISSUER,
+                    "aud": AUDIENCE,
+                    "sub": "attacker",
+                    "iat": now,
+                    "exp": now + 300,
+                }
+            ).encode()
+        )
         signing_input = header + b"." + payload
         sig = b64u(hmac.new(pub_pem, signing_input, hashlib.sha256).digest())
         return (signing_input + b"." + sig).decode()
@@ -292,9 +302,7 @@ class TestJWKSCache:
             return jwks
 
         cache = sso.JWKSCache(fetch, clock=lambda: 0.0)
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         token = _token(key, "k1")
         claims = sso.verify_bearer_token(token, provider, jwks_cache=cache)
         assert claims.subject == "user-1"
@@ -302,9 +310,7 @@ class TestJWKSCache:
 
     def test_a_jwks_uri_provider_without_a_cache_is_refused(self, signing_key):
         key, pub = signing_key
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         token = _token(key, "k1")
         with pytest.raises(sso.IdentityError, match="JWKSCache"):
             sso.verify_bearer_token(token, provider)
@@ -316,9 +322,7 @@ class TestJWKSCache:
             raise ConnectionError("idp unreachable")
 
         cache = sso.JWKSCache(fetch, clock=lambda: 0.0)
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         with pytest.raises(sso.IdentityError, match="signing keys"):
             sso.verify_bearer_token(_token(key, "k1"), provider, jwks_cache=cache)
 
@@ -340,9 +344,7 @@ class TestJWKSCache:
             return {"keys": [_jwk(pub, "k1")]}
 
         cache = sso.JWKSCache(fetch, ttl_seconds=100, clock=lambda: now[0])
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         token = _token(key, "k1")
         assert sso.verify_bearer_token(token, provider, jwks_cache=cache).subject == "user-1"
 
@@ -374,9 +376,7 @@ class TestJWKSCache:
             return {"keys": [_jwk(pub, "k1")]}
 
         cache = sso.JWKSCache(fetch, ttl_seconds=100, clock=lambda: now[0])
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         token = _token(key, "k1")
         sso.verify_bearer_token(token, provider, jwks_cache=cache)
         outage[0] = True
@@ -468,9 +468,7 @@ class TestKeyRotation:
             return json.loads(json.dumps(published))
 
         cache = sso.JWKSCache(fetch, clock=clock)
-        provider = sso.IdentityProvider(
-            issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json"
-        )
+        provider = sso.IdentityProvider(issuer=ISSUER, audience=AUDIENCE, jwks_uri="https://idp/jwks.json")
         return old_key, new_key, new_pub, published, fetches, cache, provider
 
     def test_a_token_signed_with_a_freshly_rotated_key_verifies(self):

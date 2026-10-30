@@ -52,8 +52,14 @@ def test_live_cascade_probe_certificate_and_legal_hold(tmp_path):
     with pytest.raises(PermissionError, match="legal hold"):
         erase.erase(root, "subject", [fact.id], vault, reason="request")
     incident.release(root, "hold", "resolved")
-    certificate = erase.erase(root, "subject", [fact.id], vault, reason="request",
-                              retrieval_probe=lambda: erase.probe(lambda q: [], ["Subject A"], forbidden=["private"]))
+    certificate = erase.erase(
+        root,
+        "subject",
+        [fact.id],
+        vault,
+        reason="request",
+        retrieval_probe=lambda: erase.probe(lambda q: [], ["Subject A"], forbidden=["private"]),
+    )
     assert erase.verify(root, certificate)
     assert certificate["certificate"]["record"]["probe"]["passed"]
     assert fact.id not in hierarchical.load_facts(root)
@@ -80,18 +86,29 @@ def test_cli_erasure_reaches_derived_lessons_rewrites_and_live_recall(tmp_path):
     vault = erase.SubjectVault(root, vault_dir)
     fact, _ = hierarchical.add_fact(root, "Zelda prefers the quiet loading dock entrance")
     vault.seal("zelda", fact.id, fact.statement)
-    _write_lesson(root, "zelda-dock", body="Route Zelda deliveries through the quiet loading dock entrance.",
-                  source_traces=[fact.id])
-    holdout_io.configure(root, rate=.5, salt="erase")
+    _write_lesson(
+        root,
+        "zelda-dock",
+        body="Route Zelda deliveries through the quiet loading dock entrance.",
+        source_traces=[fact.id],
+    )
+    holdout_io.configure(root, rate=0.5, salt="erase")
     proposal = retention.propose(root, "zelda-dock", "Always use the quiet dock entrance for Zelda.", author="dreamer")
     blob = retention._blob_path(root, proposal["record"]["body_digest"])
     assert os.path.exists(blob)
     assert any("Zelda" in item.text for item in recall.recall(root, "Zelda loading dock").items)
     request = tmp_path / "erase.json"
-    request.write_text(json.dumps({"subject": "zelda", "identities": [fact.id],  # the lesson is found by lineage
-                                   "vault_directory": vault_dir, "reason": "data subject request",
-                                   "probe": {"queries": ["Zelda loading dock", "quiet dock entrance"],
-                                             "forbidden": ["Zelda"]}}))
+    request.write_text(
+        json.dumps(
+            {
+                "subject": "zelda",
+                "identities": [fact.id],  # the lesson is found by lineage
+                "vault_directory": vault_dir,
+                "reason": "data subject request",
+                "probe": {"queries": ["Zelda loading dock", "quiet dock entrance"], "forbidden": ["Zelda"]},
+            }
+        )
+    )
     out = cli("frontier", "certified-erase", str(request), "--dest", root)
     assert out.returncode == 0, out.stderr
     certificate = json.loads(out.stdout)

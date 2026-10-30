@@ -24,8 +24,12 @@ def _registration(**overrides) -> prereg.Preregistration:
 def _assignments(rows):
     return [
         integrity.Assignment(
-            lesson=lesson, occasion_id=occasion, injected=injected,
-            succeeded=succeeded, rate=0.5, salt="salt-a",
+            lesson=lesson,
+            occasion_id=occasion,
+            injected=injected,
+            succeeded=succeeded,
+            rate=0.5,
+            salt="salt-a",
         )
         for lesson, occasion, injected, succeeded in rows
     ]
@@ -56,9 +60,7 @@ class TestRegistrationRefusesAnUnrunnableDesign:
 class TestTheFingerprint:
     def test_it_is_stable_across_round_trips(self):
         registered = _registration()
-        assert prereg.loads(prereg.dumps(registered)).fingerprint() == (
-            registered.fingerprint()
-        )
+        assert prereg.loads(prereg.dumps(registered)).fingerprint() == (registered.fingerprint())
 
     def test_changing_any_commitment_changes_it(self):
         base = _registration().fingerprint()
@@ -82,24 +84,26 @@ class TestCheckingTheRunAgainstThePromise:
 
     def test_a_run_matching_its_registration_is_clean(self):
         result = prereg.check(
-            _registration(), actual_salt="salt-a", actual_holdout_rate=0.10,
-            actual_detectable=0.10, actual_primary_outcome="resolved",
+            _registration(),
+            actual_salt="salt-a",
+            actual_holdout_rate=0.10,
+            actual_detectable=0.10,
+            actual_primary_outcome="resolved",
         )
         assert result.clean
         assert result.deviations == []
 
     def test_a_moved_endpoint_is_reported(self):
         result = prereg.check(
-            _registration(), actual_primary_outcome="escalated",
+            _registration(),
+            actual_primary_outcome="escalated",
         )
         assert result.registered and not result.clean
         assert any(d.field == "primary_outcome" for d in result.deviations)
 
     def test_a_changed_detectable_effect_is_reported(self):
         result = prereg.check(_registration(), actual_detectable=0.02)
-        [deviation] = [
-            d for d in result.deviations if d.field == "minimum_practical_effect"
-        ]
+        [deviation] = [d for d in result.deviations if d.field == "minimum_practical_effect"]
         assert "10.0%" in deviation.promised and "2.0%" in deviation.actual
 
     def test_a_different_salt_means_a_different_experiment(self):
@@ -143,7 +147,8 @@ class TestCheckingTheRunAgainstThePromise:
 
     def test_a_naive_timestamp_is_not_a_crash(self):
         result = prereg.check(
-            _registration(), first_observation_at=datetime.datetime(2026, 1, 15),
+            _registration(),
+            first_observation_at=datetime.datetime(2026, 1, 15),
         )
         assert result.registered
 
@@ -183,14 +188,10 @@ class TestTheRawExport:
     def test_changing_one_outcome_changes_the_digest(self):
         changed = list(self.ROWS)
         changed[0] = ("a", "o1", True, False)
-        assert raw_export.digest_of(_assignments(changed)) != raw_export.digest_of(
-            _assignments(self.ROWS)
-        )
+        assert raw_export.digest_of(_assignments(changed)) != raw_export.digest_of(_assignments(self.ROWS))
 
     def test_dropping_a_row_changes_the_digest(self):
-        assert raw_export.digest_of(_assignments(self.ROWS[:-1])) != (
-            raw_export.digest_of(_assignments(self.ROWS))
-        )
+        assert raw_export.digest_of(_assignments(self.ROWS[:-1])) != (raw_export.digest_of(_assignments(self.ROWS)))
 
     def test_an_exported_csv_verifies_against_its_own_digest(self):
         result = raw_export.export(_assignments(self.ROWS))
@@ -216,17 +217,30 @@ class TestAnchoringTheInvoiceToTheEvidence:
     def _ledger():
         from unimem import experiment
 
-        effects = [experiment.CausalEffect(
-            lesson_slug="a", n_injected=200, n_withheld=200, rate_injected=0.8,
-            rate_withheld=0.75, effect=0.05, ci_low=0.03, ci_high=0.07,
-            p_value=0.001, significant=True, min_detectable_effect=0.02,
-            verdict=experiment.VERDICT_HELPS,
-        )]
-        audit = integrity.audit([
-            integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=i % 2 == 0,
-                                 rate=0.5, succeeded=(i % 3 != 0))
-            for i in range(400)
-        ])
+        effects = [
+            experiment.CausalEffect(
+                lesson_slug="a",
+                n_injected=200,
+                n_withheld=200,
+                rate_injected=0.8,
+                rate_withheld=0.75,
+                effect=0.05,
+                ci_low=0.03,
+                ci_high=0.07,
+                p_value=0.001,
+                significant=True,
+                min_detectable_effect=0.02,
+                verdict=experiment.VERDICT_HELPS,
+            )
+        ]
+        audit = integrity.audit(
+            [
+                integrity.Assignment(
+                    lesson="a", occasion_id=f"o{i}", injected=i % 2 == 0, rate=0.5, succeeded=(i % 3 != 0)
+                )
+                for i in range(400)
+            ]
+        )
         return value.compute(effects, audit, value_per_occasion=25.0).ledger()
 
     KEY = b"issuer-key"
@@ -234,15 +248,26 @@ class TestAnchoringTheInvoiceToTheEvidence:
     def test_a_signature_covers_the_evidence_digest(self):
         ledger = self._ledger()
         signature = value.sign_ledger(
-            ledger, self.KEY, org_id="org", issued_at="t",
+            ledger,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
             evidence_digest="digest-of-the-real-rows",
         )
         assert value.verify_ledger_signature(
-            ledger, signature, self.KEY, org_id="org", issued_at="t",
+            ledger,
+            signature,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
             evidence_digest="digest-of-the-real-rows",
         )
         assert not value.verify_ledger_signature(
-            ledger, signature, self.KEY, org_id="org", issued_at="t",
+            ledger,
+            signature,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
             evidence_digest="digest-of-some-other-rows",
         )
 
@@ -250,11 +275,18 @@ class TestAnchoringTheInvoiceToTheEvidence:
         ledger = self._ledger()
         registered = _registration()
         signature = value.sign_ledger(
-            ledger, self.KEY, org_id="org", issued_at="t",
+            ledger,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
             prereg_fingerprint=registered.fingerprint(),
         )
         assert not value.verify_ledger_signature(
-            ledger, signature, self.KEY, org_id="org", issued_at="t",
+            ledger,
+            signature,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
             prereg_fingerprint=_registration(minimum_practical_effect=0.02).fingerprint(),
         )
 
@@ -262,6 +294,10 @@ class TestAnchoringTheInvoiceToTheEvidence:
         ledger = self._ledger()
         bare = value.sign_ledger(ledger, self.KEY, org_id="org", issued_at="t")
         anchored = value.sign_ledger(
-            ledger, self.KEY, org_id="org", issued_at="t", evidence_digest="d",
+            ledger,
+            self.KEY,
+            org_id="org",
+            issued_at="t",
+            evidence_digest="d",
         )
         assert bare != anchored

@@ -1,4 +1,5 @@
 """BEAM loading: the 100K-1M session layout and the 10M plan/batch/turn layout."""
+
 from __future__ import annotations
 
 import pytest
@@ -10,14 +11,23 @@ pytest.importorskip("pyarrow")
 
 
 def _message(i, text, anchor=None, role="user"):
-    return {"content": text, "id": i, "index": f"1,{i}", "question_type": "main_question", "role": role,
-            "time_anchor": anchor}
+    return {
+        "content": text,
+        "id": i,
+        "index": f"1,{i}",
+        "question_type": "main_question",
+        "role": role,
+        "time_anchor": anchor,
+    }
 
 
 def _questions(ids):
-    return {"information_extraction": [{"question": "What port?", "answer": "5432", "source_chat_ids": ids,
-                                        "rubric": ["States port 5432"]}],
-            "abstention": [{"question": "Who is Johnny?", "answer": "Not mentioned", "rubric": ["Abstains"]}]}
+    return {
+        "information_extraction": [
+            {"question": "What port?", "answer": "5432", "source_chat_ids": ids, "rubric": ["States port 5432"]}
+        ],
+        "abstention": [{"question": "Who is Johnny?", "answer": "Not mentioned", "rubric": ["Abstains"]}],
+    }
 
 
 def test_ids_accept_lists_dicts_and_the_10m_text_encoding():
@@ -28,18 +38,32 @@ def test_ids_accept_lists_dicts_and_the_10m_text_encoding():
 
 
 def test_10m_plans_flatten_in_plan_then_batch_order():
-    chat = [{"plan-2": None, "plan-1": [{"batch_number": 1, "time_anchor": None,
-                                         "turns": [[_message(0, "start", "July-01-2024"), _message(1, "ok", role="assistant")]]}]},
-            {"plan-1": None, "plan-2": [{"batch_number": 1, "time_anchor": None,
-                                         "turns": [[_message(2, "later", "August-01-2024")]]}]}]
+    chat = [
+        {
+            "plan-2": None,
+            "plan-1": [
+                {
+                    "batch_number": 1,
+                    "time_anchor": None,
+                    "turns": [[_message(0, "start", "July-01-2024"), _message(1, "ok", role="assistant")]],
+                }
+            ],
+        },
+        {
+            "plan-1": None,
+            "plan-2": [{"batch_number": 1, "time_anchor": None, "turns": [[_message(2, "later", "August-01-2024")]]}],
+        },
+    ]
     sessions = _beam_sessions(chat)
     assert [name for name, _ in sessions] == ["plan-1 batch 1", "plan-2 batch 1"]
     assert [m["id"] for _, messages in sessions for m in messages] == [0, 1, 2]
 
 
 def test_restarted_message_ids_become_unique_and_ambiguous_citations_are_dropped(tmp_path):
-    chat = [[_message(0, "first session", "March-01-2024"), _message(1, "unique")],
-            [_message(0, "id restarted in a later session", "April-01-2024")]]
+    chat = [
+        [_message(0, "first session", "March-01-2024"), _message(1, "unique")],
+        [_message(0, "id restarted in a later session", "April-01-2024")],
+    ]
     path = tmp_path / "beam1m.parquet"
     pd.DataFrame([{"conversation_id": 5, "chat": chat, "probing_questions": repr(_questions([0, 1]))}]).to_parquet(path)
     [(_space, sessions, _now, questions)] = list(beam_cases(str(path)))
@@ -48,8 +72,17 @@ def test_restarted_message_ids_become_unique_and_ambiguous_citations_are_dropped
 
 
 def test_10m_rows_load_with_dates_evidence_and_rubrics(tmp_path):
-    chat = [{"plan-1": [{"batch_number": 1, "time_anchor": None,
-                         "turns": [[_message(0, "Postgres listens on 5432 ->-> 1,1", "July-01-2024")]]}]}]
+    chat = [
+        {
+            "plan-1": [
+                {
+                    "batch_number": 1,
+                    "time_anchor": None,
+                    "turns": [[_message(0, "Postgres listens on 5432 ->-> 1,1", "July-01-2024")]],
+                }
+            ]
+        }
+    ]
     path = tmp_path / "beam10m.parquet"
     pd.DataFrame([{"conversation_id": 7, "chat": chat, "probing_questions": repr(_questions("[0]"))}]).to_parquet(path)
     [(space, sessions, now, questions)] = list(beam_cases(str(path)))

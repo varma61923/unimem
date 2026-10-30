@@ -20,16 +20,93 @@ else:
     _MISSING_DEPENDENCY = None
 
 _COMMANDS = (
-    "init", "install", "capture", "import", "trace", "distill", "lesson", "release",
-    "overlap", "commons", "kb", "account", "query", "serve", "index", "bench", "reliability",
-    "consolidate", "retrieval", "experiment", "source", "function", "proof", "gateway", "fleet", "signals", "export",
-    "dream", "bill", "conformance", "gate", "prove", "taxonomy", "impact", "pilot", "sync", "redact", "doctor",
-    "block", "fact", "graph", "ingest", "agent", "watch", "daemon", "viz", "conversation", "memory", "recall", "jobs",
-    "ontology", "community", "observation", "saga", "page", "session_ledger",
-    "procedural", "sql_query", "defense", "evolve", "policy", "assurance", "compression", "up", "connect",
-    "migrate", "pack",
-    "codegraph", "market", "allocate", "integration", "providers", "help", "setup", "lineage", "log", "incident",
-    "promote", "safety", "frontier", "skill", "team", "stream", "erasure", "tier", "sentinel", "person",
+    "init",
+    "install",
+    "capture",
+    "import",
+    "trace",
+    "distill",
+    "lesson",
+    "release",
+    "overlap",
+    "commons",
+    "kb",
+    "account",
+    "query",
+    "serve",
+    "index",
+    "bench",
+    "reliability",
+    "consolidate",
+    "retrieval",
+    "experiment",
+    "source",
+    "function",
+    "proof",
+    "gateway",
+    "fleet",
+    "signals",
+    "export",
+    "dream",
+    "bill",
+    "conformance",
+    "gate",
+    "prove",
+    "taxonomy",
+    "impact",
+    "pilot",
+    "sync",
+    "redact",
+    "doctor",
+    "block",
+    "fact",
+    "graph",
+    "ingest",
+    "agent",
+    "watch",
+    "daemon",
+    "viz",
+    "conversation",
+    "memory",
+    "recall",
+    "jobs",
+    "ontology",
+    "community",
+    "observation",
+    "saga",
+    "page",
+    "session_ledger",
+    "procedural",
+    "sql_query",
+    "defense",
+    "evolve",
+    "policy",
+    "assurance",
+    "compression",
+    "up",
+    "connect",
+    "migrate",
+    "pack",
+    "codegraph",
+    "market",
+    "allocate",
+    "integration",
+    "providers",
+    "help",
+    "setup",
+    "lineage",
+    "log",
+    "incident",
+    "promote",
+    "safety",
+    "frontier",
+    "skill",
+    "team",
+    "stream",
+    "erasure",
+    "tier",
+    "sentinel",
+    "person",
     "demo",
 )
 
@@ -41,46 +118,45 @@ ALIASES = {
 }
 
 
-
 _COMMAND_GROUPS = {
-    'person': 'nextwave',
-    'sentinel': 'nextwave',
-    'skill': 'nextwave',
-    'team': 'nextwave',
-    'stream': 'nextwave',
-    'erasure': 'nextwave',
-    'tier': 'nextwave',
-    'providers': 'platform',
-    'demo': 'platform',
-    'codegraph': 'platform',
-    'migrate': 'platform',
-    'connect': 'platform',
-    'sql_query': 'platform',
-    'viz': 'platform',
-    'gateway': 'platform',
-    'jobs': 'platform',
-    'policy': 'governance',
-    'assurance': 'governance',
-    'gate': 'governance',
-    'conformance': 'governance',
-    'defense': 'governance',
-    'compression': 'governance',
-    'allocate': 'governance',
-    'bill': 'governance',
-    'reliability': 'governance',
-    'signals': 'governance',
-    'fleet': 'governance',
-    'function': 'governance',
-    'kb': 'knowledge',
-    'community': 'knowledge',
-    'observation': 'knowledge',
-    'procedural': 'knowledge',
-    'ontology': 'knowledge',
-    'page': 'knowledge',
-    'source': 'knowledge',
-    'agent': 'knowledge',
-    'recall': 'knowledge',
-    'memory': 'knowledge',
+    "person": "nextwave",
+    "sentinel": "nextwave",
+    "skill": "nextwave",
+    "team": "nextwave",
+    "stream": "nextwave",
+    "erasure": "nextwave",
+    "tier": "nextwave",
+    "providers": "platform",
+    "demo": "platform",
+    "codegraph": "platform",
+    "migrate": "platform",
+    "connect": "platform",
+    "sql_query": "platform",
+    "viz": "platform",
+    "gateway": "platform",
+    "jobs": "platform",
+    "policy": "governance",
+    "assurance": "governance",
+    "gate": "governance",
+    "conformance": "governance",
+    "defense": "governance",
+    "compression": "governance",
+    "allocate": "governance",
+    "bill": "governance",
+    "reliability": "governance",
+    "signals": "governance",
+    "fleet": "governance",
+    "function": "governance",
+    "kb": "knowledge",
+    "community": "knowledge",
+    "observation": "knowledge",
+    "procedural": "knowledge",
+    "ontology": "knowledge",
+    "page": "knowledge",
+    "source": "knowledge",
+    "agent": "knowledge",
+    "recall": "knowledge",
+    "memory": "knowledge",
 }
 
 
@@ -122,16 +198,13 @@ class _LazyCommandMap(dict):
         action = self._subparsers_action
         if action is None:
             raise KeyError(key)
-        action._choices_actions = [
-            a for a in action._choices_actions if a.dest not in (key, clean)
-        ]
+        action._choices_actions = [a for a in action._choices_actions if a.dest not in (key, clean)]
         self._loading.add(key)
         try:
             module.add_parser(action)
         finally:
             self._loading.discard(key)
         return dict.__getitem__(self, key)
-
 
     def __setitem__(self, key, value):
         dict.__setitem__(self, key, value)
@@ -154,18 +227,21 @@ def build_parser(only: str | None = None) -> argparse.ArgumentParser:
         "inject them into any agent platform. Spec: protocol/PROTOCOL.md",
     )
     parser.add_argument(
-        "--version", action="version",
+        "--version",
+        action="version",
         version=f"unimem {__version__} (protocol {PROTOCOL_VERSION})",
     )
     parser.add_argument(
-        "--offline", action="store_true",
+        "--offline",
+        action="store_true",
         help="Air-gapped mode (first argument only): refuse non-loopback network calls and load "
-             "models from the local cache only. Same as UNIMEM_OFFLINE=1.",
+        "models from the local cache only. Same as UNIMEM_OFFLINE=1.",
     )
     parser.add_argument(
-        "--local", action="store_true",
+        "--local",
+        action="store_true",
         help="Keyless mode (first argument only): --offline, plus the in-process local model for "
-             "LLM-assisted steps unless UNIMEM_LLM_PROVIDER is already set.",
+        "LLM-assisted steps unless UNIMEM_LLM_PROVIDER is already set.",
     )
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND", required=_MISSING_DEPENDENCY is None)
     clean_only = only.replace("-", "_") if isinstance(only, str) else None
@@ -181,11 +257,11 @@ def build_parser(only: str | None = None) -> argparse.ArgumentParser:
     for item in catalog():
         groups.setdefault(item["group"], []).append(item["name"])
     for group, names in groups.items():
-        subparsers._choices_actions.append(
-            subparsers._ChoicesPseudoAction(group, (), ", ".join(sorted(names)))
-        )
-    parser.epilog = ("Shortcuts: add → fact add; search → recall; check → doctor; summarize → conversation summarize. "
-                     "Use unimem help TOPIC to discover commands, or unimem setup for a guided workflow.")
+        subparsers._choices_actions.append(subparsers._ChoicesPseudoAction(group, (), ", ".join(sorted(names))))
+    parser.epilog = (
+        "Shortcuts: add → fact add; search → recall; check → doctor; summarize → conversation summarize. "
+        "Use unimem help TOPIC to discover commands, or unimem setup for a guided workflow."
+    )
     return parser
 
 
@@ -218,6 +294,8 @@ def _configured_call(args):
         return args.func(args)
     with configuration.apply(configuration.load(root)):
         return args.func(args)
+
+
 def main(argv: list[str] | None = None) -> int:
     if _MISSING_DEPENDENCY is not None:
         print(
@@ -256,8 +334,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    commands = next(
-        (list(a.choices) for a in parser._actions if isinstance(a, argparse._SubParsersAction)), [])
+    commands = next((list(a.choices) for a in parser._actions if isinstance(a, argparse._SubParsersAction)), [])
     if not argv[0].startswith("-"):
         clean_cmd = argv[0].replace("-", "_")
         if argv[0] not in commands and clean_cmd in commands:
@@ -266,8 +343,7 @@ def main(argv: list[str] | None = None) -> int:
         close = difflib.get_close_matches(argv[0], [*commands, *ALIASES], n=3, cutoff=0.6)
         hint = f" Did you mean: {', '.join(close)}?" if close else ""
         print(
-            f"unimem: unknown command {argv[0]!r}.{hint} "
-            "Run `unimem --help` for the list.",
+            f"unimem: unknown command {argv[0]!r}.{hint} Run `unimem --help` for the list.",
             file=sys.stderr,
         )
         return 2
@@ -321,8 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         AttributeError,
     ) as exc:
         print(
-            f"[unimem] error: {type(exc).__name__}: {exc}\n"
-            f"  Remediation: {remediation_hint(exc)}",
+            f"[unimem] error: {type(exc).__name__}: {exc}\n  Remediation: {remediation_hint(exc)}",
             file=sys.stderr,
         )
         return 1

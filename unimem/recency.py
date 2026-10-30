@@ -51,7 +51,9 @@ def recency_lookup(
 ) -> dict[str, float]:
     return {
         str(fm.get("name", "")): adjustment(
-            fm.get("last_hit"), now=now, half_life_days=half_life_days,
+            fm.get("last_hit"),
+            now=now,
+            half_life_days=half_life_days,
         )
         for _path, fm in lessons
     }

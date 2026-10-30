@@ -70,38 +70,27 @@ ENTRY = (
 
 
 class TestOnlyAnEstablishedOrgMovesTheQualitySignal:
-    async def test_a_brand_new_org_gets_its_answer_but_credits_no_hit(
-        self, session_factory, orgs
-    ):
+    async def test_a_brand_new_org_gets_its_answer_but_credits_no_hit(self, session_factory, orgs):
         tid = await _seed(session_factory, orgs["operator"], *ENTRY)
-        report = await _overlap(
-            session_factory, orgs["newcomer"], [_failure("f1", ENTRY[0], ENTRY[1])]
-        )
+        report = await _overlap(session_factory, orgs["newcomer"], [_failure("f1", ENTRY[0], ENTRY[1])])
         assert report["n_covered"] == 1
         assert await _hits(session_factory, tid) == 0
 
     async def test_an_established_org_does_credit_a_hit(self, session_factory, orgs, establish_orgs):
         tid = await _seed(session_factory, orgs["operator"], *ENTRY)
         await establish_orgs(orgs["regular"])
-        report = await _overlap(
-            session_factory, orgs["regular"], [_failure("f1", ENTRY[0], ENTRY[1])]
-        )
+        report = await _overlap(session_factory, orgs["regular"], [_failure("f1", ENTRY[0], ENTRY[1])])
         assert report["n_covered"] == 1
         assert await _hits(session_factory, tid) == 1
 
     async def test_the_free_org_sockpuppet_budget_is_now_zero(self, session_factory, orgs):
         tid = await _seed(session_factory, orgs["operator"], *ENTRY)
-        batch = [
-            _failure(f"f{i}", ENTRY[0], ENTRY[1])
-            for i in range(commons.MAX_HITS_PER_TRACE_PER_QUERY)
-        ]
+        batch = [_failure(f"f{i}", ENTRY[0], ENTRY[1]) for i in range(commons.MAX_HITS_PER_TRACE_PER_QUERY)]
         for _ in range(3):
             await _overlap(session_factory, orgs["newcomer"], batch)
         assert await _hits(session_factory, tid) == 0
 
-    async def test_age_alone_does_not_qualify_an_org_with_no_traces(
-        self, session_factory, orgs
-    ):
+    async def test_age_alone_does_not_qualify_an_org_with_no_traces(self, session_factory, orgs):
         tid = await _seed(session_factory, orgs["operator"], *ENTRY)
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, orgs["newcomer"])
@@ -121,15 +110,15 @@ class TestOnlyAnEstablishedOrgMovesTheQualitySignal:
         ]
         for traces, created in cases:
             kw = {"trace_count": traces, "org_created_at": created}
-            assert commons.vote_counts_toward_standing(
-                **kw
-            ) == commons.hit_counts_toward_quality_signal(**kw) == commons.org_is_established(**kw)
+            assert (
+                commons.vote_counts_toward_standing(**kw)
+                == commons.hit_counts_toward_quality_signal(**kw)
+                == commons.org_is_established(**kw)
+            )
 
 
 class TestTrafficDoesNotOrderWhatCustomersRead:
-    async def test_hits_do_not_outrank_an_equally_similar_entry(
-        self, session_factory, orgs
-    ):
+    async def test_hits_do_not_outrank_an_equally_similar_entry(self, session_factory, orgs):
         title, ctx, sol = ENTRY
         first = await _seed(session_factory, orgs["operator"], title, ctx, sol)
         second = await _seed(session_factory, orgs["operator"], title, ctx, "a different fix")
@@ -141,9 +130,7 @@ class TestTrafficDoesNotOrderWhatCustomersRead:
             b.commons_hits = 10_000
 
         async with session_scope(session_factory) as session:
-            r = await crud.commons_search(
-                session, orgs["regular"], commons.signature_for(title, ctx, [])
-            )
+            r = await crud.commons_search(session, orgs["regular"], commons.signature_for(title, ctx, []))
         ranked = [c["trace"]["id"] for c in r["candidates"]]
         assert set(ranked[:2]) == {first, second}
         assert ranked[0] == first, "traffic volume decided a customer-facing ranking"
@@ -157,23 +144,17 @@ class TestTrafficDoesNotOrderWhatCustomersRead:
             (await session.get(Trace, high)).trust = 0.9
 
         async with session_scope(session_factory) as session:
-            r = await crud.commons_search(
-                session, orgs["regular"], commons.signature_for(title, ctx, [])
-            )
+            r = await crud.commons_search(session, orgs["regular"], commons.signature_for(title, ctx, []))
         assert [c["trace"]["id"] for c in r["candidates"]][0] == high
 
-    async def test_the_order_is_stable_across_identical_queries(
-        self, session_factory, orgs
-    ):
+    async def test_the_order_is_stable_across_identical_queries(self, session_factory, orgs):
         title, ctx, sol = ENTRY
         for i in range(5):
             await _seed(session_factory, orgs["operator"], title, ctx, f"fix {i}")
         seen = set()
         for _ in range(4):
             async with session_scope(session_factory) as session:
-                r = await crud.commons_search(
-                    session, orgs["regular"], commons.signature_for(title, ctx, [])
-                )
+                r = await crud.commons_search(session, orgs["regular"], commons.signature_for(title, ctx, []))
             seen.add(tuple(c["trace"]["id"] for c in r["candidates"]))
         assert len(seen) == 1, f"ranking was not stable across identical queries: {seen}"
 
@@ -182,7 +163,5 @@ class TestTrafficDoesNotOrderWhatCustomersRead:
         async with session_scope(session_factory) as session:
             (await session.get(Trace, tid)).commons_hits = 7
         async with session_scope(session_factory) as session:
-            r = await crud.commons_search(
-                session, orgs["regular"], commons.signature_for(ENTRY[0], ENTRY[1], [])
-            )
+            r = await crud.commons_search(session, orgs["regular"], commons.signature_for(ENTRY[0], ENTRY[1], []))
         assert r["candidates"][0]["commons_hits"] == 7

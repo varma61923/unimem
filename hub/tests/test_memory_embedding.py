@@ -23,8 +23,11 @@ async def test_local_embedder_identity_uses_loaded_immutable_model_revision(monk
 
         def _load(self):
             return SimpleNamespace(
-                _modules={"transformer": SimpleNamespace(auto_model=SimpleNamespace(
-                    config=SimpleNamespace(_commit_hash=revision)))},
+                _modules={
+                    "transformer": SimpleNamespace(
+                        auto_model=SimpleNamespace(config=SimpleNamespace(_commit_hash=revision))
+                    )
+                },
                 get_sentence_embedding_dimension=lambda: 384,
             )
 
@@ -42,8 +45,7 @@ async def test_local_embedder_identity_uses_loaded_immutable_model_revision(monk
     monkeypatch.setattr("hub.memory_embedding.embeddings.provider", provider_for)
     embedder = await LocalEmbedder.load("bge-small")
 
-    assert embedder.identity == ProjectionIdentity(
-        "memory-records", "bge-small:hf-" + revision + ":adapter-v1", 384)
+    assert embedder.identity == ProjectionIdentity("memory-records", "bge-small:hf-" + revision + ":adapter-v1", 384)
     assert await embedder.encode_documents(["fact"]) == [[1.0, 0.0]]
     assert await embedder.encode_query("question") == [1.0, 0.0]
     assert provider.calls == [(["fact"], False), (["question"], True)]
@@ -74,7 +76,8 @@ async def test_fastembed_hub_projection_binds_model_revision_and_cache_only(monk
     embedder = await LocalEmbedder.load("fastembed:BAAI/bge-small-en-v1.5")
 
     assert embedder.identity == ProjectionIdentity(
-        "memory-records", "fastembed:BAAI/bge-small-en-v1.5:" + revision + ":adapter-v1", 384)
+        "memory-records", "fastembed:BAAI/bge-small-en-v1.5:" + revision + ":adapter-v1", 384
+    )
     assert called == [("fastembed:BAAI/bge-small-en-v1.5", {"local_files_only": True})]
 
 
@@ -135,7 +138,11 @@ async def test_projection_pool_reuses_and_bounds_idle_and_busy_tenants(monkeypat
     class Index:
         def __init__(self, tenant):
             self.tenant, self.namespace, self.model, self.dimension = (
-                tenant, identity.namespace, identity.model, identity.dimension)
+                tenant,
+                identity.namespace,
+                identity.model,
+                identity.dimension,
+            )
 
         async def close(self):
             closed.append(self.tenant)

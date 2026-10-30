@@ -1,4 +1,5 @@
 """`unimem market`: list, verify and install lessons that carry replicated proof of lift."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,8 +16,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     sub = p.add_subparsers(dest="market_cmd", required=True)
 
-    ident = sub.add_parser("identity", help="Create or show this store's Ed25519 identity for a role, "
-                                            "and print the public card to share.")
+    ident = sub.add_parser(
+        "identity", help="Create or show this store's Ed25519 identity for a role, and print the public card to share."
+    )
     ident.add_argument("--role", choices=sorted(marketplace.ROLES), required=True)
     ident.add_argument("--id", default="", help="Principal id (only when creating).")
     ident.add_argument("--organization", default="", help="Organization (only when creating).")
@@ -45,8 +47,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     pu.add_argument("--terms", required=True, help="Licence terms text.")
     pu.add_argument("--price-usd", type=float, default=None)
     pu.add_argument("--per", choices=("install", "month", "year"), default="install")
-    pu.add_argument("--outcome-share", type=float, default=None,
-                    help="Fraction (up to 0.5) of each buyer's own proven value from this lesson.")
+    pu.add_argument(
+        "--outcome-share",
+        type=float,
+        default=None,
+        help="Fraction (up to 0.5) of each buyer's own proven value from this lesson.",
+    )
     pu.add_argument("--out", default=None, help="Also write the listing JSON here.")
     pu.set_defaults(func=run_publish)
 
@@ -60,11 +66,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     ins.add_argument("--accept-licence", required=True, help="The listing's licence id, after reading its terms.")
     ins.set_defaults(func=run_install)
 
-    st = sub.add_parser("settle", help="What this store owes publishers for a period: licence fees plus "
-                                       "outcome shares on lift proven in this store's own holdout.")
+    st = sub.add_parser(
+        "settle",
+        help="What this store owes publishers for a period: licence fees plus "
+        "outcome shares on lift proven in this store's own holdout.",
+    )
     st.add_argument("--period", required=True, help="YYYY-MM")
-    st.add_argument("--value-per-occasion", type=float, default=None,
-                    help="What one improved occasion is worth to you (needed for outcome shares).")
+    st.add_argument(
+        "--value-per-occasion",
+        type=float,
+        default=None,
+        help="What one improved occasion is worth to you (needed for outcome shares).",
+    )
     st.add_argument("--commit", action="store_true", help="Record the statement; a period settles once.")
     st.add_argument("--json", action="store_true")
     st.set_defaults(func=run_settle)
@@ -95,14 +108,16 @@ def _guarded(fn):
         except (marketplace.MarketError, OSError, ValueError) as exc:
             print(f"[unimem] market: {exc}", file=sys.stderr)
             return 1
+
     return run
 
 
 @_guarded
 def run_identity(args, root) -> int:
     create = bool(args.id or args.organization)
-    principal = marketplace.identity(root, args.role, principal_id=args.id, organization=args.organization,
-                                     create=create)
+    principal = marketplace.identity(
+        root, args.role, principal_id=args.id, organization=args.organization, create=create
+    )
     print(json.dumps(marketplace.card(principal), indent=2, sort_keys=True))
     return 0
 
@@ -119,8 +134,10 @@ def run_attest(args, root) -> int:
     measured = marketplace.measured_effect(root, args.slug, min_arm=args.min_arm)
     receipt = marketplace.attest(root, args.slug, effect=measured)
     _write(args.out, receipt)
-    print(f"[unimem] attested lift {measured['effect']:+.3f} (se {measured['standard_error']:.3f}, "
-          f"{measured['n_injected']} injected / {measured['n_withheld']} withheld) -> {args.out}")
+    print(
+        f"[unimem] attested lift {measured['effect']:+.3f} (se {measured['standard_error']:.3f}, "
+        f"{measured['n_injected']} injected / {measured['n_withheld']} withheld) -> {args.out}"
+    )
     return 0
 
 
@@ -129,8 +146,10 @@ def run_certify(args, root) -> int:
     certificate = marketplace.certify(root, [_read(p) for p in args.receipts])
     pooled = certificate["record"]["pooled"]
     _write(args.out, certificate)
-    print(f"[unimem] pooled lift {pooled['effect']:+.3f} [{pooled['ci_low']:+.3f}, {pooled['ci_high']:+.3f}] "
-          f"across {pooled['organizations']} organizations -> {args.out}")
+    print(
+        f"[unimem] pooled lift {pooled['effect']:+.3f} [{pooled['ci_low']:+.3f}, {pooled['ci_high']:+.3f}] "
+        f"across {pooled['organizations']} organizations -> {args.out}"
+    )
     return 0
 
 
@@ -144,8 +163,10 @@ def run_publish(args, root) -> int:
     listing = marketplace.publish(root, args.slug, _read(args.certificate), licence)
     if args.out:
         _write(args.out, listing)
-    print(f"[unimem] listed {args.slug} as {marketplace.listing_id(listing)[:12]}"
-          + (f" -> {args.out}" if args.out else ""))
+    print(
+        f"[unimem] listed {args.slug} as {marketplace.listing_id(listing)[:12]}"
+        + (f" -> {args.out}" if args.out else "")
+    )
     return 0
 
 
@@ -156,8 +177,10 @@ def run_verify(args, root) -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
     elif report["ok"]:
         lift = report["lift"]
-        print(f"[unimem] verified: lift {lift['effect']:+.3f} [{lift['ci_low']:+.3f}, {lift['ci_high']:+.3f}] "
-              f"across {lift['organizations']} organizations; licence {report['licence']['id']}.")
+        print(
+            f"[unimem] verified: lift {lift['effect']:+.3f} [{lift['ci_low']:+.3f}, {lift['ci_high']:+.3f}] "
+            f"across {lift['organizations']} organizations; licence {report['licence']['id']}."
+        )
     else:
         print("[unimem] NOT verified:\n  - " + "\n  - ".join(report["problems"]), file=sys.stderr)
     return 0 if report["ok"] else 1
@@ -169,9 +192,11 @@ def run_install(args, root) -> int:
     if row.get("already_installed"):
         print(f"[unimem] already installed as {row['slug']}.")
     else:
-        print(f"[unimem] installed as {row['slug']} at status=review. Its certified lift was measured "
-              f"elsewhere; review it, then `unimem lesson approve {row['slug']}` and let this store's "
-              "holdout measure it again.")
+        print(
+            f"[unimem] installed as {row['slug']} at status=review. Its certified lift was measured "
+            f"elsewhere; review it, then `unimem lesson approve {row['slug']}` and let this store's "
+            "holdout measure it again."
+        )
     return 0
 
 
@@ -180,15 +205,19 @@ def run_settle(args, root) -> int:
     from unimem import market_settlement
 
     try:
-        statement = market_settlement.settle(root, args.period, value_per_occasion=args.value_per_occasion,
-                                             commit=args.commit)
+        statement = market_settlement.settle(
+            root, args.period, value_per_occasion=args.value_per_occasion, commit=args.commit
+        )
     except market_settlement.SettlementError as exc:
         raise marketplace.MarketError(str(exc)) from None
     if args.json:
         print(json.dumps(statement, indent=2, sort_keys=True))
         return 0
-    print(f"[unimem] marketplace statement for {args.period}"
-          + ("" if args.commit else " (preview; --commit records it)") + ":")
+    print(
+        f"[unimem] marketplace statement for {args.period}"
+        + ("" if args.commit else " (preview; --commit records it)")
+        + ":"
+    )
     for line in statement["lines"]:
         print(f"  {line['publisher']:<20} {line['kind']:<14} {line['slug']:<28} ${line['amount_usd']:.2f}")
     for item in statement["refused"]:
@@ -207,6 +236,8 @@ def run_list(args, root) -> int:
         print("[unimem] no listings in this catalog.")
     for r in rows:
         price = f" ${r['price']['amount_usd']:g}/{r['price']['per']}" if r.get("price") else ""
-        print(f"{r['id'][:12]}  {r['name']}  lift {r['lift']:+.3f} ({r['organizations']} orgs)  "
-              f"{r['licence']}{price}  by {r['publisher']}")
+        print(
+            f"{r['id'][:12]}  {r['name']}  lift {r['lift']:+.3f} ({r['organizations']} orgs)  "
+            f"{r['licence']}{price}  by {r['publisher']}"
+        )
     return 0

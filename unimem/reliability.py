@@ -142,11 +142,15 @@ def score_lessons(
 
         out.append(
             LessonReliability(
-                slug=slug, n_retrieved=n_ret, n_hit=n_hit,
-                precision=round(precision, 4), precision_lower=round(lower, 4),
+                slug=slug,
+                n_retrieved=n_ret,
+                n_hit=n_hit,
+                precision=round(precision, 4),
+                precision_lower=round(lower, 4),
                 success_rate=round(succ_rate, 4) if succ_rate is not None else None,
                 lift=round(lift, 4) if lift is not None else None,
-                verdict=verdict, rationale=rationale,
+                verdict=verdict,
+                rationale=rationale,
             )
         )
 
@@ -256,7 +260,7 @@ def find_contradictions(
     for i, a in enumerate(slugs):
         if capped:
             break
-        for b in slugs[i + 1:]:
+        for b in slugs[i + 1 :]:
             pa, pb = pol[a], pol[b]
             la, lb = lift_by_slug.get(a), lift_by_slug.get(b)
             if not _signals_possible(pa, pb, la, lb):
@@ -281,10 +285,13 @@ def find_contradictions(
 
             found.append(
                 Contradiction(
-                    slug_a=a, slug_b=b,
+                    slug_a=a,
+                    slug_b=b,
                     activation_overlap=round(overlap_score, 4),
-                    polarity_a=round(pa, 3), polarity_b=round(pb, 3),
-                    lift_a=la, lift_b=lb,
+                    polarity_a=round(pa, 3),
+                    polarity_b=round(pb, 3),
+                    lift_a=la,
+                    lift_b=lb,
                     signals=signals,
                     severity="high" if len(signals) > 1 or "effect" in " ".join(signals) else "review",
                 )
@@ -355,14 +362,15 @@ def render(
     reliable = [s for s in scores if s.verdict == VERDICT_RELIABLE]
     if reliable:
         lines += [
-            "## Earning their place", "",
-            "| Lesson | Useful | Precision (lower bound) | Lift |", "|---|---|---|---|",
+            "## Earning their place",
+            "",
+            "| Lesson | Useful | Precision (lower bound) | Lift |",
+            "|---|---|---|---|",
         ]
         for s in reliable:
             lift = f"{s.lift:+.0%}" if s.lift is not None else "—"
             lines.append(
-                f"| `{s.slug}` | {s.n_hit}/{s.n_retrieved} | "
-                f"{s.precision:.0%} ({s.precision_lower:.0%}) | {lift} |"
+                f"| `{s.slug}` | {s.n_hit}/{s.n_retrieved} | {s.precision:.0%} ({s.precision_lower:.0%}) | {lift} |"
             )
         lines.append("")
 
@@ -379,8 +387,7 @@ def render(
         ]
         for c in contradictions:
             lines.append(
-                f"| `{c.slug_a}` | `{c.slug_b}` | {c.activation_overlap:.0%} | "
-                f"{'; '.join(c.signals)} | {c.severity} |"
+                f"| `{c.slug_a}` | `{c.slug_b}` | {c.activation_overlap:.0%} | {'; '.join(c.signals)} | {c.severity} |"
             )
         lines.append("")
 

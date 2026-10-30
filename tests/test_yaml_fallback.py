@@ -14,26 +14,56 @@ def _roundtrip(obj):
 def _assert_agrees(obj):
     reference, fallback, text = _roundtrip(obj)
     assert fallback == reference, (
-        f"fallback diverged from PyYAML\n--- yaml ---\n{text}"
-        f"--- pyyaml ---\n{reference}\n--- fallback ---\n{fallback}"
+        f"fallback diverged from PyYAML\n--- yaml ---\n{text}--- pyyaml ---\n{reference}\n--- fallback ---\n{fallback}"
     )
 
 
 class TestScalarTypes:
-    @pytest.mark.parametrize("value", [
-        "plain string", "", "with: colon", "trailing space ", "  leading",
-        "quote'inside", 'double"inside', "hash # not a comment",
-        0, 1, -1, 42, 999999,
-        0.0, 1.5, -2.75,
-        True, False, None,
-    ])
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "plain string",
+            "",
+            "with: colon",
+            "trailing space ",
+            "  leading",
+            "quote'inside",
+            'double"inside',
+            "hash # not a comment",
+            0,
+            1,
+            -1,
+            42,
+            999999,
+            0.0,
+            1.5,
+            -2.75,
+            True,
+            False,
+            None,
+        ],
+    )
     def test_scalar_matches_pyyaml(self, value):
         _assert_agrees({"k": value})
 
-    @pytest.mark.parametrize("literal", [
-        "7E3", "7.0e3", "7.0e+3", "1e5", "1.5e-3",
-        "0", "007", "010", "0x1f", "0b101", "1_000", "-42", "+7",
-    ])
+    @pytest.mark.parametrize(
+        "literal",
+        [
+            "7E3",
+            "7.0e3",
+            "7.0e+3",
+            "1e5",
+            "1.5e-3",
+            "0",
+            "007",
+            "010",
+            "0x1f",
+            "0b101",
+            "1_000",
+            "-42",
+            "+7",
+        ],
+    )
     def test_ambiguous_numeric_literals_resolve_identically(self, literal):
         text = f"k: {literal}\n"
         assert mp.parse_yaml_minimal(text) == yaml.safe_load(text)
@@ -53,10 +83,14 @@ class TestCollections:
         _assert_agrees({"outcome": {"resolved": True, "tokens_used": 1200, "note": "ok"}})
 
     def test_list_of_dicts(self):
-        _assert_agrees({"importance_history": [
-            {"date": "2026-01-01", "value": 3, "why": "initial"},
-            {"date": "2026-02-01", "value": 4, "why": "raised"},
-        ]})
+        _assert_agrees(
+            {
+                "importance_history": [
+                    {"date": "2026-01-01", "value": 3, "why": "initial"},
+                    {"date": "2026-02-01", "value": 4, "why": "raised"},
+                ]
+            }
+        )
 
     def test_deeply_nested_mapping(self):
         _assert_agrees({"a": {"b": {"c": {"d": "leaf"}}}})
@@ -73,46 +107,57 @@ class TestWrappedScalars:
 
 class TestRealisticFrontmatter:
     def test_a_full_lesson_record(self):
-        _assert_agrees({
-            "name": "lesson_refund_posting_window",
-            "description": "Confirm the provider settlement id before promising a refund date, "
-                           "then explain the 5-10 day bank posting window to the customer",
-            "tags": ["refunds", "escalation"],
-            "agent_type": "support",
-            "domain": "escalation",
-            "importance": 4,
-            "importance_rationale": "prevents a chargeback and a repeat contact",
-            "importance_history": [{"date": "2026-08-01", "value": 3}],
-            "applies_when": "a customer reports an approved refund has not arrived",
-            "do_not_apply_when": "the refund was never approved",
-            "uses": 12,
-            "last_hit": "2026-08-19",
-            "source_traces": ["a2432eac", "cb7ad72e"],
-            "status": "active",
-        })
+        _assert_agrees(
+            {
+                "name": "lesson_refund_posting_window",
+                "description": "Confirm the provider settlement id before promising a refund date, "
+                "then explain the 5-10 day bank posting window to the customer",
+                "tags": ["refunds", "escalation"],
+                "agent_type": "support",
+                "domain": "escalation",
+                "importance": 4,
+                "importance_rationale": "prevents a chargeback and a repeat contact",
+                "importance_history": [{"date": "2026-08-01", "value": 3}],
+                "applies_when": "a customer reports an approved refund has not arrived",
+                "do_not_apply_when": "the refund was never approved",
+                "uses": 12,
+                "last_hit": "2026-08-19",
+                "source_traces": ["a2432eac", "cb7ad72e"],
+                "status": "active",
+            }
+        )
 
     def test_a_full_trace_record(self):
-        _assert_agrees({
-            "id": "6e498b81-061d-4b76-9b02-04e91afc9d3b",
-            "title": "Refund delayed past SLA",
-            "agent_type": "support",
-            "tags": ["refunds"],
-            "profile": "",
-            "created_at": "2026-08-20T02:16:26",
-            "outcome": {"resolved": True, "escalated": False, "tokens_used": 1200,
-                        "llm_calls": 4, "baseline": False},
-        })
+        _assert_agrees(
+            {
+                "id": "6e498b81-061d-4b76-9b02-04e91afc9d3b",
+                "title": "Refund delayed past SLA",
+                "agent_type": "support",
+                "tags": ["refunds"],
+                "profile": "",
+                "created_at": "2026-08-20T02:16:26",
+                "outcome": {
+                    "resolved": True,
+                    "escalated": False,
+                    "tokens_used": 1200,
+                    "llm_calls": 4,
+                    "baseline": False,
+                },
+            }
+        )
 
 
 class TestGeneratedCases:
     def _random_scalar(self, rng):
-        return rng.choice([
-            rng.choice(["ok", "with: colon", "a'b", 'a"b', "trailing ", "# hash", ""]),
-            rng.randint(-1000, 1000),
-            round(rng.uniform(-100, 100), 3),
-            rng.choice([True, False, None]),
-            " ".join(f"w{i}" for i in range(rng.randint(1, 40))),
-        ])
+        return rng.choice(
+            [
+                rng.choice(["ok", "with: colon", "a'b", 'a"b', "trailing ", "# hash", ""]),
+                rng.randint(-1000, 1000),
+                round(rng.uniform(-100, 100), 3),
+                rng.choice([True, False, None]),
+                " ".join(f"w{i}" for i in range(rng.randint(1, 40))),
+            ]
+        )
 
     def _random_doc(self, rng, depth=0):
         doc = {}

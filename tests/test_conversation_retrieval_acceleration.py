@@ -1,4 +1,5 @@
 """Execution optimizations preserve the canonical objective and source proof."""
+
 import pytest
 
 from unimem.conversation import Store, embed, vector_index
@@ -16,7 +17,9 @@ class Encoder:
 
 
 @pytest.mark.parametrize("damage", ["id", "turn", "hash"])
-def test_scoped_cache_checks_each_selected_provenance_field_and_restarts_partial_rankings(tmp_path, monkeypatch, damage):
+def test_scoped_cache_checks_each_selected_provenance_field_and_restarts_partial_rankings(
+    tmp_path, monkeypatch, damage
+):
     np = pytest.importorskip("numpy")
     monkeypatch.setattr(embed, "MAX_INDEX_BYTES", 1)
     monkeypatch.setattr(embed, "SCAN_BATCH", 2)

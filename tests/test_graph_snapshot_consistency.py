@@ -1,4 +1,5 @@
 """Graph snapshots remain exact, generation-safe, and isolated from callers."""
+
 from __future__ import annotations
 
 import contextlib
@@ -14,12 +15,11 @@ BASE = "2024-01-01T00:00:00+00:00"
 
 
 def _seed(root, count=120):
-    nodes = {node: graph.GraphNode(node, "concept", node, {}, BASE, BASE)
-             for node in ("target", "peer", "unrelated")}
-    edges = [graph.GraphEdge("target", "peer", "uses", 1, BASE, None, None,
-                             {"nested": {"key": "original"}}, BASE)]
-    edges += [graph.GraphEdge("unrelated", f"tool:{i}", "uses", 1, BASE, None, None,
-                              created_at=BASE) for i in range(count)]
+    nodes = {node: graph.GraphNode(node, "concept", node, {}, BASE, BASE) for node in ("target", "peer", "unrelated")}
+    edges = [graph.GraphEdge("target", "peer", "uses", 1, BASE, None, None, {"nested": {"key": "original"}}, BASE)]
+    edges += [
+        graph.GraphEdge("unrelated", f"tool:{i}", "uses", 1, BASE, None, None, created_at=BASE) for i in range(count)
+    ]
     graph.save_nodes(root, nodes)
     graph.save_edges(root, edges)
     graph._clear_graph_cache()
@@ -100,8 +100,9 @@ def test_public_objects_cannot_mutate_cached_graph(tmp_path, method):
         assert fresh.relation == "uses"
         assert fresh.properties["nested"]["key"] == "original"
     else:
-        result = (graph.get_version_chain(root, "target") if method == "chain"
-                  else graph.list_version_chains(root)["target"])
+        result = (
+            graph.get_version_chain(root, "target") if method == "chain" else graph.list_version_chains(root)["target"]
+        )
         result[0].name = "corrupted"
         result[0].properties["secret"] = "changed"
         fresh = graph.get_version_chain(root, "target")[0]
@@ -173,8 +174,10 @@ def test_scheduled_update_starts_and_closes_at_effective_time_without_source_wri
     _nodes, _edges = _seed(root, count=0)
     transition = "2030-01-01T00:00:00+00:00"
     expiry = "2031-01-01T00:00:00+00:00"
-    edges = [graph.GraphEdge("target", "London", "lives_in", 1, BASE, transition, None, created_at=BASE),
-             graph.GraphEdge("target", "Paris", "lives_in", 1, transition, None, expiry, created_at=BASE)]
+    edges = [
+        graph.GraphEdge("target", "London", "lives_in", 1, BASE, transition, None, created_at=BASE),
+        graph.GraphEdge("target", "Paris", "lives_in", 1, transition, None, expiry, created_at=BASE),
+    ]
     graph.save_edges(root, edges)
     clock = [datetime(2029, 1, 1, tzinfo=timezone.utc)]
 
@@ -199,10 +202,13 @@ def test_current_request_uses_one_clock_snapshot_across_scheduled_transition(tmp
     root = str(tmp_path)
     _seed(root, count=0)
     transition = "2030-01-01T00:00:00+00:00"
-    graph.save_edges(root, [
-        graph.GraphEdge("target", "London", "lives_in", 1, BASE, transition, None, created_at=BASE),
-        graph.GraphEdge("target", "Paris", "lives_in", 1, transition, None, None, created_at=BASE),
-    ])
+    graph.save_edges(
+        root,
+        [
+            graph.GraphEdge("target", "London", "lives_in", 1, BASE, transition, None, created_at=BASE),
+            graph.GraphEdge("target", "Paris", "lives_in", 1, transition, None, None, created_at=BASE),
+        ],
+    )
     calls = []
 
     class Clock(datetime):
@@ -216,7 +222,9 @@ def test_current_request_uses_one_clock_snapshot_across_scheduled_transition(tmp
     if api == "neighbors":
         assert [edge["neighbor_id"] for edge in graph.get_neighbors(root, "target")] == ["London"]
     elif api == "multi_hop":
-        assert [edge["target"] for edge in graph.multi_hop_subgraph(root, ["target"], max_hops=1)["edges"]] == ["London"]
+        assert [edge["target"] for edge in graph.multi_hop_subgraph(root, ["target"], max_hops=1)["edges"]] == [
+            "London"
+        ]
     else:
         assert [edge["target"] for edge in graph.export_json(root)["edges"]] == ["London"]
     assert len(calls) == 1

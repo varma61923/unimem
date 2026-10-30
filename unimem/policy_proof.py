@@ -4,6 +4,7 @@ Unknown principals, actions, classes, label sets and purposes are denied. Deny
 rules override permits. Completeness applies only to the declared finite domain;
 this is not a theorem about arbitrary attribute expressions or external services.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,11 +22,11 @@ AXES = ("principals", "actions", "memory_classes", "label_sets", "purposes")
 
 def _names(values: Any, label: str, maximum: int = 64, *, empty: bool = False) -> list[str]:
     if not isinstance(values, list):
-        raise ValueError("UniMem policy "+label+" must be a finite list")
+        raise ValueError("UniMem policy " + label + " must be a finite list")
     fp.count(len(values), 0 if empty else 1, maximum, label)
     result = [fp.text(value, label, 128) for value in values]
     if len(set(result)) != len(result):
-        raise ValueError("UniMem policy "+label+" contains repeated values")
+        raise ValueError("UniMem policy " + label + " contains repeated values")
     return sorted(result)
 
 
@@ -48,18 +49,26 @@ def normalize(policy: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(principal["attributes"], dict):
             raise ValueError("UniMem principal attributes must be a finite string mapping")
         fp.count(len(principal["attributes"]), 0, 8)
-        principal_values = {fp.text(key, "principal attribute", 64): fp.text(value, "attribute value", 128)
-                  for key, value in principal["attributes"].items()}
+        principal_values = {
+            fp.text(key, "principal attribute", 64): fp.text(value, "attribute value", 128)
+            for key, value in principal["attributes"].items()
+        }
         attributes.update(principal_values)
-        normalized.append({"id": fp.text(principal["id"], "principal", 128),
-                           "class": fp.text(principal["class"], "principal class", 64),
-                           "attributes": dict(sorted(principal_values.items()))})
+        normalized.append(
+            {
+                "id": fp.text(principal["id"], "principal", 128),
+                "class": fp.text(principal["class"], "principal class", 64),
+                "attributes": dict(sorted(principal_values.items())),
+            }
+        )
     if len({principal["id"] for principal in normalized}) != len(normalized):
         raise ValueError("UniMem policy principal identities must be unique")
-    domain: dict[str, Any] = {"principals": sorted(normalized, key=lambda row: row["id"]),
-              "actions": _names(source["actions"], "actions", 4),
-              "memory_classes": _names(source["memory_classes"], "memory classes", 32),
-              "purposes": _names(source["purposes"], "purposes", 32)}
+    domain: dict[str, Any] = {
+        "principals": sorted(normalized, key=lambda row: row["id"]),
+        "actions": _names(source["actions"], "actions", 4),
+        "memory_classes": _names(source["memory_classes"], "memory classes", 32),
+        "purposes": _names(source["purposes"], "purposes", 32),
+    }
     if not set(domain["actions"]) <= set(ACTIONS):
         raise ValueError("UniMem policy supports read, write, recall and export only")
     label_sets = source["label_sets"]
@@ -80,8 +89,11 @@ def normalize(policy: Mapping[str, Any]) -> dict[str, Any]:
     selectors = {"principals", "principal_classes", "actions", "memory_classes", "purposes"}
     label_names = {label for values in labels for label in values}
     for rule in rules:
-        if (not isinstance(rule, dict) or not {"id", "effect"} <= set(rule)
-                or set(rule)-{"id", "effect", *selectors, "attributes", "required_labels", "forbidden_labels"}):
+        if (
+            not isinstance(rule, dict)
+            or not {"id", "effect"} <= set(rule)
+            or set(rule) - {"id", "effect", *selectors, "attributes", "required_labels", "forbidden_labels"}
+        ):
             raise ValueError("UniMem policy rule contains unknown fields or lacks id/effect")
         identity = fp.text(rule["id"], "rule identity", 128)
         if identity in identities or rule["effect"] not in ("allow", "deny"):
@@ -91,9 +103,14 @@ def normalize(policy: Mapping[str, Any]) -> dict[str, Any]:
         for key in selectors:
             if key not in rule:
                 continue
-            values = _names(rule[key], "rule "+key, 64, empty=True)
-            available = ({row["id"] for row in normalized} if key == "principals" else
-                         {row["class"] for row in normalized} if key == "principal_classes" else set(domain[key]))
+            values = _names(rule[key], "rule " + key, 64, empty=True)
+            available = (
+                {row["id"] for row in normalized}
+                if key == "principals"
+                else {row["class"] for row in normalized}
+                if key == "principal_classes"
+                else set(domain[key])
+            )
             if not set(values) <= available:
                 raise ValueError("UniMem rule selector references an undeclared domain value")
             item[key] = values
@@ -106,8 +123,10 @@ def normalize(policy: Mapping[str, Any]) -> dict[str, Any]:
         if "attributes" in rule:
             if not isinstance(rule["attributes"], dict) or not set(rule["attributes"]) <= attributes:
                 raise ValueError("UniMem rule references an undeclared principal attribute")
-            item["attributes"] = {key: _names(values, "attribute alternatives", 32, empty=True)
-                                  for key, values in sorted(rule["attributes"].items())}
+            item["attributes"] = {
+                key: _names(values, "attribute alternatives", 32, empty=True)
+                for key, values in sorted(rule["attributes"].items())
+            }
         result.append(item)
     return {"version": 1, "domain": domain, "rules": sorted(result, key=lambda row: row["id"])}
 
@@ -118,21 +137,35 @@ def _bound(domain: Mapping[str, Any]) -> int:
     return count
 
 
-def _allows(policy: Mapping[str, Any], principal: str, action: str, memory_class: str,
-            labels: tuple[str, ...], purpose: str) -> bool:
+def _allows(
+    policy: Mapping[str, Any], principal: str, action: str, memory_class: str, labels: tuple[str, ...], purpose: str
+) -> bool:
     domain = policy["domain"]
     subject = next((row for row in domain["principals"] if row["id"] == principal), None)
-    if (subject is None or action not in domain["actions"] or memory_class not in domain["memory_classes"]
-            or purpose not in domain["purposes"] or list(labels) not in domain["label_sets"]):
+    if (
+        subject is None
+        or action not in domain["actions"]
+        or memory_class not in domain["memory_classes"]
+        or purpose not in domain["purposes"]
+        or list(labels) not in domain["label_sets"]
+    ):
         return False
     allowed = False
     for rule in policy["rules"]:
-        if any(key in rule and value not in rule[key] for key, value in (
-                ("principals", principal), ("principal_classes", subject["class"]),
-                ("actions", action), ("memory_classes", memory_class), ("purposes", purpose))):
+        if any(
+            key in rule and value not in rule[key]
+            for key, value in (
+                ("principals", principal),
+                ("principal_classes", subject["class"]),
+                ("actions", action),
+                ("memory_classes", memory_class),
+                ("purposes", purpose),
+            )
+        ):
             continue
-        if (not set(rule.get("required_labels", [])) <= set(labels)
-                or set(rule.get("forbidden_labels", [])) & set(labels)):
+        if not set(rule.get("required_labels", [])) <= set(labels) or set(rule.get("forbidden_labels", [])) & set(
+            labels
+        ):
             continue
         if any(subject["attributes"].get(key) not in values for key, values in rule.get("attributes", {}).items()):
             continue
@@ -142,8 +175,9 @@ def _allows(policy: Mapping[str, Any], principal: str, action: str, memory_class
     return allowed
 
 
-def allows(policy: Mapping[str, Any], *, principal: str, action: str, memory_class: str,
-           labels: Sequence[str], purpose: str) -> bool:
+def allows(
+    policy: Mapping[str, Any], *, principal: str, action: str, memory_class: str, labels: Sequence[str], purpose: str
+) -> bool:
     normalized = normalize(policy)
     if isinstance(labels, (str, bytes)):
         raise ValueError("UniMem request labels must be a finite sequence of label strings")
@@ -159,8 +193,9 @@ def difference(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict[str, Any]
     """Complete symmetric change analysis, including changes in declared domains."""
     before, after = normalize(old), normalize(new)
     left, right = before["domain"], after["domain"]
-    domain: dict[str, Any] = {key: sorted(set(left[key]) | set(right[key]))
-                              for key in ("actions", "memory_classes", "purposes")}
+    domain: dict[str, Any] = {
+        key: sorted(set(left[key]) | set(right[key])) for key in ("actions", "memory_classes", "purposes")
+    }
     domain["principals"] = sorted({row["id"] for row in [*left["principals"], *right["principals"]]})
     domain["label_sets"] = sorted({tuple(values) for values in [*left["label_sets"], *right["label_sets"]]})
     count = _bound(domain)
@@ -175,20 +210,36 @@ def difference(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict[str, Any]
             continue
         index = 0 if new_allow else 1
         counts[index] += 1
-        row = {"principal": principal, "action": action, "memory_class": memory_class,
-               "labels": list(labels), "purpose": purpose}
-        (widening if new_allow else narrowing).update(fp.wire(row)+b"\n")
+        row = {
+            "principal": principal,
+            "action": action,
+            "memory_class": memory_class,
+            "labels": list(labels),
+            "purpose": purpose,
+        }
+        (widening if new_allow else narrowing).update(fp.wire(row) + b"\n")
         target = added if new_allow else removed
         if len(target) < 64:
             target.append(row)
-    return {"old_hash": fp.digest(before), "new_hash": fp.digest(after), "domain_hash": fp.digest(domain),
-            "tuples_checked": count, "widening_count": counts[0], "narrowing_count": counts[1],
-            "no_widening": counts[0] == 0, "added": added, "removed": removed,
-            "widening_digest": widening.hexdigest(), "narrowing_digest": narrowing.hexdigest(),
-            "witnesses_truncated": counts[0] > len(added) or counts[1] > len(removed),
-            "classification": "sound and complete exhaustive check over the declared closed finite domain",
-            "bound": MAX_TUPLES,
-            "assumptions": ["undeclared principal/action/class/label set/purpose is denied",
-                            "principal attributes are operator-owned and bound to authenticated identities",
-                            "deny overrides allow; declarative v1 grammar only",
-                            "external relationship services and future undeclared domains are not proved"]}
+    return {
+        "old_hash": fp.digest(before),
+        "new_hash": fp.digest(after),
+        "domain_hash": fp.digest(domain),
+        "tuples_checked": count,
+        "widening_count": counts[0],
+        "narrowing_count": counts[1],
+        "no_widening": counts[0] == 0,
+        "added": added,
+        "removed": removed,
+        "widening_digest": widening.hexdigest(),
+        "narrowing_digest": narrowing.hexdigest(),
+        "witnesses_truncated": counts[0] > len(added) or counts[1] > len(removed),
+        "classification": "sound and complete exhaustive check over the declared closed finite domain",
+        "bound": MAX_TUPLES,
+        "assumptions": [
+            "undeclared principal/action/class/label set/purpose is denied",
+            "principal attributes are operator-owned and bound to authenticated identities",
+            "deny overrides allow; declarative v1 grammar only",
+            "external relationship services and future undeclared domains are not proved",
+        ],
+    }

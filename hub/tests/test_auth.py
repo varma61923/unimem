@@ -224,9 +224,11 @@ async def test_a_revoked_key_cannot_be_rotated_back_to_life(session_factory, con
         async with session_scope(session_factory) as session:
             await auth.rotate_api_key(session, original.key_id)
     async with session_scope(session_factory) as session:
-        live = (await session.execute(
-            select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
-        )).scalars().all()
+        live = (
+            (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))))
+            .scalars()
+            .all()
+        )
     assert live == []
 
 
@@ -245,9 +247,11 @@ async def test_concurrent_rotations_of_one_key_mint_exactly_one_successor(sessio
     results = await asyncio.gather(*[rotate() for _ in range(6)])
     assert len([r for r in results if r is not None]) == 1
     async with session_scope(session_factory) as session:
-        live = (await session.execute(
-            select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
-        )).scalars().all()
+        live = (
+            (await session.execute(select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))))
+            .scalars()
+            .all()
+        )
     assert len(live) == 1
 
 
@@ -317,9 +321,7 @@ async def test_two_keys_sharing_a_prefix_are_both_individually_reachable(session
         session.add(ApiKey(org_id=org_id_b, key_prefix=prefix, key_hash=key_hash_b))
 
     async with session_scope(session_factory) as session:
-        candidates = (
-            await session.execute(select(ApiKey).where(ApiKey.key_prefix == prefix))
-        ).scalars().all()
+        candidates = (await session.execute(select(ApiKey).where(ApiKey.key_prefix == prefix))).scalars().all()
     assert len(candidates) == 2, "test setup didn't actually create a prefix collision"
 
     async with session_scope(session_factory) as session:
@@ -337,9 +339,7 @@ async def test_revocation_landing_during_a_slow_verify_still_denies_it(session_f
     async with session_scope(session_factory) as session:
         issued = await auth.issue_api_key(session, org_id)
     async with session_scope(session_factory) as session:
-        await session.execute(
-            update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None)
-        )
+        await session.execute(update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None))
 
     verify_started = threading.Event()
     release_verify = threading.Event()
@@ -398,9 +398,7 @@ async def test_a_pre_hmac_key_is_backfilled_on_first_legacy_verification(session
     async with session_scope(session_factory) as session:
         issued = await auth.issue_api_key(session, org_id)
     async with session_scope(session_factory) as session:
-        await session.execute(
-            update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None)
-        )
+        await session.execute(update(ApiKey).where(ApiKey.id == issued.key_id).values(key_hmac=None))
 
     async with session_scope(session_factory) as session:
         row = (await session.execute(select(ApiKey).where(ApiKey.id == issued.key_id))).scalar_one()
@@ -448,7 +446,8 @@ async def test_expired_key_does_not_verify_via_the_fast_path(session_factory, co
         issued = await auth.issue_api_key(session, org_id, expires_days=1)
     async with session_scope(session_factory) as session:
         await session.execute(
-            update(ApiKey).where(ApiKey.id == issued.key_id)
+            update(ApiKey)
+            .where(ApiKey.id == issued.key_id)
             .values(expires_at=datetime.now(timezone.utc) - timedelta(days=1))
         )
 
@@ -510,9 +509,7 @@ class TestPepperCanComeFromAFile:
         assert auth._pepper_env == "a-fixed-pepper-for-this-test"
         assert auth._PEPPER == b"a-fixed-pepper-for-this-test"
 
-    async def test_pepper_file_wins_over_a_plain_env_var_set_alongside_it(
-        self, monkeypatch, reload_auth
-    ):
+    async def test_pepper_file_wins_over_a_plain_env_var_set_alongside_it(self, monkeypatch, reload_auth):
         import importlib
 
         pepper_file = reload_auth / "pepper"

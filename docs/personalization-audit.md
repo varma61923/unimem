@@ -24,7 +24,9 @@ Record independently graded secondary labels before the primary outcome:
 from unimem import holdout_io
 
 holdout_io.record_outcome(
-    root, "science-001", succeeded=True,
+    root,
+    "science-001",
+    succeeded=True,
     secondary_metrics={"accuracy": 1.0, "agreement": 0.0},
 )
 ```

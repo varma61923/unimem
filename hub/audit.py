@@ -59,10 +59,19 @@ async def record(
         async with session.begin_nested():
             await session.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": str(org_id)})
             session.add(entry)
-            await transparency.append(session, org_id,
-                {"actor": actor[:128], "action": action[:64], "target_type": target_type[:32],
-                 "target_id": str(target_id)[:64], "summary_hash": hashlib.sha256(summary.encode()).hexdigest()},
-                secret=key, algorithm=info.get("transparency_algorithm", "hmac-sha256"))
+            await transparency.append(
+                session,
+                org_id,
+                {
+                    "actor": actor[:128],
+                    "action": action[:64],
+                    "target_type": target_type[:32],
+                    "target_id": str(target_id)[:64],
+                    "summary_hash": hashlib.sha256(summary.encode()).hexdigest(),
+                },
+                secret=key,
+                algorithm=info.get("transparency_algorithm", "hmac-sha256"),
+            )
             await session.execute(text("SELECT set_config('app.org_id', :org, true)"), {"org": previous or ""})
     else:
         session.add(entry)
@@ -84,7 +93,11 @@ async def prune_audit_logs(
     stmt = delete(AuditLogEntry).where(AuditLogEntry.created_at < cutoff)
     if org_id:
         stmt = stmt.where(AuditLogEntry.org_id == org_id)
+    from sqlalchemy.engine import CursorResult
+
     result = await session.execute(stmt)
+    if not isinstance(result, CursorResult):
+        raise RuntimeError("audit deletion did not return a cursor result")
     return int(result.rowcount or 0)
 
 
@@ -132,11 +145,13 @@ class audit_context:
 
     async def __aenter__(self) -> audit_context:
         import time
+
         self.start_time = time.monotonic()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         import time
+
         duration_ms = round((time.monotonic() - self.start_time) * 1000)
         status = "failed" if exc_type else "ok"
         full_summary = f"[{status}] {self.summary or self.action} ({duration_ms}ms)"
@@ -149,4 +164,3 @@ class audit_context:
             target_id=self.target_id,
             summary=full_summary,
         )
-

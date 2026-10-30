@@ -1,4 +1,5 @@
 """Operator-reviewed policy activation is content-bound and serialized."""
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -62,7 +63,7 @@ def test_narrowing_needs_no_extra_review_and_old_certificate_cannot_replay(tmp_p
 
 
 def test_review_is_bound_to_exact_content_generation_and_root(tmp_path, clock):
-    root = str(tmp_path/"owner")
+    root = str(tmp_path / "owner")
     first = io.certify(root, configured_policy())
     receipt = io.review(root, first, reason="Reviewed first policy only.")
     changed = configured_policy()
@@ -75,7 +76,7 @@ def test_review_is_bound_to_exact_content_generation_and_root(tmp_path, clock):
     with pytest.raises(PermissionError, match="forged"):
         io.activate(root, forged)
     with pytest.raises(PermissionError, match="forged"):
-        io.activate(str(tmp_path/"other"), first, review_receipt=receipt)
+        io.activate(str(tmp_path / "other"), first, review_receipt=receipt)
     io.activate(root, first, review_receipt=receipt)
     with pytest.raises(PermissionError, match="stale"):
         io.activate(root, second, review_receipt=receipt)

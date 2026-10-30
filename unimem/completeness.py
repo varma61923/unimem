@@ -16,6 +16,7 @@ Each element is reported under `present` or `missing` by the same key.
 The runtime grade is a coverage signal, not an answer check: a context can
 mention every term and still not contain the answer.
 """
+
 from __future__ import annotations
 
 import re
@@ -131,7 +132,10 @@ def grade_question(question: str, context: str, *, threshold: float = PRESENCE_T
     from unimem._stem import stem
 
     terms = question_terms(question)
-    graded = grade_context_completeness(context, {term: term for term in terms}, threshold=threshold,
-                                        normalize=stem)
-    return {"bucket": graded["bucket"], "score": graded["score"], "missing": graded["missing"],
-            "basis": "question-terms"}
+    graded = grade_context_completeness(context, {term: term for term in terms}, threshold=threshold, normalize=stem)
+    return {
+        "bucket": graded["bucket"],
+        "score": graded["score"],
+        "missing": graded["missing"],
+        "basis": "question-terms",
+    }

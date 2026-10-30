@@ -143,9 +143,7 @@ def _session_cwd_from_stream(handle, agent: str, *, max_bytes: int = MAX_HEADER_
     return None, "unattributed", consumed
 
 
-def _session_cwd(
-    filename: str, agent: str, *, max_bytes: int = MAX_HEADER_BYTES
-) -> tuple[str | None, str, int]:
+def _session_cwd(filename: str, agent: str, *, max_bytes: int = MAX_HEADER_BYTES) -> tuple[str | None, str, int]:
     try:
         with open(filename, "rb") as handle:
             return _session_cwd_from_stream(handle, agent, max_bytes=max_bytes)
@@ -227,9 +225,8 @@ def discover_agent_history(
                             break
                         report["entries_examined"] += 1
                         if (
-                            (entry.name == encoded_project or entry.name.startswith(encoded_project + "-"))
-                            and entry.is_dir(follow_symlinks=False)
-                        ):
+                            entry.name == encoded_project or entry.name.startswith(encoded_project + "-")
+                        ) and entry.is_dir(follow_symlinks=False):
                             try:
                                 with os.scandir(entry.path) as files:
                                     for file_entry in files:
@@ -291,9 +288,7 @@ def discover_agent_history(
                 report["candidate_files_unprobed"] = len(candidate_paths) - candidate_index
                 break
             report["candidate_files"] += 1
-            cwd, state, probe_bytes = _session_cwd(
-                filename, agent, max_bytes=min(MAX_HEADER_BYTES, remaining_probe)
-            )
+            cwd, state, probe_bytes = _session_cwd(filename, agent, max_bytes=min(MAX_HEADER_BYTES, remaining_probe))
             report["probe_bytes"] += probe_bytes
             if state == "unreadable":
                 report["unreadable_files"] += 1
@@ -390,7 +385,8 @@ def record_discovery_coverage(root: str, *, agent: str, scope: dict, report: dic
                 "counts": {
                     key: value
                     for key, value in report.items()
-                    if key not in (
+                    if key
+                    not in (
                         "agent",
                         "max_entries",
                         "max_files",

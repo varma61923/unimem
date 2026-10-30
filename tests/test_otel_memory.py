@@ -1,4 +1,5 @@
 """Pinned GenAI attribute names and admission before observable spans."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -15,9 +16,11 @@ class Tracer:
     @contextmanager
     def start_as_current_span(self, name, **options):
         attributes = {}
+
         class Span:
             def set_attribute(self, key, value):
                 attributes[key] = value
+
         self.spans.append({"name": name, "attributes": attributes, **options})
         yield Span()
 
@@ -57,10 +60,19 @@ def test_missing_sdk_degrades_cleanly_and_causal_extensions_are_bounded(tmp_path
     memory, _ = hierarchical.add_fact(root, "Check backups before deploying.")
     otel_memory.configure(root, enabled=True)
     monkeypatch.setattr(telemetry, "_tracer", lambda: None)
-    with otel_memory.operation(root, "search", [memory.id], extensions={
-            "holdout.arm": "treated", "holdout.propensity": .5, "delegation.chain_digest": "digest",
-            "isolation.level": "serializable", "n_eff": 2}) as span:
-        assert not span["span_created"] and span["attributes"]["unimem.holdout.propensity"] == .5
+    with otel_memory.operation(
+        root,
+        "search",
+        [memory.id],
+        extensions={
+            "holdout.arm": "treated",
+            "holdout.propensity": 0.5,
+            "delegation.chain_digest": "digest",
+            "isolation.level": "serializable",
+            "n_eff": 2,
+        },
+    ) as span:
+        assert not span["span_created"] and span["attributes"]["unimem.holdout.propensity"] == 0.5
     for extensions in ({"unknown": "value"}, {"n_eff": float("nan")}, {"n_eff": {}}):
         with pytest.raises(ValueError):
             otel_memory.attributes(root, "search", [memory.id], extensions=extensions)
@@ -87,8 +99,10 @@ def test_pinned_fixture_batch_types_and_authenticated_writer(tmp_path):
     fixture = json.loads((Path(__file__).parent / "fixtures" / "otel_memory_contract.json").read_text())
     root = str(tmp_path)
     with memory_authority.writer("actual-writer", "agent"):
-        memories = hierarchical.append_facts(root, [{"statement": "Inspect deployment signatures."},
-                                                   {"statement": "Measure backup restoration outcomes."}])
+        memories = hierarchical.append_facts(
+            root,
+            [{"statement": "Inspect deployment signatures."}, {"statement": "Measure backup restoration outcomes."}],
+        )
     ids = [f.id for f, _ in memories]
     attributes = otel_memory.attributes(root, "search", ids)
     assert attributes["gen_ai.operation.name"] in fixture["operations"]
@@ -103,9 +117,11 @@ def test_pinned_fixture_batch_types_and_authenticated_writer(tmp_path):
 
 def test_telemetry_failure_never_turns_a_committed_write_into_a_failure(tmp_path, monkeypatch):
     root = str(tmp_path)
+
     class BrokenTracer:
         def start_as_current_span(self, *args, **kwargs):
             raise RuntimeError("exporter unavailable")
+
     monkeypatch.setattr(telemetry, "_tracer", lambda: BrokenTracer())
     otel_memory.configure(root, enabled=True)
     memory, _ = hierarchical.add_fact(root, "Check deploy rollback evidence.")
@@ -134,10 +150,14 @@ def test_error_span_emits_only_exception_class_and_opt_in_is_scope_filtered(tmp_
 def test_disabled_wrapper_uses_only_its_cheap_flag(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(otel_memory.os.path, "isfile", lambda path: calls.append(path) or False)
-    monkeypatch.setattr(otel_memory, "_path", lambda root: pytest.fail("disabled telemetry resolved a filesystem boundary"))
+    monkeypatch.setattr(
+        otel_memory, "_path", lambda root: pytest.fail("disabled telemetry resolved a filesystem boundary")
+    )
+
     @otel_memory.observed("search")
     def operation(root):
         return []
+
     assert operation(str(tmp_path)) == [] and len(calls) == 1
 
 
@@ -149,7 +169,7 @@ def test_create_update_delete_use_real_operations_without_resurrecting_data(tmp_
     monkeypatch.setattr(telemetry, "_tracer", lambda: tracer)
     otel_memory.configure(root, enabled=True)
     memory = hierarchical.append_facts(root, [{"statement": "Monitor wrist current during loading."}])[0][0]
-    hierarchical.update_fact(root, memory.id, confidence=.9)
+    hierarchical.update_fact(root, memory.id, confidence=0.9)
     privacy_erasure.purge_fact(root, memory.id, reason="operator deletion")
     assert [s["name"] for s in tracer.spans] == ["create_memory", "update_memory", "delete_memory"]
     assert memory.id not in hierarchical.load_facts(root)
@@ -161,9 +181,15 @@ def test_outcome_spans_use_canonical_arms_and_omit_invisible_memories(tmp_path, 
     root = str(tmp_path)
     visible, _ = hierarchical.add_fact(root, "Check controlled release signatures.")
     hidden, _ = hierarchical.add_fact(root, "Private task evidence.", scopes=["secret"])
-    holdout_io.configure(root, rate=.5, salt="otel-arms")
-    withheld = holdout_io.assign_and_log(root, [visible.id, hidden.id], occasion_id="task-1", rate=.5,
-                                      salt="otel-arms", revisions={visible.id: visible.revision, hidden.id: hidden.revision})
+    holdout_io.configure(root, rate=0.5, salt="otel-arms")
+    withheld = holdout_io.assign_and_log(
+        root,
+        [visible.id, hidden.id],
+        occasion_id="task-1",
+        rate=0.5,
+        salt="otel-arms",
+        revisions={visible.id: visible.revision, hidden.id: hidden.revision},
+    )
     holdout_io.record_outcome(root, "task-1", True)
     tracer = Tracer()
     monkeypatch.setattr(telemetry, "_tracer", lambda: tracer)
@@ -175,4 +201,4 @@ def test_outcome_spans_use_canonical_arms_and_omit_invisible_memories(tmp_path, 
     assert span["attributes"]["gen_ai.memory.record.id"] == visible.id
     assert span["attributes"]["unimem.holdout.arm"] == ("control" if visible.id in withheld else "treated")
     assert span["attributes"]["unimem.outcome.succeeded"] is True
-    assert span["attributes"]["unimem.holdout.propensity"] == .5
+    assert span["attributes"]["unimem.holdout.propensity"] == 0.5

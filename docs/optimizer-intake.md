@@ -71,9 +71,7 @@ the schedule is effective, the application obtains each occasion's actual arm:
 ```python
 from unimem import holdout_io, optimizer_io
 
-catalog = optimizer_io.expose(
-    "./store", [candidate_id], "release-occasion-1", segment="default"
-)
+catalog = optimizer_io.expose("./store", [candidate_id], "release-occasion-1", segment="default")
 # Run the same sandbox task with precisely catalog["catalog"], including []
 # for the control arm. Measure its outcome independently.
 holdout_io.record_outcome("./store", "release-occasion-1", succeeded)

@@ -15,7 +15,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -58,7 +61,9 @@ def test_graph_boost_and_entity_extraction(store):
     assert "service:payments" in extracted
 
     boosts = graph.graph_boost_for_lessons(
-        store, "payments error", ["handle_declined_card", "other_slug"],
+        store,
+        "payments error",
+        ["handle_declined_card", "other_slug"],
     )
     assert boosts["handle_declined_card"] > 0.0
     assert boosts["other_slug"] == 0.0
@@ -89,15 +94,9 @@ def test_bitemporal_contradiction_resolution(store):
     graph.add_node(store, "service:api", "service", "API Service")
     graph.add_node(store, "tool:cache", "tool", "Cache")
 
-    e1 = graph.add_edge(
-        store, "service:api", "tool:cache", "uses",
-        weight=0.5, valid_at="2024-01-01T00:00:00Z"
-    )
+    e1 = graph.add_edge(store, "service:api", "tool:cache", "uses", weight=0.5, valid_at="2024-01-01T00:00:00Z")
 
-    e2 = graph.add_edge(
-        store, "service:api", "tool:cache", "uses",
-        weight=0.9, valid_at="2024-01-02T00:00:00Z"
-    )
+    e2 = graph.add_edge(store, "service:api", "tool:cache", "uses", weight=0.9, valid_at="2024-01-02T00:00:00Z")
 
     edges = graph.load_edges(store)
     api_cache_edges = [e for e in edges if e.source == "service:api" and e.target == "tool:cache"]
@@ -114,9 +113,12 @@ def test_bitemporal_expired_edges(store):
     graph.add_node(store, "tool:elasticsearch", "tool", "Elasticsearch")
 
     graph.add_edge(
-        store, "service:search", "tool:elasticsearch", "uses",
+        store,
+        "service:search",
+        "tool:elasticsearch",
+        "uses",
         valid_at="2024-01-01T00:00:00Z",
-        expired_at="2024-01-10T00:00:00Z"
+        expired_at="2024-01-10T00:00:00Z",
     )
 
     neighbors = graph.get_neighbors(store, "service:search")
@@ -127,10 +129,7 @@ def test_bitemporal_expired_edges(store):
 
 
 def test_version_chain_creation(store):
-    node1 = graph.add_node(
-        store, "memory:auth_flow", "memory", "Authentication Flow",
-        properties={"status": "draft"}
-    )
+    node1 = graph.add_node(store, "memory:auth_flow", "memory", "Authentication Flow", properties={"status": "draft"})
 
     assert node1.version == 1
     assert node1.is_latest is True
@@ -138,9 +137,7 @@ def test_version_chain_creation(store):
     assert node1.root_id is None
 
     node2 = graph.create_memory_version(
-        store, "memory:auth_flow",
-        new_properties={"status": "reviewed"},
-        new_name="Authentication Flow v2"
+        store, "memory:auth_flow", new_properties={"status": "reviewed"}, new_name="Authentication Flow v2"
     )
 
     assert node2.version == 2
@@ -161,18 +158,12 @@ def test_version_chain_creation(store):
 
 
 def test_version_chain_with_root_id(store):
-    node1 = graph.add_node(
-        store, "memory:payment", "memory", "Payment System",
-        properties={"version": "1.0"}
-    )
+    node1 = graph.add_node(store, "memory:payment", "memory", "Payment System", properties={"version": "1.0"})
     nodes = graph.load_nodes(store)
     nodes["memory:payment"].root_id = "memory:payment_root"
     save_nodes(store, nodes)
 
-    node2 = graph.create_memory_version(
-        store, "memory:payment",
-        new_properties={"version": "2.0"}
-    )
+    node2 = graph.create_memory_version(store, "memory:payment", new_properties={"version": "2.0"})
 
     assert node2.root_id == "memory:payment_root"
 
@@ -209,4 +200,3 @@ def test_list_version_chains(store):
     assert chains["chain_a"][1].version == 2
     assert "chain_b" in chains
     assert len(chains["chain_b"]) == 1
-

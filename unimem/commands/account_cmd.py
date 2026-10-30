@@ -1,4 +1,5 @@
 """`unimem account` — self-service deletion against a UniMem Hub."""
+
 from __future__ import annotations
 
 import argparse
@@ -60,8 +61,7 @@ def _confirm_destructive(action: str, skip: bool) -> bool:
         return True
     if not sys.stdin.isatty():
         print(
-            f"[unimem] refusing to {action} without --yes (stdin is not a terminal, "
-            "cannot prompt for confirmation).",
+            f"[unimem] refusing to {action} without --yes (stdin is not a terminal, cannot prompt for confirmation).",
             file=sys.stderr,
         )
         return False

@@ -4,6 +4,7 @@ Import this module with the ``providers`` extra. The core runtime keeps its lean
 dataclass configuration; factory callers can validate mappings with these models.
 Secrets never appear in model representations, JSON exports or validation errors.
 """
+
 from __future__ import annotations
 
 import ipaddress
@@ -22,9 +23,12 @@ _ENV = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}")
 
 # Values copied from examples instead of a real key: fail at configuration time, not
 # as an opaque 401 from the provider on the first request.
-_PLACEHOLDER_SECRET = re.compile(r"(?i)(?:none|null|undefined|changeme|change-me|xxx+|\.\.\.|<[^>]*>|"
-                                 r"(?:your|my)[-_ ]?(?:api)?[-_ ]?(?:key|token|secret)(?:[-_ ]?here)?|"
-                                 r"sk-\.\.\.|sk-x+|replace[-_ ]?me)")
+_PLACEHOLDER_SECRET = re.compile(
+    r"(?i)(?:none|null|undefined|changeme|change-me|xxx+|\.\.\.|<[^>]*>|"
+    r"(?:your|my)[-_ ]?(?:api)?[-_ ]?(?:key|token|secret)(?:[-_ ]?here)?|"
+    r"sk-\.\.\.|sk-x+|replace[-_ ]?me)"
+)
+
 
 class _Configuration(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
@@ -80,8 +84,14 @@ class LLMConfig(_Configuration):
             port = parsed.port
         except ValueError:
             raise ValueError("provider endpoint is not a valid URL") from None
-        if (not parsed.hostname or parsed.username is not None or parsed.password is not None
-                or parsed.query or parsed.fragment or (port is not None and not 1 <= port <= 65535)):
+        if (
+            not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+            or (port is not None and not 1 <= port <= 65535)
+        ):
             raise ValueError("provider endpoint must omit credentials, query and fragment")
         loopback = parsed.hostname.lower() == "localhost"
         try:
@@ -110,13 +120,19 @@ class LLMConfig(_Configuration):
         from unimem.providers import LLM_CREDENTIALS
         from unimem.secrets_provider import env_secret
 
-        requires_key = self.provider not in {"local", "ollama", "bedrock", "vertex"} \
-            and LLM_CREDENTIALS.get(self.provider, True)
+        requires_key = self.provider not in {"local", "ollama", "bedrock", "vertex"} and LLM_CREDENTIALS.get(
+            self.provider, True
+        )
         if self.provider == "openai-compatible" and self.base_url is not None:
             requires_key = urlsplit(self.base_url).scheme != "http"
-        key = self.api_key.get_secret_value() if self.api_key is not None else (
-            env_secret(self.api_key_env or "UNIMEM_LLM_API_KEY")
-            if requires_key or self.api_key_env is not None else ""
+        key = (
+            self.api_key.get_secret_value()
+            if self.api_key is not None
+            else (
+                env_secret(self.api_key_env or "UNIMEM_LLM_API_KEY")
+                if requires_key or self.api_key_env is not None
+                else ""
+            )
         )
         key = key.strip()
         if (requires_key and not key) or len(key) > 8192 or any(ord(c) < 32 or ord(c) == 127 for c in key):
@@ -127,8 +143,15 @@ class LLMConfig(_Configuration):
         if provider in {"openai", "ollama"}:
             base = base or ("https://api.openai.com/v1" if provider == "openai" else "http://localhost:11434/v1")
             provider = "openai-compatible"
-        return Config(provider=provider, model=self.model, api_key=key, base_url=base,
-                      region=self.region, project=self.project, cache_namespace=self.cache_namespace)
+        return Config(
+            provider=provider,
+            model=self.model,
+            api_key=key,
+            base_url=base,
+            region=self.region,
+            project=self.project,
+            cache_namespace=self.cache_namespace,
+        )
 
 
 class EmbedderConfig(_Configuration):
@@ -147,8 +170,11 @@ class EmbedderConfig(_Configuration):
     def tag(self) -> str:
         from unimem import embeddings
 
-        base = self.model if self.provider == "local" and self.model in embeddings.LOCAL_MODELS else \
-            f"{self.provider}:{self.model}"
+        base = (
+            self.model
+            if self.provider == "local" and self.model in embeddings.LOCAL_MODELS
+            else f"{self.provider}:{self.model}"
+        )
         return base + (f"@{self.dimensions}" if self.dimensions is not None else "")
 
     @model_validator(mode="after")

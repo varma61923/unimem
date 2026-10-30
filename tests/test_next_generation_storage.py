@@ -24,14 +24,25 @@ def test_reproducer_exit_status_enforces_measured_million_fact_write_gates(
 ):
     output = tmp_path / "storage.json"
     monkeypatch.setattr(
-        sys, "argv",
-        ["next_generation_storage", "--sizes", str(size), "--trials", "1",
-         "--legacy-max", "0", "--output", str(output)],
+        sys,
+        "argv",
+        [
+            "next_generation_storage",
+            "--sizes",
+            str(size),
+            "--trials",
+            "1",
+            "--legacy-max",
+            "0",
+            "--output",
+            str(output),
+        ],
     )
     monkeypatch.setattr(benchmark.fact_store, "migrate", lambda root: None)
     monkeypatch.setattr(benchmark.h, "add_facts", lambda root, batch: None)
     monkeypatch.setattr(
-        benchmark, "measure",
+        benchmark,
+        "measure",
         lambda root, count, trials: {
             "facts_before_trials": count,
             "single_write_p95_ms": p95,

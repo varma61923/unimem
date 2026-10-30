@@ -13,9 +13,11 @@ from hub import commons
 from hub.models import Trace
 
 try:  # pragma: no cover - exercised by whichever path the environment has
-    import numpy as _np
+    import numpy as _np_import
 except ImportError:
     _np = None
+else:
+    _np = _np_import
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,8 @@ async def _build(session: AsyncSession, key: tuple, visible: list) -> Snapshot:
             "commons_cache: skipped %d Knowledge Base row(s) with a malformed signature",
             len(rows) - len(kept),
         )
+    if _np is None:
+        raise RuntimeError("NumPy is required for the commons cache")
     signatures = _np.array([r[3] for r in kept], dtype=_np.uint64).reshape(len(kept), width)
     return Snapshot(
         key=key,
@@ -91,6 +95,8 @@ async def snapshot(session: AsyncSession, visible: list) -> Snapshot:
 
 def select_for(snap: Snapshot, org_id: str, agent_type: str, cap: int) -> tuple[int, list[str], Any]:
     """The part of the snapshot one caller's query scans."""
+    if _np is None:
+        raise RuntimeError("NumPy is required for the commons cache")
     mask = snap.org_ids != org_id
     if agent_type:
         mask &= snap.agent_types == agent_type

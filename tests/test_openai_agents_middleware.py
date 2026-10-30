@@ -190,7 +190,9 @@ def test_openai_agents_adapter_isolates_user_scope_between_runs(monkeypatch, req
             retrieval_timeout_ms=1000,
         )
         bob = await bob_adapter.call_model_input_filter(
-            _request(ModelInputData, {"session_id": "bob-s", "user_id": "bob"}, [{"role": "user", "content": "Continue"}])
+            _request(
+                ModelInputData, {"session_id": "bob-s", "user_id": "bob"}, [{"role": "user", "content": "Continue"}]
+            )
         )
         assert "Alice prefers email updates." not in bob.instructions
 

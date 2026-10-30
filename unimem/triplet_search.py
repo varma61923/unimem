@@ -26,6 +26,7 @@ that fact; and when the relation was learned from a fact (its provenance names
 private fact cannot disclose it. Edges between plain entities from other sources
 follow the graph's own visibility, as graph traversal in `search_recipes` does.
 """
+
 from __future__ import annotations
 
 import math
@@ -37,17 +38,20 @@ from typing import Any
 from unimem import graph, kg_similarity, lesson_cache, search_recipes
 from unimem._lexical import STOPWORDS
 
-PENALTY = 6.5           # Cognee's triplet_distance_penalty for an element with no match
-MATCH_FLOOR = 0.34      # below this similarity an element counts as not matching
-MAX_EDGES = 50_000      # edges scanned per query
-MAX_EMBED_TEXTS = 4_000 # distinct element texts embedded per query
+PENALTY = 6.5  # Cognee's triplet_distance_penalty for an element with no match
+MATCH_FLOOR = 0.34  # below this similarity an element counts as not matching
+MAX_EDGES = 50_000  # edges scanned per query
+MAX_EMBED_TEXTS = 4_000  # distinct element texts embedded per query
 MAX_TOP_K = 100
 _WORD = re.compile(r"\w+", re.UNICODE)
 
 
 def _words(text: str) -> set[str]:
-    return {word for word in _WORD.findall(unicodedata.normalize("NFKC", text or "").casefold())
-            if word not in STOPWORDS and len(word) > 1}
+    return {
+        word
+        for word in _WORD.findall(unicodedata.normalize("NFKC", text or "").casefold())
+        if word not in STOPWORDS and len(word) > 1
+    }
 
 
 def lexical_similarity(query: str, element: str) -> float:
@@ -79,9 +83,20 @@ def _label(node_id: str, node) -> str:
     return (node.name if node is not None and node.name else node_id.split(":", 1)[-1]).strip()
 
 
-def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None = None, scope: str = "",
-           as_of: str | None = None, known_at: str | None = None, action_class: str = "",
-           relations: list[str] | None = None, embedder=None, explain: dict | None = None) -> list[dict[str, Any]]:
+def search(
+    root: str,
+    query: str,
+    *,
+    top_k: int = 10,
+    context: list[str] | None = None,
+    scope: str = "",
+    as_of: str | None = None,
+    known_at: str | None = None,
+    action_class: str = "",
+    relations: list[str] | None = None,
+    embedder=None,
+    explain: dict | None = None,
+) -> list[dict[str, Any]]:
     """The `top_k` triplets nearest to `query`, best first, each with its score and provenance."""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be a non-empty string")
@@ -105,8 +120,9 @@ def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None 
             continue
         if not graph._is_active_edge(edge, moment, known, current_at=current_at):
             continue
-        candidates.append((edge, _label(edge.source, source), edge.relation.replace("_", " "),
-                           _label(edge.target, target)))
+        candidates.append(
+            (edge, _label(edge.source, source), edge.relation.replace("_", " "), _label(edge.target, target))
+        )
     if not candidates:
         return []
 
@@ -128,8 +144,20 @@ def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None 
         if max(parts) < MATCH_FLOOR:
             continue
         distance = sum(_distance(value) for value in parts)
-        scored.append((distance, -float(edge.weight), edge.source, edge.relation, edge.target,
-                       edge, subject, relation, obj, parts))
+        scored.append(
+            (
+                distance,
+                -float(edge.weight),
+                edge.source,
+                edge.relation,
+                edge.target,
+                edge,
+                subject,
+                relation,
+                obj,
+                parts,
+            )
+        )
     scored.sort(key=lambda item: item[:5])
 
     # Admit facts behind the best candidates; scan further only as rows are refused.
@@ -137,7 +165,7 @@ def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None 
     effective = context if context is not None else ([scope] if scope else [])
     position = 0
     while len(out) < top_k and position < len(scored):
-        window = scored[position:position + top_k * 4]
+        window = scored[position : position + top_k * 4]
         position += len(window)
         needed: set[str] = set()
         for *_key, edge, _s, _r, _o, _p in window:
@@ -148,8 +176,15 @@ def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None 
             if origin.startswith("fact:"):
                 needed.add(origin.removeprefix("fact:"))
         existing: set[str] = set()
-        admitted = search_recipes.admit(root, needed, context=effective, as_of=as_of, known_at=known_at,
-                                        action_class=action_class, existing=existing)
+        admitted = search_recipes.admit(
+            root,
+            needed,
+            context=effective,
+            as_of=as_of,
+            known_at=known_at,
+            action_class=action_class,
+            existing=existing,
+        )
         for distance, _weight, _s_id, _rel, _t_id, edge, subject, relation, obj, parts in window:
             refused = False
             for node_id in (edge.source, edge.target):
@@ -163,26 +198,36 @@ def search(root: str, query: str, *, top_k: int = 10, context: list[str] | None 
             if refused:
                 continue
             properties = edge.properties or {}
-            out.append({
-                "subject": {"id": edge.source, "name": subject,
-                            "type": getattr(nodes.get(edge.source), "entity_type", "")},
-                "relation": edge.relation,
-                "object": {"id": edge.target, "name": obj,
-                           "type": getattr(nodes.get(edge.target), "entity_type", "")},
-                "text": f"{subject} {relation} {obj}",
-                "score": 1.0 / (1.0 + distance),
-                "distance": distance,
-                "similarity": {"subject": parts[0], "relation": parts[1], "object": parts[2]},
-                "weight": float(edge.weight),
-                "valid_at": edge.valid_at, "invalid_at": edge.invalid_at,
-                "evidence": str(properties.get("evidence", "") or ""),
-                "source": str(properties.get("source", "") or ""),
-            })
+            out.append(
+                {
+                    "subject": {
+                        "id": edge.source,
+                        "name": subject,
+                        "type": getattr(nodes.get(edge.source), "entity_type", ""),
+                    },
+                    "relation": edge.relation,
+                    "object": {
+                        "id": edge.target,
+                        "name": obj,
+                        "type": getattr(nodes.get(edge.target), "entity_type", ""),
+                    },
+                    "text": f"{subject} {relation} {obj}",
+                    "score": 1.0 / (1.0 + distance),
+                    "distance": distance,
+                    "similarity": {"subject": parts[0], "relation": parts[1], "object": parts[2]},
+                    "weight": float(edge.weight),
+                    "valid_at": edge.valid_at,
+                    "invalid_at": edge.invalid_at,
+                    "evidence": str(properties.get("evidence", "") or ""),
+                    "source": str(properties.get("source", "") or ""),
+                }
+            )
             if len(out) >= top_k:
                 break
     if explain is not None:
-        explain.update(method=method, edges_scanned=len(candidates), matched=len(scored),
-                       penalty=PENALTY, match_floor=MATCH_FLOOR)
+        explain.update(
+            method=method, edges_scanned=len(candidates), matched=len(scored), penalty=PENALTY, match_floor=MATCH_FLOOR
+        )
     for row in out:
         if not math.isfinite(row["score"]):
             raise ValueError("triplet scores must be finite")

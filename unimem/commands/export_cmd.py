@@ -21,30 +21,36 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "-- a backup, a customer-tooling handoff, or a seed for a second store.",
     )
     p.add_argument(
-        "--kind", choices=KINDS, default=KIND_ALL,
+        "--kind",
+        choices=KINDS,
+        default=KIND_ALL,
         help=f"What to export (default: {KIND_ALL}).",
     )
     p.add_argument(
-        "--status", default=None,
-        help="Only lessons at this status (e.g. active). Default: every status. "
-             "Ignored for --kind traces.",
+        "--status",
+        default=None,
+        help="Only lessons at this status (e.g. active). Default: every status. Ignored for --kind traces.",
     )
     p.add_argument(
-        "--agent-type", type=_agent_type_arg, default=None,
+        "--agent-type",
+        type=_agent_type_arg,
+        default=None,
         help="Only records for this fleet. Default: every agent_type.",
     )
     p.add_argument(
-        "--out", default=None,
-        help="Output file. Default: stdout, so this composes with shell redirection "
-             "(`unimem export > backup.jsonl`).",
+        "--out",
+        default=None,
+        help="Output file. Default: stdout, so this composes with shell redirection (`unimem export > backup.jsonl`).",
     )
     p.add_argument("--dest", default=None)
     p.add_argument(
-        "--format", choices=("native", "cogx"), default="native",
+        "--format",
+        choices=("native", "cogx"),
+        default="native",
         help="native (default): one JSON row per lesson/trace (JSONL). "
-             "cogx: one portable cogx/v1 JSON document carrying lessons, "
-             "facts, graph nodes/edges, and memory blocks. "
-             "--kind traces has no cogx counterpart (use native for traces).",
+        "cogx: one portable cogx/v1 JSON document carrying lessons, "
+        "facts, graph nodes/edges, and memory blocks. "
+        "--kind traces has no cogx counterpart (use native for traces).",
     )
     p.set_defaults(func=run)
 
@@ -178,7 +184,10 @@ def _run_cogx(args: argparse.Namespace, root: str) -> int:
         kinds = [interop.KIND_LESSON]
     try:
         records = interop.collect_store(
-            root, kinds=kinds, status=args.status, agent_type=args.agent_type,
+            root,
+            kinds=kinds,
+            status=args.status,
+            agent_type=args.agent_type,
         )
     except ValueError as exc:
         print(f"[unimem] error: {exc}", file=sys.stderr)
@@ -207,6 +216,5 @@ def _run_cogx(args: argparse.Namespace, root: str) -> int:
         tallied[rec["kind"]] = tallied.get(rec["kind"], 0) + 1
     breakdown = ", ".join(f"{k}: {tallied[k]}" for k in sorted(tallied)) or "no records"
     dest_desc = args.out if args.out else "stdout"
-    print(f"[unimem] exported {len(records)} cogx record(s) ({breakdown}) to {dest_desc}.",
-          file=sys.stderr)
+    print(f"[unimem] exported {len(records)} cogx record(s) ({breakdown}) to {dest_desc}.", file=sys.stderr)
     return 0

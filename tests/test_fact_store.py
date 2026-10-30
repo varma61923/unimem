@@ -1,4 +1,5 @@
 """Contracts for the explicit, event-backed local storage migration."""
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,12 @@ def activate(root):
 
 
 def test_compact_json_encoding_is_reused_and_thread_isolated(monkeypatch):
-    values = [{"statement": "部署 uses journal <data>", "scopes": ["tenant:a"], "origin": {"zero": -0.0}},
-              [("7.5",), ["not"]], {"finite": float("inf"), "nan": float("nan")}, "é"]
+    values = [
+        {"statement": "部署 uses journal <data>", "scopes": ["tenant:a"], "origin": {"zero": -0.0}},
+        [("7.5",), ["not"]],
+        {"finite": float("inf"), "nan": float("nan")},
+        "é",
+    ]
     expected = [json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")) for value in values]
     constructors = []
     original = json.JSONEncoder
@@ -45,10 +50,19 @@ def test_compact_json_encoding_is_reused_and_thread_isolated(monkeypatch):
 
 
 def _staged_fact():
-    fact = h.AtomicFact("staged-snapshot", "Vault uses durable storage", "general", ["tenant:a"],
-                       0.0, 1, "2026-01-01T00:00:00+00:00", None,
-                       source_traces=["trace-a"], created_at="2026-01-01T00:00:00+00:00",
-                       origin={"limit": 1, "cost": 0.0})
+    fact = h.AtomicFact(
+        "staged-snapshot",
+        "Vault uses durable storage",
+        "general",
+        ["tenant:a"],
+        0.0,
+        1,
+        "2026-01-01T00:00:00+00:00",
+        None,
+        source_traces=["trace-a"],
+        created_at="2026-01-01T00:00:00+00:00",
+        origin={"limit": 1, "cost": 0.0},
+    )
     fact.updated_at = fact.created_at
     fact.revision = h._compute_revision(fact.to_dict())
     return fact
@@ -63,8 +77,10 @@ def test_new_fact_projection_does_not_reselect_its_inserted_rowid(tmp_path):
         facts.connection.set_trace_callback(statements.append)
         fact_store.StatementIndex(facts).add(fact)
         facts.connection.set_trace_callback(None)
-        assert facts.staged[fact.id].rowid == facts.connection.execute(
-            "SELECT rowid FROM facts WHERE id=?", (fact.id,)).fetchone()[0]
+        assert (
+            facts.staged[fact.id].rowid
+            == facts.connection.execute("SELECT rowid FROM facts WHERE id=?", (fact.id,)).fetchone()[0]
+        )
     assert sum(query.startswith("SELECT rowid FROM facts WHERE id=") for query in statements) == 0
 
 
@@ -82,9 +98,9 @@ def test_batch_additions_batch_the_fts_projection_when_semantic_search_is_unused
     monkeypatch.setattr(fact_store._Connection, "execute", track)
     root = str(tmp_path)
     activate(root)
-    result = h.add_facts(root, [
-        {"statement": f"Component item{n} requires durable replicated storage"} for n in range(20)
-    ])
+    result = h.add_facts(
+        root, [{"statement": f"Component item{n} requires durable replicated storage"} for n in range(20)]
+    )
 
     assert len(result) == 20 and all(action == "ADD" for _, action in result)
     assert len(fts_inserts) == 1 and len(fts_inserts[0][1]) == 60
@@ -98,10 +114,14 @@ def test_batch_near_dedup_preserves_staged_matches_and_same_block_siblings(tmp_p
     root = str(tmp_path)
     activate(root)
     near_pair = [
-        {"statement": "component item900 requires durable replicated storage with reliable checksum validation "
-                      "and bounded recovery after a failed write in the primary journal"},
-        {"statement": "component item900 requires durable replicated storage with reliable checksum validation "
-                      "and bounded recovery after a failed transaction in the primary journal"},
+        {
+            "statement": "component item900 requires durable replicated storage with reliable checksum validation "
+            "and bounded recovery after a failed write in the primary journal"
+        },
+        {
+            "statement": "component item900 requires durable replicated storage with reliable checksum validation "
+            "and bounded recovery after a failed transaction in the primary journal"
+        },
         {"statement": "component item900 enforces access limits through signed tokens and isolated tenant policies"},
     ]
     paired = h.add_facts(root, near_pair)
@@ -109,10 +129,15 @@ def test_batch_near_dedup_preserves_staged_matches_and_same_block_siblings(tmp_p
     assert paired[0][0].id == paired[1][0].id
     assert paired[0][0].id != paired[2][0].id
 
-    matching = h.add_facts(root, [{
-        "statement": "component item900 requires durable replicated storage with reliable checksum validation "
-                     "and bounded recovery after a failed operation in the primary journal",
-    }])
+    matching = h.add_facts(
+        root,
+        [
+            {
+                "statement": "component item900 requires durable replicated storage with reliable checksum validation "
+                "and bounded recovery after a failed operation in the primary journal",
+            }
+        ],
+    )
     assert matching[0][1] == "NOOP"
     assert matching[0][0].id == paired[0][0].id
 
@@ -145,10 +170,13 @@ def test_new_fact_revision_and_projection_share_one_detached_snapshot(tmp_path, 
         for fact, _action in result:
             expected = fact.to_dict()
             assert by_id[fact.id] == expected
-            assert json.loads(facts.connection.execute(
-                "SELECT payload FROM facts WHERE id=?", (fact.id,)).fetchone()[0]) == expected
+            assert (
+                json.loads(facts.connection.execute("SELECT payload FROM facts WHERE id=?", (fact.id,)).fetchone()[0])
+                == expected
+            )
             assert facts.connection.execute(
-                "SELECT statement FROM fact_fts WHERE fact_id=?", (fact.id,)).fetchone() == (fact.statement,)
+                "SELECT statement FROM fact_fts WHERE fact_id=?", (fact.id,)
+            ).fetchone() == (fact.statement,)
 
 
 def test_snapshot_reuse_preserves_one_argument_statement_index_overrides(tmp_path):
@@ -164,8 +192,17 @@ def test_snapshot_reuse_preserves_one_argument_statement_index_overrides(tmp_pat
     with fact_store.transaction(root, write=True) as facts:
         index = LegacyStatementIndex(facts)
         fact, action = h._add_locked(
-            facts, "Subclass keeps the legacy add signature", "general", [], None, None, None, 0.8, "",
-            index=index, dedupe="exact",
+            facts,
+            "Subclass keeps the legacy add signature",
+            "general",
+            [],
+            None,
+            None,
+            None,
+            0.8,
+            "",
+            index=index,
+            dedupe="exact",
         )
 
     assert action == "ADD"
@@ -187,15 +224,15 @@ def test_sparse_conflict_slots_skip_candidate_queries(tmp_path, monkeypatch):
         if normalized.startswith("SELECT 1 FROM facts INDEXED BY fact_slot WHERE slot=?"):
             slot_probes.append(normalized)
         if normalized.startswith("SELECT id FROM facts WHERE slot=?") or normalized.startswith(
-                "SELECT DISTINCT numbers FROM facts WHERE slot=?"):
+            "SELECT DISTINCT numbers FROM facts WHERE slot=?"
+        ):
             candidate_queries.append(normalized)
         return original(self, sql, parameters)
 
     monkeypatch.setattr(fact_store._Connection, "execute", track)
-    rows = h.add_facts(root, [
-        {"statement": f"Component item{n} uses durable storage for its event journal"}
-        for n in range(20)
-    ])
+    rows = h.add_facts(
+        root, [{"statement": f"Component item{n} uses durable storage for its event journal"} for n in range(20)]
+    )
 
     assert len(rows) == 20 and all(action == "ADD" for _, action in rows)
     assert len(slot_probes) == 20
@@ -217,11 +254,9 @@ def test_deferred_fts_survives_new_fact_remove_and_readd(tmp_path):
         del facts[fact.id]
         facts[fact.id] = fact
         index.add(fact)
-        assert facts.connection.execute(
-            "SELECT COUNT(*) FROM fact_fts WHERE fact_id=?", (fact.id,)).fetchone() == (0,)
+        assert facts.connection.execute("SELECT COUNT(*) FROM fact_fts WHERE fact_id=?", (fact.id,)).fetchone() == (0,)
     with fact_store.transaction(root) as facts:
-        rows = facts.connection.execute(
-            "SELECT fact_id,statement FROM fact_fts WHERE fact_id=?", (fact.id,)).fetchall()
+        rows = facts.connection.execute("SELECT fact_id,statement FROM fact_fts WHERE fact_id=?", (fact.id,)).fetchall()
     assert rows == [(fact.id, fact.statement)]
 
 
@@ -240,12 +275,18 @@ def test_upsert_uses_its_original_rowid_after_an_unrelated_insert(tmp_path):
         assert facts.staged[first.id].rowid == original_rowid
     with fact_store.transaction(str(tmp_path)) as facts:
         assert facts.connection.execute(
-            "SELECT rowid,fact_id FROM fact_fts WHERE fact_fts MATCH 'replicated'").fetchall() == [(original_rowid, first.id)]
+            "SELECT rowid,fact_id FROM fact_fts WHERE fact_fts MATCH 'replicated'"
+        ).fetchall() == [(original_rowid, first.id)]
         for fact in (first, second):
             expected = h._content(h._signature(fact.statement)[0])
-            actual = frozenset(row[0] for row in facts.connection.execute(
-                "SELECT l.term FROM lexicon l JOIN postings p ON p.term_id=l.id JOIN facts f ON f.rowid=p.fact_row "
-                "WHERE f.id=? AND l.kind='near-v2'", (fact.id,)))
+            actual = frozenset(
+                row[0]
+                for row in facts.connection.execute(
+                    "SELECT l.term FROM lexicon l JOIN postings p ON p.term_id=l.id JOIN facts f ON f.rowid=p.fact_row "
+                    "WHERE f.id=? AND l.kind='near-v2'",
+                    (fact.id,),
+                )
+            )
             assert actual == expected
             assert fact_store.StatementIndex(facts).near(fact.statement, fact.scopes).id == fact.id
 
@@ -395,25 +436,39 @@ def test_scope_dedup_and_contradiction_parity(tmp_path, monkeypatch):
     ]
     actions = []
     for root in (legacy, sqlite):
-        rows = [h.add_fact(root, text, scopes=scopes, valid_from=f"2025-01-{n + 1:02}")[1]
-                for n, (text, scopes) in enumerate(statements)]
+        rows = [
+            h.add_fact(root, text, scopes=scopes, valid_from=f"2025-01-{n + 1:02}")[1]
+            for n, (text, scopes) in enumerate(statements)
+        ]
         actions.append(rows)
     assert actions[0] == actions[1]
+
     def comparable(root):
-        return [(f.id, f.statement, f.scopes, f.status, f.confirmations, f.superseded_by)
-                for f in h.load_facts(root).values()]
+        return [
+            (f.id, f.statement, f.scopes, f.status, f.confirmations, f.superseded_by)
+            for f in h.load_facts(root).values()
+        ]
+
     assert comparable(legacy) == comparable(sqlite)
     for scorer in ("overlap-v1", "bm25-v1"):
         for scope in ("a", "b"):
-            a = [(f.id, score) for f, score in h.search_facts(legacy, "durable public access", scope=scope, scorer=scorer)]
-            b = [(f.id, score) for f, score in h.search_facts(sqlite, "durable public access", scope=scope, scorer=scorer)]
+            a = [
+                (f.id, score)
+                for f, score in h.search_facts(legacy, "durable public access", scope=scope, scorer=scorer)
+            ]
+            b = [
+                (f.id, score)
+                for f, score in h.search_facts(sqlite, "durable public access", scope=scope, scorer=scorer)
+            ]
             assert a == b
 
 
 def test_concurrent_writers_and_restarts(tmp_path):
     activate(tmp_path)
+
     def write(n):
         h.add_fact(str(tmp_path), f"Component unique{n} has a durable journal", scopes=[str(n)])
+
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(write, range(24)))
     assert len(h.load_facts(str(tmp_path))) == 24
@@ -435,8 +490,10 @@ def test_expiry_forgetting_and_temporal_retrieval(tmp_path):
 def test_write_does_not_scan_bank(tmp_path, monkeypatch):
     activate(tmp_path)
     h.add_facts(str(tmp_path), [{"statement": f"unique{i} requires durable storage"} for i in range(100)])
+
     def forbidden(*args, **kwargs):
         raise AssertionError("whole-bank reconstruction")
+
     monkeypatch.setattr(h, "load_facts", forbidden)
     monkeypatch.setattr(h._StatementIndex, "__init__", forbidden)
     h.add_fact(str(tmp_path), "newcomponent requires durable storage")
@@ -455,9 +512,7 @@ def test_projection_counts_survive_revisions_rollback_and_rebuild(tmp_path):
                 "SELECT count(*) FROM lexicon l WHERE l.documents != "
                 "(SELECT count(*) FROM postings p WHERE p.term_id=l.id)"
             ).fetchone() == (0,)
-            return connection.execute(
-                "SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id"
-            ).fetchall()
+            return connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall()
 
     original = projections()
     assert ("bm25-v1", "durabl", first.id, 2) in original
@@ -637,12 +692,14 @@ def test_envelope_json_is_portable(tmp_path):
 
 def test_detached_views_and_recall_use_sqlite_generation(tmp_path):
     from unimem import fact_index, recall
+
     activate(tmp_path)
     fact, _ = h.add_fact(str(tmp_path), "storage uses an event ledger")
     view = fact_index.snapshot_facts(str(tmp_path))
     assert view[fact.id].statement == fact.statement
-    assert any(item.id == "fact:" + fact.id for item in recall.recall(
-        str(tmp_path), "event ledger", channels=("facts",)).items)
+    assert any(
+        item.id == "fact:" + fact.id for item in recall.recall(str(tmp_path), "event ledger", channels=("facts",)).items
+    )
     h.update_fact(str(tmp_path), fact.id, statement="storage uses a revised journal")
     with pytest.raises(fact_index.FactSnapshotChanged):
         view.ensure_current()
@@ -652,6 +709,7 @@ def test_detached_views_and_recall_use_sqlite_generation(tmp_path):
 def test_killed_writer_cannot_publish_partial_projections(tmp_path):
     import subprocess
     import sys
+
     activate(tmp_path)
     code = """
 import os, sys
@@ -671,6 +729,7 @@ with h.mutate_facts(sys.argv[1]) as facts:
 def test_multiple_process_writers_are_serialized(tmp_path):
     import subprocess
     import sys
+
     activate(tmp_path)
     code = """
 import sys
@@ -687,9 +746,15 @@ for n in range(12):
 def test_storage_commands_are_executable(tmp_path):
     import subprocess
     import sys
+
     def cli(*args):
-        return subprocess.run([sys.executable, "-m", "unimem.cli", "fact", *args, "--dest", str(tmp_path)],
-                              capture_output=True, text=True, check=False)
+        return subprocess.run(
+            [sys.executable, "-m", "unimem.cli", "fact", *args, "--dest", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     assert cli("add", "portable event storage").returncode == 0
     result = cli("migrate")
     assert result.returncode == 0
@@ -733,26 +798,29 @@ def test_legacy_postings_upgrade_is_atomic_for_concurrent_readers(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
     from unimem import fact_store, hierarchical
+
     root = str(tmp_path)
     fact_store.migrate(root)
-    fact, _ = hierarchical.add_fact(root, 'A durable assertion exists', category='test')
+    fact, _ = hierarchical.add_fact(root, "A durable assertion exists", category="test")
     # Build the historical layout only after draining pooled handles. Both
     # readers must exercise cold opening, even if their workers run serially.
     _restore_blocked_near_projection(root)
     db = sqlite3.connect(fact_store.database_path(root))
-    db.executescript('DROP TRIGGER clear_terms; DROP TRIGGER clear_counts; '
-                     'CREATE TABLE legacy_terms AS SELECT * FROM terms; '
-                     'CREATE TABLE legacy_counts AS SELECT * FROM term_counts; '
-                     'DROP VIEW terms; DROP VIEW term_counts; '
-                     'ALTER TABLE legacy_terms RENAME TO terms; '
-                     'ALTER TABLE legacy_counts RENAME TO term_counts; '
-                     'DROP TABLE postings; DROP TABLE lexicon;')
+    db.executescript(
+        "DROP TRIGGER clear_terms; DROP TRIGGER clear_counts; "
+        "CREATE TABLE legacy_terms AS SELECT * FROM terms; "
+        "CREATE TABLE legacy_counts AS SELECT * FROM term_counts; "
+        "DROP VIEW terms; DROP VIEW term_counts; "
+        "ALTER TABLE legacy_terms RENAME TO terms; "
+        "ALTER TABLE legacy_counts RENAME TO term_counts; "
+        "DROP TABLE postings; DROP TABLE lexicon;"
+    )
     db.close()
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(lambda _: hierarchical.load_facts(root)[fact.id].statement, range(2)))
-    assert results == ['A durable assertion exists'] * 2
+    assert results == ["A durable assertion exists"] * 2
     with fact_store.transaction(root) as canonical:
-        assert canonical.connection.execute('SELECT COUNT(*) FROM postings').fetchone()[0] > 0
+        assert canonical.connection.execute("SELECT COUNT(*) FROM postings").fetchone()[0] > 0
 
 
 def _restore_blocked_near_projection(root):
@@ -796,7 +864,9 @@ def test_global_near_upgrade_preserves_authoritative_bytes(tmp_path, monkeypatch
         connection = facts.connection
         assert _authoritative_fact_bytes(connection) == before
         assert connection.execute("SELECT value FROM meta WHERE key='near_postings'").fetchone() == ("global-v2",)
-        assert connection.execute("SELECT 1 FROM lexicon WHERE kind>='near:' AND kind<'near;' LIMIT 1").fetchone() is None
+        assert (
+            connection.execute("SELECT 1 FROM lexicon WHERE kind>='near:' AND kind<'near;' LIMIT 1").fetchone() is None
+        )
         assert connection.execute("SELECT COUNT(*) FROM lexicon WHERE kind='near-v2'").fetchone()[0] < blocked
         assert connection.execute("PRAGMA synchronous").fetchone() == (2,)
         assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
@@ -826,7 +896,10 @@ def test_global_near_upgrade_rolls_back_and_retries(tmp_path, monkeypatch):
             h.load_facts(root)
     with sqlite3.connect(fact_store.database_path(root)) as connection:
         assert _authoritative_fact_bytes(connection) == before
-        assert connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall() == terms
+        assert (
+            connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall()
+            == terms
+        )
         assert connection.execute("SELECT value FROM meta WHERE key='near_postings'").fetchone() is None
         assert connection.execute("SELECT 1 FROM sqlite_master WHERE name='fact_block'").fetchone() is None
     assert len(h.load_facts(root)) == 1
@@ -873,26 +946,32 @@ def test_global_near_matches_brute_force_across_blocks_and_scopes(tmp_path, monk
     activate(root)
     monkeypatch.setenv("UNIMEM_FACT_CONFLICTS", "off")
     monkeypatch.setenv("UNIMEM_FACT_DEDUP", "exact")
-    items = [
-        {"statement": f"Component {n} requires a durable replicated journal", "scopes": ["a"]}
-        for n in range(30)
-    ] + [
-        {"statement": "Component 7 requires durable replicated journal", "scopes": lane}
-        for lane in ([], ["a"], ["b"])
-    ] + [
-        {"statement": "Component 7 does not require a durable replicated journal", "scopes": ["a"]},
-        {"statement": "Component 7 needs a blue operator's testing platform", "scopes": ["a"]},
-        {"statement": "Component 7 requires 9 durable replicated journal", "scopes": ["a"]},
-        {"statement": "Component 9 requires 7 durable replicated journal", "scopes": ["a"]},
-    ]
+    items = (
+        [{"statement": f"Component {n} requires a durable replicated journal", "scopes": ["a"]} for n in range(30)]
+        + [
+            {"statement": "Component 7 requires durable replicated journal", "scopes": lane}
+            for lane in ([], ["a"], ["b"])
+        ]
+        + [
+            {"statement": "Component 7 does not require a durable replicated journal", "scopes": ["a"]},
+            {"statement": "Component 7 needs a blue operator's testing platform", "scopes": ["a"]},
+            {"statement": "Component 7 requires 9 durable replicated journal", "scopes": ["a"]},
+            {"statement": "Component 9 requires 7 durable replicated journal", "scopes": ["a"]},
+        ]
+    )
     h.add_facts(root, items)
     _restore_blocked_near_projection(root)
     query = "A replicated durable journal requires Component 7"
     with fact_store.transaction(root) as facts:
         expected = sorted(
-            (fact for fact in facts.values() if fact.status == "active" and not fact.forgotten
-             and h._scopes_compatible(frozenset(scopes), fact.scopes)
-             and h.near_duplicate(query, fact.statement)),
+            (
+                fact
+                for fact in facts.values()
+                if fact.status == "active"
+                and not fact.forgotten
+                and h._scopes_compatible(frozenset(scopes), fact.scopes)
+                and h.near_duplicate(query, fact.statement)
+            ),
             key=lambda fact: (-fact.confirmations, fact.id),
         )
         assert expected
@@ -913,15 +992,23 @@ def test_global_near_rebuild_updates_removals_and_forgotten_candidates(tmp_path,
         assert fact_store.StatementIndex(facts).near("A durable replicated journal requires Component 7", []) is None
         del facts[second.id]
     with fact_store.transaction(root) as facts:
-        before = facts.connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall()
+        before = facts.connection.execute(
+            "SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id"
+        ).fetchall()
         assert all(kind == "near-v2" for kind, _, _, _ in before if kind.startswith("near"))
     events = fact_store.events(root)
     fact_store.rebuild(root)
     with fact_store.transaction(root) as facts:
-        assert facts.connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall() == before
-        assert facts.connection.execute(
-            "SELECT 1 FROM lexicon l WHERE l.documents!=(SELECT COUNT(*) FROM postings p WHERE p.term_id=l.id) LIMIT 1"
-        ).fetchone() is None
+        assert (
+            facts.connection.execute("SELECT kind,term,fact_id,count FROM terms ORDER BY kind,term,fact_id").fetchall()
+            == before
+        )
+        assert (
+            facts.connection.execute(
+                "SELECT 1 FROM lexicon l WHERE l.documents!=(SELECT COUNT(*) FROM postings p WHERE p.term_id=l.id) LIMIT 1"
+            ).fetchone()
+            is None
+        )
     assert fact_store.events(root) == events
 
 
@@ -931,9 +1018,7 @@ def test_global_near_keeps_strongest_match_beyond_first_hundred(tmp_path, monkey
     monkeypatch.setenv("UNIMEM_FACT_CONFLICTS", "off")
     monkeypatch.setenv("UNIMEM_FACT_DEDUP", "exact")
     query = "Component requires durable replicated journal storage"
-    rows = h.add_facts(root, [
-        {"statement": query + " tag" + chr(97 + n // 26) + chr(97 + n % 26)} for n in range(150)
-    ])
+    rows = h.add_facts(root, [{"statement": query + " tag" + chr(97 + n // 26) + chr(97 + n % 26)} for n in range(150)])
     strongest = rows[-1][0]
     with h.mutate_facts(root) as facts:
         facts[strongest.id].confirmations = 99
@@ -955,14 +1040,15 @@ def test_batch_amortizes_shared_near_term_frequency_updates(tmp_path, monkeypatc
     statements = []
     connection.set_trace_callback(statements.append)
     try:
-        rows = h.add_facts(root, [
-            {"statement": f"Component item{n} requires durable replicated storage"} for n in range(20)
-        ])
+        rows = h.add_facts(
+            root, [{"statement": f"Component item{n} requires durable replicated storage"} for n in range(20)]
+        )
     finally:
         connection.set_trace_callback(None)
     assert len(rows) == 20 and all(action == "ADD" for _, action in rows)
-    updates = [sql for sql in statements if sql.startswith("INSERT INTO lexicon")
-               and "'near-v2'" in sql and "'durable'" in sql]
+    updates = [
+        sql for sql in statements if sql.startswith("INSERT INTO lexicon") and "'near-v2'" in sql and "'durable'" in sql
+    ]
     assert len(updates) == 1
     with fact_store.transaction(root) as facts:
         assert facts.connection.execute(
@@ -1015,9 +1101,11 @@ def test_same_batch_semantic_match_keeps_fts_ranking_beyond_pending_cap(tmp_path
 
     monkeypatch.setattr(fact_embeddings, "similar", similar)
     monkeypatch.setattr(fact_vector_projection, "search", lambda *args, **kwargs: [])
-    rows = h.add_facts(root, [
-        {"statement": f"Offshore sensor item{n} performs a routine observation"} for n in range(119)
-    ] + [{"statement": target}, {"statement": query}])
+    rows = h.add_facts(
+        root,
+        [{"statement": f"Offshore sensor item{n} performs a routine observation"} for n in range(119)]
+        + [{"statement": target}, {"statement": query}],
+    )
     assert target in seen
     assert rows[-2][1] == "ADD" and rows[-1][1] == "NOOP"
     assert rows[-2][0].id == rows[-1][0].id
@@ -1034,8 +1122,9 @@ def test_same_batch_near_lookup_reinforces_strongest_pending_fact(tmp_path, monk
         first, _ = h._add_locked(facts, base + " alpha", "general", [], None, None, None, 0.8, "a", index=index)
         second, _ = h._add_locked(facts, base + " beta", "general", [], None, None, None, 0.8, "b", index=index)
         second.confirmations = 5
-        result, action = h._add_locked(facts, base, "general", [], None, None, None, 0.8, "c",
-                                       index=index, dedupe="near")
+        result, action = h._add_locked(
+            facts, base, "general", [], None, None, None, 0.8, "c", index=index, dedupe="near"
+        )
         assert action == "NOOP" and result.id == second.id and result.id != first.id
     assert h.load_facts(root)[second.id].confirmations == 6
 
@@ -1106,8 +1195,7 @@ def test_large_batch_reinforcement_keeps_all_versions_and_document_counts(tmp_pa
     root = str(tmp_path)
     activate(root)
     monkeypatch.setenv("UNIMEM_FACT_CONFLICTS", "off")
-    items = [{"statement": f"Journal item{n} retains durable storage", "source_trace_id": "first"}
-             for n in range(513)]
+    items = [{"statement": f"Journal item{n} retains durable storage", "source_trace_id": "first"} for n in range(513)]
     first = h.add_facts(root, items)
     second = h.add_facts(root, [{**item, "source_trace_id": "second"} for item in items])
     assert all(action == "ADD" for _, action in first)
@@ -1119,6 +1207,9 @@ def test_large_batch_reinforcement_keeps_all_versions_and_document_counts(tmp_pa
         assert facts.connection.execute(
             "SELECT documents FROM lexicon WHERE kind='near-v2' AND term='durable'"
         ).fetchone() == (513,)
-        assert facts.connection.execute(
-            "SELECT 1 FROM lexicon l WHERE l.documents!=(SELECT COUNT(*) FROM postings p WHERE p.term_id=l.id) LIMIT 1"
-        ).fetchone() is None
+        assert (
+            facts.connection.execute(
+                "SELECT 1 FROM lexicon l WHERE l.documents!=(SELECT COUNT(*) FROM postings p WHERE p.term_id=l.id) LIMIT 1"
+            ).fetchone()
+            is None
+        )

@@ -4,6 +4,7 @@ SQLite remains the source of truth. A single immutable NumPy file per space and
 model allows bounded sequential scans without decoding the interaction log or
 vector blobs on every request. Publication never regresses a source generation.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -23,8 +24,7 @@ def path_for(store, tag):
 
 
 def dtype(np, dimensions):
-    return np.dtype([("id", "<i8"), ("turn", "<i8"), ("hash", "S32"),
-                     ("vector", "<f2", (dimensions,))])
+    return np.dtype([("id", "<i8"), ("turn", "<i8"), ("hash", "S32"), ("vector", "<f2", (dimensions,))])
 
 
 def load(store, tag, np, revision, dimensions, *, check_ids=True):
@@ -46,8 +46,11 @@ def load(store, tag, np, revision, dimensions, *, check_ids=True):
         if records.ndim != 1 or not len(records) or records.dtype != dtype(np, dimensions):
             return None
         header = records[0]
-        if int(header["id"]) != int(revision) or int(header["turn"]) != FORMAT \
-                or header["hash"].decode("ascii") != store._units_identity:
+        if (
+            int(header["id"]) != int(revision)
+            or int(header["turn"]) != FORMAT
+            or header["hash"].decode("ascii") != store._units_identity
+        ):
             return None
         if len(records) - 1 != store.db.execute("SELECT COUNT(*) FROM units").fetchone()[0]:
             return None
@@ -74,11 +77,13 @@ class Build:
         try:
             import fcntl  # noqa: F401 - portable hosts without file locking stream instead
 
-            fd, self.temporary = tempfile.mkstemp(prefix=f".dense-{os.getpid()}-", suffix=".npy",
-                                                  dir=os.path.dirname(store.path))
+            fd, self.temporary = tempfile.mkstemp(
+                prefix=f".dense-{os.getpid()}-", suffix=".npy", dir=os.path.dirname(store.path)
+            )
             os.close(fd)
-            self.records = np.lib.format.open_memmap(self.temporary, mode="w+", dtype=dtype(np, dimensions),
-                                                     shape=(count + 1,))
+            self.records = np.lib.format.open_memmap(
+                self.temporary, mode="w+", dtype=dtype(np, dimensions), shape=(count + 1,)
+            )
             if hasattr(os, "posix_fallocate"):
                 # Reserve disk blocks before dirtying mapped pages. A full disk
                 # is a normal cache miss, not a SIGBUS while scoring memory.
@@ -95,7 +100,7 @@ class Build:
             return
         end = offset + len(batch)
         try:
-            page = self.records[offset + 1:end + 1]
+            page = self.records[offset + 1 : end + 1]
             page["id"] = [u for u, _t, _b, _h in batch]
             page["turn"] = [t for _u, t, _b, _h in batch]
             page["hash"] = [h.encode("ascii") for _u, _t, _b, h in batch]
@@ -123,11 +128,15 @@ class Build:
                     existing = self.np.load(final, mmap_mode="r", allow_pickle=False)
                 except (OSError, ValueError, EOFError):
                     existing = None
-                if isinstance(existing, self.np.memmap) and existing.ndim == 1 \
-                        and existing.dtype == self.records.dtype \
-                        and len(existing) and int(existing[0]["turn"]) == FORMAT \
-                        and existing[0]["hash"] == self.store._units_identity.encode("ascii") \
-                        and int(existing[0]["id"]) > self.revision:
+                if (
+                    isinstance(existing, self.np.memmap)
+                    and existing.ndim == 1
+                    and existing.dtype == self.records.dtype
+                    and len(existing)
+                    and int(existing[0]["turn"]) == FORMAT
+                    and existing[0]["hash"] == self.store._units_identity.encode("ascii")
+                    and int(existing[0]["id"]) > self.revision
+                ):
                     return None
                 os.replace(self.temporary, final)
                 self.temporary = None

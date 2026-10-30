@@ -19,7 +19,10 @@ def _app(session_factory, config, *, enabled: bool = True) -> Starlette:
     app = Starlette()
     if enabled:
         otlp.add_otlp_routes(
-            app, session_factory, config=config, rate_limiter=make_rate_limiter(config),
+            app,
+            session_factory,
+            config=config,
+            rate_limiter=make_rate_limiter(config),
         )
     return app
 
@@ -41,8 +44,9 @@ def _key(raw_key: str) -> dict[str, str]:
     return {"X-API-Key": raw_key}
 
 
-def _span(span_id: str, *, prompt: str = "handle the refund", completion: str = "issued a refund",
-          status_code: str = "OK") -> dict:
+def _span(
+    span_id: str, *, prompt: str = "handle the refund", completion: str = "issued a refund", status_code: str = "OK"
+) -> dict:
     return {
         "traceId": "t" * 32,
         "spanId": span_id,
@@ -76,7 +80,8 @@ class TestAuthentication:
     async def test_an_invalid_key_is_401(self, session_factory, config):
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, json=_otlp_body(_span("a" * 16)),
+                otlp.OTLP_TRACES_PATH,
+                json=_otlp_body(_span("a" * 16)),
                 headers=_key("unimem_not_a_real_key"),
             )
         assert response.status_code == 401
@@ -85,7 +90,9 @@ class TestAuthentication:
         _org_id, raw_key = await _org_with_key(session_factory, scopes="read")
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, json=_otlp_body(_span("a" * 16)), headers=_key(raw_key),
+                otlp.OTLP_TRACES_PATH,
+                json=_otlp_body(_span("a" * 16)),
+                headers=_key(raw_key),
             )
         assert response.status_code == 403
 
@@ -97,14 +104,17 @@ class TestIngest:
         async with _client(_app(session_factory, tight)) as client:
             for i in range(5):
                 response = await client.post(
-                    otlp.OTLP_TRACES_PATH, json=_otlp_body(_span(f"{i:016x}")), headers=_key(raw_key))
+                    otlp.OTLP_TRACES_PATH, json=_otlp_body(_span(f"{i:016x}")), headers=_key(raw_key)
+                )
                 assert response.status_code == 200
 
     async def test_a_well_formed_span_becomes_a_trace(self, session_factory, config):
         org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, json=_otlp_body(_span("a" * 16)), headers=_key(raw_key),
+                otlp.OTLP_TRACES_PATH,
+                json=_otlp_body(_span("a" * 16)),
+                headers=_key(raw_key),
             )
         assert response.status_code == 200
         body = response.json()
@@ -139,7 +149,9 @@ class TestIngest:
         empty_span = {"traceId": "t" * 32, "spanId": "a" * 16, "name": "noop", "attributes": []}
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, json=_otlp_body(empty_span), headers=_key(raw_key),
+                otlp.OTLP_TRACES_PATH,
+                json=_otlp_body(empty_span),
+                headers=_key(raw_key),
             )
         assert response.json() == {"accepted": 0, "skipped": 1, "occasions_resolved": 0, "errors": []}
         async with session_scope(session_factory) as session:
@@ -177,7 +189,8 @@ class TestBodyValidation:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, content=b"\x00\x01\x02",
+                otlp.OTLP_TRACES_PATH,
+                content=b"\x00\x01\x02",
                 headers={**_key(raw_key), "content-type": "application/x-protobuf"},
             )
         assert response.status_code == 415
@@ -186,7 +199,8 @@ class TestBodyValidation:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, content=b"{not json",
+                otlp.OTLP_TRACES_PATH,
+                content=b"{not json",
                 headers={**_key(raw_key), "content-type": "application/json"},
             )
         assert response.status_code == 400
@@ -201,7 +215,9 @@ class TestBodyValidation:
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:
             response = await client.post(
-                otlp.OTLP_TRACES_PATH, json={"resourceSpans": []}, headers=_key(raw_key),
+                otlp.OTLP_TRACES_PATH,
+                json={"resourceSpans": []},
+                headers=_key(raw_key),
             )
         assert response.status_code == 200
         assert response.json() == {"accepted": 0, "skipped": 0, "errors": []}
@@ -218,18 +234,25 @@ class TestBodyValidation:
 class TestOccasionJoin:
     @staticmethod
     def _outcome_span(span_id, occasion, succeeded, key="unimem.occasion_id"):
-        return {"traceId": "t" * 32, "spanId": span_id, "name": "task finished", "status": {"code": "UNSET"},
-                "attributes": [{"key": key, "value": {"stringValue": occasion}},
-                               {"key": "unimem.occasion.succeeded", "value": {"boolValue": succeeded}}]}
+        return {
+            "traceId": "t" * 32,
+            "spanId": span_id,
+            "name": "task finished",
+            "status": {"code": "UNSET"},
+            "attributes": [
+                {"key": key, "value": {"stringValue": occasion}},
+                {"key": "unimem.occasion.succeeded", "value": {"boolValue": succeeded}},
+            ],
+        }
 
     async def _observation(self, session_factory, org_id, occasion):
         from hub import crud
         from hub.models import HoldoutObservation
+
         async with session_scope(session_factory) as session:
             org = await session.get(Organization, org_id)
             org.holdout_rate, org.holdout_salt = 0.5, "otlp-join"
-            trace = Trace(org_id=org_id, title="t", context_text="c", solution_text="s", tags=[],
-                          agent_type="support")
+            trace = Trace(org_id=org_id, title="t", context_text="c", solution_text="s", tags=[], agent_type="support")
             session.add(trace)
             await session.flush()
             await crud.holdout_assign(session, org_id, [trace.id], occasion)
@@ -237,19 +260,26 @@ class TestOccasionJoin:
 
     async def _succeeded(self, session_factory, model, org_id, occasion):
         async with session_scope(session_factory) as session:
-            rows = (await session.execute(select(model.succeeded).where(
-                model.org_id == org_id, model.occasion_id == occasion))).all()
+            rows = (
+                await session.execute(
+                    select(model.succeeded).where(model.org_id == org_id, model.occasion_id == occasion)
+                )
+            ).all()
         assert len(rows) == 1
         return rows[0][0]
 
     @pytest.mark.parametrize("key", ["unimem.occasion_id", "session.id", "gen_ai.conversation.id"])
     async def test_an_explicit_outcome_closes_the_occasion_whichever_id_attribute_the_caller_emits(
-            self, session_factory, config, key):
+        self, session_factory, config, key
+    ):
         org_id, raw_key = await _org_with_key(session_factory)
         model = await self._observation(session_factory, org_id, "ep-1")
         async with _client(_app(session_factory, config)) as client:
-            r = await client.post(otlp.OTLP_TRACES_PATH, headers=_key(raw_key),
-                                  json=_otlp_body(self._outcome_span("b" * 16, "ep-1", True, key)))
+            r = await client.post(
+                otlp.OTLP_TRACES_PATH,
+                headers=_key(raw_key),
+                json=_otlp_body(self._outcome_span("b" * 16, "ep-1", True, key)),
+            )
         assert r.status_code == 200 and r.json()["occasions_resolved"] == 1
         assert await self._succeeded(session_factory, model, org_id, "ep-1") is True
 
@@ -267,10 +297,16 @@ class TestOccasionJoin:
         org_id, raw_key = await _org_with_key(session_factory)
         model = await self._observation(session_factory, org_id, "ep-3")
         async with _client(_app(session_factory, config)) as client:
-            await client.post(otlp.OTLP_TRACES_PATH, headers=_key(raw_key),
-                              json=_otlp_body(self._outcome_span("d" * 16, "ep-3", False)))
-            r = await client.post(otlp.OTLP_TRACES_PATH, headers=_key(raw_key),
-                                  json=_otlp_body(self._outcome_span("e" * 16, "ep-3", True)))
+            await client.post(
+                otlp.OTLP_TRACES_PATH,
+                headers=_key(raw_key),
+                json=_otlp_body(self._outcome_span("d" * 16, "ep-3", False)),
+            )
+            r = await client.post(
+                otlp.OTLP_TRACES_PATH,
+                headers=_key(raw_key),
+                json=_otlp_body(self._outcome_span("e" * 16, "ep-3", True)),
+            )
         assert r.json()["occasions_resolved"] == 0
         assert await self._succeeded(session_factory, model, org_id, "ep-3") is False
 
@@ -279,19 +315,23 @@ class TestOccasionJoin:
         org_b, key_b = await _org_with_key(session_factory, "B")
         model = await self._observation(session_factory, org_a, "ep-4")
         async with _client(_app(session_factory, config)) as client:
-            r = await client.post(otlp.OTLP_TRACES_PATH, headers=_key(key_b),
-                                  json=_otlp_body(self._outcome_span("f" * 16, "ep-4", True)))
+            r = await client.post(
+                otlp.OTLP_TRACES_PATH, headers=_key(key_b), json=_otlp_body(self._outcome_span("f" * 16, "ep-4", True))
+            )
         assert r.json()["occasions_resolved"] == 0
         assert await self._succeeded(session_factory, model, org_a, "ep-4") is None
 
 
 class TestMalformedInputIsNotA500:
-    @pytest.mark.parametrize("body", [
-        {"resourceSpans": 5},
-        {"resourceSpans": "spans"},
-        {"resourceSpans": [{"scopeSpans": 7}]},
-        {"resourceSpans": [{"scopeSpans": [{"spans": {"spanId": "x"}}]}]},
-    ])
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"resourceSpans": 5},
+            {"resourceSpans": "spans"},
+            {"resourceSpans": [{"scopeSpans": 7}]},
+            {"resourceSpans": [{"scopeSpans": [{"spans": {"spanId": "x"}}]}]},
+        ],
+    )
     async def test_a_wrongly_typed_array_is_a_clean_no_op(self, session_factory, config, body):
         _org_id, raw_key = await _org_with_key(session_factory)
         async with _client(_app(session_factory, config)) as client:

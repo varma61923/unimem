@@ -5,6 +5,7 @@ must honor the output cap and report usage inside these bounds. Breach or absent
 usage invalidates the run and retains the reservation; this is not a guarantee
 against a provider billing outside the declared contract or configured prices.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,12 +45,17 @@ def text_counter_binding(tokenizer: str) -> dict:
 
     encoding = _encoding(tokenizer)
     digest = hashlib.sha256()
-    digest.update(json.dumps({"pattern": encoding._pat_str, "special": encoding._special_tokens},
-                             sort_keys=True).encode("utf-8"))
+    digest.update(
+        json.dumps({"pattern": encoding._pat_str, "special": encoding._special_tokens}, sort_keys=True).encode("utf-8")
+    )
     for word, rank in sorted(encoding._mergeable_ranks.items()):
         digest.update(len(word).to_bytes(8, "big") + word + rank.to_bytes(8, "big"))
-    return {"name": tokenizer, "package_version": importlib.metadata.version("tiktoken"),
-            "encoding_sha256": digest.hexdigest(), "disallowed_special": []}
+    return {
+        "name": tokenizer,
+        "package_version": importlib.metadata.version("tiktoken"),
+        "encoding_sha256": digest.hexdigest(),
+        "disallowed_special": [],
+    }
 
 
 def benchmark_binding(config: llm.Config, *, output_limit: int = 1536) -> dict:
@@ -57,8 +63,10 @@ def benchmark_binding(config: llm.Config, *, output_limit: int = 1536) -> dict:
 
     with open(__file__, "rb") as source:
         implementation = hashlib.sha256(source.read()).hexdigest()
-    return completion_binding(config, generation={"max_tokens": output_limit, "temperature": 0.0,
-                                                 "retries": 0, "requests_sha256": implementation})
+    return completion_binding(
+        config,
+        generation={"max_tokens": output_limit, "temperature": 0.0, "retries": 0, "requests_sha256": implementation},
+    )
 
 
 def _local_complete(prompt: str, config: llm.Config, guard: CostGuard, *, output_limit: int):
@@ -144,8 +152,16 @@ def _retry_delay(body: bytes) -> float | None:
     return None
 
 
-def _gemini_complete(prompt: str, config: llm.Config, guard: CostGuard, *, output_limit: int,
-                     temperature: float, attempts: int = 20, sleep=None) -> tuple[str, dict, float]:
+def _gemini_complete(
+    prompt: str,
+    config: llm.Config,
+    guard: CostGuard,
+    *,
+    output_limit: int,
+    temperature: float,
+    attempts: int = 20,
+    sleep=None,
+) -> tuple[str, dict, float]:
     """Google AI generateContent, bounded like every benchmark call.
 
     Retries are limited to HTTP 429/500/503. A request the provider answered
@@ -186,7 +202,7 @@ def _gemini_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
                 if status not in GEMINI_RETRY_STATUSES or attempt == attempts - 1:
                     raise _Refused(f"bounded provider request refused (HTTP {status})") from None
                 # A quota 429 says how long to wait; otherwise back off exponentially.
-                sleep(min(120.0, hint + 1.0) if hint is not None else min(60.0, 2.0 * 2 ** attempt))
+                sleep(min(120.0, hint + 1.0) if hint is not None else min(60.0, 2.0 * 2**attempt))
             except (OSError, ValueError):
                 raise llm.LLMUnavailable("bounded provider request failed") from None
         answer, usage = llm.gemini_parse(data)
@@ -211,8 +227,9 @@ def _gemini_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
         raise
 
 
-def bounded_complete(prompt: str, config: llm.Config, guard: CostGuard, *, output_limit: int = 1536,
-                     temperature: float = 0.0) -> tuple[str, dict, float]:
+def bounded_complete(
+    prompt: str, config: llm.Config, guard: CostGuard, *, output_limit: int = 1536, temperature: float = 0.0
+) -> tuple[str, dict, float]:
     """One attempt; a failure/unknown charge refuses all subsequent dispatches."""
     if not isinstance(output_limit, int) or isinstance(output_limit, bool) or not 1 <= output_limit <= 65536:
         raise ValueError("output limit must be in 1..65536")
@@ -227,8 +244,11 @@ def bounded_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
     try:
         if config.provider == "anthropic":
             url = llm._ANTHROPIC_URL
-            headers = {"x-api-key": config.api_key, "anthropic-version": llm._ANTHROPIC_VERSION,
-                       "content-type": "application/json"}
+            headers = {
+                "x-api-key": config.api_key,
+                "anthropic-version": llm._ANTHROPIC_VERSION,
+                "content-type": "application/json",
+            }
         else:
             if not config.base_url:
                 raise ValueError("bounded benchmark requests require an explicit base URL")
@@ -236,8 +256,12 @@ def bounded_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
             headers = {"Authorization": "Bearer " + config.api_key, "content-type": "application/json"}
         if not llm._is_http_url(url):
             raise ValueError("benchmark endpoint must use HTTP(S)")
-        payload = {"model": config.model, "max_tokens": output_limit, "temperature": temperature,
-                   "messages": [{"role": "user", "content": prompt}]}
+        payload = {
+            "model": config.model,
+            "max_tokens": output_limit,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": prompt}],
+        }
         request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers, method="POST")
         try:
             # The normal opener retains environment proxy/CA settings, but
@@ -254,8 +278,10 @@ def bounded_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
         else:
             answer = data["choices"][0]["message"]["content"]
             input_tokens, output_tokens = usage.get("prompt_tokens"), usage.get("completion_tokens")
-        if not isinstance(answer, str) or any(not isinstance(value, int) or isinstance(value, bool) or value < 0
-                                              for value in (input_tokens, output_tokens)):
+        if not isinstance(answer, str) or any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (input_tokens, output_tokens)
+        ):
             raise ValueError("provider must return text and complete integer usage")
         if input_tokens > input_upper or output_tokens > output_limit:
             raise ValueError("provider usage exceeds the declared request bounds")
@@ -266,5 +292,7 @@ def bounded_complete(prompt: str, config: llm.Config, guard: CostGuard, *, outpu
     except Exception as exc:
         guard.mark_uncertain(reservation)
         if isinstance(exc, llm.LLMUnavailable):
-            raise llm.LLMUnavailable("benchmark provider request failed; no retries; charge remains uncertain") from None
+            raise llm.LLMUnavailable(
+                "benchmark provider request failed; no retries; charge remains uncertain"
+            ) from None
         raise

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """pilot_metrics.py — UniMem's five business-outcome metrics."""
+
 import argparse
 import datetime
 import glob
@@ -12,10 +13,7 @@ import measure_performance as mp
 
 SCHEMA_VERSION = "1.0.0"
 
-_ROOT = (
-    os.environ.get("UNIMEM_ROOT")
-    or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+_ROOT = os.environ.get("UNIMEM_ROOT") or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TRACES_DIR = os.path.join(_ROOT, "memory", "traces")
 
 _SECTION_RE = re.compile(r"^##\s*(Context|Solution)\s*\n(.*?)(?=\n##\s|\Z)", re.DOTALL | re.MULTILINE)
@@ -144,10 +142,7 @@ def render_markdown(report):
             delta = _pct_delta(b, c, bounded_rate=(kind == "pct"))
             out.append(f"| {label} | {fmt(b)} | {fmt(c)} | {fmt_delta(delta)} |")
         out.append("")
-        out.append(
-            "*Change is relative: -53% means the current value is 53% lower "
-            "than baseline.*"
-        )
+        out.append("*Change is relative: -53% means the current value is 53% lower than baseline.*")
     else:
         out.append(f"## Current ({current['n_traces']} traces)")
         out.append("")
@@ -190,10 +185,15 @@ def main():
     if not traces:
         if args.json:
             import json
-            print(json.dumps({
-                "error": "no_traces",
-                "message": "No traces with outcome data found. Run `unimem capture` with outcome flags first.",
-            }))
+
+            print(
+                json.dumps(
+                    {
+                        "error": "no_traces",
+                        "message": "No traces with outcome data found. Run `unimem capture` with outcome flags first.",
+                    }
+                )
+            )
         else:
             print("No traces with outcome data found. Run `unimem capture` with outcome flags first.")
         sys.exit(0)
@@ -210,6 +210,7 @@ def main():
 
     if args.json:
         import json
+
         clean = dict(report)
         print(json.dumps(clean, indent=2, default=str))
         return

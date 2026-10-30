@@ -1,4 +1,5 @@
 """OAuth 2.1 resource server: JWT access-token verification, metadata, gateway and MCP boundaries."""
+
 from __future__ import annotations
 
 import asyncio
@@ -40,14 +41,21 @@ class Keys:
         rn = self.rsa.public_key().public_numbers()
         en = self.ec.public_key().public_numbers()
         raw = self.ed.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-        return {"keys": [
-            {"kty": "RSA", "kid": self.prefix + "rsa-1", "use": "sig", "n": b64int(rn.n), "e": b64int(rn.e)},
-            # Fixed-width coordinates: padding the base64 text with "A" corrupts a coordinate
-            # whose top byte is zero (about one key in 128), which made this test flaky.
-            {"kty": "EC", "kid": self.prefix + "ec-1", "crv": "P-256", "x": b64(en.x.to_bytes(32, "big")),
-             "y": b64(en.y.to_bytes(32, "big"))},
-            {"kty": "OKP", "kid": self.prefix + "ed-1", "crv": "Ed25519", "x": b64(raw)},
-        ]}
+        return {
+            "keys": [
+                {"kty": "RSA", "kid": self.prefix + "rsa-1", "use": "sig", "n": b64int(rn.n), "e": b64int(rn.e)},
+                # Fixed-width coordinates: padding the base64 text with "A" corrupts a coordinate
+                # whose top byte is zero (about one key in 128), which made this test flaky.
+                {
+                    "kty": "EC",
+                    "kid": self.prefix + "ec-1",
+                    "crv": "P-256",
+                    "x": b64(en.x.to_bytes(32, "big")),
+                    "y": b64(en.y.to_bytes(32, "big")),
+                },
+                {"kty": "OKP", "kid": self.prefix + "ed-1", "crv": "Ed25519", "x": b64(raw)},
+            ]
+        }
 
     def sign(self, claims: dict, *, alg="RS256", kid=None, header=None) -> str:
         kid = kid or self.prefix + {"RS256": "rsa-1", "PS256": "rsa-1", "ES256": "ec-1", "EdDSA": "ed-1"}.get(alg, "")
@@ -56,8 +64,11 @@ class Keys:
         if alg == "RS256":
             sig = self.rsa.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
         elif alg == "PS256":
-            sig = self.rsa.sign(signing_input, padding.PSS(mgf=padding.MGF1(hashes.SHA256()),
-                                                          salt_length=padding.PSS.DIGEST_LENGTH), hashes.SHA256())
+            sig = self.rsa.sign(
+                signing_input,
+                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.DIGEST_LENGTH),
+                hashes.SHA256(),
+            )
         elif alg == "ES256":
             r, s = decode_dss_signature(self.ec.sign(signing_input, ec.ECDSA(hashes.SHA256())))
             sig = r.to_bytes(32, "big") + s.to_bytes(32, "big")
@@ -75,8 +86,14 @@ def keys():
 
 def claims(**overrides):
     now = int(time.time())
-    base = {"iss": ISSUER, "aud": AUDIENCE, "sub": "user@example.com", "exp": now + 600, "iat": now,
-            "scope": "unimem:admin"}
+    base = {
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "sub": "user@example.com",
+        "exp": now + 600,
+        "iat": now,
+        "scope": "unimem:admin",
+    }
     base.update(overrides)
     return {k: v for k, v in base.items() if v is not None}
 
@@ -94,26 +111,29 @@ def test_each_supported_algorithm_verifies(server, keys, alg):
     assert got.subject == "user@example.com" and got.is_admin
 
 
-@pytest.mark.parametrize("mutate,reason", [
-    (lambda k: k.sign(claims(iss="https://evil.example.com/")), "issuer"),
-    (lambda k: k.sign(claims(aud="https://other-api.example.com")), "audience"),
-    (lambda k: k.sign(claims(exp=int(time.time()) - 3600)), "expired"),
-    (lambda k: k.sign(claims(exp=None)), "expired"),
-    (lambda k: k.sign(claims(nbf=int(time.time()) + 3600)), "nbf"),
-    (lambda k: k.sign(claims(sub=None)), "subject"),
-    (lambda k: k.sign(claims(), alg="HS256", kid="rsa-1"), "algorithm"),
-    (lambda k: k.sign(claims(), alg="none", kid="rsa-1"), "algorithm"),
-    (lambda k: k.sign(claims(), kid="unknown"), "no signing key"),
-    (lambda k: k.sign(claims(), header={"typ": "id+jwt"}), "type"),
-    (lambda k: k.sign(claims(), header={"crit": ["exp"]}), "critical"),
-    (lambda k: k.sign(claims())[:-6] + "AAAAAA", "signature"),
-    (lambda k: "not.a.jwt!", "base64url"),
-    # json.dumps writes NaN/Infinity and json.loads reads them back; NaN fails
-    # every comparison, so a NaN expiry used to be treated as never expiring.
-    (lambda k: k.sign(claims(exp=float("nan"))), "expired"),
-    (lambda k: k.sign(claims(exp=float("inf"))), "expired"),
-    (lambda k: k.sign(claims(nbf=float("nan"))), "nbf"),
-])
+@pytest.mark.parametrize(
+    "mutate,reason",
+    [
+        (lambda k: k.sign(claims(iss="https://evil.example.com/")), "issuer"),
+        (lambda k: k.sign(claims(aud="https://other-api.example.com")), "audience"),
+        (lambda k: k.sign(claims(exp=int(time.time()) - 3600)), "expired"),
+        (lambda k: k.sign(claims(exp=None)), "expired"),
+        (lambda k: k.sign(claims(nbf=int(time.time()) + 3600)), "nbf"),
+        (lambda k: k.sign(claims(sub=None)), "subject"),
+        (lambda k: k.sign(claims(), alg="HS256", kid="rsa-1"), "algorithm"),
+        (lambda k: k.sign(claims(), alg="none", kid="rsa-1"), "algorithm"),
+        (lambda k: k.sign(claims(), kid="unknown"), "no signing key"),
+        (lambda k: k.sign(claims(), header={"typ": "id+jwt"}), "type"),
+        (lambda k: k.sign(claims(), header={"crit": ["exp"]}), "critical"),
+        (lambda k: k.sign(claims())[:-6] + "AAAAAA", "signature"),
+        (lambda k: "not.a.jwt!", "base64url"),
+        # json.dumps writes NaN/Infinity and json.loads reads them back; NaN fails
+        # every comparison, so a NaN expiry used to be treated as never expiring.
+        (lambda k: k.sign(claims(exp=float("nan"))), "expired"),
+        (lambda k: k.sign(claims(exp=float("inf"))), "expired"),
+        (lambda k: k.sign(claims(nbf=float("nan"))), "nbf"),
+    ],
+)
 def test_bad_tokens_are_refused(server, keys, mutate, reason):
     with pytest.raises(oauth.InvalidToken, match=reason):
         server.verify(mutate(keys))
@@ -148,8 +168,9 @@ def test_rotated_keys_are_fetched_on_an_unknown_kid(keys, monkeypatch):
         fetched.append(url)
         return json.dumps(first if len(fetched) == 1 else rotated.jwks()).encode()
 
-    srv = oauth.ResourceServer(oauth.OAuthConfig(issuer=ISSUER, audience=AUDIENCE,
-                                                 jwks_url="https://login.example.com/jwks"), fetch=fetch)
+    srv = oauth.ResourceServer(
+        oauth.OAuthConfig(issuer=ISSUER, audience=AUDIENCE, jwks_url="https://login.example.com/jwks"), fetch=fetch
+    )
     assert srv.verify(keys.sign(claims())).is_admin
     monkeypatch.setattr(oauth, "JWKS_MIN_REFRESH_SECONDS", 0.0)
     assert srv.verify(rotated.sign(claims(), alg="EdDSA")).is_admin
@@ -169,8 +190,9 @@ def test_an_unreachable_issuer_serves_stale_keys_then_backs_off(keys, monkeypatc
             raise urllib.error.URLError("connection refused")
         return json.dumps(keys.jwks()).encode()
 
-    srv = oauth.ResourceServer(oauth.OAuthConfig(issuer=ISSUER, audience=AUDIENCE,
-                                                 jwks_url="https://login.example.com/jwks"), fetch=fetch)
+    srv = oauth.ResourceServer(
+        oauth.OAuthConfig(issuer=ISSUER, audience=AUDIENCE, jwks_url="https://login.example.com/jwks"), fetch=fetch
+    )
     assert srv.verify(keys.sign(claims())).is_admin
     down[0] = True
     clock[0] += oauth.JWKS_TTL_SECONDS + 1  # due for a refresh while the issuer is down
@@ -216,6 +238,7 @@ def test_metadata_follows_rfc9728(server):
 
 # -- gateway ---------------------------------------------------------------------------------------
 
+
 @pytest.fixture
 def oauth_gateway(tmp_path, keys, monkeypatch):
     root = str(tmp_path / "store")
@@ -258,11 +281,21 @@ def test_gateway_admin_token_acts_as_operator(oauth_gateway, keys):
 def test_gateway_memory_token_is_confined_to_its_own_scope(oauth_gateway, keys):
     token = keys.sign(claims(scope="unimem:memory", sub="agent-7"))
     assert call(oauth_gateway, "GET", "/v1/status", token)[0] == 403
-    status, added, _ = call(oauth_gateway, "POST", "/v1/memory/add", token,
-                            {"text": "The release window is Friday", "context": ["agent:someone-else"]})
+    status, added, _ = call(
+        oauth_gateway,
+        "POST",
+        "/v1/memory/add",
+        token,
+        {"text": "The release window is Friday", "context": ["agent:someone-else"]},
+    )
     assert status == 200, added
-    owner = call(oauth_gateway, "POST", "/v1/memory/search", keys.sign(claims()),
-                 {"query": "release window", "context": ["agent:someone-else"]})[1]
+    owner = call(
+        oauth_gateway,
+        "POST",
+        "/v1/memory/search",
+        keys.sign(claims()),
+        {"query": "release window", "context": ["agent:someone-else"]},
+    )[1]
     assert not json.dumps(owner).count("release window is Friday")
 
 
@@ -284,6 +317,7 @@ def test_gateway_without_oauth_keeps_plain_challenge(tmp_path):
 
 
 # -- MCP HTTP boundary -----------------------------------------------------------------------------
+
 
 def _asgi(boundary, path, token=None, method="POST"):
     sent = []

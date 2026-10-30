@@ -31,8 +31,9 @@ def _full_read(root):
 
 def _assign(root, start, n):
     for i in range(start, start + n):
-        holdout_io.assign_and_log(root, ["a", "b"], occasion_id=f"o{i}", rate=0.5, salt="cache",
-                                  revisions={"a": "r", "b": "r"})
+        holdout_io.assign_and_log(
+            root, ["a", "b"], occasion_id=f"o{i}", rate=0.5, salt="cache", revisions={"a": "r", "b": "r"}
+        )
 
 
 def test_appends_are_read_and_match_a_full_read(root):
@@ -54,11 +55,11 @@ def test_a_replaced_or_truncated_log_is_reread_from_scratch(root):
     _assign(root, 0, 10)
     holdout_io.read_log(root)
     path = holdout_io.holdout_log_path(root)
-    lines = Path(path).read_text(encoding='utf-8').splitlines(keepends=True)
-    Path(path).write_text(''.join(lines[:4]), encoding='utf-8')
+    lines = Path(path).read_text(encoding="utf-8").splitlines(keepends=True)
+    Path(path).write_text("".join(lines[:4]), encoding="utf-8")
     assert holdout_io.read_log(root) == _full_read(root) and len(holdout_io.read_log(root)[0]) == 4
     tmp = path + ".new"
-    Path(tmp).write_text(''.join(lines[4:9]), encoding='utf-8')
+    Path(tmp).write_text("".join(lines[4:9]), encoding="utf-8")
     os.replace(tmp, path)
     assert holdout_io.read_log(root) == _full_read(root)
 
@@ -67,7 +68,7 @@ def test_a_same_length_rewrite_of_the_last_line_is_noticed(root):
     _assign(root, 0, 5)
     holdout_io.read_log(root)
     path = holdout_io.holdout_log_path(root)
-    text = Path(path).read_text(encoding='utf-8')
+    text = Path(path).read_text(encoding="utf-8")
     head, last = text[:-1].rsplit("\n", 1)
     new = head + "\n" + last.replace('"revision": "r"', '"revision": "s"') + "\n"
     assert len(new) == len(text) and new != text
@@ -94,7 +95,7 @@ def test_a_torn_last_line_counts_as_corrupt_for_now_and_is_read_once_complete(ro
 def test_corrupt_lines_are_counted_once(root):
     _assign(root, 0, 2)
     with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
-        fh.write("not json\n{\"lesson\": 1}\n")
+        fh.write('not json\n{"lesson": 1}\n')
     assert holdout_io.read_log(root)[1] == 2
     _assign(root, 2, 1)
     assert holdout_io.read_log(root) == _full_read(root) and holdout_io.read_log(root)[1] == 2
@@ -131,6 +132,7 @@ def test_reports_are_reused_while_the_data_is_unchanged_and_refreshed_once_it_ch
 
 def test_a_report_is_refreshed_after_its_maximum_age_or_when_a_trace_or_episode_appears(root, monkeypatch):
     from unimem import paths
+
     clock = [1000.0]
     monkeypatch.setattr(gateway.time, "monotonic", lambda: clock[0])
     _assign(root, 0, 4)

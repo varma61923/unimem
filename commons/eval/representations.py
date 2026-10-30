@@ -1,4 +1,5 @@
 """Would a different token representation fix the commons' recall problem?"""
+
 from __future__ import annotations
 
 import re
@@ -121,5 +122,8 @@ def score(tokenize, probes: list[dict], corpus: list[dict], threshold: float = T
         "recall": hits / n_pos if n_pos else 0.0,
         "right_of_hits": right / hits if hits else 0.0,
         "false_positive": false_pos / n_neg if n_neg else 0.0,
-        "hits": hits, "n_pos": n_pos, "false_pos": false_pos, "n_neg": n_neg,
+        "hits": hits,
+        "n_pos": n_pos,
+        "false_pos": false_pos,
+        "n_neg": n_neg,
     }

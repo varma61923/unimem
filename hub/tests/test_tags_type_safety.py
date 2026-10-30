@@ -34,7 +34,8 @@ class TestRejectUnstorableTextRejectsNonStrings:
 
 class TestSearchTracesTagsShape:
     @pytest.mark.parametrize(
-        "bad_tags", ["abc", 123, {"a": 1}, True],
+        "bad_tags",
+        ["abc", 123, {"a": 1}, True],
         ids=["string", "int", "dict", "bool"],
     )
     async def test_a_non_list_tags_is_rejected_not_crashed(self, session_factory, org, bad_tags):
@@ -43,9 +44,7 @@ class TestSearchTracesTagsShape:
                 await crud.search_traces(session, org, query="x", tags=bad_tags)
 
     @pytest.mark.parametrize("bad_element", [123, None, 1.5, ["nested"]], ids=["int", "none", "float", "list"])
-    async def test_a_non_string_element_in_an_otherwise_valid_list_is_rejected(
-        self, session_factory, org, bad_element
-    ):
+    async def test_a_non_string_element_in_an_otherwise_valid_list_is_rejected(self, session_factory, org, bad_element):
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="tag"):
                 await crud.search_traces(session, org, query="x", tags=["fine", bad_element])
@@ -56,9 +55,16 @@ class TestSearchTracesTagsShape:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s",
-                tags=["real-tag"], agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=["real-tag"],
+                agent_type="code",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             result = await crud.search_traces(session, org, tags=["real-tag"])

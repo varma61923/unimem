@@ -1,4 +1,5 @@
 """Bi-temporal invalidation: a fact stops being true without being replaced or deleted."""
+
 import pytest
 
 from unimem import hierarchical

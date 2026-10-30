@@ -1,4 +1,5 @@
 """GitHub: pull request and push events -> signals, for coding agents."""
+
 from __future__ import annotations
 
 import hashlib
@@ -57,8 +58,11 @@ def signals(headers: Mapping[str, str], payload: dict, config: dict) -> list[bas
         stamp = pr.get("merged_at") or pr.get("closed_at")
         at = base.parse_timestamp(stamp) if stamp else now
         if pr.get("merged") is True:
-            return [base.Signal(base.CANDIDATE, occasion, at, event_id,
-                                ref=str(pr.get("merge_commit_sha") or ""), note="merged")]
+            return [
+                base.Signal(
+                    base.CANDIDATE, occasion, at, event_id, ref=str(pr.get("merge_commit_sha") or ""), note="merged"
+                )
+            ]
         return [base.Signal(base.FAILURE, occasion, at, event_id, note="closed without merging")]
 
     if event == "push":
@@ -67,7 +71,6 @@ def signals(headers: Mapping[str, str], payload: dict, config: dict) -> list[bas
         for commit in commits if isinstance(commits, list) else []:
             message = commit.get("message") if isinstance(commit, dict) else ""
             for sha in _REVERTS.findall(str(message or "")):
-                out.append(base.Signal(base.REVERSAL, "", now, event_id, ref=sha,
-                                       note=f"reverts {sha[:12]}"))
+                out.append(base.Signal(base.REVERSAL, "", now, event_id, ref=sha, note=f"reverts {sha[:12]}"))
         return out
     return []

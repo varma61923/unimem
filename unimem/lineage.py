@@ -5,6 +5,7 @@ data into an instruction. Operator-managed origin identities are the Sybil
 boundary; distinct accounts alone are not proof of independent organizations.
 This authenticates derivation claims, not model execution or semantic truth.
 """
+
 from __future__ import annotations
 
 import copy
@@ -47,8 +48,12 @@ def _snapshot_locked(root: str) -> _Lineage:
     cached = _STATES.get(root)
     if cached is not None and cached.count == count and cached.tip == tip:
         return cached
-    if cached is None or count < cached.count or cached.count and fp.digest(
-            fp.signed_at(root, JOURNAL, cached.count - 1)) != cached.tip:
+    if (
+        cached is None
+        or count < cached.count
+        or cached.count
+        and fp.digest(fp.signed_at(root, JOURNAL, cached.count - 1)) != cached.tip
+    ):
         cached = _Lineage()
     count, tip, events = fp.event_snapshot(root, JOURNAL, cached.count)
     for row in events:
@@ -58,8 +63,11 @@ def _snapshot_locked(root: str) -> _Lineage:
             for parent in row["inputs"]:
                 cached.up.setdefault(identity, set()).add(parent["id"])
                 cached.down.setdefault(parent["id"], set()).add(identity)
-        elif row["kind"] in ("review", "corroboration") and identity in cached.objects \
-                and row.get("content_hash") == cached.objects[identity]["content_hash"]:
+        elif (
+            row["kind"] in ("review", "corroboration")
+            and identity in cached.objects
+            and row.get("content_hash") == cached.objects[identity]["content_hash"]
+        ):
             cached.objects[identity]["integrity"] = "reviewed"
         elif row["kind"] == "taint":
             cached.taints.append(row)
@@ -80,15 +88,33 @@ def record(root: str, identity: str) -> dict[str, Any]:
     return copy.deepcopy(_snapshot(root).objects.get(identity, {}))
 
 
-def attest(root: str, record: dict[str, Any], receipt: dict[str, Any], *, inputs: list[str],
-           operation: str = "derive", model_id: str = "unspecified", prompt_hash: str = "") -> dict[str, Any]:
+def attest(
+    root: str,
+    record: dict[str, Any],
+    receipt: dict[str, Any],
+    *,
+    inputs: list[str],
+    operation: str = "derive",
+    model_id: str = "unspecified",
+    prompt_hash: str = "",
+) -> dict[str, Any]:
     with _jsonl.locked(fp.filename(root, JOURNAL)):
-        return _attest(root, record, receipt, inputs=inputs, operation=operation,
-                       model_id=model_id, prompt_hash=prompt_hash)
+        return _attest(
+            root, record, receipt, inputs=inputs, operation=operation, model_id=model_id, prompt_hash=prompt_hash
+        )
 
 
-def _attest(root: str, record: dict[str, Any], receipt: dict[str, Any], *, inputs: list[str],
-            operation: str, model_id: str, prompt_hash: str, publish: bool = True) -> dict[str, Any]:
+def _attest(
+    root: str,
+    record: dict[str, Any],
+    receipt: dict[str, Any],
+    *,
+    inputs: list[str],
+    operation: str,
+    model_id: str,
+    prompt_hash: str,
+    publish: bool = True,
+) -> dict[str, Any]:
     from unimem import memory_authority
 
     if not memory_authority.verify(root, receipt, record):
@@ -102,8 +128,7 @@ def _attest(root: str, record: dict[str, Any], receipt: dict[str, Any], *, input
     if any(identity in ancestors(root, parent) for parent in inputs):
         raise ValueError("derivation cycle")
     before = prior.get(identity)
-    parents = [{"id": item, "content_hash": prior.get(item, {}).get("content_hash", "unknown")}
-               for item in inputs]
+    parents = [{"id": item, "content_hash": prior.get(item, {}).get("content_hash", "unknown")} for item in inputs]
     ranks = [LEVELS.get(receipt.get("authority", "unknown"), -1)]
     ranks.extend(LEVELS[prior.get(item, {}).get("integrity", "unknown")] for item in inputs)
     if before:
@@ -113,28 +138,45 @@ def _attest(root: str, record: dict[str, Any], receipt: dict[str, Any], *, input
     roots = sorted({source for item in inputs for source in prior.get(item, {}).get("root_origins", [])})
     if not inputs:
         roots = [fp.text(receipt["principal"])]
-    statement = {"kind": "attestation", "id": identity, "inputs": parents, "operation": fp.text(operation),
-                 "model_id": fp.text(model_id), "prompt_hash": prompt_hash, "created_at": fp.now(),
-                 "actor": receipt["principal"],
-                 "content_hash": fp.digest({k: v for k, v in record.items() if k != "id"}),
-                 "integrity": level, "root_origins": roots}
+    statement = {
+        "kind": "attestation",
+        "id": identity,
+        "inputs": parents,
+        "operation": fp.text(operation),
+        "model_id": fp.text(model_id),
+        "prompt_hash": prompt_hash,
+        "created_at": fp.now(),
+        "actor": receipt["principal"],
+        "content_hash": fp.digest({k: v for k, v in record.items() if k != "id"}),
+        "integrity": level,
+        "root_origins": roots,
+    }
     scopes = record.get("scopes", [])
     if not isinstance(scopes, list) or len(scopes) > 128:
         raise ValueError("derivation scopes must be a bounded list")
-    inherited_scopes = [prior[item]["confidentiality"] for item in inputs if item in prior
-                        and isinstance(prior[item].get("confidentiality"), list)]
+    inherited_scopes = [
+        prior[item]["confidentiality"]
+        for item in inputs
+        if item in prior and isinstance(prior[item].get("confidentiality"), list)
+    ]
     if operation == "lesson":
         memory_authority._check_source_scopes(scopes, inherited_scopes)
-    statement["confidentiality"] = sorted({fp.text(scope, "scope", 256) for scope in scopes}
-                                          | {scope for labels in inherited_scopes for scope in labels}) or "public"
+    statement["confidentiality"] = (
+        sorted(
+            {fp.text(scope, "scope", 256) for scope in scopes}
+            | {scope for labels in inherited_scopes for scope in labels}
+        )
+        or "public"
+    )
     from unimem import capabilities
 
     if capabilities.CURRENT.get() is not None:
         from unimem import capability_io
 
         namespace = {"lesson": "lessons", "runtime-record": "records"}.get(operation, "")
-        statement.update(capability_io.delegation(root, record, namespace=namespace,
-                                                 operational=operation == "journal"))
+        statement.update(
+            capability_io.delegation(root, record, namespace=namespace, operational=operation == "journal")
+        )
         if publish and operation != "journal":
             capability_io.stamp(root, record, namespace=namespace)
     statement["lineage_digest"] = fp.digest(statement)
@@ -149,12 +191,21 @@ def _attest(root: str, record: dict[str, Any], receipt: dict[str, Any], *, input
     return statement
 
 
-def prepare(root: str, record: dict[str, Any], receipt: dict[str, Any], *,
-            inputs: list[str], operation: str) -> dict[str, Any]:
+def prepare(
+    root: str, record: dict[str, Any], receipt: dict[str, Any], *, inputs: list[str], operation: str
+) -> dict[str, Any]:
     """Prepare signed metadata inside the canonical store transaction without publishing it."""
     with _jsonl.locked(fp.filename(root, JOURNAL)):
-        statement = _attest(root, record, receipt, inputs=inputs, operation=operation,
-                            model_id="unspecified", prompt_hash="", publish=False)
+        statement = _attest(
+            root,
+            record,
+            receipt,
+            inputs=inputs,
+            operation=operation,
+            model_id="unspecified",
+            prompt_hash="",
+            publish=False,
+        )
         return fp.sign(root, statement)
 
 
@@ -164,7 +215,8 @@ def commit_prepared(root: str, signed: dict[str, Any]) -> None:
         raise PermissionError("UniMem lineage outbox signature rejected")
     statement = signed["record"]
     if statement.get("kind") != "attestation" or statement.get("lineage_digest") != fp.digest(
-            {key: value for key, value in statement.items() if key != "lineage_digest"}):
+        {key: value for key, value in statement.items() if key != "lineage_digest"}
+    ):
         raise ValueError("UniMem lineage outbox commitment rejected")
     with _jsonl.locked(fp.filename(root, JOURNAL)):
         delegation = statement.get("delegation")
@@ -173,12 +225,22 @@ def commit_prepared(root: str, signed: dict[str, Any]) -> None:
 
             identity = fp.digest([statement["id"], statement["content_hash"], delegation["chain_digest"]])
             if identity not in store.latest(root, "capability-writes"):
-                store.event(root, "capability-writes", identity, {
-                    "target": statement["id"], "content_hash": statement["content_hash"],
-                    "chain": delegation["chain"], "chain_ids": delegation["chain_ids"],
-                    "scopes": statement["confidentiality"] if isinstance(statement["confidentiality"], list) else [],
-                    "purpose": delegation["purpose"], "at": statement["created_at"],
-                })
+                store.event(
+                    root,
+                    "capability-writes",
+                    identity,
+                    {
+                        "target": statement["id"],
+                        "content_hash": statement["content_hash"],
+                        "chain": delegation["chain"],
+                        "chain_ids": delegation["chain_ids"],
+                        "scopes": statement["confidentiality"]
+                        if isinstance(statement["confidentiality"], list)
+                        else [],
+                        "purpose": delegation["purpose"],
+                        "at": statement["created_at"],
+                    },
+                )
         if not any(row.get("lineage_digest") == statement["lineage_digest"] for row in fp.journal(root, JOURNAL)):
             fp.append(root, JOURNAL, statement)
 
@@ -229,17 +291,26 @@ def labels(root: str, identity: str) -> dict[str, Any]:
     family = sorted(set(ancestors(root, identity)) | {identity}) if state.tainted else [identity]
     taints = [event for member in family for event in state.tainted.get(member, [])]
     level = row.get("integrity", "unknown")
-    return {"integrity": "external" if taints else level, "lineage_digest": row.get("lineage_digest", ""),
-            "review_required": bool(taints), "taints": [{"id": r["id"], "reason": r["reason"]} for r in taints]}
+    return {
+        "integrity": "external" if taints else level,
+        "lineage_digest": row.get("lineage_digest", ""),
+        "review_required": bool(taints),
+        "taints": [{"id": r["id"], "reason": r["reason"]} for r in taints],
+    }
 
 
 def explain(root: str, identity: str) -> dict[str, Any]:
-    return {"id": identity, **labels(root, identity), "ancestors": ancestors(root, identity),
-            "descendants": descendants(root, identity)}
+    return {
+        "id": identity,
+        **labels(root, identity),
+        "ancestors": ancestors(root, identity),
+        "descendants": descendants(root, identity),
+    }
 
 
-def corroborate(root: str, identity: str, supporters: list[str], *, k: int = 3,
-                minimum_weight: float = 0.5) -> dict[str, Any]:
+def corroborate(
+    root: str, identity: str, supporters: list[str], *, k: int = 3, minimum_weight: float = 0.5
+) -> dict[str, Any]:
     """Raise integrity only with disjoint authenticated roots and causal reputation.
 
     Reputation weights are read from the causal gate, never supplied by a model.
@@ -263,15 +334,29 @@ def corroborate(root: str, identity: str, supporters: list[str], *, k: int = 3,
         roots = set(row.get("root_origins", []))
         # Corroborations attest to identical content, not merely similar text.
         weights = [model.sources[source].p_helps for source in roots if source in model.sources]
-        if (row.get("content_hash") == target["content_hash"] and roots and not roots & seen
-                and len(weights) == len(roots) and min(weights) >= minimum_weight):
+        if (
+            row.get("content_hash") == target["content_hash"]
+            and roots
+            and not roots & seen
+            and len(weights) == len(roots)
+            and min(weights) >= minimum_weight
+        ):
             seen.update(roots)
             accepted.append(supporter)
     if len(accepted) < k:
         raise ValueError("independent-origin reputation quorum not met")
-    return fp.append(root, JOURNAL, {"kind": "corroboration", "id": identity, "supporters": accepted,
-                                    "root_origins": sorted(seen), "integrity": "reviewed",
-                                    "content_hash": target["content_hash"]})
+    return fp.append(
+        root,
+        JOURNAL,
+        {
+            "kind": "corroboration",
+            "id": identity,
+            "supporters": accepted,
+            "root_origins": sorted(seen),
+            "integrity": "reviewed",
+            "content_hash": target["content_hash"],
+        },
+    )
 
 
 def review(root: str, identity: str, receipt: dict[str, Any]) -> None:
@@ -286,5 +371,6 @@ def review(root: str, identity: str, receipt: dict[str, Any]) -> None:
         raise PermissionError("a current content-bound lesson-admission receipt is required")
     row = records(root).get(identity)
     if row:
-        fp.append(root, JOURNAL, {"kind": "review", "id": identity, "receipt": receipt,
-                                 "content_hash": row["content_hash"]})
+        fp.append(
+            root, JOURNAL, {"kind": "review", "id": identity, "receipt": receipt, "content_hash": row["content_hash"]}
+        )

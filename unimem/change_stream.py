@@ -310,8 +310,9 @@ def obligations(
         for target in sorted(seen):
             if targets and target not in targets:
                 continue
-            if (memory_authority.lineage_blocked(root, target, canonical_only=True)
-                    and not any(e["target"] == target for e in erased)):
+            if memory_authority.lineage_blocked(root, target, canonical_only=True) and not any(
+                e["target"] == target for e in erased
+            ):
                 pending.append(
                     {
                         "subscriber": sub_id,
@@ -735,8 +736,11 @@ def reconcile_revocations(root: str) -> None:
     latest = {event["target"]: event for event in fp.journal(root, JOURNAL)}
     for identity in sorted(known):
         event = latest.get(identity)
-        if (event is None or event["kind"] == "erase"
-                or not memory_authority.lineage_blocked(root, identity, canonical_only=True)):
+        if (
+            event is None
+            or event["kind"] == "erase"
+            or not memory_authority.lineage_blocked(root, identity, canonical_only=True)
+        ):
             continue
         publish(
             root,

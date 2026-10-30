@@ -13,7 +13,7 @@ from unimem import transparency_log as log
 def test_rfc_golden_vectors():
     assert log.EMPTY == hashlib.sha256(b"").hexdigest()
     assert log.leaf_hash({}) == hashlib.sha256(b"\x00{}").hexdigest()
-    vector = json.loads(Path('protocol/conformance/transparency.json').read_text())
+    vector = json.loads(Path("protocol/conformance/transparency.json").read_text())
     assert log.leaf_hash(vector["statement"]) == vector["leaf_hash"]
     assert log.node_hash(vector["leaf_hash"], vector["leaf_hash"]) == vector["node_hash"]
     # Interoperability with the RFC 6962 reference tree (raw-byte leaves).
@@ -23,7 +23,7 @@ def test_rfc_golden_vectors():
     assert reference["roots"][-1] == "5dc9da79a70659a9ad559cb701ded9a2ab9d823aad2f4960cfe370eff4604328"
     for case in reference["inclusion"]:
         root = reference["roots"][case["size"] - 1]
-        assert log.inclusion(hashes[:case["size"]], case["index"]) == case["proof"]
+        assert log.inclusion(hashes[: case["size"]], case["index"]) == case["proof"]
         assert log.verify_inclusion(hashes[case["index"]], case["index"], case["size"], case["proof"], root)
     for case in reference["consistency"]:
         old, new = reference["roots"][case["from"] - 1], reference["roots"][case["to"] - 1]
@@ -31,7 +31,7 @@ def test_rfc_golden_vectors():
     frontier: list = []
     for index, leaf in enumerate(hashes):
         frontier, proof = log.frontier_append_with_proof(frontier, leaf)
-        assert proof == log.inclusion(hashes[:index + 1], index)
+        assert proof == log.inclusion(hashes[: index + 1], index)
         assert log.frontier_root(frontier) == reference["roots"][index]
 
 
@@ -87,6 +87,7 @@ def test_reorder_fork_and_cross_store_signature(tmp_path):
     leaves = fp.rows(fp.filename(first, log.LEAVES))
     leaves.reverse()
     from unimem import _jsonl
+
     _jsonl.write_rows(fp.filename(first, log.LEAVES), leaves)
     with pytest.raises(ValueError):
         log.head(first)
@@ -94,6 +95,7 @@ def test_reorder_fork_and_cross_store_signature(tmp_path):
 
 def test_log_cli_and_mcp(tmp_path):
     from unimem.mcp_server import build_server
+
     pytest.importorskip("mcp")
     from tests.test_mcp_server import call, cli
 
@@ -112,6 +114,7 @@ def test_optional_ed25519(tmp_path, monkeypatch, legacy_public_bytes):
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
     from unimem import memory_authority
+
     if legacy_public_bytes:
         monkeypatch.delattr(Ed25519PublicKey, "public_bytes_raw", raising=False)
     root = str(tmp_path)
@@ -162,8 +165,10 @@ def test_rotations_preserve_old_logical_checkpoints_and_rewrites_fail(tmp_path):
     previous = ""
     replacement = []
     for index in range(5):
-        signed = fp.sign(rewrite_root, {"value": f"replacement-{index}", "sequence": index,
-                                        "previous": previous, "recorded_at": fp.now()})
+        signed = fp.sign(
+            rewrite_root,
+            {"value": f"replacement-{index}", "sequence": index, "previous": previous, "recorded_at": fp.now()},
+        )
         replacement.append(signed)
         previous = fp.digest(signed)
     _jsonl.write_rows(rewrite_path, replacement)
@@ -178,9 +183,11 @@ def test_verified_cache_detects_edits_and_has_bounded_append_work(tmp_path, monk
     root = str(tmp_path)
     log.append(root, "write", {"id": "first"})
     original, calls = fp.verify, []
+
     def counted(*args):
         calls.append(1)
         return original(*args)
+
     monkeypatch.setattr(fp, "verify", counted)
     for i in range(40):
         log.append(root, "write", {"id": str(i)})
@@ -197,6 +204,7 @@ def test_verified_cache_detects_edits_and_has_bounded_append_work(tmp_path, monk
 
 def test_read_only_state_and_returned_values_cannot_poison_cache(tmp_path):
     from unimem import lineage
+
     absent = tmp_path / "absent"
     assert lineage.labels(str(absent), "old")["integrity"] == "unknown"
     assert not absent.exists()
@@ -211,6 +219,7 @@ def test_read_only_state_and_returned_values_cannot_poison_cache(tmp_path):
 
 def test_concurrent_appends_keep_one_history(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
+
     root = str(tmp_path)
     with ThreadPoolExecutor(max_workers=4) as pool:
         receipts = list(pool.map(lambda i: log.append(root, "write", {"id": str(i)}), range(24)))

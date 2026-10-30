@@ -32,8 +32,13 @@ def run(root, *, agent=None, payload=None, functional=False, **kwargs):
     base = functional_command(command(root)) if functional else command(root)
     args = base + (["--format", agent] if agent else [])
     return subprocess.run(
-        args, input=payload if payload is not None else '{"session_id":"s","prompt":"code"}',
-        text=True, capture_output=True, timeout=SPAWN_TIMEOUT, check=True, **kwargs,
+        args,
+        input=payload if payload is not None else '{"session_id":"s","prompt":"code"}',
+        text=True,
+        capture_output=True,
+        timeout=SPAWN_TIMEOUT,
+        check=True,
+        **kwargs,
     )
 
 
@@ -109,7 +114,11 @@ def test_help_and_invalid_options_keep_native_hook_fail_safe(tmp_path):
 
     invalid = subprocess.run(
         command(tmp_path) + ["--not-a-hook-option"],
-        input='{"session_id":"s"}', text=True, capture_output=True, timeout=SPAWN_TIMEOUT, check=True,
+        input='{"session_id":"s"}',
+        text=True,
+        capture_output=True,
+        timeout=SPAWN_TIMEOUT,
+        check=True,
     )
     assert json.loads(invalid.stdout) == {"context": "", "injected": []}
     assert not invalid.stderr
@@ -173,8 +182,11 @@ def test_invalid_choices_and_missing_values_fail_closed(tmp_path, invalid_option
 
 @pytest.mark.parametrize("agent", [None, *AGENTS])
 def test_all_formats_preserve_protocol_and_receipt(tmp_path, agent):
-    offered = {"context": "<memory_update>Keep credentials private. ☃</memory_update>",
-               "injected": ["rule"], "delivery_token": "opaque-receipt"}
+    offered = {
+        "context": "<memory_update>Keep credentials private. ☃</memory_update>",
+        "injected": ["rule"],
+        "delivery_token": "opaque-receipt",
+    }
     observed = {}
 
     def handler(client):
@@ -189,9 +201,13 @@ def test_all_formats_preserve_protocol_and_receipt(tmp_path, agent):
         None: {"context": context, "injected": ["rule"]},
         "cline": {"cancel": False, "contextModification": context},
         "openhands": {"decision": "allow", "additionalContext": context},
-        "windsurf": {}, "kimi": context, "cursor": {"additional_context": context},
-        **{name: {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}
-           for name in ("claude", "codex", "gemini")},
+        "windsurf": {},
+        "kimi": context,
+        "cursor": {"additional_context": context},
+        **{
+            name: {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}
+            for name in ("claude", "codex", "gemini")
+        },
     }[agent]
     assert (result.stdout.rstrip("\n") if isinstance(expected, str) else json.loads(result.stdout)) == expected
     assert not result.stderr
@@ -199,19 +215,31 @@ def test_all_formats_preserve_protocol_and_receipt(tmp_path, agent):
     req_payload = observed["request"].pop("payload", {})
     assert req_payload.get("session_id") == "s" and req_payload.get("prompt") == "code"
     assert len(req_payload.get("event_id", "")) == 32
-    assert observed["request"] == {"agent": "agent", "scope": {"agent": "agent"},
-                                   "event": "UserPromptSubmit", "format": agent}
+    assert observed["request"] == {
+        "agent": "agent",
+        "scope": {"agent": "agent"},
+        "event": "UserPromptSubmit",
+        "format": agent,
+    }
     # Windsurf stdout is capture-only UI output, so it cannot attest context delivery.
     assert (json.loads(observed["receipt"]) if observed["receipt"] else None) == (
         None if agent == "windsurf" else {"operation": "ack", "delivery_token": "opaque-receipt"}
     )
 
 
-@pytest.mark.parametrize("reply", [b"invalid-json\n", b"[]\n", b"null\n", b'{"context":5}\n',
-                                   b'{"context":"' + b"x" * 100000 + b'"}\n',
-                                   b'{"context":"late","delivery_token":[]}\n',
-                                   b'{"nested":' + b"[" * 10000 + b"0" + b"]" * 10000 + b'}\n'],
-                         ids=["syntax", "array", "null", "context-type", "oversize", "token-type", "deep"])
+@pytest.mark.parametrize(
+    "reply",
+    [
+        b"invalid-json\n",
+        b"[]\n",
+        b"null\n",
+        b'{"context":5}\n',
+        b'{"context":"' + b"x" * 100000 + b'"}\n',
+        b'{"context":"late","delivery_token":[]}\n',
+        b'{"nested":' + b"[" * 10000 + b"0" + b"]" * 10000 + b"}\n",
+    ],
+    ids=["syntax", "array", "null", "context-type", "oversize", "token-type", "deep"],
+)
 def test_malformed_and_oversized_replies_do_not_inject_or_ack(tmp_path, reply):
     observed = []
 
@@ -281,8 +309,9 @@ raise SystemExit(bridge.main(sys.argv[2:]))
         assert release_peer.wait(5)
 
     with peer(tmp_path, handler):
-        with subprocess.Popen(functional, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True) as process:
+        with subprocess.Popen(
+            functional, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        ) as process:
             try:
                 process.stdin.write('{"session_id":"s"}')
                 process.stdin.close()
@@ -310,8 +339,9 @@ def test_broken_stdout_never_acknowledges_delivery(tmp_path):
             observed.append(b"")
 
     with peer(tmp_path, handler):
-        with subprocess.Popen(command(tmp_path), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                              stderr=subprocess.PIPE, text=True) as process:
+        with subprocess.Popen(
+            command(tmp_path), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+        ) as process:
             process.stdout.close()
             process.stdin.write('{"session_id":"s"}')
             process.stdin.close()
@@ -320,9 +350,17 @@ def test_broken_stdout_never_acknowledges_delivery(tmp_path):
     assert observed == [b""]
 
 
-@pytest.mark.parametrize("payload", ["null", "[]", "not-json", '{"prompt":"' + "x" * 100000 + '"}',
-                                     '{"nested":' + "[" * 10000 + "0" + "]" * 10000 + '}'],
-                         ids=["null", "array", "syntax", "oversize", "deep"])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "null",
+        "[]",
+        "not-json",
+        '{"prompt":"' + "x" * 100000 + '"}',
+        '{"nested":' + "[" * 10000 + "0" + "]" * 10000 + "}",
+    ],
+    ids=["null", "array", "syntax", "oversize", "deep"],
+)
 def test_invalid_input_fails_closed_without_creating_capture(tmp_path, payload):
     result = run(tmp_path, payload=payload)
     assert json.loads(result.stdout)["context"] == ""
@@ -348,9 +386,14 @@ def test_unrelated_directory_and_pythonpath_cannot_supply_transport_imports(tmp_
         # This asserts isolated imports, with the same -I -S interpreter flags.
         # Scheduling deadlines are exercised by the dedicated timeout tests.
         result = subprocess.run(
-            functional_command(command(root)), input='{"session_id":"s","prompt":"code"}',
-            text=True, capture_output=True, timeout=SPAWN_TIMEOUT, check=True,
-            cwd=unrelated, env={**os.environ, "PYTHONPATH": str(unrelated)},
+            functional_command(command(root)),
+            input='{"session_id":"s","prompt":"code"}',
+            text=True,
+            capture_output=True,
+            timeout=SPAWN_TIMEOUT,
+            check=True,
+            cwd=unrelated,
+            env={**os.environ, "PYTHONPATH": str(unrelated)},
         )
     assert json.loads(result.stdout)["context"] == "isolated"
     assert not result.stderr
@@ -362,8 +405,13 @@ def test_missing_broker_detaches_capture_from_unrelated_directory(tmp_path):
     root.mkdir()
     unrelated.mkdir()
     (unrelated / "sitecustomize.py").write_text('raise RuntimeError("foreign startup")\n')
-    result = run(root, agent="cline", payload=json.dumps({"taskId": "recovery", "prompt": "capture this"}),
-                 cwd=unrelated, env={**os.environ, "PYTHONPATH": str(unrelated)})
+    result = run(
+        root,
+        agent="cline",
+        payload=json.dumps({"taskId": "recovery", "prompt": "capture this"}),
+        cwd=unrelated,
+        env={**os.environ, "PYTHONPATH": str(unrelated)},
+    )
     assert json.loads(result.stdout) == {"cancel": False, "contextModification": ""}
     assert not result.stderr
     journal = Journal(str(root))
@@ -389,10 +437,28 @@ def test_previously_installed_node_command_delegates_to_same_transport(tmp_path)
         assert json.loads(frame(client)) == {"operation": "ack", "delivery_token": "receipt"}
 
     with peer(tmp_path, handler):
-        result = subprocess.run([shutil.which("node"), bridge, "--python", sys.executable,
-                                 "--dest", str(tmp_path), "--agent-id", "agent", "--scope", '{}',
-                                 "--event", "UserPromptSubmit", "--format", "cursor"],
-                                input='{"session_id":"s"}', text=True, capture_output=True,
-                                timeout=SPAWN_TIMEOUT, check=True)
+        result = subprocess.run(
+            [
+                shutil.which("node"),
+                bridge,
+                "--python",
+                sys.executable,
+                "--dest",
+                str(tmp_path),
+                "--agent-id",
+                "agent",
+                "--scope",
+                "{}",
+                "--event",
+                "UserPromptSubmit",
+                "--format",
+                "cursor",
+            ],
+            input='{"session_id":"s"}',
+            text=True,
+            capture_output=True,
+            timeout=SPAWN_TIMEOUT,
+            check=True,
+        )
     assert json.loads(result.stdout) == {"additional_context": "legacy command"}
     assert not result.stderr

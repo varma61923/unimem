@@ -5,6 +5,7 @@ sequential.py``): honor ``Retry-After`` (seconds or HTTP-date, NaN-safe),
 retry 429 and pre-connection errors; replay ambiguous transport/5xx failures only for idempotent
 calls, cap the wait (never honor ``86400`` verbatim), jitter the backoff.
 """
+
 from __future__ import annotations
 
 import datetime as dt

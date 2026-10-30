@@ -1,4 +1,5 @@
 """Tests for ingest job lifecycle and document catalog."""
+
 from __future__ import annotations
 
 import os
@@ -15,7 +16,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -45,7 +49,10 @@ def test_ingest_job_lifecycle_stages(store):
 def test_document_catalog_summary_vs_get(store):
     content = "Quick summary.\n\n" + ("Long body text details. " * 200)
     doc = catalog.record_document(
-        store, "/docs/runbook.md", content, title="Operations Runbook",
+        store,
+        "/docs/runbook.md",
+        content,
+        title="Operations Runbook",
         chunks=["chunk0", "chunk1", "chunk2"],
     )
 

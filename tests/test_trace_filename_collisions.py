@@ -8,10 +8,22 @@ from unimem.commands import capture_cmd
 
 
 def _capture(dest, title, occasion_id, context="c", solution="s", extra=()):
-    return main([
-        "capture", "--title", title, "--context", context, "--solution", solution,
-        "--occasion-id", occasion_id, "--dest", str(dest), *extra,
-    ])
+    return main(
+        [
+            "capture",
+            "--title",
+            title,
+            "--context",
+            context,
+            "--solution",
+            solution,
+            "--occasion-id",
+            occasion_id,
+            "--dest",
+            str(dest),
+            *extra,
+        ]
+    )
 
 
 def _trace_ids(dest):
@@ -37,8 +49,9 @@ class TestTheSuffixIsInjective:
         assert capture_cmd._id_suffix("TICKET-42") == "TICKET-42"
 
     def test_it_stays_deterministic(self):
-        assert capture_cmd._id_suffix("JIRA-ROBOTICS-PLATFORM-4711") == \
-            capture_cmd._id_suffix("JIRA-ROBOTICS-PLATFORM-4711")
+        assert capture_cmd._id_suffix("JIRA-ROBOTICS-PLATFORM-4711") == capture_cmd._id_suffix(
+            "JIRA-ROBOTICS-PLATFORM-4711"
+        )
 
     def test_it_stays_filesystem_safe(self):
         suffix = capture_cmd._id_suffix("../../etc/passwd and a space/../..")
@@ -53,24 +66,32 @@ class TestNoCaptureIsLost:
         assert main(["init", "--dest", str(tmp_path)]) == 0
         ids = [f"JIRA-ROBOTICS-PLATFORM-471{i}" for i in range(5)]
         for i, occ in enumerate(ids):
-            assert _capture(tmp_path, "Sensor jitter after firmware update", occ,
-                            context=f"ctx {i}", solution=f"sol {i}") == 0
+            assert (
+                _capture(tmp_path, "Sensor jitter after firmware update", occ, context=f"ctx {i}", solution=f"sol {i}")
+                == 0
+            )
 
         assert _trace_ids(tmp_path) == set(ids)
 
     def test_each_trace_keeps_its_own_content(self, tmp_path):
         assert main(["init", "--dest", str(tmp_path)]) == 0
         for i in range(3):
-            assert _capture(tmp_path, "Same title every time",
-                            f"RUN-2026-09-06-PIPELINE-{i}",
-                            context=f"context number {i}",
-                            solution=f"solution number {i}") == 0
+            assert (
+                _capture(
+                    tmp_path,
+                    "Same title every time",
+                    f"RUN-2026-09-06-PIPELINE-{i}",
+                    context=f"context number {i}",
+                    solution=f"solution number {i}",
+                )
+                == 0
+            )
 
         bodies = []
         tdir = paths.traces_dir(str(tmp_path))
         for name in sorted(os.listdir(tdir)):
             if name.endswith(".md") and name != "README.md":
-                bodies.append(Path(os.path.join(tdir, name)).read_text(encoding='utf-8'))
+                bodies.append(Path(os.path.join(tdir, name)).read_text(encoding="utf-8"))
         assert len(bodies) == 3
         for i in range(3):
             assert any(f"context number {i}" in b for b in bodies), f"lost context {i}"
@@ -85,7 +106,7 @@ class TestNoCaptureIsLost:
         tdir = paths.traces_dir(str(tmp_path))
         files = [n for n in os.listdir(tdir) if n.endswith(".md") and n != "README.md"]
         assert len(files) == 1
-        assert "resolved: true" in Path(os.path.join(tdir, files[0])).read_text(encoding='utf-8')
+        assert "resolved: true" in Path(os.path.join(tdir, files[0])).read_text(encoding="utf-8")
 
     def test_the_occasions_remain_joinable_to_their_arms(self, tmp_path):
         assert main(["init", "--dest", str(tmp_path)]) == 0
@@ -94,6 +115,7 @@ class TestNoCaptureIsLost:
             assert _capture(tmp_path, "Sensor jitter", occ, extra=["--resolved"]) == 0
 
         from unimem.commands import experiment_cmd
+
         outcomes = experiment_cmd._outcomes_by_occasion(str(tmp_path))
         for occ in ids:
             assert outcomes.get(occ) is True, f"{occ} cannot be joined to its arm"
@@ -113,8 +135,9 @@ class TestDoctorReportsAlreadyDamagedStores:
         log = os.path.join(paths.memory_dir(str(tmp_path)), "holdout_log.jsonl")
         with open(log, "w", encoding="utf-8") as fh:
             for occ in ("JIRA-ROBOTICS-PLATFORM-4711", "JIRA-ROBOTICS-PLATFORM-4712"):
-                fh.write(json.dumps({"occasion_id": occ, "lesson": "a", "injected": True,
-                                     "rate": 0.5, "salt": "s"}) + "\n")
+                fh.write(
+                    json.dumps({"occasion_id": occ, "lesson": "a", "injected": True, "rate": 0.5, "salt": "s"}) + "\n"
+                )
         _capture(tmp_path, "Sensor jitter", "JIRA-ROBOTICS-PLATFORM-4712")
 
         capsys.readouterr()
@@ -126,8 +149,9 @@ class TestDoctorReportsAlreadyDamagedStores:
         log = os.path.join(paths.memory_dir(str(tmp_path)), "holdout_log.jsonl")
         with open(log, "w", encoding="utf-8") as fh:
             for occ in ("JIRA-ROBOTICS-PLATFORM-4711", "JIRA-ROBOTICS-PLATFORM-4712"):
-                fh.write(json.dumps({"occasion_id": occ, "lesson": "a", "injected": True,
-                                     "rate": 0.5, "salt": "s"}) + "\n")
+                fh.write(
+                    json.dumps({"occasion_id": occ, "lesson": "a", "injected": True, "rate": 0.5, "salt": "s"}) + "\n"
+                )
         capsys.readouterr()
         main(["doctor", "--dest", str(tmp_path)])
         assert "[OK  ] trace filename collisions" in capsys.readouterr().out

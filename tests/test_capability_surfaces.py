@@ -1,4 +1,5 @@
 """CLI, native MCP and real OpenTelemetry SDK contracts for delegation."""
+
 from __future__ import annotations
 
 import json
@@ -18,13 +19,26 @@ def test_cli_grant_attenuate_and_revoke_use_pinned_agent_keys(tmp_path, capsys):
     assert main(["team", "grant", json.dumps({"caveats": policy()}), "--dest", root]) == 0
     issued = json.loads(capsys.readouterr().out)
     assert issued["caveats"]["audience"] == "agent-a"
-    args = {"token": issued["token"], "caveats": policy(audience="agent-b", namespaces=["facts"]),
-            "secret_file": io.agent(root, "agent-a")["secret_file"]}
+    args = {
+        "token": issued["token"],
+        "caveats": policy(audience="agent-b", namespaces=["facts"]),
+        "secret_file": io.agent(root, "agent-a")["secret_file"],
+    }
     assert main(["team", "attenuate", json.dumps(args), "--dest", root]) == 0
     child = json.loads(capsys.readouterr().out)
     assert child["caveats"]["namespaces"] == ["facts"]
-    assert main(["team", "revoke", json.dumps({"chain_id": issued["chain_ids"][0], "reason": "compromised"}),
-                 "--dest", root]) == 0
+    assert (
+        main(
+            [
+                "team",
+                "revoke",
+                json.dumps({"chain_id": issued["chain_ids"][0], "reason": "compromised"}),
+                "--dest",
+                root,
+            ]
+        )
+        == 0
+    )
     assert json.loads(capsys.readouterr().out)["revoked"] == issued["chain_ids"][0]
     with pytest.raises(PermissionError):
         io.check(root, child["token"])
@@ -61,8 +75,13 @@ def test_real_otel_span_contains_authenticated_chain_digest_and_ceiling(tmp_path
     otel_memory.configure(root, enabled=True)
     with io.activate(authenticate(root, token, proof(root, token))):
         memory = hierarchical.append_facts(root, [{"statement": "Inspect wrist load.", "scopes": ["project:a"]}])[0][0]
-        with otel_memory.operation(root, "search", [memory.id], context=["project:a"],
-                                   extensions={"delegation.chain_digest": "forged", "label.ceiling": 3}):
+        with otel_memory.operation(
+            root,
+            "search",
+            [memory.id],
+            context=["project:a"],
+            extensions={"delegation.chain_digest": "forged", "label.ceiling": 3},
+        ):
             pass
     spans = exporter.get_finished_spans()
     assert spans
@@ -82,19 +101,30 @@ def test_agents_input_filter_replaces_all_incoming_histories_and_preserves_runti
     from unimem import frontier_protocol as fp
 
     fixture = json.loads((Path(__file__).parent / "fixtures" / "capability_handoff_contract.json").read_text())
+
     @dataclass
     class HandoffInputData:
         input_history: object
         pre_handoff_items: tuple
         new_items: tuple
         run_context: object = None
+
     assert set(HandoffInputData.__dataclass_fields__) == set(fixture["fields"])
     root, _ = prepare(tmp_path)
-    memory = hierarchical.append_facts(root, [{"statement": "Inspect wrist calibration.", "scopes": ["project:a"]}])[0][0]
+    memory = hierarchical.append_facts(root, [{"statement": "Inspect wrist calibration.", "scopes": ["project:a"]}])[0][
+        0
+    ]
     claim = io.handoff(root, [memory.id], "agent-b", context=["project:a"])["claim"]
     token = io.grant(root, policy(audience="agent-b"))["token"]
-    authorization = io.authenticate(root, token, proof(root, token, key=B_KEY), request_digest="f"*64,
-                                   operation="read", purpose="support", principal="b")
+    authorization = io.authenticate(
+        root,
+        token,
+        proof(root, token, key=B_KEY),
+        request_digest="f" * 64,
+        operation="read",
+        purpose="support",
+        principal="b",
+    )
     context = object()
     incoming = HandoffInputData("private transcript", ("private old tool output",), ("private new event",), context)
     with io.activate(authorization):

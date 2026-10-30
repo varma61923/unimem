@@ -37,7 +37,8 @@ def test_t1_retrieval_graph_boost_ranking():
 
     graph_boosts = {"redis-cache": 0.5, "db-timeout": 0.0}
     boosted_ranked = retrieval.rank_lessons(
-        task, lessons,
+        task,
+        lessons,
         graph_boost_lookup=graph_boosts,
         graph_weight=1.0,
     )
@@ -63,7 +64,8 @@ def test_t1_retrieval_score_formula_clamping():
 
     graph_boosts = {"extreme-boost": 5.0}
     ranked = retrieval.rank_lessons(
-        task, lessons,
+        task,
+        lessons,
         graph_boost_lookup=graph_boosts,
         graph_weight=2.0,
     )
@@ -141,8 +143,10 @@ def test_t1_retrieval_as_of_temporal_filter(isolated_store: str):
     )
 
     res_2026 = run_cli(
-        "query", "basic authentication mechanism",
-        "--as-of", "2026-06-01",
+        "query",
+        "basic authentication mechanism",
+        "--as-of",
+        "2026-06-01",
         "--lexical",
         dest=isolated_store,
     )

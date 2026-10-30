@@ -6,12 +6,27 @@ from unimem.robotics import shield
 
 def test_bounded_stl_robustness_and_memory_linked_hold(tmp_path):
     root = str(tmp_path)
-    formula = {"op": "always", "from": 0, "to": 1,
-               "arg": {"op": "predicate", "signal": "distance", "cmp": ">=", "value": 0.5}}
-    shield.register(root, "safe_distance", formula=formula, memory_id="memory-1", embodiment="arm-v1",
-                    description="Maintain clearance.")
-    good = shield.check(root, "safe_distance", action={"grasp": "start"}, trace=[{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.6}],
-                        source_memory_ids=["memory-1"])
+    formula = {
+        "op": "always",
+        "from": 0,
+        "to": 1,
+        "arg": {"op": "predicate", "signal": "distance", "cmp": ">=", "value": 0.5},
+    }
+    shield.register(
+        root,
+        "safe_distance",
+        formula=formula,
+        memory_id="memory-1",
+        embodiment="arm-v1",
+        description="Maintain clearance.",
+    )
+    good = shield.check(
+        root,
+        "safe_distance",
+        action={"grasp": "start"},
+        trace=[{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.6}],
+        source_memory_ids=["memory-1"],
+    )
     assert good["verdict"] == "safe" and good["robustness"] == pytest.approx(0.1)
     verdict_lineage = lineage.records(root)[good["lineage_id"]]
     assert verdict_lineage["inputs"][0]["id"] == "memory-1"
@@ -22,41 +37,84 @@ def test_bounded_stl_robustness_and_memory_linked_hold(tmp_path):
     recovery_id = registered["record"]["id"]
     review = safety.review(root, recovery_id, reviewer="safety-engineer", reason="reviewed safe fallback")
     safety.mark(root, recovery_id, "human-proximity", review, site="site-a", robot="robot-a")
-    bad = shield.check(root, "safe_distance", action={"grasp": "start"}, trace=[{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.2}],
-                       source_memory_ids=["memory-1"], recovery_memory_ids=[recovery_id],
-                       recovery_context=context, failure_type="clearance_violation")
+    bad = shield.check(
+        root,
+        "safe_distance",
+        action={"grasp": "start"},
+        trace=[{"t": 0, "distance": 0.8}, {"t": 1, "distance": 0.2}],
+        source_memory_ids=["memory-1"],
+        recovery_memory_ids=[recovery_id],
+        recovery_context=context,
+        failure_type="clearance_violation",
+    )
     assert bad["verdict"] == "violated" and bad["action"] == "hold-and-use-recovery"
     assert bad["recovery_memory_ids"] == [recovery_id] and bad["recovery_fallback"][0]["hazard"]
-    missing = shield.check(root, "safe_distance", action={"grasp": "start"}, trace=[{"t": 0, "distance": 0.8}], source_memory_ids=[])
+    missing = shield.check(
+        root, "safe_distance", action={"grasp": "start"}, trace=[{"t": 0, "distance": 0.8}], source_memory_ids=[]
+    )
     assert missing["verdict"] == "memory-not-recalled" and missing["action"] == "hold"
 
 
 def test_eventually_until_and_malformed_trace(tmp_path):
     root = str(tmp_path)
-    eventually = {"op": "eventually", "from": 0, "to": 2,
-                  "arg": {"op": "predicate", "signal": "ready", "cmp": ">=", "value": 1}}
+    eventually = {
+        "op": "eventually",
+        "from": 0,
+        "to": 2,
+        "arg": {"op": "predicate", "signal": "ready", "cmp": ">=", "value": 1},
+    }
     shield.register(root, "ready", formula=eventually, memory_id="m", embodiment="r", description="ready")
-    result = shield.check(root, "ready", action={"move": "start"}, trace=[{"t": 0, "ready": 0}, {"t": 2, "ready": 2}], source_memory_ids=["m"])
+    result = shield.check(
+        root,
+        "ready",
+        action={"move": "start"},
+        trace=[{"t": 0, "ready": 0}, {"t": 2, "ready": 2}],
+        source_memory_ids=["m"],
+    )
     assert result["verdict"] == "safe" and result["robustness"] == 1
-    until = {"op": "until", "from": 0, "to": 2,
-             "left": {"op": "predicate", "signal": "force", "cmp": ">=", "value": 0},
-             "right": {"op": "predicate", "signal": "ready", "cmp": ">=", "value": 1}}
+    until = {
+        "op": "until",
+        "from": 0,
+        "to": 2,
+        "left": {"op": "predicate", "signal": "force", "cmp": ">=", "value": 0},
+        "right": {"op": "predicate", "signal": "ready", "cmp": ">=", "value": 1},
+    }
     shield.register(root, "ready_until", formula=until, memory_id="m", embodiment="r", description="until")
-    hand = shield.check(root, "ready_until", action={"move": "start"},
-                        trace=[{"t": 0, "force": 2, "ready": 0}, {"t": 1, "force": 1, "ready": 0},
-                               {"t": 2, "force": 1, "ready": 2}], source_memory_ids=["m"])
+    hand = shield.check(
+        root,
+        "ready_until",
+        action={"move": "start"},
+        trace=[{"t": 0, "force": 2, "ready": 0}, {"t": 1, "force": 1, "ready": 0}, {"t": 2, "force": 1, "ready": 2}],
+        source_memory_ids=["m"],
+    )
     assert hand["verdict"] == "safe" and hand["robustness"] == 1
     with pytest.raises(ValueError):
-        shield.check(root, "ready", action={"move": "start"}, trace=[{"t": 1, "ready": 1}, {"t": 1, "ready": 2}], source_memory_ids=["m"])
+        shield.check(
+            root,
+            "ready",
+            action={"move": "start"},
+            trace=[{"t": 1, "ready": 1}, {"t": 1, "ready": 2}],
+            source_memory_ids=["m"],
+        )
     with pytest.raises(ValueError):
-        shield.register(root, "bad", formula={"op": "always", "from": 2, "to": 1, "arg": eventually},
-                        memory_id="m", embodiment="r", description="bad")
+        shield.register(
+            root,
+            "bad",
+            formula={"op": "always", "from": 2, "to": 1, "arg": eventually},
+            memory_id="m",
+            embodiment="r",
+            description="bad",
+        )
 
 
 def test_monitor_is_fast_for_bounded_trace(tmp_path):
     root = str(tmp_path)
-    formula = {"op": "always", "from": 0, "to": 0.1,
-               "arg": {"op": "predicate", "signal": "force", "cmp": "<=", "value": 10}}
+    formula = {
+        "op": "always",
+        "from": 0,
+        "to": 0.1,
+        "arg": {"op": "predicate", "signal": "force", "cmp": "<=", "value": 10},
+    }
     shield.register(root, "force_limit", formula=formula, memory_id="m", embodiment="r", description="limit")
     trace = [{"t": i / 1000, "force": 5.0} for i in range(10_000)]
     result = shield.check(root, "force_limit", action={"move": "start"}, trace=trace, source_memory_ids=["m"])
@@ -67,12 +125,19 @@ def test_partial_and_nested_trace_horizons_hold_the_action(tmp_path):
     predicate = {"op": "predicate", "signal": "force", "cmp": "<=", "value": 10}
     for name, formula in (
         ("partial", {"op": "always", "from": 0, "to": 2, "arg": predicate}),
-        ("nested", {"op": "always", "from": 0, "to": 1,
-                    "arg": {"op": "eventually", "from": 0, "to": 1, "arg": predicate}}),
+        (
+            "nested",
+            {"op": "always", "from": 0, "to": 1, "arg": {"op": "eventually", "from": 0, "to": 1, "arg": predicate}},
+        ),
     ):
         shield.register(str(tmp_path), name, formula=formula, memory_id="m", embodiment="r", description="test")
-        report = shield.check(str(tmp_path), name, action={"move": "start"},
-                               trace=[{"t": 0, "force": 1}, {"t": 1, "force": 1}], source_memory_ids=["m"])
+        report = shield.check(
+            str(tmp_path),
+            name,
+            action={"move": "start"},
+            trace=[{"t": 0, "force": 1}, {"t": 1, "force": 1}],
+            source_memory_ids=["m"],
+        )
         assert report["action"] == "hold"
         assert report["verdict"] == "incomplete-telemetry"
         assert report["robustness"] is None
@@ -93,10 +158,21 @@ def test_until_evaluation_has_linear_prefix_work(tmp_path, monkeypatch):
 
     monkeypatch.setattr(shield, "min", bounded_min, raising=False)
     predicate = {"op": "predicate", "signal": "ready", "cmp": ">=", "value": 1}
-    shield.register(str(tmp_path), "linear", formula={"op": "until", "from": 0, "to": count - 1,
-        "left": predicate, "right": predicate}, memory_id="m", embodiment="r", description="test")
-    report = shield.check(str(tmp_path), "linear", action={"move": "start"},
-        trace=[{"t": index, "ready": 2} for index in range(count)], source_memory_ids=["m"])
+    shield.register(
+        str(tmp_path),
+        "linear",
+        formula={"op": "until", "from": 0, "to": count - 1, "left": predicate, "right": predicate},
+        memory_id="m",
+        embodiment="r",
+        description="test",
+    )
+    report = shield.check(
+        str(tmp_path),
+        "linear",
+        action={"move": "start"},
+        trace=[{"t": index, "ready": 2} for index in range(count)],
+        source_memory_ids=["m"],
+    )
     assert report["verdict"] == "safe" and report["robustness"] == 1
 
 
@@ -116,13 +192,33 @@ def test_formula_node_budget_prevents_exponential_trees(tmp_path):
 
 def test_telemetry_commitment_binds_sample_times(tmp_path):
     root = str(tmp_path)
-    shield.register(root, "force", formula={"op": "always", "from": 0, "to": 1,
-        "arg": {"op": "predicate", "signal": "force", "cmp": "<=", "value": 10}},
-        memory_id="m", embodiment="r", description="test")
-    first = shield.check(root, "force", action={"move": "start"},
-        trace=[{"t": 0, "force": 1}, {"t": 1, "force": 2}], source_memory_ids=["m"])
-    second = shield.check(root, "force", action={"move": "start"},
-        trace=[{"t": 0, "force": 1}, {"t": 2, "force": 2}], source_memory_ids=["m"])
+    shield.register(
+        root,
+        "force",
+        formula={
+            "op": "always",
+            "from": 0,
+            "to": 1,
+            "arg": {"op": "predicate", "signal": "force", "cmp": "<=", "value": 10},
+        },
+        memory_id="m",
+        embodiment="r",
+        description="test",
+    )
+    first = shield.check(
+        root,
+        "force",
+        action={"move": "start"},
+        trace=[{"t": 0, "force": 1}, {"t": 1, "force": 2}],
+        source_memory_ids=["m"],
+    )
+    second = shield.check(
+        root,
+        "force",
+        action={"move": "start"},
+        trace=[{"t": 0, "force": 1}, {"t": 2, "force": 2}],
+        source_memory_ids=["m"],
+    )
     assert first["telemetry_digest"] != second["telemetry_digest"]
     records = [row for row in shield.fp.journal(root, shield.JOURNAL) if row.get("type") == "verdict"]
     assert records[0]["trace_digest"] == records[1]["trace_digest"]

@@ -24,7 +24,6 @@ def _installed(store) -> list[str]:
 
 
 class TestPacksAreASelectionNotNewContent:
-
     def test_every_record_carries_a_source_citation(self):
         for info in kb_packs.list_packs():
             for record in kb_packs._read(kb_packs._pack_path(info.name)):

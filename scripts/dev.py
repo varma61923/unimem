@@ -35,10 +35,20 @@ def main() -> int:
         ruff_bin = shutil.which("ruff") or sys.executable
         if ruff_bin != sys.executable:
             check_command = [ruff_bin, "check", ".", "--no-cache", *extra]
-            command = [ruff_bin, "format", "--check", ".", *extra]
+            command = [ruff_bin, "format", "--check", ".", "--exclude", "hub/alembic/versions/**", *extra]
         else:
             check_command = [sys.executable, "-m", "ruff", "check", ".", "--no-cache", *extra]
-            command = [sys.executable, "-m", "ruff", "format", "--check", ".", *extra]
+            command = [
+                sys.executable,
+                "-m",
+                "ruff",
+                "format",
+                "--check",
+                ".",
+                "--exclude",
+                "hub/alembic/versions/**",
+                *extra,
+            ]
         checked = subprocess.run(check_command, cwd=ROOT, env=env, check=False)
         if checked.returncode:
             return checked.returncode

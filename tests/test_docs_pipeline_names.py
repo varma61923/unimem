@@ -29,7 +29,5 @@ def test_no_ascii_arrow_fork():
                 full = os.path.join(dirpath, fn)
                 checked.append(full)
                 with open(full, encoding="utf-8", errors="replace") as fh:
-                    assert ASCII_CHAIN not in fh.read(), (
-                        f"{full} states pipeline names with ASCII arrows"
-                    )
+                    assert ASCII_CHAIN not in fh.read(), f"{full} states pipeline names with ASCII arrows"
     assert checked

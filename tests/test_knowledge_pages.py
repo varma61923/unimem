@@ -1,4 +1,5 @@
 """Tests for Knowledge Pages: curated pages with dry-run diffs and version history."""
+
 from __future__ import annotations
 
 import os
@@ -15,7 +16,10 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def cli(*argv: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "unimem.cli", *argv],
-        capture_output=True, text=True, cwd=REPO_ROOT, check=False,
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=False,
     )
 
 
@@ -29,7 +33,11 @@ def store(tmp_path):
 def test_knowledge_page_lifecycle(store):
     content_v1 = "# Architecture Guide\n\nAll services communicate via gRPC."
     res1 = knowledge_pages.update_page(
-        store, "guide/arch", content_v1, title="Architecture Guide", tags=["architecture", "backend"],
+        store,
+        "guide/arch",
+        content_v1,
+        title="Architecture Guide",
+        tags=["architecture", "backend"],
     )
     assert res1["version"] == 1
     assert res1["dry_run"] is False
@@ -42,7 +50,10 @@ def test_knowledge_page_lifecycle(store):
     # Dry-run diff
     content_v2 = "# Architecture Guide\n\nAll services communicate via gRPC and NATS JetStream."
     preview = knowledge_pages.update_page(
-        store, "guide/arch", content_v2, dry_run=True,
+        store,
+        "guide/arch",
+        content_v2,
+        dry_run=True,
     )
     assert preview["dry_run"] is True
     assert preview["changed"] is True
@@ -57,7 +68,11 @@ def test_knowledge_page_lifecycle(store):
 
     # Commit update with version check
     res2 = knowledge_pages.update_page(
-        store, "guide/arch", content_v2, expected_version=1, comment="Add NATS JetStream messaging",
+        store,
+        "guide/arch",
+        content_v2,
+        expected_version=1,
+        comment="Add NATS JetStream messaging",
     )
     assert res2["version"] == 2
 
@@ -74,8 +89,19 @@ def test_knowledge_page_lifecycle(store):
 
 
 def test_knowledge_page_cli_commands(store):
-    res_set = cli("page", "set", "playbook/deploy", "1. Run tests\n2. Push image",
-                  "--title", "Deploy Playbook", "--tags", "deploy", "ci", "--dest", store)
+    res_set = cli(
+        "page",
+        "set",
+        "playbook/deploy",
+        "1. Run tests\n2. Push image",
+        "--title",
+        "Deploy Playbook",
+        "--tags",
+        "deploy",
+        "ci",
+        "--dest",
+        store,
+    )
     assert res_set.returncode == 0
     assert "Saved page 'playbook/deploy' (v1)" in res_set.stdout
 

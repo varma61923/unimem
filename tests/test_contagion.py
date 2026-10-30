@@ -1,4 +1,5 @@
 """UniMem visible graph closure, bounded traversal and correlated-majority checks."""
+
 from __future__ import annotations
 
 import pytest
@@ -9,8 +10,9 @@ from unimem import nextwave_store as store
 
 def fact(root, text, *, sources=(), scopes=(), writer="root-a"):
     with memory_authority.writer(writer, "operator"):
-        return hierarchical.append_facts(root, [{"statement": text, "source_trace_id": next(iter(sources), ""),
-                                                 "scopes": list(scopes)}])[0][0]
+        return hierarchical.append_facts(
+            root, [{"statement": text, "source_trace_id": next(iter(sources), ""), "scopes": list(scopes)}]
+        )[0][0]
 
 
 def test_complete_visible_radius_includes_reads_derivatives_and_exports(tmp_path, monkeypatch):
@@ -24,9 +26,16 @@ def test_complete_visible_radius_includes_reads_derivatives_and_exports(tmp_path
     store.put(root, "rl-exports", "export-a", {"digest": "test"}, sources=[source.id])
     result = contagion.radius(root, source.id)
     ids = {n["id"] for n in result["nodes"]}
-    assert {source.id, derived.id, "agent:reviewer", "episode:episode-1", "output:answer-1",
-            store.reference("read-graph", read["id"]), store.reference("capsules", "capsule-a"),
-            store.reference("rl-exports", "export-a")} <= ids
+    assert {
+        source.id,
+        derived.id,
+        "agent:reviewer",
+        "episode:episode-1",
+        "output:answer-1",
+        store.reference("read-graph", read["id"]),
+        store.reference("capsules", "capsule-a"),
+        store.reference("rl-exports", "export-a"),
+    } <= ids
     assert secret.id not in ids and not result["truncated"]
     with pytest.raises(PermissionError):
         contagion.radius(root, secret.id)
@@ -43,9 +52,11 @@ def test_single_root_majority_is_one_source_and_reretrieval_rechecks_admission(t
     denied = fact(root, "Private vendor gamma audit checklist.", scopes=["secret"], writer="root-c")
     annotation = contagion.independence(root, memories, downweight=True)
     assert annotation["n_eff"] == pytest.approx(1)
-    assert all(r["agreement_weight"] == pytest.approx(.2) for r in annotation["records"])
+    assert all(r["agreement_weight"] == pytest.approx(0.2) for r in annotation["records"])
+
     def retrieve(*args, **kwargs):
         return [{"id": other.id}, {"id": denied.id}]
+
     result = contagion.reretrieve(root, "deployment", memories, retriever=retrieve)
     assert result["triggered"] and 1 < result["n_eff"] < 2
     assert denied.id not in {r["id"] for r in result["records"]}
@@ -88,8 +99,12 @@ def test_cli_and_gateway_independence_are_additive_and_read_graph_is_opt_in(tmp_
     default = app.handle("POST", "/v1/recall", headers, json.dumps(body).encode())
     assert default.status == 200 and "independence" not in json.loads(default.body)
     assert not store.latest(root, contagion.KIND)
-    annotated = app.handle("POST", "/v1/recall", headers, json.dumps({**body, "independence": True,
-                           "read_graph": {"output": "answer"}}).encode())
+    annotated = app.handle(
+        "POST",
+        "/v1/recall",
+        headers,
+        json.dumps({**body, "independence": True, "read_graph": {"output": "answer"}}).encode(),
+    )
     assert annotated.status == 200
     result = json.loads(annotated.body)
     assert result["independence"]["n_eff"] == 1 and result["read_graph"]["id"]

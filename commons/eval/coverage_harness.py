@@ -38,6 +38,7 @@ audit must flag it in every run.
 
 Seeds are `range(n)`, chosen before any run. No other vendor or product is run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -71,15 +72,17 @@ TEXT = {
 
 
 def _mem0():
-    client = NS(search=lambda q, **kw: {"results": [{"id": k, "memory": v} for k, v in TEXT.items()]},
-                delete=lambda i: None)
+    client = NS(
+        search=lambda q, **kw: {"results": [{"id": k, "memory": v} for k, v in TEXT.items()]}, delete=lambda i: None
+    )
     return ma.Mem0Adapter(client)
 
 
 def _letta():
     passages = NS(
         search=lambda agent_id, *, query, **kw: NS(
-            count=len(TEXT), results=[NS(id=k, content=v, timestamp="t", tags=None) for k, v in TEXT.items()]),
+            count=len(TEXT), results=[NS(id=k, content=v, timestamp="t", tags=None) for k, v in TEXT.items()]
+        ),
         delete=lambda memory_id, *, agent_id: None,
     )
     return ma.LettaAdapter(NS(agents=NS(passages=passages)), agent_id="agent-1")
@@ -88,15 +91,19 @@ def _letta():
 def _zep():
     def search(*, query, scope=None, **kw):
         return NS(edges=[NS(uuid_=k, fact=v, name="n") for k, v in TEXT.items()], nodes=None, episodes=None)
+
     return ma.ZepAdapter(NS(graph=NS(search=search, edge=NS(delete=lambda uuid_: None))), user_id="u1")
 
 
 def _claude_store():
     def list_(memory_store_id, **params):
         rows = [NS(type="memory_prefix", path="/notes/")]
-        rows += [NS(type="memory", id=k, path=f"/notes/{k}.md", content=v, content_sha256=f"sha-{k}")
-                 for k, v in TEXT.items()]
+        rows += [
+            NS(type="memory", id=k, path=f"/notes/{k}.md", content=v, content_sha256=f"sha-{k}")
+            for k, v in TEXT.items()
+        ]
         return iter(rows)
+
     client = NS(beta=NS(memory_stores=NS(memories=NS(list=list_, delete=lambda i, **kw: None))))
     return ma.ClaudeMemoryStoreAdapter(client, memory_store_id="memstore_1")
 
@@ -104,14 +111,14 @@ def _claude_store():
 def _agentcore():
     client = NS(
         retrieve_memories=lambda **kw: [
-            {"memoryRecordId": k, "content": {"text": v}, "score": 0.5} for k, v in TEXT.items()],
+            {"memoryRecordId": k, "content": {"text": v}, "score": 0.5} for k, v in TEXT.items()
+        ],
         delete_memory_record=lambda **kw: None,
     )
     return ma.AgentCoreAdapter(client, memory_id="mem-1", namespace="/actor/a/")
 
 
-ADAPTERS = {"mem0": _mem0, "letta": _letta, "zep": _zep, "claude-memory-store": _claude_store,
-            "agentcore": _agentcore}
+ADAPTERS = {"mem0": _mem0, "letta": _letta, "zep": _zep, "claude-memory-store": _claude_store, "agentcore": _agentcore}
 
 
 def run_seed(adapter: str, seed: int, occasions: int = OCCASIONS) -> dict:
@@ -152,8 +159,7 @@ def summarise(adapter: str, runs: list[dict]) -> dict:
         elif truth < 0:
             correct = sum(1 for r in rows if r["verdict"] == experiment.VERDICT_HURTS)
         else:
-            correct = sum(1 for r in rows if r["verdict"] not in (experiment.VERDICT_HELPS,
-                                                                 experiment.VERDICT_HURTS))
+            correct = sum(1 for r in rows if r["verdict"] not in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS))
         covered = sum(1 for r in rows if r["ci_low"] <= truth <= r["ci_high"])
         out["memories"][key] = {
             "true_effect": truth,
@@ -162,8 +168,7 @@ def summarise(adapter: str, runs: list[dict]) -> dict:
             "mean_estimate": statistics.fmean(r["effect"] for r in rows) if rows else None,
         }
     out["passed"] = all(
-        m["verdict_correct"] >= VERDICT_FLOOR and m["ci_coverage"] >= COVERAGE_FLOOR
-        for m in out["memories"].values()
+        m["verdict_correct"] >= VERDICT_FLOOR and m["ci_coverage"] >= COVERAGE_FLOOR for m in out["memories"].values()
     )
     return out
 
@@ -240,8 +245,10 @@ def _variant_seed(args: tuple) -> dict:
     try:
         holdout_io.configure(root, rate=RATE, salt=f"{variant}-{seed}")
         texts = dict(TEXT)
-        client = NS(search=lambda q, **kw: {"results": [{"id": k, "memory": v} for k, v in texts.items()]},
-                    delete=lambda i: None)
+        client = NS(
+            search=lambda q, **kw: {"results": [{"id": k, "memory": v} for k, v in texts.items()]},
+            delete=lambda i: None,
+        )
         memory = ma.MeasuredMemory(ma.Mem0Adapter(client), root=root, on_harm="inform")
         rng = random.Random(f"{variant}:{seed}")
         effects = dict(EFFECTS)
@@ -256,8 +263,12 @@ def _variant_seed(args: tuple) -> dict:
             if variant == "random_attrition" and rng.random() < ATTRITION_RANDOM:
                 lost += 1
                 continue
-            if variant == "differential_attrition" and not succeeded and GOOD in delivered \
-                    and rng.random() < ATTRITION_DIFFERENTIAL:
+            if (
+                variant == "differential_attrition"
+                and not succeeded
+                and GOOD in delivered
+                and rng.random() < ATTRITION_DIFFERENTIAL
+            ):
                 lost += 1
                 continue
             memory.record_outcome(f"o{i}", succeeded=succeeded)
@@ -266,9 +277,12 @@ def _variant_seed(args: tuple) -> dict:
         report = integrity.audit(rows)
         estimates = {e.lesson_slug: e for e in experiment.analyze(experiment_cmd._observations(rows))}
         return {
-            "audit": report.verdict, "lost": lost,
-            "memories": {k: {"verdict": e.verdict, "effect": e.effect, "ci_low": e.ci_low, "ci_high": e.ci_high}
-                         for k, e in estimates.items()},
+            "audit": report.verdict,
+            "lost": lost,
+            "memories": {
+                k: {"verdict": e.verdict, "effect": e.effect, "ci_low": e.ci_low, "ci_high": e.ci_high}
+                for k, e in estimates.items()
+            },
         }
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -287,15 +301,16 @@ def attrition(seeds: int, jobs: int, occasions: int = OCCASIONS) -> dict:
     random_runs = _run_variant("random_attrition", seeds, jobs, int(occasions / (1 - ATTRITION_RANDOM)))
     diff_runs = _run_variant("differential_attrition", seeds, jobs, occasions)
     random_summary = summarise("random_attrition", [r["memories"] for r in random_runs])
-    biased = [r for r in diff_runs
-              if GOOD in r["memories"] and r["memories"][GOOD]["ci_low"] > EFFECTS[GOOD]]
+    biased = [r for r in diff_runs if GOOD in r["memories"] and r["memories"][GOOD]["ci_low"] > EFFECTS[GOOD]]
     flagged = [r for r in diff_runs if r["audit"] != integrity.VERDICT_SOUND]
     return {
         "seeds": seeds,
-        "random": {"loss": ATTRITION_RANDOM, "memories": random_summary["memories"],
-                   "passed": random_summary["passed"],
-                   "audit_not_compromised": sum(r["audit"] != integrity.VERDICT_COMPROMISED
-                                                for r in random_runs) / seeds},
+        "random": {
+            "loss": ATTRITION_RANDOM,
+            "memories": random_summary["memories"],
+            "passed": random_summary["passed"],
+            "audit_not_compromised": sum(r["audit"] != integrity.VERDICT_COMPROMISED for r in random_runs) / seeds,
+        },
         "differential": {
             "loss_of_failures_when_delivered": ATTRITION_DIFFERENTIAL,
             "flagged_by_audit": len(flagged) / seeds,
@@ -350,29 +365,39 @@ def main(argv: list[str] | None = None) -> int:
         for c in report.get("coverage", []):
             print(f"[{'PASS' if c['passed'] else 'FAIL'}] {c['adapter']}")
             for key, m in c["memories"].items():
-                print(f"    {key:8s} true {m['true_effect']:+.2f}  verdict right {m['verdict_correct']:.0%}  "
-                      f"95% CI covers {m['ci_coverage']:.0%}  mean estimate {m['mean_estimate']:+.3f}")
+                print(
+                    f"    {key:8s} true {m['true_effect']:+.2f}  verdict right {m['verdict_correct']:.0%}  "
+                    f"95% CI covers {m['ci_coverage']:.0%}  mean estimate {m['mean_estimate']:+.3f}"
+                )
         if "withdrawal" in report:
             w = report["withdrawal"]
             print("\nautomatic withdrawal (policy `withdraw`, anytime-valid verdict)")
-            print(f"    harmful memory withdrawn in {w['harmful_withdrawn']:.0%} of runs, median "
-                  f"{w['median_occasions_to_withdraw']} occasions (p90 {w['p90_occasions_to_withdraw']}) "
-                  f"vs {w['planned_occasions_fixed_horizon']} planned at a fixed horizon "
-                  f"({w['median_over_plan']}x)")
+            print(
+                f"    harmful memory withdrawn in {w['harmful_withdrawn']:.0%} of runs, median "
+                f"{w['median_occasions_to_withdraw']} occasions (p90 {w['p90_occasions_to_withdraw']}) "
+                f"vs {w['planned_occasions_fixed_horizon']} planned at a fixed horizon "
+                f"({w['median_over_plan']}x)"
+            )
             print(f"    helpful withdrawn in {w['helpful_withdrawn']:.0%}, neutral in {w['neutral_withdrawn']:.0%}")
         if "attrition" in report:
             a = report["attrition"]
-            print(f"\nattrition: {a['random']['loss']:.0%} of outcomes lost at random -> "
-                  f"{'PASS' if a['random']['passed'] else 'FAIL'} (verdicts and coverage as without loss)")
+            print(
+                f"\nattrition: {a['random']['loss']:.0%} of outcomes lost at random -> "
+                f"{'PASS' if a['random']['passed'] else 'FAIL'} (verdicts and coverage as without loss)"
+            )
             d = a["differential"]
-            print("    failures lost when the helpful memory was delivered "
-                  f"({d['loss_of_failures_when_delivered']:.0%}): audit flagged "
-                  f"{d['flagged_by_audit']:.0%} of runs; estimate biased upward in "
-                  f"{d['estimate_biased_upward']:.0%}, of which unflagged {d['biased_and_unflagged']:.0%}")
+            print(
+                "    failures lost when the helpful memory was delivered "
+                f"({d['loss_of_failures_when_delivered']:.0%}): audit flagged "
+                f"{d['flagged_by_audit']:.0%} of runs; estimate biased upward in "
+                f"{d['estimate_biased_upward']:.0%}, of which unflagged {d['biased_and_unflagged']:.0%}"
+            )
         if "edits" in report:
             e = report["edits"]
-            print(f"\nmid-run edit: audit COMPROMISED in {e['edited_memory_flagged_compromised']:.0%} of runs -> "
-                  f"{'PASS' if e['passed'] else 'FAIL'}")
+            print(
+                f"\nmid-run edit: audit COMPROMISED in {e['edited_memory_flagged_compromised']:.0%} of runs -> "
+                f"{'PASS' if e['passed'] else 'FAIL'}"
+            )
     return 0 if ok else 1
 
 

@@ -110,9 +110,7 @@ class TestConfirmDeletionConfirmationGate:
     def test_refuses_without_yes_when_stdin_is_not_a_tty(self, capsys, monkeypatch):
         monkeypatch.setattr(account_cmd.sys.stdin, "isatty", lambda: False)
         called = []
-        monkeypatch.setattr(
-            account_cmd.hub_client, "confirm_account_deletion", lambda *a: called.append(a)
-        )
+        monkeypatch.setattr(account_cmd.hub_client, "confirm_account_deletion", lambda *a: called.append(a))
         assert account_cmd.run_confirm_deletion(_args(confirmation_token="tok")) == 1
         assert "refusing" in capsys.readouterr().err.lower()
         assert called == []

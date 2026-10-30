@@ -1,4 +1,5 @@
 """Falsifiable original retrieval metrics and actual durable governance workflows."""
+
 from __future__ import annotations
 
 import json
@@ -32,9 +33,17 @@ from unimem import hierarchical
 def populate(root: str, case: Case) -> dict[str, str]:
     keys = {}
     for row in case.facts:
-        fact, _ = hierarchical.add_fact(root, row.statement, confidence=row.confidence,
-                                        scopes=list(row.scopes), category=row.category, stability=row.stability,
-                                        valid_from=row.valid_from, valid_until=row.valid_until, expires_at=row.expires_at)
+        fact, _ = hierarchical.add_fact(
+            root,
+            row.statement,
+            confidence=row.confidence,
+            scopes=list(row.scopes),
+            category=row.category,
+            stability=row.stability,
+            valid_from=row.valid_from,
+            valid_until=row.valid_until,
+            expires_at=row.expires_at,
+        )
         keys[row.key] = fact.id
     return keys
 
@@ -62,8 +71,9 @@ def test_absent_gold_is_undefined_instead_of_a_fabricated_perfect_rank():
     assert ranking_metrics([], {"gold": 3}, k=3) == RankingMetrics(0, 0, 0)
 
 
-@pytest.mark.parametrize("grades", [{"gold": 0}, {"gold": 4}, {"gold": True}, {"gold": 1.5},
-                                    {"gold": float("nan")}, {"": 3}])
+@pytest.mark.parametrize(
+    "grades", [{"gold": 0}, {"gold": 4}, {"gold": True}, {"gold": 1.5}, {"gold": float("nan")}, {"": 3}]
+)
 def test_metric_grades_are_bounded_typed_input(grades):
     with pytest.raises(ValueError):
         ranking_metrics(["gold"], grades, k=3)
@@ -84,8 +94,9 @@ def test_duplicate_ranked_ids_cannot_inflate_recall_even_after_cutoff():
         ranking_metrics("gold", {"gold": 3}, k=3)
 
 
-@pytest.mark.parametrize("values", [(math.nan, 1, 1), (1, math.inf, 1), (-1, 0, 0), (1.1, 1, 1),
-                                     (None, 1, 1), (True, 1, 1)])
+@pytest.mark.parametrize(
+    "values", [(math.nan, 1, 1), (1, math.inf, 1), (-1, 0, 0), (1.1, 1, 1), (None, 1, 1), (True, 1, 1)]
+)
 def test_metric_objects_cannot_carry_nonfinite_or_inconsistent_values(values):
     with pytest.raises(ValueError):
         RankingMetrics(*values)
@@ -109,8 +120,16 @@ def test_fixture_set_includes_benefits_and_downside_stressors_before_comparison(
     cases = fixtures()
     assert len(cases) == 23
     names = {case.name for case in cases}
-    assert {"english-inflection", "cjk-retrieval", "stemming-collision", "stopword-technical-term",
-            "numeric-short-term", "short-identifier", "long-identifier", "long-source"} <= names
+    assert {
+        "english-inflection",
+        "cjk-retrieval",
+        "stemming-collision",
+        "stopword-technical-term",
+        "numeric-short-term",
+        "short-identifier",
+        "long-identifier",
+        "long-source",
+    } <= names
     assert {case.ability for case in cases} >= {"erasure", "scope", "stability", "knowledge-update", "abstention"}
 
 
@@ -131,8 +150,15 @@ def test_actual_wrong_view_results_fail_even_if_all_relevant_facts_are_present(t
 
 @pytest.mark.parametrize("operation", ["forget", "delete"])
 def test_real_erasure_invalidates_previously_read_fact_representations(tmp_path, operation):
-    case = Case("erasure", "erasure", "Orion rollback", (Fact("erased", "Orion rollback key is ERASED"),),
-                (), forbidden=("erased",), as_of=None)
+    case = Case(
+        "erasure",
+        "erasure",
+        "Orion rollback",
+        (Fact("erased", "Orion rollback key is ERASED"),),
+        (),
+        forbidden=("erased",),
+        as_of=None,
+    )
     root = str(tmp_path)
     keys = populate(root, case)
     previous = hierarchical.search_facts(root, case.query, scorer="overlap-v1")
@@ -170,10 +196,18 @@ def test_missing_durable_fixture_cannot_masquerade_as_safe_zero_recall(tmp_path)
 
 
 def test_private_fact_body_copied_under_an_eligible_id_still_fails_leakage(tmp_path):
-    case = Case("copy", "scope", "Orion key", (
-        Fact("private", "Orion key is PRIVATE_FINANCE_SECRET", scopes=("finance",)),
-        Fact("copied", "Orion key is PRIVATE_FINANCE_SECRET"),
-    ), (), forbidden=("private",), scope="payments")
+    case = Case(
+        "copy",
+        "scope",
+        "Orion key",
+        (
+            Fact("private", "Orion key is PRIVATE_FINANCE_SECRET", scopes=("finance",)),
+            Fact("copied", "Orion key is PRIVATE_FINANCE_SECRET"),
+        ),
+        (),
+        forbidden=("private",),
+        scope="payments",
+    )
     root = str(tmp_path)
     keys = populate(root, case)
     results = hierarchical.search_facts(root, case.query, scope="payments", scorer="bm25-v1")
@@ -206,10 +240,16 @@ def test_duplicate_real_results_are_rejected_as_an_invalid_ranking(tmp_path):
 
 
 def test_failed_real_evidence_admission_is_kept_as_an_error_in_both_scorers():
-    case = Case("unsafe-setup", "scope", "Orion timeout", (
-        Fact("private", "Private timeout measurements", scopes=("finance",)),
-        Fact("global", "Orion timeout is 5 seconds", evidence=("private",)),
-    ), (("global", 3),))
+    case = Case(
+        "unsafe-setup",
+        "scope",
+        "Orion timeout",
+        (
+            Fact("private", "Private timeout measurements", scopes=("finance",)),
+            Fact("global", "Orion timeout is 5 seconds", evidence=("private",)),
+        ),
+        (("global", 3),),
+    )
     outcomes = execute_case(case)
     assert len(outcomes) == 2
     for outcome in outcomes:
@@ -232,23 +272,39 @@ def test_summary_displays_losses_and_keeps_failures_in_metric_denominator():
 
 
 def test_failed_real_contradiction_mutation_is_retained_as_an_error():
-    case = Case("unsafe-resolution", "scope", "Orion timeout", (
-        Fact("old", "Orion timeout is 5 seconds", scopes=("payments",)),
-        Fact("new", "Orion timeout is 9 seconds", scopes=("finance",), valid_from="2026-01-01T00:00:00Z"),
-    ), (("new", 3),), mutations=(Mutation("resolve", "old", "new"),))
+    case = Case(
+        "unsafe-resolution",
+        "scope",
+        "Orion timeout",
+        (
+            Fact("old", "Orion timeout is 5 seconds", scopes=("payments",)),
+            Fact("new", "Orion timeout is 9 seconds", scopes=("finance",), valid_from="2026-01-01T00:00:00Z"),
+        ),
+        (("new", 3),),
+        mutations=(Mutation("resolve", "old", "new"),),
+    )
     outcomes = execute_case(case)
     assert all(outcome.error is not None and "mutation failed" in outcome.error for outcome in outcomes)
     assert all(not outcome.contracts_passed and outcome.metrics == RankingMetrics(0, 0, 0) for outcome in outcomes)
 
 
-@pytest.mark.parametrize("case", [
-    Case("duplicates", "input", "Orion", (Fact("x", "Orion one"), Fact("x", "Orion two")), ()),
-    Case("forward", "input", "Orion", (Fact("x", "Orion one", evidence=("later",)),), ()),
-    Case("unknown-gold", "input", "Orion", (Fact("x", "Orion one"),), (("missing", 3),)),
-    Case("conflict", "input", "Orion", (Fact("x", "Orion one"),), (("x", 3),), forbidden=("x",)),
-    Case("unknown-mutation", "input", "Orion", (Fact("x", "Orion one"),), (),
-         mutations=(Mutation("delete", "missing"),)),
-])
+@pytest.mark.parametrize(
+    "case",
+    [
+        Case("duplicates", "input", "Orion", (Fact("x", "Orion one"), Fact("x", "Orion two")), ()),
+        Case("forward", "input", "Orion", (Fact("x", "Orion one", evidence=("later",)),), ()),
+        Case("unknown-gold", "input", "Orion", (Fact("x", "Orion one"),), (("missing", 3),)),
+        Case("conflict", "input", "Orion", (Fact("x", "Orion one"),), (("x", 3),), forbidden=("x",)),
+        Case(
+            "unknown-mutation",
+            "input",
+            "Orion",
+            (Fact("x", "Orion one"),),
+            (),
+            mutations=(Mutation("delete", "missing"),),
+        ),
+    ],
+)
 def test_malformed_fixture_labels_are_rejected_before_ingestion(case):
     with pytest.raises(ValueError):
         validate_case(case)
@@ -257,8 +313,14 @@ def test_malformed_fixture_labels_are_rejected_before_ingestion(case):
 def test_actual_benchmark_cli_is_stdout_only_and_all_original_cases_are_reported(tmp_path):
     repository = str(Path(__file__).resolve().parents[1])
     environment = {**os.environ, "PYTHONPATH": repository, "TMPDIR": str(tmp_path)}
-    completed = subprocess.run([sys.executable, "-m", "benchmarks.fact_retrieval"],
-                               capture_output=True, text=True, check=False, cwd=tmp_path, env=environment)
+    completed = subprocess.run(
+        [sys.executable, "-m", "benchmarks.fact_retrieval"],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=tmp_path,
+        env=environment,
+    )
     assert completed.returncode == 0, completed.stderr
     manifest = json.loads(completed.stdout)
     assert manifest["case_count"] == 23
@@ -266,8 +328,12 @@ def test_actual_benchmark_cli_is_stdout_only_and_all_original_cases_are_reported
     assert len(manifest["cases"]) == 23
     assert manifest["contracts_passed"]
     assert len(manifest["fixture_sha256"]) == 64
-    assert manifest["comparison"]["bm25_ndcg_wins"] + manifest["comparison"]["bm25_ndcg_ties"] \
-        + manifest["comparison"]["bm25_ndcg_losses"] == 22
+    assert (
+        manifest["comparison"]["bm25_ndcg_wins"]
+        + manifest["comparison"]["bm25_ndcg_ties"]
+        + manifest["comparison"]["bm25_ndcg_losses"]
+        == 22
+    )
     assert list(tmp_path.iterdir()) == []
 
 

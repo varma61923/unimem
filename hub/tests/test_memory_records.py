@@ -19,8 +19,13 @@ async def test_hosted_inactive_candidates_cannot_displace_current_memory(session
     scope = {"tenant": org, "user": "u"}
     blockers = [
         MemoryRecord(
-            f"old-{i:03}", "fact", 1, {"text": "candidate"}, scope=scope,
-            status="retired" if i % 2 else "active", is_latest=bool(i % 2),
+            f"old-{i:03}",
+            "fact",
+            1,
+            {"text": "candidate"},
+            scope=scope,
+            status="retired" if i % 2 else "active",
+            is_latest=bool(i % 2),
         )
         for i in range(220)
     ]
@@ -28,11 +33,19 @@ async def test_hosted_inactive_candidates_cannot_displace_current_memory(session
     async with session_scope(session_factory) as session:
         session.add(Organization(id=org, name=org))
     async with session_scope(session_factory, org_id=org) as session:
-        await session.execute(insert(MemoryRecordProjection), [
-            {"org_id": org, "id": record.id, "version": record.version,
-             "scope": record.scope, "record": record.to_dict()}
-            for record in [*blockers, current]
-        ])
+        await session.execute(
+            insert(MemoryRecordProjection),
+            [
+                {
+                    "org_id": org,
+                    "id": record.id,
+                    "version": record.version,
+                    "scope": record.scope,
+                    "record": record.to_dict(),
+                }
+                for record in [*blockers, current]
+            ],
+        )
     store = PostgresJournal(session_factory, org)
     assert [record.id for record in await store.search("candidate", scope={"user": "u"}, limit=1)] == ["current"]
 
@@ -53,8 +66,10 @@ async def test_hosted_dense_candidates_respect_kind_scope_and_lifecycle(session_
 
     store = PostgresJournal(session_factory, org, vector_index=Vector())
     for identity, kind, status, user in (
-        ("episode", "episode", "active", "u"), ("retired", "fact", "retired", "u"),
-        ("other", "fact", "active", "other"), ("fact", "fact", "active", "u"),
+        ("episode", "episode", "active", "u"),
+        ("retired", "fact", "retired", "u"),
+        ("other", "fact", "active", "other"),
+        ("fact", "fact", "active", "u"),
     ):
         await store.put(
             MemoryRecord(identity, kind, 1, {"text": "semantic match"}, status=status, scope={"user": user})
@@ -80,8 +95,7 @@ async def test_hosted_dense_candidate_rows_load_in_bounded_queries(monkeypatch):
             return [SimpleNamespace(key=f"fact-{index}") for index in range(501)]
 
     records = [
-        MemoryRecord(f"fact-{index}", "fact", 1, {"text": "semantic result"},
-                     scope={"tenant": org, "user": "u"})
+        MemoryRecord(f"fact-{index}", "fact", 1, {"text": "semantic result"}, scope={"tenant": org, "user": "u"})
         for index in range(501)
     ]
     rows = {record.id: SimpleNamespace(id=record.id, record=record.to_dict()) for record in records}
@@ -122,8 +136,7 @@ async def test_hosted_dense_candidate_rows_load_in_bounded_queries(monkeypatch):
 
     monkeypatch.setattr(memory_records, "session_scope", fake_scope)
     store = PostgresJournal(object(), org, vector_index=Vector())
-    results = await store.search("no lexical match", scope={"user": "u"}, limit=1000,
-                                 kinds=("fact",), vector=[1.0])
+    results = await store.search("no lexical match", scope={"user": "u"}, limit=1000, kinds=("fact",), vector=[1.0])
 
     assert len(results) == 501
     assert len(session.statements) == 3  # one sparse query and two bounded dense-ID batches
@@ -207,9 +220,18 @@ async def test_hosted_expiration_cannot_erase_a_reused_identity_at_the_same_vers
     async with session_scope(session_factory) as session:
         session.add(Organization(id=org, name=org))
     store = PostgresJournal(session_factory, org)
-    await store.put(MemoryRecord("due", "observation", 1, {
-        "text": "Expired content.", "forget_after": "2000-01-01T00:00:00Z", "forget_reason": "expired",
-    }))
+    await store.put(
+        MemoryRecord(
+            "due",
+            "observation",
+            1,
+            {
+                "text": "Expired content.",
+                "forget_after": "2000-01-01T00:00:00Z",
+                "forget_reason": "expired",
+            },
+        )
+    )
     original = store.forget
 
     async def reuse_before_expiration(identity, **kwargs):
@@ -232,14 +254,26 @@ async def test_hosted_expiration_binds_stored_legacy_envelope_without_adding_def
     async with session_scope(session_factory) as session:
         session.add(Organization(id=org, name=org))
     store = PostgresJournal(session_factory, org)
-    record = await store.put(MemoryRecord("due", "observation", 1, {
-        "text": "Expired legacy content.", "forget_after": "2000-01-01T00:00:00Z", "forget_reason": "expired",
-    }))
+    record = await store.put(
+        MemoryRecord(
+            "due",
+            "observation",
+            1,
+            {
+                "text": "Expired legacy content.",
+                "forget_after": "2000-01-01T00:00:00Z",
+                "forget_reason": "expired",
+            },
+        )
+    )
     body = record.to_dict()
     body.pop("created_at")
     async with session_scope(session_factory, org_id=org) as session:
-        await session.execute(update(MemoryRecordProjection).where(
-            MemoryRecordProjection.org_id == org, MemoryRecordProjection.id == record.id).values(record=body))
+        await session.execute(
+            update(MemoryRecordProjection)
+            .where(MemoryRecordProjection.org_id == org, MemoryRecordProjection.id == record.id)
+            .values(record=body)
+        )
     assert (await store.reap_due())[0]["deleted"] == [record.id]
     async with session_scope(session_factory, org_id=org) as session:
         assert await session.get(MemoryRecordProjection, (org, record.id)) is None
@@ -268,8 +302,9 @@ async def test_hosted_capture_recovers_invalid_preference_counter(session_factor
     scope = {"tenant": org, "user": "u"}
     identity, content = preference_candidates("I prefer pytest.", scope)[0]
     store = PostgresJournal(session_factory, org)
-    await store.put(MemoryRecord(identity, "profile", 1,
-                                {**content, "weight": 1, "observations": observations}, scope=scope))
+    await store.put(
+        MemoryRecord(identity, "profile", 1, {**content, "weight": 1, "observations": observations}, scope=scope)
+    )
     await store.capture_turn("s", "pytest", text_value="I prefer pytest.", scope=scope)
     records = await store.search("", scope=scope, kinds=("profile",))
     updated = next(record for record in records if record.id == identity)
@@ -291,9 +326,21 @@ async def test_hosted_capture_reinforces_decayed_preference_weight(session_facto
     identity, content = preference_candidates("I prefer pytest.", scope)[0]
     observed_at = (datetime.now(timezone.utc) - timedelta(days=180)).isoformat()
     store = PostgresJournal(session_factory, org)
-    await store.put(MemoryRecord(identity, "profile", 1, {
-        **content, "weight": 10, "half_life_days": 90, "observations": 4, "observed_at": observed_at,
-    }, scope=scope))
+    await store.put(
+        MemoryRecord(
+            identity,
+            "profile",
+            1,
+            {
+                **content,
+                "weight": 10,
+                "half_life_days": 90,
+                "observations": 4,
+                "observed_at": observed_at,
+            },
+            scope=scope,
+        )
+    )
 
     await store.capture_turn("s", "pytest", text_value="I prefer pytest.", scope=scope)
     records = await store.search("", scope=scope, kinds=("profile",))

@@ -1,4 +1,5 @@
 """Function kits: what makes UniMem work for any business function."""
+
 from __future__ import annotations
 
 import json
@@ -13,8 +14,7 @@ DEMO_NOTE = "SYNTHETIC DEMO DATA"
 
 COMBINE_RULES = ("single", "all", "any")
 
-_TOP_KEYS = {"key", "title", "agent_type", "occasion", "outcome", "planning", "domains",
-             "packs", "regulated"}
+_TOP_KEYS = {"key", "title", "agent_type", "occasion", "outcome", "planning", "domains", "packs", "regulated"}
 _OCCASION_KEYS = {"label", "example"}
 _OUTCOME_KEYS = {"success", "window_days", "signals", "combine"}
 _PLANNING_KEYS = {"baseline", "effect", "holdout_rate"}
@@ -54,38 +54,47 @@ class FunctionKit:
 
     def to_dict(self) -> dict:
         return {
-            "key": self.key, "title": self.title, "agent_type": self.agent_type,
+            "key": self.key,
+            "title": self.title,
+            "agent_type": self.agent_type,
             "occasion": {"label": self.occasion_label, "example": self.occasion_example},
             "outcome": {
-                "success": self.outcome.success, "window_days": self.outcome.window_days,
-                "signals": list(self.outcome.signals), "combine": self.outcome.combine,
+                "success": self.outcome.success,
+                "window_days": self.outcome.window_days,
+                "signals": list(self.outcome.signals),
+                "combine": self.outcome.combine,
             },
             "planning": {
-                "baseline": self.planning.baseline, "effect": self.planning.effect,
+                "baseline": self.planning.baseline,
+                "effect": self.planning.effect,
                 "holdout_rate": self.planning.holdout_rate,
             },
-            "domains": list(self.domains), "packs": list(self.packs), "regulated": self.regulated,
+            "domains": list(self.domains),
+            "packs": list(self.packs),
+            "regulated": self.regulated,
         }
 
 
 def detector_names() -> tuple[str, ...]:
     """The signals a kit may name: every `from_*` detector in outcome_detect."""
-    return tuple(sorted(
-        n for n in dir(outcome_detect)
-        if n.startswith("from_") and callable(getattr(outcome_detect, n))
-    ))
+    return tuple(
+        sorted(n for n in dir(outcome_detect) if n.startswith("from_") and callable(getattr(outcome_detect, n)))
+    )
 
 
-def _number(problems: list[str], value, name: str, low: float, high: float,
-            *, low_open: bool, high_open: bool) -> float:
+def _number(
+    problems: list[str], value, name: str, low: float, high: float, *, low_open: bool, high_open: bool
+) -> float:
     ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
     if ok:
         above = value > low if low_open else value >= low
         below = value < high if high_open else value <= high
         ok = above and below
     if not ok:
-        problems.append(f"{name} must be a number in {'(' if low_open else '['}{low}, "
-                        f"{high}{')' if high_open else ']'}, got {value!r}")
+        problems.append(
+            f"{name} must be a number in {'(' if low_open else '['}{low}, "
+            f"{high}{')' if high_open else ']'}, got {value!r}"
+        )
         return low
     return float(value)
 
@@ -116,12 +125,17 @@ def from_dict(spec: object) -> FunctionKit:
     problems: list[str] = []
     for unknown in sorted(set(spec) - _TOP_KEYS):
         problems.append(f"unknown field {unknown!r}")
-    occasion = spec.get("occasion") if isinstance(spec.get("occasion"), dict) else {}
-    outcome = spec.get("outcome") if isinstance(spec.get("outcome"), dict) else {}
-    planning = spec.get("planning") if isinstance(spec.get("planning"), dict) else {}
-    for name, section, allowed in (("occasion", occasion, _OCCASION_KEYS),
-                                   ("outcome", outcome, _OUTCOME_KEYS),
-                                   ("planning", planning, _PLANNING_KEYS)):
+    raw_occasion = spec.get("occasion")
+    occasion = raw_occasion if isinstance(raw_occasion, dict) else {}
+    raw_outcome = spec.get("outcome")
+    outcome = raw_outcome if isinstance(raw_outcome, dict) else {}
+    raw_planning = spec.get("planning")
+    planning = raw_planning if isinstance(raw_planning, dict) else {}
+    for name, section, allowed in (
+        ("occasion", occasion, _OCCASION_KEYS),
+        ("outcome", outcome, _OUTCOME_KEYS),
+        ("planning", planning, _PLANNING_KEYS),
+    ):
         if not section:
             problems.append(f"{name} is required")
         for unknown in sorted(set(section) - allowed):
@@ -144,8 +158,7 @@ def from_dict(spec: object) -> FunctionKit:
     else:
         for s in signals:
             if s not in names:
-                problems.append(f"outcome.signals names {s!r}, which is not a detector "
-                                f"(known: {', '.join(names)})")
+                problems.append(f"outcome.signals names {s!r}, which is not a detector (known: {', '.join(names)})")
     combine = outcome.get("combine", "single" if len(signals) == 1 else None)
     if combine not in COMBINE_RULES:
         problems.append(f"outcome.combine must be one of {', '.join(COMBINE_RULES)}, got {combine!r}")
@@ -154,8 +167,9 @@ def from_dict(spec: object) -> FunctionKit:
     elif combine != "single" and len(signals) == 1:
         problems.append(f"outcome.combine {combine!r} needs more than one signal")
 
-    window = _number(problems, outcome.get("window_days"), "outcome.window_days",
-                     0, 365, low_open=False, high_open=False)
+    window = _number(
+        problems, outcome.get("window_days"), "outcome.window_days", 0, 365, low_open=False, high_open=False
+    )
     kit = FunctionKit(
         key=key,
         title=_text(problems, spec.get("title"), "title"),
@@ -164,15 +178,18 @@ def from_dict(spec: object) -> FunctionKit:
         occasion_example=_text(problems, occasion.get("example"), "occasion.example"),
         outcome=Outcome(
             success=_text(problems, outcome.get("success"), "outcome.success"),
-            window_days=window, signals=tuple(signals), combine=str(combine),
+            window_days=window,
+            signals=tuple(signals),
+            combine=str(combine),
         ),
         planning=Planning(
-            baseline=_number(problems, planning.get("baseline"), "planning.baseline",
-                             0, 1, low_open=True, high_open=True),
-            effect=_number(problems, planning.get("effect"), "planning.effect",
-                           0, 1, low_open=True, high_open=True),
-            holdout_rate=_number(problems, planning.get("holdout_rate"), "planning.holdout_rate",
-                                 0, 1, low_open=True, high_open=True),
+            baseline=_number(
+                problems, planning.get("baseline"), "planning.baseline", 0, 1, low_open=True, high_open=True
+            ),
+            effect=_number(problems, planning.get("effect"), "planning.effect", 0, 1, low_open=True, high_open=True),
+            holdout_rate=_number(
+                problems, planning.get("holdout_rate"), "planning.holdout_rate", 0, 1, low_open=True, high_open=True
+            ),
         ),
         domains=_slugs(problems, spec.get("domains"), "domains"),
         packs=_slugs(problems, spec.get("packs"), "packs"),
@@ -213,8 +230,10 @@ def resolve(name_or_path: str) -> FunctionKit:
     for kit in kits.values():
         if kit.agent_type == name_or_path:
             return kit
-    raise KitError(f"no function kit {name_or_path!r}; built in: {', '.join(sorted(kits))}. "
-                   "For anything else pass a kit file (see `unimem function check`).")
+    raise KitError(
+        f"no function kit {name_or_path!r}; built in: {', '.join(sorted(kits))}. "
+        "For anything else pass a kit file (see `unimem function check`)."
+    )
 
 
 def kit_path(root: str) -> str:
@@ -251,12 +270,16 @@ class Forecast:
 
 
 def forecast(
-    kit: FunctionKit, daily_occasions: float, *, baseline: float | None = None,
-    effect: float | None = None, rate: float | None = None, within_days: int | None = None,
+    kit: FunctionKit,
+    daily_occasions: float,
+    *,
+    baseline: float | None = None,
+    effect: float | None = None,
+    rate: float | None = None,
+    within_days: int | None = None,
 ) -> Forecast:
     """How long until this function's holdout can answer, at this volume."""
-    if not isinstance(daily_occasions, (int, float)) or not daily_occasions > 0 \
-            or not math.isfinite(daily_occasions):
+    if not isinstance(daily_occasions, (int, float)) or not daily_occasions > 0 or not math.isfinite(daily_occasions):
         raise ValueError("daily_occasions must be a positive number")
     b = kit.planning.baseline if baseline is None else baseline
     e = kit.planning.effect if effect is None else effect
@@ -269,10 +292,17 @@ def forecast(
         if room > 0:
             needed = math.ceil(design.occasions_needed / room)
     return Forecast(
-        kit=kit, daily_occasions=float(daily_occasions), baseline=b, effect=e, rate=r,
-        design=design, days_to_collect=collect,
+        kit=kit,
+        daily_occasions=float(daily_occasions),
+        baseline=b,
+        effect=e,
+        rate=r,
+        design=design,
+        days_to_collect=collect,
         days_to_verdict=collect + math.ceil(kit.outcome.window_days),
-        assumed_baseline=baseline is None, daily_needed=needed, within_days=within_days,
+        assumed_baseline=baseline is None,
+        daily_needed=needed,
+        within_days=within_days,
     )
 
 
@@ -292,18 +322,30 @@ def render_forecast(f: Forecast) -> str:
     ]
     if f.within_days is not None:
         if f.daily_needed is None:
-            lines += ["", f"**No volume delivers a verdict within {f.within_days} days:** the "
-                      f"{kit.outcome.window_days:g}-day outcome window alone uses it up."]
+            lines += [
+                "",
+                f"**No volume delivers a verdict within {f.within_days} days:** the "
+                f"{kit.outcome.window_days:g}-day outcome window alone uses it up.",
+            ]
         else:
-            lines += ["", f"To have a verdict within {f.within_days} days you need "
-                      f"**~{f.daily_needed:,} {kit.occasion_label}s a day**."]
+            lines += [
+                "",
+                f"To have a verdict within {f.within_days} days you need "
+                f"**~{f.daily_needed:,} {kit.occasion_label}s a day**.",
+            ]
     if f.assumed_baseline:
-        lines += ["", f"The {f.baseline:.0%} baseline is a planning assumption, not a measurement. "
-                  "Pass `--baseline` with your own current success rate: nearer 50% needs more "
-                  "occasions, nearer 0% or 100% fewer."]
+        lines += [
+            "",
+            f"The {f.baseline:.0%} baseline is a planning assumption, not a measurement. "
+            "Pass `--baseline` with your own current success rate: nearer 50% needs more "
+            "occasions, nearer 0% or 100% fewer.",
+        ]
     if f.days_to_verdict > 120:
-        lines += ["", "**This volume is too low to answer in a quarter.** Accept a larger effect "
-                  "as the thing being tested for (`--effect`), or measure more agents together."]
+        lines += [
+            "",
+            "**This volume is too low to answer in a quarter.** Accept a larger effect "
+            "as the thing being tested for (`--effect`), or measure more agents together.",
+        ]
     return "\n".join(lines)
 
 
@@ -325,9 +367,12 @@ def render_kit(kit: FunctionKit) -> str:
     if kit.domains:
         lines.append(f"- **Starter domains:** {', '.join(kit.domains)}.")
     if kit.regulated:
-        lines += ["", "Regulated function: the outcome is a human reviewer's acceptance of the "
-                  "agent's work. UniMem measures whether a memory changes that, not "
-                  "whether the underlying decision was correct."]
+        lines += [
+            "",
+            "Regulated function: the outcome is a human reviewer's acceptance of the "
+            "agent's work. UniMem measures whether a memory changes that, not "
+            "whether the underlying decision was correct.",
+        ]
     return "\n".join(lines)
 
 
@@ -345,14 +390,15 @@ def is_demo_store(root: str) -> bool:
     return holdout_io.load_config(root).note.startswith(DEMO_NOTE)
 
 
-def seed_demo(root: str, kit: FunctionKit, *, seed: int = 0,
-              occasions: int = DEMO_OCCASIONS) -> list[str]:
+def seed_demo(root: str, kit: FunctionKit, *, seed: int = 0, occasions: int = DEMO_OCCASIONS) -> list[str]:
     """Fill `root` with synthetic, labelled holdout data in this kit's terms."""
     existing = holdout_io.holdout_log_path(root)
     if os.path.isfile(existing) and os.path.getsize(existing) > 0 and not is_demo_store(root):
         raise KitError(f"{root} already holds real holdout data; demo data goes in an empty store")
     config = holdout_io.configure(
-        root, rate=kit.planning.holdout_rate, detect=kit.planning.effect,
+        root,
+        rate=kit.planning.holdout_rate,
+        detect=kit.planning.effect,
         note=f"{DEMO_NOTE} ({kit.key}); not a customer measurement",
         salt=f"demo-{kit.key}-{seed}",
     )
@@ -363,8 +409,12 @@ def seed_demo(root: str, kit: FunctionKit, *, seed: int = 0,
     for i in range(occasions):
         slug = slugs[i % len(slugs)]
         withheld = holdout_io.assign_and_log(
-            root, [slug], occasion_id=f"DEMO-{kit.key}-{i:05d}", rate=kit.planning.holdout_rate,
-            salt=config.salt, revisions={slug: revisions[slug]},
+            root,
+            [slug],
+            occasion_id=f"DEMO-{kit.key}-{i:05d}",
+            rate=kit.planning.holdout_rate,
+            salt=config.salt,
+            revisions={slug: revisions[slug]},
         )
         p = kit.planning.baseline + (effects[slug] if slug not in withheld else 0.0)
         holdout_io.record_outcome(root, f"DEMO-{kit.key}-{i:05d}", rng.random() < min(max(p, 0.02), 0.98))

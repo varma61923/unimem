@@ -5,6 +5,7 @@ cannot enter the heap. Competitive rows always use the established ``fsum``
 score, preserving returned scores and lexicographic ties. Older interpreters
 use the same exact scorer without screening. No vector/text cache is retained.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -17,11 +18,15 @@ from typing import cast
 
 _Dot = Callable[[Sequence[float], Sequence[float]], float]
 
+
 def _native_dot() -> _Dot | None:
     precision = sys.float_info
-    if sys.implementation.name != "cpython" or not (3, 12) <= sys.version_info[:2] <= (3, 14) \
-            or (precision.radix, precision.mant_dig, precision.max_exp, precision.min_exp, precision.rounds) \
-            != (2, 53, 1024, -1021, 1):
+    if (
+        sys.implementation.name != "cpython"
+        or not (3, 12) <= sys.version_info[:2] <= (3, 14)
+        or (precision.radix, precision.mant_dig, precision.max_exp, precision.min_exp, precision.rounds)
+        != (2, 53, 1024, -1021, 1)
+    ):
         return None
     return cast(_Dot | None, getattr(math, "sumprod", None))
 
@@ -39,8 +44,9 @@ class _Candidate:
         return self.score < other.score or (self.score == other.score and self.key > other.key)
 
 
-def cosine_topk(rows: Iterable[tuple[str, bytes]], query: tuple[float, ...], *,
-                dimension: int, top_k: int) -> list[tuple[str, float]]:
+def cosine_topk(
+    rows: Iterable[tuple[str, bytes]], query: tuple[float, ...], *, dimension: int, top_k: int
+) -> list[tuple[str, float]]:
     """Scan bounded caller-supplied pages; retain O(top_k + dimension) values.
 
     Callers validate limits and quantize the query to finite, nonzero float32.

@@ -1,4 +1,5 @@
 """Scope admission remains equivalent to the frozen oracle at every label shape."""
+
 from __future__ import annotations
 
 import itertools
@@ -18,7 +19,8 @@ def test_exhaustive_mixed_scope_sets_and_principal_modes():
         try:
             for labels, context, governed in itertools.product(combinations, combinations, (False, True)):
                 assert memory_control.matches(labels, context, governed=governed) == original_matches(
-                    labels, context, governed=governed), (principal, labels, context, governed)
+                    labels, context, governed=governed
+                ), (principal, labels, context, governed)
         finally:
             memory_control.REQUIRED_PRINCIPAL_SCOPE.reset(token)
 
@@ -58,8 +60,10 @@ def test_benchmark_has_equal_decisions_and_restores_principal():
         memory_control.REQUIRED_PRINCIPAL_SCOPE.reset(token)
 
 
-@pytest.mark.parametrize("parameter,value", [("labels", True), ("labels", 0), ("labels", 10001),
-                                           ("trials", 0), ("repetitions", 0), ("repetitions", 1.5)])
+@pytest.mark.parametrize(
+    "parameter,value",
+    [("labels", True), ("labels", 0), ("labels", 10001), ("trials", 0), ("repetitions", 0), ("repetitions", 1.5)],
+)
 def test_benchmark_rejects_unbounded_or_ambiguous_inputs(parameter, value):
     with pytest.raises(ValueError):
         measure(**{"labels": 1, "trials": 1, "repetitions": 1, parameter: value})

@@ -1,4 +1,5 @@
 """Admission budgets survive cancellation and preserve caller context."""
+
 from __future__ import annotations
 
 import asyncio
@@ -145,11 +146,14 @@ def test_mcp_compare_and_set_rejects_one_of_two_stale_writers(tmp_path: Path) ->
     server = mcp_server.build_server(str(tmp_path))
 
     async def drive() -> None:
-        responses = await asyncio.gather(*[
-            server.call_tool("memory_block_update", {"name": "project", "content": value,
-                                                    "expected_revision": revision})
-            for value in ("changed project facts", "alternative project facts")
-        ])
+        responses = await asyncio.gather(
+            *[
+                server.call_tool(
+                    "memory_block_update", {"name": "project", "content": value, "expected_revision": revision}
+                )
+                for value in ("changed project facts", "alternative project facts")
+            ]
+        )
         decoded = [json.loads(response.content[0].text) for response in responses]
         assert sorted(result["ok"] for result in decoded) == [False, True]
         conflict = next(result for result in decoded if not result["ok"])

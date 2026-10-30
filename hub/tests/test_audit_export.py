@@ -12,8 +12,14 @@ from hub.db import session_scope
 
 def _entry(**overrides):
     base = dict(
-        id="e1", created_at=datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc), actor="operator-cli",
-        org_id="o1", action="purge_trace", target_type="trace", target_id="t1", summary="removed one",
+        id="e1",
+        created_at=datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc),
+        actor="operator-cli",
+        org_id="o1",
+        action="purge_trace",
+        target_type="trace",
+        target_id="t1",
+        summary="removed one",
     )
     base.update(overrides)
     return NS(**base)
@@ -32,8 +38,14 @@ class TestFormats:
     def test_jsonl_round_trips_every_field(self):
         row = json.loads(audit_export.to_jsonl(_entry()))
         assert row == {
-            "id": "e1", "time": "2026-10-01T12:00:00+00:00", "actor": "operator-cli", "org_id": "o1",
-            "action": "purge_trace", "target_type": "trace", "target_id": "t1", "summary": "removed one",
+            "id": "e1",
+            "time": "2026-10-01T12:00:00+00:00",
+            "actor": "operator-cli",
+            "org_id": "o1",
+            "action": "purge_trace",
+            "target_type": "trace",
+            "target_id": "t1",
+            "summary": "removed one",
         }
 
     def test_cef_header_and_extension(self):
@@ -79,8 +91,7 @@ class TestExportCommand:
 
     async def test_org_filter(self, session_factory, capsys):
         await self._seed(session_factory)
-        await manage.export_audit("cef", None, "22222222-2222-2222-2222-222222222222",
-                                  session_factory=session_factory)
+        await manage.export_audit("cef", None, "22222222-2222-2222-2222-222222222222", session_factory=session_factory)
         lines = capsys.readouterr().out.strip().splitlines()
         assert len(lines) == 1 and "create_org_1" in lines[0]
 

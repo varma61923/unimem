@@ -8,6 +8,7 @@ and set of fixtures, so the shipped weights can be reproduced:
 
 Never train on a fixture that is used to report held-out accuracy.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,8 +44,9 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.out, "w", encoding="utf-8") as fh:
         json.dump(model.to_dict(), fh, separators=(",", ":"), sort_keys=True)
         fh.write("\n")
-    print(f"{len(rows)} rows, {model.meta['features']} features -> {args.out} "
-          f"({os.path.getsize(args.out) // 1024} KiB)")
+    print(
+        f"{len(rows)} rows, {model.meta['features']} features -> {args.out} ({os.path.getsize(args.out) // 1024} KiB)"
+    )
     return 0
 
 

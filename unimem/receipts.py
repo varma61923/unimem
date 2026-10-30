@@ -54,12 +54,8 @@ class Receipt:
     @property
     def digest(self) -> str:
         """Identifies the exact candidate set, by content."""
-        rows = _FIELD_SEP.join(
-            f"{v.slug}={v.revision}" for v in sorted(self.visible, key=lambda v: v.slug)
-        )
-        return hashlib.sha256(
-            (_DIGEST_DOMAIN + _FIELD_SEP + rows).encode("utf-8")
-        ).hexdigest()
+        rows = _FIELD_SEP.join(f"{v.slug}={v.revision}" for v in sorted(self.visible, key=lambda v: v.slug))
+        return hashlib.sha256((_DIGEST_DOMAIN + _FIELD_SEP + rows).encode("utf-8")).hexdigest()
 
     @property
     def n_visible(self) -> int:
@@ -83,8 +79,7 @@ class Receipt:
             "visible_digest": self.digest,
             "visible": [{"slug": v.slug, "revision": v.revision} for v in self.visible],
             "admitted": [
-                {"slug": a.slug, "revision": a.revision, "rank": a.rank,
-                 "relevance": a.relevance, "core": a.core}
+                {"slug": a.slug, "revision": a.revision, "rank": a.rank, "relevance": a.relevance, "core": a.core}
                 for a in self.admitted
             ],
             "withheld": [{"slug": s, "reason": r} for s, r in self.withheld],
@@ -97,19 +92,24 @@ class Receipt:
             at=str(raw.get("at", "")),
             visible=tuple(
                 Visible(str(v.get("slug", "")), str(v.get("revision", "")))
-                for v in (raw.get("visible") or []) if isinstance(v, dict)
+                for v in (raw.get("visible") or [])
+                if isinstance(v, dict)
             ),
             admitted=tuple(
                 Admitted(
-                    slug=str(a.get("slug", "")), revision=str(a.get("revision", "")),
-                    rank=int(a.get("rank", 0)), relevance=float(a.get("relevance", 0.0)),
+                    slug=str(a.get("slug", "")),
+                    revision=str(a.get("revision", "")),
+                    rank=int(a.get("rank", 0)),
+                    relevance=float(a.get("relevance", 0.0)),
                     core=bool(a.get("core", False)),
                 )
-                for a in (raw.get("admitted") or []) if isinstance(a, dict)
+                for a in (raw.get("admitted") or [])
+                if isinstance(a, dict)
             ),
             withheld=tuple(
                 (str(w.get("slug", "")), str(w.get("reason", "")))
-                for w in (raw.get("withheld") or []) if isinstance(w, dict)
+                for w in (raw.get("withheld") or [])
+                if isinstance(w, dict)
             ),
             query=str(raw.get("query", "")),
             scorer=str(raw.get("scorer", "")),
@@ -206,10 +206,7 @@ class Coverage:
     @property
     def used_rate(self) -> float:
         """Of the occasions that received anything, how many used it."""
-        return (
-            self.n_with_any_used / self.n_with_any_admitted
-            if self.n_with_any_admitted else 0.0
-        )
+        return self.n_with_any_used / self.n_with_any_admitted if self.n_with_any_admitted else 0.0
 
 
 def coverage(root: str) -> Coverage:

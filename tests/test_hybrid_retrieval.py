@@ -21,23 +21,20 @@ class TestEligibilityLabel:
     def test_a_plain_scorer_round_trips(self):
         label = retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_NONE)
         assert label == "idf-v2"
-        assert retrieval_io.parse_eligibility_label(label) == (
-            "idf-v2", retrieval_io.FUSION_NONE)
+        assert retrieval_io.parse_eligibility_label(label) == ("idf-v2", retrieval_io.FUSION_NONE)
 
     def test_a_fused_label_round_trips(self):
         label = retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_RRF)
-        assert retrieval_io.parse_eligibility_label(label) == (
-            "idf-v2", retrieval_io.FUSION_RRF)
+        assert retrieval_io.parse_eligibility_label(label) == ("idf-v2", retrieval_io.FUSION_RRF)
 
     def test_the_two_labels_differ(self):
         assert retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_RRF) != (
-            retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_NONE))
+            retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_NONE)
+        )
 
     def test_a_pre_fusion_label_reads_as_no_fusion(self):
-        assert retrieval_io.parse_eligibility_label("count") == (
-            "count", retrieval_io.FUSION_NONE)
-        assert retrieval_io.parse_eligibility_label("") == (
-            "", retrieval_io.FUSION_NONE)
+        assert retrieval_io.parse_eligibility_label("count") == ("count", retrieval_io.FUSION_NONE)
+        assert retrieval_io.parse_eligibility_label("") == ("", retrieval_io.FUSION_NONE)
 
     def test_an_unrecognised_label_degrades_rather_than_raising(self):
         scorer, fusion = retrieval_io.parse_eligibility_label("rrf(weird")
@@ -76,11 +73,20 @@ class TestConfig:
         root = str(tmp_path)
         os.makedirs(paths.memory_dir(root), exist_ok=True)
         with open(holdout_io.holdout_log_path(root), "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "lesson": "l", "occasion_id": "o", "injected": True,
-                "rate": 0.5, "salt": "s",
-                "scorer": "rrf(idf-v2+semantic)", "floor": 0.04,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "lesson": "l",
+                        "occasion_id": "o",
+                        "injected": True,
+                        "rate": 0.5,
+                        "salt": "s",
+                        "scorer": "rrf(idf-v2+semantic)",
+                        "floor": 0.04,
+                    }
+                )
+                + "\n"
+            )
         config = retrieval_io.load_config(root)
         assert config.pinned_for_running_experiment
         assert config.scorer == "idf-v2"
@@ -91,10 +97,20 @@ class TestConfig:
         root = str(tmp_path)
         os.makedirs(paths.memory_dir(root), exist_ok=True)
         with open(holdout_io.holdout_log_path(root), "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "lesson": "l", "occasion_id": "o", "injected": True,
-                "rate": 0.5, "salt": "s", "scorer": "count", "floor": 0.0,
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "lesson": "l",
+                        "occasion_id": "o",
+                        "injected": True,
+                        "rate": 0.5,
+                        "salt": "s",
+                        "scorer": "count",
+                        "floor": 0.0,
+                    }
+                )
+                + "\n"
+            )
         config = retrieval_io.load_config(root)
         assert config.fusion == retrieval_io.FUSION_NONE
         assert config.scorer == "count"
@@ -103,9 +119,7 @@ class TestConfig:
         from unimem import dosage
 
         assert (
-            retrieval_io.load_config(str(tmp_path)).redundancy_threshold
-            == dosage.DEFAULT_REDUNDANCY_THRESHOLD
-            == 0.0
+            retrieval_io.load_config(str(tmp_path)).redundancy_threshold == dosage.DEFAULT_REDUNDANCY_THRESHOLD == 0.0
         )
 
     def test_redundancy_threshold_is_read_from_the_store(self, tmp_path):
@@ -116,15 +130,9 @@ class TestConfig:
         from unimem import dosage
 
         _write_config(str(tmp_path), redundancy_threshold=1.7)
-        assert (
-            retrieval_io.load_config(str(tmp_path)).redundancy_threshold
-            == dosage.DEFAULT_REDUNDANCY_THRESHOLD
-        )
+        assert retrieval_io.load_config(str(tmp_path)).redundancy_threshold == dosage.DEFAULT_REDUNDANCY_THRESHOLD
         _write_config(str(tmp_path), redundancy_threshold=-0.5)
-        assert (
-            retrieval_io.load_config(str(tmp_path)).redundancy_threshold
-            == dosage.DEFAULT_REDUNDANCY_THRESHOLD
-        )
+        assert retrieval_io.load_config(str(tmp_path)).redundancy_threshold == dosage.DEFAULT_REDUNDANCY_THRESHOLD
 
     def test_redundancy_threshold_does_not_change_eligibility(self, tmp_path):
         _write_config(str(tmp_path), redundancy_threshold=0.5)
@@ -138,9 +146,17 @@ class TestDriftIsCaught:
 
         return [
             integrity.Assignment(
-                lesson="l", occasion_id=f"o{i}", injected=True, rate=0.5,
-                salt="s", at=None, revision=None, relevance=0.5, rank=1,
-                scorer=label, floor=0.04,
+                lesson="l",
+                occasion_id=f"o{i}",
+                injected=True,
+                rate=0.5,
+                salt="s",
+                at=None,
+                revision=None,
+                relevance=0.5,
+                rank=1,
+                scorer=label,
+                floor=0.04,
             )
             for i, label in enumerate(labels)
         ]
@@ -154,10 +170,12 @@ class TestDriftIsCaught:
     def test_turning_fusion_on_mid_run_invalidates_the_experiment(self):
         from unimem import integrity
 
-        finding = integrity.check_scorer_drift(self._rows(
-            retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_NONE),
-            retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_RRF),
-        ))
+        finding = integrity.check_scorer_drift(
+            self._rows(
+                retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_NONE),
+                retrieval_io.eligibility_label("idf-v2", retrieval_io.FUSION_RRF),
+            )
+        )
         assert finding.severity == integrity.SEVERITY_INVALIDATES
         assert "rrf(idf-v2+semantic)" in finding.headline
 
@@ -207,17 +225,23 @@ class TestConfigureCarriesEverything:
 
 class TestFusionIsByRank:
     def test_an_arm_only_lesson_still_places(self):
-        fused = dict(retrieval.reciprocal_rank_fusion({
-            "lexical": ["a", "b"],
-            "semantic": ["c"],
-        }))
+        fused = dict(
+            retrieval.reciprocal_rank_fusion(
+                {
+                    "lexical": ["a", "b"],
+                    "semantic": ["c"],
+                }
+            )
+        )
         assert set(fused) == {"a", "b", "c"}
 
     def test_agreement_across_arms_outranks_one_arms_confidence(self):
-        fused = retrieval.reciprocal_rank_fusion({
-            "lexical": ["solo", "agreed"],
-            "semantic": ["agreed", "other"],
-        })
+        fused = retrieval.reciprocal_rank_fusion(
+            {
+                "lexical": ["solo", "agreed"],
+                "semantic": ["agreed", "other"],
+            }
+        )
         assert fused[0][0] == "agreed"
 
     def test_scores_from_the_two_arms_are_never_compared(self):
@@ -231,9 +255,11 @@ def _lesson(root: str, slug: str, description: str, body: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     lesson_io.write_lesson(
         path,
-        {"name": slug, "description": description, "status": "active",
-         "importance": 3, "tags": []},
-        body, root=root, actor="test", reason="fixture",
+        {"name": slug, "description": description, "status": "active", "importance": 3, "tags": []},
+        body,
+        root=root,
+        actor="test",
+        reason="fixture",
     )
     assert frontmatter.read(path)
 
@@ -242,19 +268,25 @@ def _lesson(root: str, slug: str, description: str, body: str) -> None:
 def store(tmp_path):
     root = str(tmp_path / "fleet")
     os.makedirs(paths.lessons_dir(root), exist_ok=True)
-    _lesson(root, "suppression-list",
-            "Password reset email suppression failures.", "Check suppression.")
-    _lesson(root, "refund-threshold",
-            "Refunds above the manager approval threshold.", "Escalate.")
+    _lesson(root, "suppression-list", "Password reset email suppression failures.", "Check suppression.")
+    _lesson(root, "refund-threshold", "Refunds above the manager approval threshold.", "Escalate.")
     return root
 
 
 def _args(root: str, task: str, **extra) -> argparse.Namespace:
     base = dict(
-        task=task, top_k=5, dest=root, agent_type=None, lexical=False,
-        relevance_floor=None, include_importance_floor=None,
-        experiment=False, occasion_id=None, holdout_rate=None,
-        experiment_salt=None, exclude_shown=None,
+        task=task,
+        top_k=5,
+        dest=root,
+        agent_type=None,
+        lexical=False,
+        relevance_floor=None,
+        include_importance_floor=None,
+        experiment=False,
+        occasion_id=None,
+        holdout_rate=None,
+        experiment_salt=None,
+        exclude_shown=None,
     )
     base.update(extra)
     return argparse.Namespace(**base)
@@ -265,7 +297,8 @@ class TestHybridThroughTheCommand:
         monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: True)
         monkeypatch.setattr(query_cmd, "_index_is_unusable", lambda root: "")
         monkeypatch.setattr(
-            query_cmd, "_semantic_slugs",
+            query_cmd,
+            "_semantic_slugs",
             lambda args, root, hint, extra=0: (rc, list(slugs), ""),
         )
 
@@ -278,9 +311,7 @@ class TestHybridThroughTheCommand:
         assert "refund-threshold" in out
         assert "suppression-list" in out
 
-    def test_the_output_names_which_arms_found_each_lesson(
-        self, store, monkeypatch, capsys
-    ):
+    def test_the_output_names_which_arms_found_each_lesson(self, store, monkeypatch, capsys):
         _write_config(store, fusion="rrf")
         self._stub_semantic(monkeypatch, ["refund-threshold"])
         query_cmd.run(_args(store, "password reset email suppression"))
@@ -288,86 +319,96 @@ class TestHybridThroughTheCommand:
         assert "arms: lexical" in out
         assert "semantic" in out
 
-    def test_the_assignment_records_the_fused_label(
-        self, store, monkeypatch, capsys
-    ):
+    def test_the_assignment_records_the_fused_label(self, store, monkeypatch, capsys):
         _write_config(store, fusion="rrf")
         self._stub_semantic(monkeypatch, ["refund-threshold"])
-        rc = query_cmd.run(_args(
-            store, "password reset email suppression",
-            experiment=True, occasion_id="occ-1", holdout_rate=0.5,
-            experiment_salt="salt-1",
-        ))
+        rc = query_cmd.run(
+            _args(
+                store,
+                "password reset email suppression",
+                experiment=True,
+                occasion_id="occ-1",
+                holdout_rate=0.5,
+                experiment_salt="salt-1",
+            )
+        )
         assert rc == 0, capsys.readouterr()
         records, unreadable = holdout_io.read_log(store)
         assert unreadable == 0
         assert records
         assert {r.scorer for r in records} == {"rrf(adaptive-v1+semantic)"}
 
-    def test_an_unfused_store_records_the_plain_scorer(
-        self, store, monkeypatch, capsys
-    ):
+    def test_an_unfused_store_records_the_plain_scorer(self, store, monkeypatch, capsys):
         monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: False)
-        rc = query_cmd.run(_args(
-            store, "password reset email suppression",
-            experiment=True, occasion_id="occ-2", holdout_rate=0.5,
-            experiment_salt="salt-1",
-        ))
+        rc = query_cmd.run(
+            _args(
+                store,
+                "password reset email suppression",
+                experiment=True,
+                occasion_id="occ-2",
+                holdout_rate=0.5,
+                experiment_salt="salt-1",
+            )
+        )
         assert rc == 0, capsys.readouterr()
         records, _ = holdout_io.read_log(store)
         assert {r.scorer for r in records} == {"adaptive-v1"}
 
-    def test_a_failed_semantic_arm_does_not_log_a_fused_claim(
-        self, store, monkeypatch, capsys
-    ):
+    def test_a_failed_semantic_arm_does_not_log_a_fused_claim(self, store, monkeypatch, capsys):
         _write_config(store, fusion="rrf")
         self._stub_semantic(monkeypatch, [], rc=1)
-        rc = query_cmd.run(_args(
-            store, "password reset email suppression",
-            experiment=True, occasion_id="occ-3", holdout_rate=0.5,
-            experiment_salt="salt-1",
-        ))
+        rc = query_cmd.run(
+            _args(
+                store,
+                "password reset email suppression",
+                experiment=True,
+                occasion_id="occ-3",
+                holdout_rate=0.5,
+                experiment_salt="salt-1",
+            )
+        )
         assert rc == 0, capsys.readouterr()
         records, _ = holdout_io.read_log(store)
         assert records
         assert {r.scorer for r in records} == {"adaptive-v1"}
         assert "must not be pooled" in capsys.readouterr().err
 
-    def test_an_unfused_store_never_reaches_the_hybrid_path(
-        self, store, monkeypatch
-    ):
+    def test_an_unfused_store_never_reaches_the_hybrid_path(self, store, monkeypatch):
         called = []
         monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: True)
         monkeypatch.setattr(query_cmd, "_index_is_unusable", lambda root: "")
         monkeypatch.setattr(
-            query_cmd, "_run_hybrid",
+            query_cmd,
+            "_run_hybrid",
             lambda *a, **k: called.append(1) or 0,
         )
         monkeypatch.setattr(
-            query_cmd, "run_script",
+            query_cmd,
+            "run_script",
             lambda *a, **k: (0, "suppression-list | cosine=0.9 | importance=3\n"),
         )
         query_cmd.run(_args(store, "password reset email suppression"))
         assert called == []
 
-    def test_fusion_without_the_extra_falls_back_and_says_so(
-        self, store, monkeypatch, capsys
-    ):
+    def test_fusion_without_the_extra_falls_back_and_says_so(self, store, monkeypatch, capsys):
         _write_config(store, fusion="rrf")
         monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: False)
-        rc = query_cmd.run(_args(
-            store, "password reset email suppression",
-            experiment=True, occasion_id="occ-4", holdout_rate=0.5,
-            experiment_salt="salt-1",
-        ))
+        rc = query_cmd.run(
+            _args(
+                store,
+                "password reset email suppression",
+                experiment=True,
+                occasion_id="occ-4",
+                holdout_rate=0.5,
+                experiment_salt="salt-1",
+            )
+        )
         assert rc == 0
         assert "attention" in capsys.readouterr().err
         records, _ = holdout_io.read_log(store)
         assert {r.scorer for r in records} == {"adaptive-v1"}
 
-    def test_a_query_matching_nothing_in_either_arm_says_so(
-        self, store, monkeypatch, capsys
-    ):
+    def test_a_query_matching_nothing_in_either_arm_says_so(self, store, monkeypatch, capsys):
         _write_config(store, fusion="rrf")
         self._stub_semantic(monkeypatch, [])
         rc = query_cmd.run(_args(store, "zzz nothing matches this at all"))
@@ -386,8 +427,7 @@ class TestMcpSurfaceIsHonestAboutFusion:
         monkeypatch.setattr(semantic_arm, "available", lambda: False)
         _write_config(store, fusion="rrf")
         server = mcp_server.build_server(store)
-        result = asyncio.run(server.call_tool(
-            "retrieve", {"task": "password reset email suppression"}))
+        result = asyncio.run(server.call_tool("retrieve", {"task": "password reset email suppression"}))
         payload = getattr(result, "structured_content", None)
         if payload:
             payload = payload.get("result", payload)
@@ -403,8 +443,7 @@ class TestMcpSurfaceIsHonestAboutFusion:
         from unimem import mcp_server
 
         server = mcp_server.build_server(store)
-        result = asyncio.run(server.call_tool(
-            "retrieve", {"task": "password reset email suppression"}))
+        result = asyncio.run(server.call_tool("retrieve", {"task": "password reset email suppression"}))
         payload = getattr(result, "structured_content", None)
         if payload:
             payload = payload.get("result", payload)
@@ -421,11 +460,11 @@ class TestTheSemanticOnlyPathIsLabelled:
         monkeypatch.setattr(query_cmd, "has_attention_deps", lambda: True)
         monkeypatch.setattr(query_cmd, "_refresh_stale_index", lambda root: "")
         monkeypatch.setattr(
-            query_cmd, "run_script",
+            query_cmd,
+            "run_script",
             lambda *a, **k: (0, "# header\nsuppression-list | cosine=0.9 | importance=3\n"),
         )
-        rc = query_cmd.run(_args(store, "password reset email suppression",
-                                 experiment=True, occasion_id="sem-1"))
+        rc = query_cmd.run(_args(store, "password reset email suppression", experiment=True, occasion_id="sem-1"))
         assert rc == 0
         with open(holdout_io.holdout_log_path(store), encoding="utf-8") as fh:
             rows = [json.loads(line) for line in fh if line.strip()]
@@ -435,13 +474,17 @@ class TestTheSemanticOnlyPathIsLabelled:
         from unimem import integrity
 
         rows = [
-            integrity.Assignment(lesson="a", occasion_id=f"o{i}", injected=bool(i % 2),
-                                 succeeded=True, salt="s",
-                                 scorer="semantic" if i < 10 else "idf-v2")
+            integrity.Assignment(
+                lesson="a",
+                occasion_id=f"o{i}",
+                injected=bool(i % 2),
+                succeeded=True,
+                salt="s",
+                scorer="semantic" if i < 10 else "idf-v2",
+            )
             for i in range(20)
         ]
         assert integrity.check_scorer_drift(rows).severity == integrity.SEVERITY_INVALIDATES
 
     def test_pinning_from_a_semantic_label_gives_a_real_lexical_scorer(self):
-        assert retrieval_io.parse_eligibility_label("semantic") == (
-            retrieval.SCORER_IDF, retrieval_io.FUSION_NONE)
+        assert retrieval_io.parse_eligibility_label("semantic") == (retrieval.SCORER_IDF, retrieval_io.FUSION_NONE)

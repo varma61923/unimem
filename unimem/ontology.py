@@ -8,6 +8,7 @@ built-in defaults apply. The graph reads it on every write: unknown types and
 relations fall back (or are refused when `strict: true`), aliases resolve to one
 node, and an exclusive relation closes its previous value when a newer one is
 asserted."""
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,21 @@ from unimem import paths
 FILENAMES = ("ontology.yaml", "ontology.yml", "ontology.json", "ontology.ttl", "ontology.owl", "ontology.rdf")
 
 DEFAULT_ENTITY_TYPES = (
-    "service", "tool", "error", "concept", "lesson", "scope", "user", "file", "symbol", "memory", "document",
-    "person", "place", "organization", "event",
+    "service",
+    "tool",
+    "error",
+    "concept",
+    "lesson",
+    "scope",
+    "user",
+    "file",
+    "symbol",
+    "memory",
+    "document",
+    "person",
+    "place",
+    "organization",
+    "event",
 )
 DEFAULT_RELATIONS: dict[str, dict] = {
     "depends_on": {"inverse": "required_by"},
@@ -48,26 +62,145 @@ DEFAULT_RELATIONS: dict[str, dict] = {
 # Head words that name a type in a mention ("Payments Service", "Q3 Launch") or sit
 # next to it ("the city of Berlin"); ontology files add or override per type.
 DEFAULT_TYPE_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "service": ("service", "server", "api", "database", "db", "queue", "cache", "cluster", "gateway",
-                "backend", "microservice", "endpoint", "datastore", "broker", "bucket", "registry", "proxy",
-                "worker", "daemon", "scheduler", "consumer", "producer"),
-    "tool": ("cli", "sdk", "library", "framework", "plugin", "toolkit", "compiler", "linter", "formatter",
-             "bundler", "debugger", "profiler", "driver", "lint", "analyzer"),
+    "service": (
+        "service",
+        "server",
+        "api",
+        "database",
+        "db",
+        "queue",
+        "cache",
+        "cluster",
+        "gateway",
+        "backend",
+        "microservice",
+        "endpoint",
+        "datastore",
+        "broker",
+        "bucket",
+        "registry",
+        "proxy",
+        "worker",
+        "daemon",
+        "scheduler",
+        "consumer",
+        "producer",
+    ),
+    "tool": (
+        "cli",
+        "sdk",
+        "library",
+        "framework",
+        "plugin",
+        "toolkit",
+        "compiler",
+        "linter",
+        "formatter",
+        "bundler",
+        "debugger",
+        "profiler",
+        "driver",
+        "lint",
+        "analyzer",
+    ),
     "error": ("error", "exception", "failure", "fault", "timeout", "crash", "panic"),
     "person": ("mr", "mrs", "ms", "dr", "prof", "engineer", "developer", "manager", "ceo", "cto", "founder"),
-    "organization": ("inc", "corp", "corporation", "llc", "ltd", "gmbh", "labs", "company", "foundation",
-                     "university", "institute", "agency", "department", "team", "squad", "solutions",
-                     "systems", "networks", "software", "technologies", "analytics", "capital", "ventures",
-                     "partners", "holdings", "group"),
-    "place": ("city", "town", "village", "country", "county", "province", "region", "street", "avenue",
-              "river", "lake", "mountain", "island", "airport"),
-    "event": ("outage", "incident", "release", "launch", "conference", "summit", "meeting", "migration",
-              "workshop", "hackathon", "sprint", "retro", "offsite", "standup", "kickoff", "webinar", "keynote",
-              "planning", "freeze", "festival"),
-    "document": ("document", "spec", "specification", "rfc", "readme", "report", "runbook", "handbook",
-                 "policy", "guide", "guidelines", "manual", "book", "license", "licence", "contract",
-                 "agreement", "doc", "docs", "whitepaper", "charter", "playbook", "postmortem", "proposal",
-                 "memo", "adr", "protocol", "procedure"),
+    "organization": (
+        "inc",
+        "corp",
+        "corporation",
+        "llc",
+        "ltd",
+        "gmbh",
+        "labs",
+        "company",
+        "foundation",
+        "university",
+        "institute",
+        "agency",
+        "department",
+        "team",
+        "squad",
+        "solutions",
+        "systems",
+        "networks",
+        "software",
+        "technologies",
+        "analytics",
+        "capital",
+        "ventures",
+        "partners",
+        "holdings",
+        "group",
+    ),
+    "place": (
+        "city",
+        "town",
+        "village",
+        "country",
+        "county",
+        "province",
+        "region",
+        "street",
+        "avenue",
+        "river",
+        "lake",
+        "mountain",
+        "island",
+        "airport",
+    ),
+    "event": (
+        "outage",
+        "incident",
+        "release",
+        "launch",
+        "conference",
+        "summit",
+        "meeting",
+        "migration",
+        "workshop",
+        "hackathon",
+        "sprint",
+        "retro",
+        "offsite",
+        "standup",
+        "kickoff",
+        "webinar",
+        "keynote",
+        "planning",
+        "freeze",
+        "festival",
+    ),
+    "document": (
+        "document",
+        "spec",
+        "specification",
+        "rfc",
+        "readme",
+        "report",
+        "runbook",
+        "handbook",
+        "policy",
+        "guide",
+        "guidelines",
+        "manual",
+        "book",
+        "license",
+        "licence",
+        "contract",
+        "agreement",
+        "doc",
+        "docs",
+        "whitepaper",
+        "charter",
+        "playbook",
+        "postmortem",
+        "proposal",
+        "memo",
+        "adr",
+        "protocol",
+        "procedure",
+    ),
 }
 FALLBACK_TYPE = "concept"
 FALLBACK_RELATION = "relates_to"
@@ -122,11 +255,14 @@ class Ontology:
         for name, spec in definitions.items():
             if isinstance(spec, dict) and spec.get("type") == "object":
                 key = _key(name)
-                base.entity_types[key] = EntityType(key, str(spec.get("description", "")),
-                                                   schema={**spec, "$defs": definitions})
+                base.entity_types[key] = EntityType(
+                    key, str(spec.get("description", "")), schema={**spec, "$defs": definitions}
+                )
         if schema.get("x-unimem-relations"):
-            base = _from_mapping({"entity_types": base.to_dict()["entity_types"],
-                                  "relations": schema["x-unimem-relations"]}, "json-schema")
+            base = _from_mapping(
+                {"entity_types": base.to_dict()["entity_types"], "relations": schema["x-unimem-relations"]},
+                "json-schema",
+            )
         return base
 
     @classmethod
@@ -146,10 +282,17 @@ class Ontology:
     def default(cls) -> Ontology:
         return cls(
             entity_types={n: EntityType(n, keywords=DEFAULT_TYPE_KEYWORDS.get(n, ())) for n in DEFAULT_ENTITY_TYPES},
-            relations={n: RelationType(n, domain=tuple(o.get("domain", ())), range=tuple(o.get("range", ())),
-                                       exclusive=o.get("exclusive", False), symmetric=o.get("symmetric", False),
-                                       inverse=o.get("inverse"))
-                       for n, o in DEFAULT_RELATIONS.items()},
+            relations={
+                n: RelationType(
+                    n,
+                    domain=tuple(o.get("domain", ())),
+                    range=tuple(o.get("range", ())),
+                    exclusive=o.get("exclusive", False),
+                    symmetric=o.get("symmetric", False),
+                    inverse=o.get("inverse"),
+                )
+                for n, o in DEFAULT_RELATIONS.items()
+            },
         )
 
     # --- lookups ------------------------------------------------------------------
@@ -189,11 +332,9 @@ class Ontology:
     def check_edge(self, relation: RelationType, source_type: str, target_type: str) -> list[str]:
         problems = []
         if relation.domain and not set(self.ancestors(source_type)) & set(relation.domain):
-            problems.append(f"{relation.name} expects a source of type {'/'.join(relation.domain)}, "
-                            f"not {source_type}")
+            problems.append(f"{relation.name} expects a source of type {'/'.join(relation.domain)}, not {source_type}")
         if relation.range and not set(self.ancestors(target_type)) & set(relation.range):
-            problems.append(f"{relation.name} expects a target of type {'/'.join(relation.range)}, "
-                            f"not {target_type}")
+            problems.append(f"{relation.name} expects a target of type {'/'.join(relation.range)}, not {target_type}")
         if problems and self.strict:
             raise OntologyError("; ".join(problems))
         return problems
@@ -207,8 +348,11 @@ class Ontology:
             prefix = canonical.split(":", 1)[0] + ":" if ":" in canonical else ""
             for alias in aliases:
                 alias_l = alias.lower()
-                if lowered == alias_l or (prefix and lowered == prefix + alias_l) or \
-                        (prefix and lowered.split(":", 1)[-1] == alias_l.replace(" ", "_")):
+                if (
+                    lowered == alias_l
+                    or (prefix and lowered == prefix + alias_l)
+                    or (prefix and lowered.split(":", 1)[-1] == alias_l.replace(" ", "_"))
+                ):
                     return canonical
         return node_id
 
@@ -222,18 +366,29 @@ class Ontology:
 
     def to_dict(self) -> dict:
         return {
-            "source": self.source, "strict": self.strict,
-            "entity_types": {n: {"description": t.description, "parent": t.parent, "schema": t.schema,
-                                 "keywords": list(t.keywords)}
-                             for n, t in sorted(self.entity_types.items())},
-            "relations": {n: {"description": r.description, "domain": list(r.domain), "range": list(r.range),
-                              "exclusive": r.exclusive, "symmetric": r.symmetric, "inverse": r.inverse}
-                          for n, r in sorted(self.relations.items())},
+            "source": self.source,
+            "strict": self.strict,
+            "entity_types": {
+                n: {"description": t.description, "parent": t.parent, "schema": t.schema, "keywords": list(t.keywords)}
+                for n, t in sorted(self.entity_types.items())
+            },
+            "relations": {
+                n: {
+                    "description": r.description,
+                    "domain": list(r.domain),
+                    "range": list(r.range),
+                    "exclusive": r.exclusive,
+                    "symmetric": r.symmetric,
+                    "inverse": r.inverse,
+                }
+                for n, r in sorted(self.relations.items())
+            },
             "aliases": {k: list(v) for k, v in sorted(self.entity_aliases.items())},
         }
 
 
 # --- loading ------------------------------------------------------------------------
+
 
 def _from_mapping(data: dict, source: str) -> Ontology:
     if not isinstance(data, dict):
@@ -246,18 +401,30 @@ def _from_mapping(data: dict, source: str) -> Ontology:
         words = spec.get("keywords")
         if words is not None and not isinstance(words, (list, tuple)):
             raise OntologyError(f"{source}: keywords of entity type {name!r} must be a list")
-        keywords = tuple(str(w).strip().lower() for w in words if str(w).strip()) if words is not None else \
-            (prior.keywords if prior else ())
-        base.entity_types[_key(name)] = EntityType(_key(name), str(spec.get("description", "")),
-                                                   _key(spec["parent"]) if spec.get("parent") else None,
-                                                   spec.get("schema", {}), keywords)
+        keywords = (
+            tuple(str(w).strip().lower() for w in words if str(w).strip())
+            if words is not None
+            else (prior.keywords if prior else ())
+        )
+        base.entity_types[_key(name)] = EntityType(
+            _key(name),
+            str(spec.get("description", "")),
+            _key(spec["parent"]) if spec.get("parent") else None,
+            spec.get("schema", {}),
+            keywords,
+        )
     for name, spec in (data.get("relations") or {}).items():
         spec = spec if isinstance(spec, dict) else {}
         as_tuple = lambda v: tuple(_key(x) for x in ([v] if isinstance(v, str) else (v or ())))  # noqa: E731
         base.relations[_key(name)] = RelationType(
-            _key(name), str(spec.get("description", "")), as_tuple(spec.get("domain")), as_tuple(spec.get("range")),
-            bool(spec.get("exclusive", False)), bool(spec.get("symmetric", False)),
-            _key(spec["inverse"]) if spec.get("inverse") else None)
+            _key(name),
+            str(spec.get("description", "")),
+            as_tuple(spec.get("domain")),
+            as_tuple(spec.get("range")),
+            bool(spec.get("exclusive", False)),
+            bool(spec.get("symmetric", False)),
+            _key(spec["inverse"]) if spec.get("inverse") else None,
+        )
     for canonical, variants in (data.get("aliases") or {}).items():
         if not isinstance(variants, (list, tuple)):
             raise OntologyError(f"{source}: aliases of {canonical!r} must be a list")
@@ -290,8 +457,10 @@ def _from_rdf(path: str) -> Ontology:
         if isinstance(cls, rdflib.BNode):
             continue
         parent = next((local(p) for p in g.objects(cls, RDFS.subClassOf) if not isinstance(p, rdflib.BNode)), None)
-        data["entity_types"][local(cls)] = {"parent": parent,
-                                            "description": str(next(g.objects(cls, RDFS.comment), ""))}
+        data["entity_types"][local(cls)] = {
+            "parent": parent,
+            "description": str(next(g.objects(cls, RDFS.comment), "")),
+        }
     for prop in set(g.subjects(RDF.type, OWL.ObjectProperty)):
         data["relations"][local(prop)] = {
             "domain": [local(d) for d in g.objects(prop, RDFS.domain)],

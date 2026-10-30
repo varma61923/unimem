@@ -9,7 +9,7 @@ from unimem.commands._format import read_or_warn
 BODY_KEY = templates.BODY_KEY
 
 
-def load_active_lessons(root: str, status: str = "active") -> list[dict]:
+def load_active_lessons(root: str, status: str | None = "active") -> list[dict]:
     out = []
     for path in sorted(glob.glob(os.path.join(paths.lessons_dir(root), "lesson_*.md"))):
         if os.path.basename(path) == "lesson_template.md":

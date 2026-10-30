@@ -1,4 +1,5 @@
 """Facts recall must inject what is relevant, not whatever clears a score that suits one embedding model."""
+
 from __future__ import annotations
 
 import random
@@ -17,19 +18,21 @@ def _pool(related: dict[str, float], *, baseline: float, noise: float, n: int, s
     return scored
 
 
-@pytest.mark.parametrize("baseline, hit", [
-    (0.50, 0.82),  # bge-small: unrelated text scores about 0.45-0.55
-    (0.12, 0.62),  # arctic: unrelated text scores about 0.1
-    (0.30, 0.75),
-])
+@pytest.mark.parametrize(
+    "baseline, hit",
+    [
+        (0.50, 0.82),  # bge-small: unrelated text scores about 0.45-0.55
+        (0.12, 0.62),  # arctic: unrelated text scores about 0.1
+        (0.30, 0.75),
+    ],
+)
 def test_only_the_outlier_is_kept_whatever_the_models_baseline(baseline, hit):
     chosen = recall._dense_select(_pool({"answer": hit}, baseline=baseline, noise=0.04, n=30), k=12)
     assert list(chosen) == ["answer"]
 
 
 def test_several_genuinely_relevant_facts_are_all_kept():
-    chosen = recall._dense_select(
-        _pool({"a": 0.80, "b": 0.78, "c": 0.76}, baseline=0.50, noise=0.04, n=40), k=12)
+    chosen = recall._dense_select(_pool({"a": 0.80, "b": 0.78, "c": 0.76}, baseline=0.50, noise=0.04, n=40), k=12)
     assert set(chosen) == {"a", "b", "c"}
 
 
@@ -44,24 +47,32 @@ def test_a_tight_pool_of_near_identical_facts_does_not_all_pass():
 
 
 def test_tiny_pools_use_the_band_and_never_return_non_positive_scores():
-    pool = [(SimpleNamespace(id="a"), 0.90), (SimpleNamespace(id="b"), 0.85), (SimpleNamespace(id="c"), 0.40),
-            (SimpleNamespace(id="d"), -0.1)]
+    pool = [
+        (SimpleNamespace(id="a"), 0.90),
+        (SimpleNamespace(id="b"), 0.85),
+        (SimpleNamespace(id="c"), 0.40),
+        (SimpleNamespace(id="d"), -0.1),
+    ]
     assert set(recall._dense_select(pool, k=12)) == {"a", "b"}
     assert recall._dense_select([(SimpleNamespace(id="x"), 0.0)], k=5) == {}
     assert recall._dense_select([], k=5) == {}
 
 
 def test_k_still_bounds_the_result():
-    chosen = recall._dense_select(_pool({f"r{i}": 0.80 - i * 0.001 for i in range(6)}, baseline=0.5, noise=0.04, n=30), k=3)
+    chosen = recall._dense_select(
+        _pool({f"r{i}": 0.80 - i * 0.001 for i in range(6)}, baseline=0.5, noise=0.04, n=30), k=3
+    )
     assert len(chosen) == 3
 
 
 def test_a_fact_that_shares_only_function_words_with_the_question_is_not_injected(tmp_path, monkeypatch):
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", "none")  # lexical arm only
     root = str(tmp_path)
-    for statement in ("The billing service is owned by Alice Chen",
-                      "Release 4.2 shipped with the new retry policy",
-                      "The office coffee machine is descaled on the first Monday of each month"):
+    for statement in (
+        "The billing service is owned by Alice Chen",
+        "Release 4.2 shipped with the new retry policy",
+        "The office coffee machine is descaled on the first Monday of each month",
+    ):
         hierarchical.add_fact(root, statement)
     question = "what should I do when the billing database fails over?"
     scored = hierarchical.search_facts(root, question, limit=10)
@@ -79,7 +90,15 @@ def test_fact_cli_exposes_record_time_queries(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("UNIMEM_FACT_EMBEDDER", "none")
     root = str(tmp_path)
     hierarchical.add_fact(root, "The staging cluster runs on Nomad")
-    base = {"dest": root, "scope": "", "category": "", "as_of": "", "status": "active", "limit": 5, "scorer": "overlap-v1"}
+    base = {
+        "dest": root,
+        "scope": "",
+        "category": "",
+        "as_of": "",
+        "status": "active",
+        "limit": 5,
+        "scorer": "overlap-v1",
+    }
     assert fact_cmd.run_list(argparse.Namespace(**base, known_at="2000-01-01")) == 0
     assert "No matching facts" in capsys.readouterr().out
     assert fact_cmd.run_list(argparse.Namespace(**base, known_at="2100-01-01")) == 0

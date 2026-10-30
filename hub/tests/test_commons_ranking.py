@@ -22,10 +22,7 @@ class TestRankCandidatesUnit:
     def test_both_implementations_agree(self, monkeypatch):
         pytest.importorskip("numpy")
         query = commons.signature_for("payment webhook delivered twice", "", [])
-        corpus = [
-            commons.signature_for(*args[:2], args[3])
-            for args in (WEBHOOK, POOL)
-        ]
+        corpus = [commons.signature_for(*args[:2], args[3]) for args in (WEBHOOK, POOL)]
         with_numpy = commons.rank_candidates(query, corpus, 5)
         monkeypatch.setattr(commons, "_np", None)
         without_numpy = commons.rank_candidates(query, corpus, 5)

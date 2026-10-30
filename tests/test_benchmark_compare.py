@@ -1,4 +1,5 @@
 """Analytic ranking oracles, clustered inference and fail-closed input contracts."""
+
 from __future__ import annotations
 
 import copy
@@ -15,17 +16,35 @@ from benchmarks.compare import check_regressions, clustered_estimates, compare_r
 
 def _run() -> dict[str, Any]:
     return {
-        "comparison_schema": 1, "dataset": "fixture", "budget": 1500, "mode": "memory",
+        "comparison_schema": 1,
+        "dataset": "fixture",
+        "budget": 1500,
+        "mode": "memory",
         "provenance": {
-            "dataset_sha256": "a" * 64, "adapter_sha256": "b" * 64,
-            "product_sha256": "c" * 64, "sampling": {"seed": 42, "limit": 0, "personas": ""},
+            "dataset_sha256": "a" * 64,
+            "adapter_sha256": "b" * 64,
+            "product_sha256": "c" * 64,
+            "sampling": {"seed": 42, "limit": 0, "personas": ""},
         },
         "rows": [
-            {"id": f"q{i}", "type": "temporal", "cluster_id": f"c{i}", "question_sha256": str(i) * 64,
-             "mode": "memory", "gold_turn_ids": ["t1", "t2"], "gold_session_ids": ["s1"],
-             "ranked_turn_ids": ["t1", "other", "t2"], "ranked_session_ids": ["s1", "s2"],
-             "evidence": .5, "complete": False, "session": 1., "tokens": 100,
-             "answer_in_context": True, "correct": True, "score": 1.}
+            {
+                "id": f"q{i}",
+                "type": "temporal",
+                "cluster_id": f"c{i}",
+                "question_sha256": str(i) * 64,
+                "mode": "memory",
+                "gold_turn_ids": ["t1", "t2"],
+                "gold_session_ids": ["s1"],
+                "ranked_turn_ids": ["t1", "other", "t2"],
+                "ranked_session_ids": ["s1", "s2"],
+                "evidence": 0.5,
+                "complete": False,
+                "session": 1.0,
+                "tokens": 100,
+                "answer_in_context": True,
+                "correct": True,
+                "score": 1.0,
+            }
             for i in range(3)
         ],
     }
@@ -34,20 +53,26 @@ def _run() -> dict[str, Any]:
 def _oracle_percentile(values: list[float], p: float) -> float:
     ordered = sorted(values)
     pos = (len(ordered) - 1) * p
-    return ordered[math.floor(pos)] * (math.ceil(pos) - pos) + ordered[math.ceil(pos)] * (pos - math.floor(pos)) if pos % 1 else ordered[int(pos)]
+    return (
+        ordered[math.floor(pos)] * (math.ceil(pos) - pos) + ordered[math.ceil(pos)] * (pos - math.floor(pos))
+        if pos % 1
+        else ordered[int(pos)]
+    )
 
 
 def test_rank_metrics_have_analytic_binary_relevance_oracle() -> None:
     metrics = ranking_metrics(["x", "a", "b", "z"], ["a", "b", "missing"])
     assert metrics["recall_at_5"] == metrics["recall_at_10"] == 2 / 3
-    assert metrics["ndcg_at_10"] == pytest.approx((1 / math.log2(3) + 1 / math.log2(4)) / (1 + 1 / math.log2(3) + 1 / math.log2(4)))
+    assert metrics["ndcg_at_10"] == pytest.approx(
+        (1 / math.log2(3) + 1 / math.log2(4)) / (1 + 1 / math.log2(3) + 1 / math.log2(4))
+    )
 
 
 def test_rank_cutoffs_and_ideal_cap_at_ten() -> None:
     ranked = [f"t{i}" for i in range(20)]
     metrics = ranking_metrics(ranked, ranked)
-    assert metrics == {"recall_at_5": .25, "recall_at_10": .5, "ndcg_at_10": 1.}
-    assert ranking_metrics([], ["missing"]) == {"recall_at_5": 0., "recall_at_10": 0., "ndcg_at_10": 0.}
+    assert metrics == {"recall_at_5": 0.25, "recall_at_10": 0.5, "ndcg_at_10": 1.0}
+    assert ranking_metrics([], ["missing"]) == {"recall_at_5": 0.0, "recall_at_10": 0.0, "ndcg_at_10": 0.0}
     assert all(value is None for value in ranking_metrics(["anything"], []).values())
 
 
@@ -60,8 +85,8 @@ def test_rank_duplicate_or_empty_identities_rejected(ranked: list[str], gold: li
 def test_zero_mean_delta_retains_nonzero_uncertainty() -> None:
     base = _run()
     candidate = copy.deepcopy(base)
-    base["rows"][0]["evidence"], base["rows"][1]["evidence"] = 0., 1.
-    candidate["rows"][0]["evidence"], candidate["rows"][1]["evidence"] = 1., 0.
+    base["rows"][0]["evidence"], base["rows"][1]["evidence"] = 0.0, 1.0
+    candidate["rows"][0]["evidence"], candidate["rows"][1]["evidence"] = 1.0, 0.0
     result = compare_runs(base, candidate, n_resamples=2000)
     metric = result["overall"]["evidence"]  # type: ignore[index]
     assert metric["delta"] == 0
@@ -73,26 +98,26 @@ def test_cluster_bootstrap_matches_independent_weighted_oracle() -> None:
     base = _run()
     candidate = copy.deepcopy(base)
     for row in base["rows"]:
-        row["evidence"] = 0.
+        row["evidence"] = 0.0
     # Two questions in c0, one in c1. Question-weighted mean is 2/3,
     # not the average of the cluster means (1/2).
     for i, row in enumerate(candidate["rows"]):
         cluster = "c0" if i < 2 else "c1"
         row["cluster_id"] = base["rows"][i]["cluster_id"] = cluster
-        row["evidence"] = 1. if i < 2 else 0.
+        row["evidence"] = 1.0 if i < 2 else 0.0
     count, seed = 137, 19
     rng = random.Random(seed)
     expected = []
     for _ in range(count):
         sample = rng.choices([0, 1], k=2)
-        observations = [v for group in sample for v in ([1., 1.] if group == 0 else [0.])]
+        observations = [v for group in sample for v in ([1.0, 1.0] if group == 0 else [0.0])]
         expected.append(sum(observations) / len(observations))
     metric = compare_runs(base, candidate, n_resamples=count, seed=seed)["overall"]["evidence"]  # type: ignore[index]
-    assert metric["baseline_mean"] == 0.
+    assert metric["baseline_mean"] == 0.0
     assert metric["candidate_mean"] == metric["delta"] == 2 / 3
     assert metric["n_questions"] == 3 and metric["n_clusters"] == 2
-    assert metric["ci_lower"] == pytest.approx(_oracle_percentile(expected, .025))
-    assert metric["ci_upper"] == pytest.approx(_oracle_percentile(expected, .975))
+    assert metric["ci_lower"] == pytest.approx(_oracle_percentile(expected, 0.025))
+    assert metric["ci_upper"] == pytest.approx(_oracle_percentile(expected, 0.975))
 
 
 def test_input_order_and_product_revision_do_not_change_pairing() -> None:
@@ -134,7 +159,7 @@ def test_no_gold_explicitly_excluded_and_unresolved_gold_stays_a_miss() -> None:
     result = compare_runs(run, run, n_resamples=50)
     metric = result["overall"]["turn_recall_at_5"]  # type: ignore[index]
     assert metric["n_questions"] == 2 and metric["excluded_questions"] == 1
-    assert metric["baseline_mean"] == .5
+    assert metric["baseline_mean"] == 0.5
     for row in run["rows"]:
         row["gold_turn_ids"] = []
     result = compare_runs(run, run, n_resamples=50)
@@ -142,10 +167,19 @@ def test_no_gold_explicitly_excluded_and_unresolved_gold_stays_a_miss() -> None:
     assert check_regressions(result) == []
 
 
-@pytest.mark.parametrize("field,value", [
-    ("dataset", "other"), ("budget", 4000), ("mode", "full-context"),
-    ("comparison_schema", 2), ("comparison_schema", True), ("budget", 0), ("budget", True), ("mode", "unknown"),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("dataset", "other"),
+        ("budget", 4000),
+        ("mode", "full-context"),
+        ("comparison_schema", 2),
+        ("comparison_schema", True),
+        ("budget", 0),
+        ("budget", True),
+        ("mode", "unknown"),
+    ],
+)
 def test_incompatible_or_invalid_run_metadata_rejected(field: str, value: object) -> None:
     baseline = _run()
     candidate = copy.deepcopy(baseline)
@@ -154,14 +188,28 @@ def test_incompatible_or_invalid_run_metadata_rejected(field: str, value: object
         compare_runs(baseline, candidate)
 
 
-@pytest.mark.parametrize("field,value", [
-    ("type", "changed"), ("cluster_id", "other"), ("question_sha256", "d" * 64),
-    ("gold_turn_ids", ["different"]), ("gold_session_ids", ["different"]),
-    ("ranked_turn_ids", ["duplicate", "duplicate"]), ("ranked_session_ids", ["dup", "dup"]),
-    ("gold_turn_ids", ["same", "same"]), ("id", "q1"), ("mode", "no-memory"),
-    ("tokens", -1), ("evidence", 1.1), ("evidence", float("inf")), ("score", float("nan")),
-    ("correct", "true"), ("question_sha256", "short"), ("cluster_id", ""),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("type", "changed"),
+        ("cluster_id", "other"),
+        ("question_sha256", "d" * 64),
+        ("gold_turn_ids", ["different"]),
+        ("gold_session_ids", ["different"]),
+        ("ranked_turn_ids", ["duplicate", "duplicate"]),
+        ("ranked_session_ids", ["dup", "dup"]),
+        ("gold_turn_ids", ["same", "same"]),
+        ("id", "q1"),
+        ("mode", "no-memory"),
+        ("tokens", -1),
+        ("evidence", 1.1),
+        ("evidence", float("inf")),
+        ("score", float("nan")),
+        ("correct", "true"),
+        ("question_sha256", "short"),
+        ("cluster_id", ""),
+    ],
+)
 def test_incompatible_or_invalid_question_metadata_rejected(field: str, value: object) -> None:
     baseline = _run()
     candidate = copy.deepcopy(baseline)
@@ -206,16 +254,25 @@ def test_quality_gate_rejects_negative_ci_but_ignores_more_tokens() -> None:
     baseline = _run()
     candidate = copy.deepcopy(baseline)
     for row in candidate["rows"]:
-        row["evidence"] = 0.
+        row["evidence"] = 0.0
         row["tokens"] = 500
     problems = check_regressions(compare_runs(baseline, candidate, n_resamples=50))
     assert problems and all("evidence" in message for message in problems)
     for row in candidate["rows"]:
-        row["evidence"] = .5
+        row["evidence"] = 0.5
     assert check_regressions(compare_runs(baseline, candidate, n_resamples=50)) == []
 
 
-@pytest.mark.parametrize("option,value", [("n_resamples", 0), ("seed", -1), ("confidence_level", 1.), ("confidence_level", float("nan")), ("n_resamples", True)])
+@pytest.mark.parametrize(
+    "option,value",
+    [
+        ("n_resamples", 0),
+        ("seed", -1),
+        ("confidence_level", 1.0),
+        ("confidence_level", float("nan")),
+        ("n_resamples", True),
+    ],
+)
 def test_bootstrap_configuration_invalid(option: str, value: object) -> None:
     with pytest.raises(ValueError):
         compare_runs(_run(), _run(), **{option: value})  # type: ignore[arg-type]
@@ -240,7 +297,9 @@ def test_cli_stdout_success_regression_and_missing_budget(tmp_path: Path, capsys
     assert "requested budget missing" in capsys.readouterr().err
 
 
-def test_cli_requires_exact_all_budget_sets_even_with_selector(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_requires_exact_all_budget_sets_even_with_selector(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     baseline = tmp_path / "before.json"
     candidate = tmp_path / "after.json"
     baseline.write_text(json.dumps({"1500": _run()}), encoding="utf-8")
@@ -251,7 +310,7 @@ def test_cli_requires_exact_all_budget_sets_even_with_selector(tmp_path: Path, c
     assert "budget sets differ" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("payload", ['{"1500":{},"1500":{}}', '{"x":NaN}', '{"x":Infinity}', '{}'])
+@pytest.mark.parametrize("payload", ['{"1500":{},"1500":{}}', '{"x":NaN}', '{"x":Infinity}', "{}"])
 def test_loader_rejects_ambiguous_nonfinite_and_empty_json(tmp_path: Path, payload: str) -> None:
     path = tmp_path / "run.json"
     path.write_text(payload, encoding="utf-8")
@@ -359,8 +418,13 @@ def test_absolute_constant_mean_uses_clustered_estimates_without_significance() 
     result = clustered_estimates(run, n_resamples=100)
     metric = result["overall"]["evidence"]  # type: ignore[index]
     assert metric == {
-        "mean": .5, "ci_lower": .5, "ci_upper": .5, "ci_status": "available",
-        "n_questions": 3, "n_clusters": 3, "excluded_questions": 0,
+        "mean": 0.5,
+        "ci_lower": 0.5,
+        "ci_upper": 0.5,
+        "ci_status": "available",
+        "n_questions": 3,
+        "n_clusters": 3,
+        "excluded_questions": 0,
     }
     assert "significant" not in metric
     assert result["sample_unit"] == "conversation" and result["mean_weighting"] == "question"
@@ -371,7 +435,7 @@ def test_absolute_unequal_clusters_remain_question_weighted() -> None:
     run = _run()
     for i, row in enumerate(run["rows"]):
         row["cluster_id"] = "shared" if i < 2 else "other"
-        row["evidence"] = 1. if i < 2 else 0.
+        row["evidence"] = 1.0 if i < 2 else 0.0
     metric = clustered_estimates(run, n_resamples=1000)["overall"]["evidence"]  # type: ignore[index]
     assert metric["mean"] == 2 / 3
     assert metric["n_questions"] == 3 and metric["n_clusters"] == 2
@@ -385,14 +449,23 @@ def test_absolute_no_gold_and_single_cluster_have_explicit_unavailable_intervals
         row["cluster_id"] = "shared"
     result = clustered_estimates(run, n_resamples=20)
     evidence = result["overall"]["evidence"]  # type: ignore[index]
-    assert evidence["mean"] == .5 and evidence["ci_lower"] is None
+    assert evidence["mean"] == 0.5 and evidence["ci_lower"] is None
     assert evidence["ci_status"] == "insufficient_clusters" and evidence["n_clusters"] == 1
     ranking = result["overall"]["turn_recall_at_5"]  # type: ignore[index]
     assert ranking["mean"] is None and ranking["ci_lower"] is None
     assert ranking["ci_status"] == "no_scored_questions" and ranking["excluded_questions"] == 3
 
 
-@pytest.mark.parametrize("option,value", [("n_resamples", 0), ("seed", -1), ("confidence_level", 1.), ("confidence_level", float("nan")), ("n_resamples", True)])
+@pytest.mark.parametrize(
+    "option,value",
+    [
+        ("n_resamples", 0),
+        ("seed", -1),
+        ("confidence_level", 1.0),
+        ("confidence_level", float("nan")),
+        ("n_resamples", True),
+    ],
+)
 def test_absolute_bootstrap_configuration_invalid(option: str, value: object) -> None:
     with pytest.raises(ValueError):
         clustered_estimates(_run(), **{option: value})  # type: ignore[arg-type]
@@ -405,6 +478,9 @@ def test_cli_accepts_named_budgeted_history_reference(tmp_path: Path, capsys: py
         row["mode"] = "budgeted-history"
     path = tmp_path / "run.json"
     path.write_text(json.dumps({"1500": run}), encoding="utf-8")
-    assert main(["--baseline", str(path), "--candidate", str(path), "--mode", "budgeted-history", "--resamples", "50"]) == 0
+    assert (
+        main(["--baseline", str(path), "--candidate", str(path), "--mode", "budgeted-history", "--resamples", "50"])
+        == 0
+    )
     emitted = json.loads(capsys.readouterr().out)
     assert emitted["comparisons"]["1500"]["overall"]["turn_recall_at_5"]["baseline_mean"] is None

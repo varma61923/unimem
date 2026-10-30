@@ -6,6 +6,7 @@ persistence. This measures offline extractive summaries, not model latency or
 competitor performance. Run in a dedicated process: the reference temporarily
 replaces the selector to reproduce the old implementation.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,12 +37,18 @@ def run(turns: int = 1000, trials: int = 3) -> dict:
         return selector(rows, len(rows))
 
     with tempfile.TemporaryDirectory(prefix="unimem-summary-") as root, Store(root, "operations") as store:
-        store.add("operations", [
-            {"speaker": f"Operator {i % 4}",
-             "text": f"Team {i % 9} {actions[i % len(actions)]} for service {i % 17} in region {i % 3}. "
-                     f"The incident reference is OPS-{i:05d} and its follow-up owner is team {i % 9}."}
-            for i in range(turns)
-        ], session_at="2026-10-01")
+        store.add(
+            "operations",
+            [
+                {
+                    "speaker": f"Operator {i % 4}",
+                    "text": f"Team {i % 9} {actions[i % len(actions)]} for service {i % 17} in region {i % 3}. "
+                    f"The incident reference is OPS-{i:05d} and its follow-up owner is team {i % 9}.",
+                }
+                for i in range(turns)
+            ],
+            session_at="2026-10-01",
+        )
         summary.rolling(store, "operations", force=True)
         try:
             for trial in range(trials):
@@ -63,11 +70,20 @@ def run(turns: int = 1000, trials: int = 3) -> dict:
     old, new = (statistics.median(samples[arm]) for arm in ("reference", "optimized"))
     with open(summary.__file__, "rb") as source:
         source_hash = hashlib.sha256(source.read()).hexdigest()
-    return {"workload": "chronological-operational-session-summary", "source_turns": turns,
-            "source_sentences": turns * 2, "trials": trials, "equivalent": len(set(fingerprints.values())) == 1,
-            "reference_median_ms": old, "optimized_median_ms": new, "speedup": old / max(new, 1e-9),
-            "fingerprints": fingerprints, "samples_ms": samples, "summary_source_sha256": source_hash,
-            "scope": "SQLite extractive rolling summary; excludes model inference, remote I/O and competitor systems"}
+    return {
+        "workload": "chronological-operational-session-summary",
+        "source_turns": turns,
+        "source_sentences": turns * 2,
+        "trials": trials,
+        "equivalent": len(set(fingerprints.values())) == 1,
+        "reference_median_ms": old,
+        "optimized_median_ms": new,
+        "speedup": old / max(new, 1e-9),
+        "fingerprints": fingerprints,
+        "samples_ms": samples,
+        "summary_source_sha256": source_hash,
+        "scope": "SQLite extractive rolling summary; excludes model inference, remote I/O and competitor systems",
+    }
 
 
 def main(argv=None) -> int:

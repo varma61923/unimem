@@ -90,7 +90,10 @@ def _memory_context(items: list[Any]) -> str | None:
 
 
 def turn_occasion_id(
-    state: dict[str, Any], config: dict[str, Any] | None, *, scope: dict[str, Any] | None = None,
+    state: dict[str, Any],
+    config: dict[str, Any] | None,
+    *,
+    scope: dict[str, Any] | None = None,
 ) -> str:
     """Stable, scope-partitioned identity for one human turn, including tool loops.
 
@@ -111,10 +114,22 @@ def turn_occasion_id(
                 break
     if turn is None:
         raise ValueError("no human turn found; supply configurable.unimem_turn_id")
-    labels = {key: configurable[key] for key in (
-        "tenant", "tenant_id", "user", "user_id", "agent", "agent_id",
-        "session", "session_id", "repo", "repo_id",
-    ) if key in configurable}
+    labels = {
+        key: configurable[key]
+        for key in (
+            "tenant",
+            "tenant_id",
+            "user",
+            "user_id",
+            "agent",
+            "agent_id",
+            "session",
+            "session_id",
+            "repo",
+            "repo_id",
+        )
+        if key in configurable
+    }
     payload = json.dumps([conversation, turn, labels, scope or {}], sort_keys=True, ensure_ascii=False)
     return "langgraph-turn:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -180,7 +195,10 @@ def create_pre_model_hook(
 
 
 def record_outcome(
-    memory: CausalMemory, config: dict[str, Any] | None, *, succeeded: bool,
+    memory: CausalMemory,
+    config: dict[str, Any] | None,
+    *,
+    succeeded: bool,
     state: dict[str, Any] | None = None,
     recall_kwargs: Callable[[dict[str, Any] | None], dict[str, Any]] | None = None,
 ) -> bool:
@@ -190,8 +208,14 @@ def record_outcome(
     here. Final graph state preserves the human message ID across tool calls.
     """
     try:
-        occasion_id = thread_id(config) if state is None else turn_occasion_id(
-            state, config, scope=recall_kwargs(config) if recall_kwargs is not None else None,
+        occasion_id = (
+            thread_id(config)
+            if state is None
+            else turn_occasion_id(
+                state,
+                config,
+                scope=recall_kwargs(config) if recall_kwargs is not None else None,
+            )
         )
     except (ValueError, TypeError, KeyError):
         return False

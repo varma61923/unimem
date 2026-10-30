@@ -1,4 +1,5 @@
 """Durable writes stay authoritative when optional acceleration fails."""
+
 from __future__ import annotations
 
 import hashlib
@@ -23,7 +24,9 @@ def test_serialized_writer_preserves_exact_unicode_and_escaped_newlines(tmp_path
 
 @pytest.mark.parametrize("stage", ["capture_for_write", "publish_committed"])
 def test_cache_failure_does_not_report_successful_canonical_write_as_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
 ) -> None:
     root = str(tmp_path)
     fact, _ = hierarchical.add_fact(root, "Old orbital calibration.")
@@ -42,7 +45,8 @@ def test_cache_failure_does_not_report_successful_canonical_write_as_failed(
 
 
 def test_failed_atomic_replacement_preserves_current_disk_and_warm_view(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     root = str(tmp_path)
     fact, _ = hierarchical.add_fact(root, "Original calibration.")
@@ -118,8 +122,16 @@ def test_serialization_error_preserves_authoritative_file(tmp_path: Path) -> Non
 
 def _snapshot_fact():
     return hierarchical.AtomicFact(
-        "snapshot", "部署 uses a durable journal", "general", ["tenant:a"], 0.8, 1,
-        "2026-01-01T00:00:00+00:00", None, source_traces=["trace"], origin={"author": "human"},
+        "snapshot",
+        "部署 uses a durable journal",
+        "general",
+        ["tenant:a"],
+        0.8,
+        1,
+        "2026-01-01T00:00:00+00:00",
+        None,
+        source_traces=["trace"],
+        origin={"author": "human"},
     )
 
 

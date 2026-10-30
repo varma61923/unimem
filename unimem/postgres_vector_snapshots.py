@@ -4,6 +4,7 @@ Staging is private until a compare-and-swap publication transaction commits.
 Reader leases preserve historical MVCC intervals across replacement and bounded
 collection. Mutations share a scoped head lock; readers hold independent lease-row locks.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -75,7 +76,6 @@ CREATE INDEX IF NOT EXISTS unimem_vector_versions_visibility ON unimem_vector_ve
 """
 
 
-
 class PostgresSnapshots:
     """Process-safe snapshot search on a caller-owned asyncpg pool.
 
@@ -88,8 +88,9 @@ class PostgresSnapshots:
     grants a bounded lease independent of subsequent head publications.
     """
 
-    def __init__(self, pool: Any, scope: tuple[str, str, str, int], *, approximate: bool = False,
-                 ef_search: int | None = None) -> None:
+    def __init__(
+        self, pool: Any, scope: tuple[str, str, str, int], *, approximate: bool = False, ef_search: int | None = None
+    ) -> None:
         self._pool = pool
         self._scope = _Scope(*scope).sql()
         self._approximate = approximate
@@ -105,17 +106,24 @@ class PostgresSnapshots:
             if self._approximate:
                 dimension = self._scope[3]  # validated integer, never owner-controlled SQL
                 digest = hashlib.sha256(str(dimension).encode()).hexdigest()[:16]
-                await db.execute(f"CREATE INDEX IF NOT EXISTS unimem_vector_versions_hnsw_{digest} "
-                                 f"ON unimem_vector_versions USING hnsw ((embedding::vector({dimension})) "
-                                 f"vector_cosine_ops) WHERE dimension={dimension}")
-            await db.execute("INSERT INTO unimem_vector_heads(tenant,namespace,model,dimension) "
-                             "VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", *self._scope)
+                await db.execute(
+                    f"CREATE INDEX IF NOT EXISTS unimem_vector_versions_hnsw_{digest} "
+                    f"ON unimem_vector_versions USING hnsw ((embedding::vector({dimension})) "
+                    f"vector_cosine_ops) WHERE dimension={dimension}"
+                )
+            await db.execute(
+                "INSERT INTO unimem_vector_heads(tenant,namespace,model,dimension) "
+                "VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+                *self._scope,
+            )
 
     async def _locked(self, db: Any) -> Any:
         await self._schema_reader(db)
-        row = await db.fetchrow("SELECT revision,generation,fence FROM unimem_vector_heads "
-                                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 FOR UPDATE",
-                                *self._scope)
+        row = await db.fetchrow(
+            "SELECT revision,generation,fence FROM unimem_vector_heads "
+            "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 FOR UPDATE",
+            *self._scope,
+        )
         if row is None:
             raise RuntimeError("snapshot backend is not initialized")
         return row
@@ -130,14 +138,18 @@ class PostgresSnapshots:
     async def head(self) -> SnapshotHead:
         async with self._pool.acquire() as db, db.transaction():
             await self._schema_reader(db)
-            row = await db.fetchrow("SELECT revision,generation FROM unimem_vector_heads "
-                                    "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4", *self._scope)
+            row = await db.fetchrow(
+                "SELECT revision,generation FROM unimem_vector_heads "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                *self._scope,
+            )
         if row is None:
             raise RuntimeError("snapshot backend is not initialized")
         return SnapshotHead(row["revision"], row["generation"])
 
-    async def begin(self, target_revision: int, generation: str, *, full: bool = False,
-                    lease_seconds: float = 60) -> BuildLease | None:
+    async def begin(
+        self, target_revision: int, generation: str, *, full: bool = False, lease_seconds: float = 60
+    ) -> BuildLease | None:
         validate_revision(target_revision, generation)
         duration = lease_duration(lease_seconds)
         if not isinstance(full, bool):
@@ -148,57 +160,91 @@ class PostgresSnapshots:
                 if target_revision == head["revision"] and generation != head["generation"]:
                     raise SnapshotConflict("revision is already published under another generation")
                 return None
-            if await db.fetchval("SELECT EXISTS(SELECT 1 FROM unimem_vector_snapshots "
-                                 "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                 "AND generation=$5)", *self._scope, generation):
+            if await db.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM unimem_vector_snapshots "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND generation=$5)",
+                *self._scope,
+                generation,
+            ):
                 raise SnapshotConflict("generation is already published")
-            fence = await db.fetchval("UPDATE unimem_vector_heads SET fence=fence+1 "
-                                     "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 RETURNING fence",
-                                     *self._scope)
+            fence = await db.fetchval(
+                "UPDATE unimem_vector_heads SET fence=fence+1 "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 RETURNING fence",
+                *self._scope,
+            )
             lease = BuildLease(uuid.uuid4().hex, fence, head["revision"], target_revision, generation, full)
-            await db.execute("INSERT INTO unimem_vector_builds VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,"
-                             "clock_timestamp()+$11::double precision*interval '1 second',$11)",
-                             *self._scope, lease.token, lease.fence, lease.base_revision,
-                             lease.target_revision, lease.generation, lease.full, duration)
+            await db.execute(
+                "INSERT INTO unimem_vector_builds VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,"
+                "clock_timestamp()+$11::double precision*interval '1 second',$11)",
+                *self._scope,
+                lease.token,
+                lease.fence,
+                lease.base_revision,
+                lease.target_revision,
+                lease.generation,
+                lease.full,
+                duration,
+            )
         return lease
 
     async def _live_build(self, db: Any, lease: BuildLease) -> bool:
-        return bool(await db.fetchval("SELECT EXISTS(SELECT 1 FROM unimem_vector_builds "
-                                     "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                     "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
-                                     "AND generation=$9 AND full_build=$10 AND expires>clock_timestamp())",
-                                     *self._scope, lease.token, lease.fence, lease.base_revision,
-                                     lease.target_revision, lease.generation, lease.full))
+        return bool(
+            await db.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM unimem_vector_builds "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
+                "AND generation=$9 AND full_build=$10 AND expires>clock_timestamp())",
+                *self._scope,
+                lease.token,
+                lease.fence,
+                lease.base_revision,
+                lease.target_revision,
+                lease.generation,
+                lease.full,
+            )
+        )
 
-    async def stage(self, lease: BuildLease, records: Iterable[VectorRecord],
-                    deleted_keys: Iterable[str] = ()) -> int:
+    async def stage(self, lease: BuildLease, records: Iterable[VectorRecord], deleted_keys: Iterable[str] = ()) -> int:
         rows, deleted = await STORE_WORKERS.run(
-            lambda: (snapshot_records(records, self._scope[3]), snapshot_deletes(deleted_keys)))
+            lambda: (snapshot_records(records, self._scope[3]), snapshot_deletes(deleted_keys))
+        )
         if set(deleted).intersection(key for key, _, _ in rows):
             raise ValueError("a staged batch cannot both write and delete the same key")
         async with self._pool.acquire() as db, db.transaction():
             await self._locked(db)
             if not await self._live_build(db, lease):
                 raise SnapshotConflict("build lease is expired, consumed, or invalid")
-            await db.executemany("INSERT INTO unimem_vector_stages "
-                                 "VALUES($1,$2,$3,$4,$5,$6,$7::text::vector,$8,false) "
-                                 "ON CONFLICT(tenant,namespace,model,dimension,token,key) DO UPDATE SET "
-                                 "embedding=excluded.embedding,checksum=excluded.checksum,deleted=false",
-                                 [(*self._scope, lease.token, key, _pg_vector(vector), checksum)
-                                  for key, vector, checksum in rows])
-            await db.executemany("INSERT INTO unimem_vector_stages VALUES($1,$2,$3,$4,$5,$6,NULL,'',true) "
-                                 "ON CONFLICT(tenant,namespace,model,dimension,token,key) DO UPDATE SET "
-                                 "embedding=NULL,checksum='',deleted=true",
-                                 [(*self._scope, lease.token, key) for key in deleted])
+            await db.executemany(
+                "INSERT INTO unimem_vector_stages "
+                "VALUES($1,$2,$3,$4,$5,$6,$7::text::vector,$8,false) "
+                "ON CONFLICT(tenant,namespace,model,dimension,token,key) DO UPDATE SET "
+                "embedding=excluded.embedding,checksum=excluded.checksum,deleted=false",
+                [(*self._scope, lease.token, key, _pg_vector(vector), checksum) for key, vector, checksum in rows],
+            )
+            await db.executemany(
+                "INSERT INTO unimem_vector_stages VALUES($1,$2,$3,$4,$5,$6,NULL,'',true) "
+                "ON CONFLICT(tenant,namespace,model,dimension,token,key) DO UPDATE SET "
+                "embedding=NULL,checksum='',deleted=true",
+                [(*self._scope, lease.token, key) for key in deleted],
+            )
             # Progress extends the original bounded idle timeout; an expired
             # lease cannot be resurrected even if staging began while live.
-            renewed = await db.fetchval("UPDATE unimem_vector_builds SET "
-                                        "expires=clock_timestamp()+duration*interval '1 second' "
-                                        "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                        "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
-                                        "AND generation=$9 AND full_build=$10 AND expires>clock_timestamp() "
-                                        "RETURNING token", *self._scope, lease.token, lease.fence,
-                                        lease.base_revision, lease.target_revision, lease.generation, lease.full)
+            renewed = await db.fetchval(
+                "UPDATE unimem_vector_builds SET "
+                "expires=clock_timestamp()+duration*interval '1 second' "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
+                "AND generation=$9 AND full_build=$10 AND expires>clock_timestamp() "
+                "RETURNING token",
+                *self._scope,
+                lease.token,
+                lease.fence,
+                lease.base_revision,
+                lease.target_revision,
+                lease.generation,
+                lease.full,
+            )
             if renewed is None:
                 raise SnapshotConflict("build lease expired during staging")
         return len(rows) + len(deleted)
@@ -206,55 +252,93 @@ class PostgresSnapshots:
     async def publish(self, lease: BuildLease) -> bool:
         async with self._pool.acquire() as db, db.transaction():
             head = await self._locked(db)
-            if head["revision"] != lease.base_revision or lease.target_revision <= head["revision"] \
-                    or not await self._live_build(db, lease):
+            if (
+                head["revision"] != lease.base_revision
+                or lease.target_revision <= head["revision"]
+                or not await self._live_build(db, lease)
+            ):
                 return False
-            if await db.fetchval("SELECT EXISTS(SELECT 1 FROM unimem_vector_snapshots "
-                                 "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 AND generation=$5)",
-                                 *self._scope, lease.generation):
+            if await db.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM unimem_vector_snapshots "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 AND generation=$5)",
+                *self._scope,
+                lease.generation,
+            ):
                 return False
             # Retire changed/deleted keys. Full builds also retire absent keys.
-            await db.execute("UPDATE unimem_vector_versions v SET valid_to=$6 "
-                             "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
-                             "AND v.valid_to IS NULL AND (EXISTS(SELECT 1 FROM unimem_vector_stages s "
-                             "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
-                             "AND s.token=$5 AND s.key=v.key AND (s.deleted OR s.checksum<>v.checksum)) "
-                             "OR ($7 AND NOT EXISTS(SELECT 1 FROM unimem_vector_stages s "
-                             "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
-                             "AND s.token=$5 AND s.key=v.key AND NOT s.deleted)))",
-                             *self._scope, lease.token, lease.target_revision, lease.full)
-            await db.execute("INSERT INTO unimem_vector_versions "
-                             "SELECT s.tenant,s.namespace,s.model,s.dimension,s.key,$6,NULL,s.embedding,s.checksum "
-                             "FROM unimem_vector_stages s WHERE s.tenant=$1 AND s.namespace=$2 "
-                             "AND s.model=$3 AND s.dimension=$4 AND s.token=$5 AND NOT s.deleted "
-                             "AND NOT EXISTS(SELECT 1 FROM unimem_vector_versions v "
-                             "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
-                             "AND v.key=s.key AND v.valid_to IS NULL)",
-                             *self._scope, lease.token, lease.target_revision)
-            await db.execute("INSERT INTO unimem_vector_snapshots VALUES($1,$2,$3,$4,$5,$6)",
-                             *self._scope, lease.generation, lease.target_revision)
-            await db.execute("UPDATE unimem_vector_heads SET revision=$5,generation=$6 "
-                             "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
-                             *self._scope, lease.target_revision, lease.generation)
+            await db.execute(
+                "UPDATE unimem_vector_versions v SET valid_to=$6 "
+                "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
+                "AND v.valid_to IS NULL AND (EXISTS(SELECT 1 FROM unimem_vector_stages s "
+                "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
+                "AND s.token=$5 AND s.key=v.key AND (s.deleted OR s.checksum<>v.checksum)) "
+                "OR ($7 AND NOT EXISTS(SELECT 1 FROM unimem_vector_stages s "
+                "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
+                "AND s.token=$5 AND s.key=v.key AND NOT s.deleted)))",
+                *self._scope,
+                lease.token,
+                lease.target_revision,
+                lease.full,
+            )
+            await db.execute(
+                "INSERT INTO unimem_vector_versions "
+                "SELECT s.tenant,s.namespace,s.model,s.dimension,s.key,$6,NULL,s.embedding,s.checksum "
+                "FROM unimem_vector_stages s WHERE s.tenant=$1 AND s.namespace=$2 "
+                "AND s.model=$3 AND s.dimension=$4 AND s.token=$5 AND NOT s.deleted "
+                "AND NOT EXISTS(SELECT 1 FROM unimem_vector_versions v "
+                "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
+                "AND v.key=s.key AND v.valid_to IS NULL)",
+                *self._scope,
+                lease.token,
+                lease.target_revision,
+            )
+            await db.execute(
+                "INSERT INTO unimem_vector_snapshots VALUES($1,$2,$3,$4,$5,$6)",
+                *self._scope,
+                lease.generation,
+                lease.target_revision,
+            )
+            await db.execute(
+                "UPDATE unimem_vector_heads SET revision=$5,generation=$6 "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                *self._scope,
+                lease.target_revision,
+                lease.generation,
+            )
             await self._remove_build(db, lease.token)
         return True
 
     async def _remove_build(self, db: Any, token: str) -> None:
-        await db.execute("DELETE FROM unimem_vector_stages WHERE tenant=$1 AND namespace=$2 "
-                         "AND model=$3 AND dimension=$4 AND token=$5", *self._scope, token)
-        await db.execute("DELETE FROM unimem_vector_builds WHERE tenant=$1 AND namespace=$2 "
-                         "AND model=$3 AND dimension=$4 AND token=$5", *self._scope, token)
+        await db.execute(
+            "DELETE FROM unimem_vector_stages WHERE tenant=$1 AND namespace=$2 "
+            "AND model=$3 AND dimension=$4 AND token=$5",
+            *self._scope,
+            token,
+        )
+        await db.execute(
+            "DELETE FROM unimem_vector_builds WHERE tenant=$1 AND namespace=$2 "
+            "AND model=$3 AND dimension=$4 AND token=$5",
+            *self._scope,
+            token,
+        )
 
     async def abort(self, lease: BuildLease) -> None:
         async with self._pool.acquire() as db, db.transaction():
             await self._locked(db)
             # Match the complete lease identity even for expired-build cleanup.
-            if await db.fetchval("SELECT EXISTS(SELECT 1 FROM unimem_vector_builds "
-                                 "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                 "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
-                                 "AND generation=$9 AND full_build=$10)",
-                                 *self._scope, lease.token, lease.fence, lease.base_revision,
-                                 lease.target_revision, lease.generation, lease.full):
+            if await db.fetchval(
+                "SELECT EXISTS(SELECT 1 FROM unimem_vector_builds "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND token=$5 AND fence=$6 AND base_revision=$7 AND target_revision=$8 "
+                "AND generation=$9 AND full_build=$10)",
+                *self._scope,
+                lease.token,
+                lease.fence,
+                lease.base_revision,
+                lease.target_revision,
+                lease.generation,
+                lease.full,
+            ):
                 await self._remove_build(db, lease.token)
 
     async def erase(self, keys: Iterable[str]) -> int:
@@ -267,12 +351,17 @@ class PostgresSnapshots:
             removed = await db.fetchval(
                 "WITH erased AS (DELETE FROM unimem_vector_versions WHERE tenant=$1 AND namespace=$2 "
                 "AND model=$3 AND dimension=$4 AND key=ANY($5::text[]) RETURNING 1) SELECT count(*) FROM erased",
-                *self._scope, deleted,
+                *self._scope,
+                deleted,
             )
-            await db.execute("DELETE FROM unimem_vector_builds WHERE tenant=$1 AND namespace=$2 "
-                             "AND model=$3 AND dimension=$4", *self._scope)
-            await db.execute("DELETE FROM unimem_vector_stages WHERE tenant=$1 AND namespace=$2 "
-                             "AND model=$3 AND dimension=$4", *self._scope)
+            await db.execute(
+                "DELETE FROM unimem_vector_builds WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                *self._scope,
+            )
+            await db.execute(
+                "DELETE FROM unimem_vector_stages WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4",
+                *self._scope,
+            )
         return int(removed)
 
     async def pin(self, generation: str, *, lease_seconds: float = 60) -> ReadLease:
@@ -280,37 +369,59 @@ class PostgresSnapshots:
         duration = lease_duration(lease_seconds)
         async with self._pool.acquire() as db, db.transaction():
             await self._locked(db)
-            revision = await db.fetchval("SELECT revision FROM unimem_vector_snapshots "
-                                         "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                         "AND generation=$5", *self._scope, generation)
+            revision = await db.fetchval(
+                "SELECT revision FROM unimem_vector_snapshots "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND generation=$5",
+                *self._scope,
+                generation,
+            )
             if revision is None:
                 raise SnapshotConflict("generation is unavailable; pin a committed generation")
             lease = ReadLease(uuid.uuid4().hex, revision, generation)
-            await db.execute("INSERT INTO unimem_vector_readers VALUES($1,$2,$3,$4,$5,$6,$7,"
-                             "clock_timestamp()+$8::double precision*interval '1 second',$8)",
-                             *self._scope, lease.token, lease.revision, lease.generation, duration)
+            await db.execute(
+                "INSERT INTO unimem_vector_readers VALUES($1,$2,$3,$4,$5,$6,$7,"
+                "clock_timestamp()+$8::double precision*interval '1 second',$8)",
+                *self._scope,
+                lease.token,
+                lease.revision,
+                lease.generation,
+                duration,
+            )
         return lease
 
     async def renew(self, read: ReadLease) -> None:
         async with self._pool.acquire() as db, db.transaction():
             await self._locked(db)
-            changed = await db.fetchval("UPDATE unimem_vector_readers SET "
-                                       "expires=clock_timestamp()+duration*interval '1 second' "
-                                       "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                       "AND token=$5 AND revision=$6 AND generation=$7 AND expires>clock_timestamp() "
-                                       "RETURNING token", *self._scope, read.token, read.revision, read.generation)
+            changed = await db.fetchval(
+                "UPDATE unimem_vector_readers SET "
+                "expires=clock_timestamp()+duration*interval '1 second' "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND token=$5 AND revision=$6 AND generation=$7 AND expires>clock_timestamp() "
+                "RETURNING token",
+                *self._scope,
+                read.token,
+                read.revision,
+                read.generation,
+            )
             if changed is None:
                 raise SnapshotConflict("reader lease is expired, released, or invalid")
 
     async def release(self, read: ReadLease) -> None:
         async with self._pool.acquire() as db, db.transaction():
             await self._locked(db)
-            await db.execute("DELETE FROM unimem_vector_readers WHERE tenant=$1 AND namespace=$2 "
-                             "AND model=$3 AND dimension=$4 AND token=$5 AND revision=$6 AND generation=$7",
-                             *self._scope, read.token, read.revision, read.generation)
+            await db.execute(
+                "DELETE FROM unimem_vector_readers WHERE tenant=$1 AND namespace=$2 "
+                "AND model=$3 AND dimension=$4 AND token=$5 AND revision=$6 AND generation=$7",
+                *self._scope,
+                read.token,
+                read.revision,
+                read.generation,
+            )
 
-    async def search(self, read: ReadLease, vector: Sequence[float], *, top_k: int = 10,
-                     allowed_ids: Sequence[str] | None = None) -> list[VectorHit]:
+    async def search(
+        self, read: ReadLease, vector: Sequence[float], *, top_k: int = 10, allowed_ids: Sequence[str] | None = None
+    ) -> list[VectorHit]:
         _limit(top_k)
         query = _vector(vector, self._scope[3])
         ids = _keys(allowed_ids) if allowed_ids is not None else None
@@ -318,11 +429,16 @@ class PostgresSnapshots:
             await self._schema_reader(db)
             # Share-lock only this reader: independent pooled readers remain concurrent.
             # GC must erase expired lease rows before reclaiming their vector intervals.
-            live = await db.fetchval("SELECT token FROM unimem_vector_readers "
-                                     "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
-                                     "AND token=$5 AND revision=$6 AND generation=$7 "
-                                     "AND expires>clock_timestamp() FOR SHARE",
-                                     *self._scope, read.token, read.revision, read.generation)
+            live = await db.fetchval(
+                "SELECT token FROM unimem_vector_readers "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4 "
+                "AND token=$5 AND revision=$6 AND generation=$7 "
+                "AND expires>clock_timestamp() FOR SHARE",
+                *self._scope,
+                read.token,
+                read.revision,
+                read.generation,
+            )
             if not live:
                 raise SnapshotConflict("reader lease is expired, released, or invalid")
             if not top_k or ids == []:
@@ -352,7 +468,12 @@ class PostgresSnapshots:
                 "AND (valid_to IS NULL OR valid_to>$6) "
                 "AND ($7::text[] IS NULL OR key=ANY($7)) "
                 f"ORDER BY {ordering} LIMIT $8) nearest ORDER BY score DESC,key",
-                *self._scope, _pg_vector(query), read.revision, ids, top_k)
+                *self._scope,
+                _pg_vector(query),
+                read.revision,
+                ids,
+                top_k,
+            )
         return [VectorHit(row["key"], min(1.0, max(-1.0, float(row["score"])))) for row in rows]
 
     async def collect_garbage(self, *, limit: int = 1000) -> int:
@@ -363,51 +484,66 @@ class PostgresSnapshots:
             await self._locked(db)
             # Metadata cleanup is bounded separately; vector/stage erasures share
             # the requested budget. Live leases always use the database clock.
-            await db.execute("DELETE FROM unimem_vector_readers WHERE ctid IN "
-                             "(SELECT ctid FROM unimem_vector_readers WHERE tenant=$1 AND namespace=$2 "
-                             "AND model=$3 AND dimension=$4 AND expires<=clock_timestamp() LIMIT $5)",
-                             *self._scope, limit)
-            await db.execute("DELETE FROM unimem_vector_snapshots WHERE ctid IN "
-                             "(SELECT s.ctid FROM unimem_vector_snapshots s "
-                             "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
-                             "AND s.revision<>(SELECT revision FROM unimem_vector_heads "
-                             "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4) "
-                             "AND NOT EXISTS(SELECT 1 FROM unimem_vector_readers r "
-                             "WHERE r.tenant=$1 AND r.namespace=$2 AND r.model=$3 AND r.dimension=$4 "
-                             "AND r.revision=s.revision) LIMIT $5)",
-                             *self._scope, limit)
-            status = await db.execute("DELETE FROM unimem_vector_stages WHERE ctid IN "
-                                      "(SELECT s.ctid FROM unimem_vector_stages s "
-                                      "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
-                                      "AND NOT EXISTS(SELECT 1 FROM unimem_vector_builds b "
-                                      "WHERE b.tenant=$1 AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
-                                      "AND b.token=s.token AND b.expires>clock_timestamp()) LIMIT $5)",
-                                      *self._scope, limit)
+            await db.execute(
+                "DELETE FROM unimem_vector_readers WHERE ctid IN "
+                "(SELECT ctid FROM unimem_vector_readers WHERE tenant=$1 AND namespace=$2 "
+                "AND model=$3 AND dimension=$4 AND expires<=clock_timestamp() LIMIT $5)",
+                *self._scope,
+                limit,
+            )
+            await db.execute(
+                "DELETE FROM unimem_vector_snapshots WHERE ctid IN "
+                "(SELECT s.ctid FROM unimem_vector_snapshots s "
+                "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
+                "AND s.revision<>(SELECT revision FROM unimem_vector_heads "
+                "WHERE tenant=$1 AND namespace=$2 AND model=$3 AND dimension=$4) "
+                "AND NOT EXISTS(SELECT 1 FROM unimem_vector_readers r "
+                "WHERE r.tenant=$1 AND r.namespace=$2 AND r.model=$3 AND r.dimension=$4 "
+                "AND r.revision=s.revision) LIMIT $5)",
+                *self._scope,
+                limit,
+            )
+            status = await db.execute(
+                "DELETE FROM unimem_vector_stages WHERE ctid IN "
+                "(SELECT s.ctid FROM unimem_vector_stages s "
+                "WHERE s.tenant=$1 AND s.namespace=$2 AND s.model=$3 AND s.dimension=$4 "
+                "AND NOT EXISTS(SELECT 1 FROM unimem_vector_builds b "
+                "WHERE b.tenant=$1 AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
+                "AND b.token=s.token AND b.expires>clock_timestamp()) LIMIT $5)",
+                *self._scope,
+                limit,
+            )
             removed = int(status.split()[-1])
-            await db.execute("DELETE FROM unimem_vector_builds WHERE ctid IN "
-                             "(SELECT b.ctid FROM unimem_vector_builds b "
-                             "WHERE b.tenant=$1 AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
-                             "AND b.expires<=clock_timestamp() AND NOT EXISTS "
-                             "(SELECT 1 FROM unimem_vector_stages s WHERE s.tenant=$1 AND s.namespace=$2 "
-                             "AND s.model=$3 AND s.dimension=$4 AND s.token=b.token) LIMIT $5)",
-                             *self._scope, limit)
+            await db.execute(
+                "DELETE FROM unimem_vector_builds WHERE ctid IN "
+                "(SELECT b.ctid FROM unimem_vector_builds b "
+                "WHERE b.tenant=$1 AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
+                "AND b.expires<=clock_timestamp() AND NOT EXISTS "
+                "(SELECT 1 FROM unimem_vector_stages s WHERE s.tenant=$1 AND s.namespace=$2 "
+                "AND s.model=$3 AND s.dimension=$4 AND s.token=b.token) LIMIT $5)",
+                *self._scope,
+                limit,
+            )
             if removed < limit:
-                status = await db.execute("DELETE FROM unimem_vector_versions WHERE ctid IN "
-                                          "(SELECT v.ctid FROM unimem_vector_versions v "
-                                          "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
-                                          "AND v.valid_to IS NOT NULL AND NOT EXISTS "
-                                          "(SELECT 1 FROM unimem_vector_snapshots p WHERE p.tenant=$1 "
-                                          "AND p.namespace=$2 AND p.model=$3 AND p.dimension=$4 "
-                                          "AND p.revision>=v.valid_from AND p.revision<v.valid_to) "
-                                          "AND NOT EXISTS "
-                                          "(SELECT 1 FROM unimem_vector_readers r WHERE r.tenant=$1 "
-                                          "AND r.namespace=$2 AND r.model=$3 AND r.dimension=$4 "
-                                          "AND r.revision>=v.valid_from "
-                                          "AND r.revision<v.valid_to) AND NOT EXISTS "
-                                          "(SELECT 1 FROM unimem_vector_builds b WHERE b.tenant=$1 "
-                                          "AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
-                                          "AND b.expires>clock_timestamp() AND b.base_revision>=v.valid_from "
-                                          "AND b.base_revision<v.valid_to) LIMIT $5)",
-                                          *self._scope, limit - removed)
+                status = await db.execute(
+                    "DELETE FROM unimem_vector_versions WHERE ctid IN "
+                    "(SELECT v.ctid FROM unimem_vector_versions v "
+                    "WHERE v.tenant=$1 AND v.namespace=$2 AND v.model=$3 AND v.dimension=$4 "
+                    "AND v.valid_to IS NOT NULL AND NOT EXISTS "
+                    "(SELECT 1 FROM unimem_vector_snapshots p WHERE p.tenant=$1 "
+                    "AND p.namespace=$2 AND p.model=$3 AND p.dimension=$4 "
+                    "AND p.revision>=v.valid_from AND p.revision<v.valid_to) "
+                    "AND NOT EXISTS "
+                    "(SELECT 1 FROM unimem_vector_readers r WHERE r.tenant=$1 "
+                    "AND r.namespace=$2 AND r.model=$3 AND r.dimension=$4 "
+                    "AND r.revision>=v.valid_from "
+                    "AND r.revision<v.valid_to) AND NOT EXISTS "
+                    "(SELECT 1 FROM unimem_vector_builds b WHERE b.tenant=$1 "
+                    "AND b.namespace=$2 AND b.model=$3 AND b.dimension=$4 "
+                    "AND b.expires>clock_timestamp() AND b.base_revision>=v.valid_from "
+                    "AND b.base_revision<v.valid_to) LIMIT $5)",
+                    *self._scope,
+                    limit - removed,
+                )
                 removed += int(status.split()[-1])
         return removed

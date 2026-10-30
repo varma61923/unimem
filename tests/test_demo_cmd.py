@@ -19,8 +19,11 @@ def test_demo_recovers_planted_effects_and_governs_them(tmp_path, capsys):
     assert verdicts["legacy-refund-api"] == "HURTS"
     assert verdicts["retry-429"] not in ("HELPS", "HURTS")
 
-    assert result["govern"] == {"withdrawn": ["legacy-refund-api"], "graduated": ["verify-owner"],
-                                "under_test": ["retry-429"]}
+    assert result["govern"] == {
+        "withdrawn": ["legacy-refund-api"],
+        "graduated": ["verify-owner"],
+        "under_test": ["retry-429"],
+    }
     assert result["store"] == str(store)
 
 

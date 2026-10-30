@@ -18,8 +18,7 @@ _KEY_BYTES = 32
 _NONCE_BYTES = 12
 
 
-class EncryptionError(ValueError):
-    ...
+class EncryptionError(ValueError): ...
 
 
 def generate_key() -> str:
@@ -63,13 +62,13 @@ class EnvelopeCipher:
             return cls()
         if AESGCM is None:
             raise EncryptionError(
-                "HUB_ENCRYPTION_KEY is set but the 'cryptography' package is not "
-                "installed -- see hub/requirements.txt."
+                "HUB_ENCRYPTION_KEY is set but the 'cryptography' package is not installed -- see hub/requirements.txt."
             )
         current = _decode_key(key, source="HUB_ENCRYPTION_KEY")
         previous = tuple(
             _decode_key(item.strip(), source="HUB_ENCRYPTION_KEY_PREVIOUS")
-            for item in previous_keys.split(",") if item.strip()
+            for item in previous_keys.split(",")
+            if item.strip()
         )
         return cls(current=current, previous=previous)
 
@@ -102,7 +101,7 @@ class EnvelopeCipher:
                 "package is not installed to decrypt it -- see hub/requirements.txt."
             )
         try:
-            raw = base64.b64decode(value[len(_PREFIX):].encode("ascii"), altchars=b"-_", validate=True)
+            raw = base64.b64decode(value[len(_PREFIX) :].encode("ascii"), altchars=b"-_", validate=True)
         except (ValueError, UnicodeError, binascii.Error):
             raise EncryptionError("stored encryption envelope is malformed") from None
         if len(raw) < _NONCE_BYTES + 16:

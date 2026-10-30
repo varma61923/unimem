@@ -117,8 +117,7 @@ memories = [
     {"id": "retry-429", "text": "On HTTP 429, back off exponentially and retry."},
     {"id": "verify-owner", "text": "Verify the account owner before any password reset."},
 ]
-memory = CausalMemory(lambda task, **_: memories, root="./mem",
-                      key=lambda m: m["id"], text=lambda m: m["text"])
+memory = CausalMemory(lambda task, **_: memories, root="./mem", key=lambda m: m["id"], text=lambda m: m["text"])
 
 shown = memory.recall("customer cannot log in", occasion_id="ticket-1042", context="support")
 # ... run your agent with `shown` in its context ...

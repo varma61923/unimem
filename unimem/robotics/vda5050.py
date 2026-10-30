@@ -3,6 +3,7 @@
 This validates only fields consumed by site memory; it is not a full standard
 schema or conformance implementation.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -20,9 +21,12 @@ def _header(message: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("VDA 5050 interoperability subset requires version 3.0.0 header fields")
     fp.count(message["headerId"], 0, 2**63 - 1, "VDA header id")
     fp.moment(message["timestamp"])
-    return {"header_id": message["headerId"], "timestamp": message["timestamp"],
-            "manufacturer": fp.text(message["manufacturer"], "manufacturer", 128),
-            "serial_number": fp.text(message["serialNumber"], "serial number", 128)}
+    return {
+        "header_id": message["headerId"],
+        "timestamp": message["timestamp"],
+        "manufacturer": fp.text(message["manufacturer"], "manufacturer", 128),
+        "serial_number": fp.text(message["serialNumber"], "serial number", 128),
+    }
 
 
 def _array(value: Any, label: str, *, minimum: int = 0, maximum: int = 4096) -> list[Any]:
@@ -33,8 +37,9 @@ def _array(value: Any, label: str, *, minimum: int = 0, maximum: int = 4096) -> 
 
 
 def _zones(message: dict[str, Any]) -> list[str]:
-    return sorted(set(fp.text(value, "zone id", 128)
-                      for value in _array(message.get("zoneIds", []), "VDA zones", maximum=512)))
+    return sorted(
+        set(fp.text(value, "zone id", 128) for value in _array(message.get("zoneIds", []), "VDA zones", maximum=512))
+    )
 
 
 def _path_sharing(message: dict[str, Any], edge_ids: set[str]) -> list[str]:
@@ -68,15 +73,22 @@ def validate_state(message: dict[str, Any]) -> dict[str, Any]:
         if position is not None:
             if not isinstance(position, dict) or not {"x", "y", "mapId"} <= set(position):
                 raise ValueError("VDA position requires numeric xy and map ID")
-            position = {"x": fp.number(position["x"], -1e7, 1e7),
-                        "y": fp.number(position["y"], -1e7, 1e7),
-                        "map_id": fp.text(position["mapId"], "map id", 128)}
+            position = {
+                "x": fp.number(position["x"], -1e7, 1e7),
+                "y": fp.number(position["y"], -1e7, 1e7),
+                "map_id": fp.text(position["mapId"], "map id", 128),
+            }
         released = node.get("released", False)
         if type(released) is not bool:
             raise ValueError("VDA released flag must be boolean")
-        normalized_nodes.append({"node_id": fp.text(node["nodeId"], "node id", 128),
-            "sequence_id": fp.count(node["sequenceId"], 0, 2**31-1), "position": position,
-            "released": released})
+        normalized_nodes.append(
+            {
+                "node_id": fp.text(node["nodeId"], "node id", 128),
+                "sequence_id": fp.count(node["sequenceId"], 0, 2**31 - 1),
+                "position": position,
+                "released": released,
+            }
+        )
     normalized_edges = []
     edge_ids: set[str] = set()
     for edge in edges:
@@ -87,15 +99,24 @@ def validate_state(message: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("VDA released flag must be boolean")
         edge_id = fp.text(edge["edgeId"], "edge id", 128)
         edge_ids.add(edge_id)
-        normalized_edges.append({"edge_id": edge_id,
-            "sequence_id": fp.count(edge["sequenceId"], 0, 2**31-1),
-            "start": fp.text(edge["startNodeId"], "start node", 128),
-            "end": fp.text(edge["endNodeId"], "end node", 128),
-            "released": released})
-    return {**header, "order_id": fp.text(message["orderId"], "order id", 128),
-            "order_update_id": fp.count(message["orderUpdateId"], 0, 2**31-1),
-            "nodes": normalized_nodes, "edges": normalized_edges,
-            "zones": _zones(message), "path_sharing": _path_sharing(message, edge_ids)}
+        normalized_edges.append(
+            {
+                "edge_id": edge_id,
+                "sequence_id": fp.count(edge["sequenceId"], 0, 2**31 - 1),
+                "start": fp.text(edge["startNodeId"], "start node", 128),
+                "end": fp.text(edge["endNodeId"], "end node", 128),
+                "released": released,
+            }
+        )
+    return {
+        **header,
+        "order_id": fp.text(message["orderId"], "order id", 128),
+        "order_update_id": fp.count(message["orderUpdateId"], 0, 2**31 - 1),
+        "nodes": normalized_nodes,
+        "edges": normalized_edges,
+        "zones": _zones(message),
+        "path_sharing": _path_sharing(message, edge_ids),
+    }
 
 
 def validate_order(message: dict[str, Any]) -> dict[str, Any]:
@@ -110,9 +131,13 @@ def validate_order(message: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("VDA order node requires ID, sequence and released flag")
         if type(node["released"]) is not bool:
             raise ValueError("VDA order node released flag must be boolean")
-        normalized_nodes.append({"node_id": fp.text(node["nodeId"], "node id", 128),
-                                 "sequence_id": fp.count(node["sequenceId"], 0, 2**31-1),
-                                 "released": node["released"]})
+        normalized_nodes.append(
+            {
+                "node_id": fp.text(node["nodeId"], "node id", 128),
+                "sequence_id": fp.count(node["sequenceId"], 0, 2**31 - 1),
+                "released": node["released"],
+            }
+        )
     normalized_edges = []
     edge_ids: set[str] = set()
     for edge in edges:
@@ -123,12 +148,21 @@ def validate_order(message: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("VDA order edge released flag must be boolean")
         edge_id = fp.text(edge["edgeId"], "edge id", 128)
         edge_ids.add(edge_id)
-        normalized_edges.append({"edge_id": edge_id,
-            "sequence_id": fp.count(edge["sequenceId"], 0, 2**31-1),
-            "start": fp.text(edge["startNodeId"], "start node", 128),
-            "end": fp.text(edge["endNodeId"], "end node", 128),
-            "released": edge["released"]})
-    return {**header, "order_id": fp.text(message["orderId"], "order id", 128),
-            "order_update_id": fp.count(message["orderUpdateId"], 0, 2**31-1),
-            "nodes": normalized_nodes, "edges": normalized_edges,
-            "zones": _zones(message), "path_sharing": _path_sharing(message, edge_ids)}
+        normalized_edges.append(
+            {
+                "edge_id": edge_id,
+                "sequence_id": fp.count(edge["sequenceId"], 0, 2**31 - 1),
+                "start": fp.text(edge["startNodeId"], "start node", 128),
+                "end": fp.text(edge["endNodeId"], "end node", 128),
+                "released": edge["released"],
+            }
+        )
+    return {
+        **header,
+        "order_id": fp.text(message["orderId"], "order id", 128),
+        "order_update_id": fp.count(message["orderUpdateId"], 0, 2**31 - 1),
+        "nodes": normalized_nodes,
+        "edges": normalized_edges,
+        "zones": _zones(message),
+        "path_sharing": _path_sharing(message, edge_ids),
+    }

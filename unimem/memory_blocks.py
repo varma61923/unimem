@@ -24,6 +24,7 @@ and share the global lock and audit log (their journal rows carry
 ``resolved_blocks``: a session block shadows an agent block of the same
 name, which shadows the global one.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -111,7 +112,8 @@ def normalize_scope(scope: str | None) -> str:
     if not match or not match.group(2).strip() or _SCOPE_CONTROL.search(match.group(2)):
         raise MemoryBlockError(
             "memory block scope must be 'global', 'session:<id>' or 'agent:<id>' "
-            "(id: 1-200 characters, no control characters)")
+            "(id: 1-200 characters, no control characters)"
+        )
     return f"{match.group(1)}:{match.group(2).strip()}"
 
 
@@ -133,7 +135,6 @@ def resolution_order(session: str = "", agent: str = "") -> list[str]:
         order.append(normalize_scope(agent if agent.startswith("agent:") else f"agent:{agent}"))
     order.append(GLOBAL_SCOPE)
     return order
-
 
 
 def _root_blocks_dir(root: str) -> str:
@@ -328,8 +329,16 @@ def _discard(*paths_: str) -> None:
 
 
 def _write_locked(
-    root: str, clean: str, content: str, max_chars: int, actor: str, reason: str,
-    metadata: dict[str, Any] | None, *, read_only: bool = False, scope: str = "",
+    root: str,
+    clean: str,
+    content: str,
+    max_chars: int,
+    actor: str,
+    reason: str,
+    metadata: dict[str, Any] | None,
+    *,
+    read_only: bool = False,
+    scope: str = "",
 ) -> MemoryBlock:
     if int(max_chars) > MAX_QUOTA_CHARS:
         raise MemoryBlockError(f"block quota cannot exceed {MAX_QUOTA_CHARS} characters")
@@ -348,8 +357,12 @@ def _write_locked(
     updated_at = _now()
     merged = {**(existing.get("metadata") or {}), **(metadata or {})}
     meta = {
-        "name": clean, "max_chars": int(max_chars), "revision": revision,
-        "created_at": created_at, "updated_at": updated_at, "metadata": merged,
+        "name": clean,
+        "max_chars": int(max_chars),
+        "revision": revision,
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "metadata": merged,
         "read_only": effective_read_only,
     }
     if scope:
@@ -378,11 +391,20 @@ def _write_locked(
         content_written = True
         os.replace(meta_tmp, meta_path)
         meta_written = True
-        _log(root, {
-            "timestamp": updated_at, "block": clean, "action": "set", "actor": actor, "reason": reason,
-            "revision": revision, "prev_revision": prev_revision, "char_count": len(content),
-            **({"scope": scope} if scope else {}),
-        })
+        _log(
+            root,
+            {
+                "timestamp": updated_at,
+                "block": clean,
+                "action": "set",
+                "actor": actor,
+                "reason": reason,
+                "revision": revision,
+                "prev_revision": prev_revision,
+                "char_count": len(content),
+                **({"scope": scope} if scope else {}),
+            },
+        )
         cleanup_backups = True
     except BaseException:
         if meta_written:
@@ -402,18 +424,23 @@ def _write_locked(
         if cleanup_backups:
             _discard(backup, meta_backup)
     return MemoryBlock(
-        name=clean, content=content, char_count=len(content), max_chars=int(max_chars),
-        revision=revision, created_at=created_at, updated_at=updated_at, metadata=merged,
-        read_only=effective_read_only, scope=scope,
+        name=clean,
+        content=content,
+        char_count=len(content),
+        max_chars=int(max_chars),
+        revision=revision,
+        created_at=created_at,
+        updated_at=updated_at,
+        metadata=merged,
+        read_only=effective_read_only,
+        scope=scope,
     )
 
 
 def _check_mutable(block: MemoryBlock) -> None:
     """Raise ReadOnlyBlockError if the block cannot be mutated."""
     if block.read_only:
-        raise ReadOnlyBlockError(
-            f"Memory block '{block.name}' is read-only and cannot be modified."
-        )
+        raise ReadOnlyBlockError(f"Memory block '{block.name}' is read-only and cannot be modified.")
 
 
 def _check_revision(name: str, actual: str, expected: str | None) -> None:
@@ -456,8 +483,17 @@ def set_block(
             _check_mutable(existing)
         except BlockNotFoundError:
             _check_revision(clean, "", expected_revision)
-        return _write_locked(root, clean, content.expandtabs().strip(), max_chars, actor, reason,
-                             metadata, read_only=read_only, scope=scope)
+        return _write_locked(
+            root,
+            clean,
+            content.expandtabs().strip(),
+            max_chars,
+            actor,
+            reason,
+            metadata,
+            read_only=read_only,
+            scope=scope,
+        )
 
 
 def append_block(
@@ -522,19 +558,23 @@ def replace_block(
             raise SubstringNotFoundError(f"Target text not found in memory block '{block.name}'")
         if occurrences > 1:
             # Return the exact line numbers so the LLM can refine its argument.
-            lines = [
-                i + 1
-                for i, line in enumerate(normalised.split("\n"))
-                if old_str in line
-            ]
+            lines = [i + 1 for i, line in enumerate(normalised.split("\n")) if old_str in line]
             raise MemoryBlockError(
                 f"Ambiguous replacement: target text occurs {occurrences} times in block "
                 f"'{block.name}' on lines {lines}. "
                 "Provide more surrounding context to make the target unique."
             )
         new_content = normalised.replace(old_str, new_str).strip()
-        return _write_locked(root, clean, new_content, block.max_chars, actor,
-                             reason or f"replaced '{old_str[:20]}' with '{new_str[:20]}'", None, scope=scope)
+        return _write_locked(
+            root,
+            clean,
+            new_content,
+            block.max_chars,
+            actor,
+            reason or f"replaced '{old_str[:20]}' with '{new_str[:20]}'",
+            None,
+            scope=scope,
+        )
 
 
 def insert_block(
@@ -576,12 +616,11 @@ def insert_block(
         elif 1 <= line_number <= n:
             lines.insert(line_number, insertion)
         else:
-            raise MemoryBlockError(
-                f"line_number {line_number} out of range [0, {n}] for block '{clean}'"
-            )
+            raise MemoryBlockError(f"line_number {line_number} out of range [0, {n}] for block '{clean}'")
         new_content = "\n".join(lines).strip()
-        return _write_locked(root, clean, new_content, max_chars, actor,
-                             reason or f"inserted at line {line_number}", None, scope=scope)
+        return _write_locked(
+            root, clean, new_content, max_chars, actor, reason or f"inserted at line {line_number}", None, scope=scope
+        )
 
 
 def delete_block(
@@ -604,9 +643,7 @@ def delete_block(
         existing = _read_meta(meta_path)
         _check_revision(clean, str(existing.get("revision", "")), expected_revision)
         if existing.get("read_only"):
-            raise ReadOnlyBlockError(
-                f"Memory block '{clean}' is read-only and cannot be deleted."
-            )
+            raise ReadOnlyBlockError(f"Memory block '{clean}' is read-only and cannot be deleted.")
         prev_revision = str(existing.get("revision", ""))
         saved: list[tuple[str, str]] = []
         cleanup_backups = False
@@ -616,11 +653,20 @@ def delete_block(
                     backup = path + ".bak"
                     os.replace(path, backup)
                     saved.append((path, backup))
-            _log(root, {
-                "timestamp": _now(), "block": clean, "action": "delete", "actor": actor, "reason": reason,
-                "revision": _compute_revision(clean, "", prev_revision), "prev_revision": prev_revision,
-                "char_count": 0, **({"scope": scope} if scope else {}),
-            })
+            _log(
+                root,
+                {
+                    "timestamp": _now(),
+                    "block": clean,
+                    "action": "delete",
+                    "actor": actor,
+                    "reason": reason,
+                    "revision": _compute_revision(clean, "", prev_revision),
+                    "prev_revision": prev_revision,
+                    "char_count": 0,
+                    **({"scope": scope} if scope else {}),
+                },
+            )
             cleanup_backups = True
         except BaseException:
             for path, backup in reversed(saved):
@@ -643,8 +689,11 @@ def block_history(root: str, name: str = "", *, scope: str = "") -> list[dict[st
     every = scope == "*"
     wanted = "" if every else normalize_scope(scope)
     with _jsonl.locked(_lock_path(root)):
-        return [e for e in _jsonl.read_rows(_history_file(root))
-                if (not clean or e.get("block") == clean) and (every or str(e.get("scope") or "") == wanted)]
+        return [
+            e
+            for e in _jsonl.read_rows(_history_file(root))
+            if (not clean or e.get("block") == clean) and (every or str(e.get("scope") or "") == wanted)
+        ]
 
 
 def render_memory_blocks(blocks: list[MemoryBlock]) -> str:

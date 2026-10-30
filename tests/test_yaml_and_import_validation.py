@@ -37,9 +37,7 @@ class TestYamlDatesLoadAsStrings:
 
 class TestImportKeepsEveryOutcomeField:
     def test_baseline_survives_import(self):
-        out = import_data._extract_outcome(
-            {"title": "T", "resolved": "true", "baseline": "true"}
-        )
+        out = import_data._extract_outcome({"title": "T", "resolved": "true", "baseline": "true"})
         assert out.get("baseline") is True
 
     def test_importer_handles_every_outcome_field_the_schema_declares(self):
@@ -60,9 +58,11 @@ class TestInstallDoesNotFollowSymlinks:
         os.symlink(secret, link)
 
         subprocess.run(
-            [sys.executable, "-m", "unimem", "install",
-             "--target", "claude-code", "--dest", str(dest)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "install", "--target", "claude-code", "--dest", str(dest)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
 
         assert secret.read_text(encoding="utf-8") == "SECRET_PAYLOAD"
@@ -72,17 +72,34 @@ class TestInstallDoesNotFollowSymlinks:
 class TestCaptureWritesAtomicallyAndUniquely:
     def _capture(self, dest, title):
         return subprocess.run(
-            [sys.executable, "-m", "unimem", "capture",
-             "--title", title, "--context", "c", "--solution", "s",
-             "--agent-type", "code", "--dest", str(dest)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "unimem",
+                "capture",
+                "--title",
+                title,
+                "--context",
+                "c",
+                "--solution",
+                "s",
+                "--agent-type",
+                "code",
+                "--dest",
+                str(dest),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def test_same_titled_captures_do_not_overwrite_each_other(self, tmp_path):
         subprocess.run(
-            [sys.executable, "-m", "unimem", "init",
-             "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         for _ in range(3):
             r = self._capture(tmp_path, "same title every time")
@@ -95,9 +112,11 @@ class TestCaptureWritesAtomicallyAndUniquely:
     def test_the_filename_carries_the_trace_id(self, tmp_path):
         date = datetime.date.today().isoformat()
         subprocess.run(
-            [sys.executable, "-m", "unimem", "init",
-             "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         r = self._capture(tmp_path, "unique naming")
         out_path = r.stdout.strip()
@@ -107,9 +126,11 @@ class TestCaptureWritesAtomicallyAndUniquely:
 
     def test_the_written_trace_round_trips(self, tmp_path):
         subprocess.run(
-            [sys.executable, "-m", "unimem", "init",
-             "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         r = self._capture(tmp_path, "round trip")
         fm, body = frontmatter.read(r.stdout.strip())
@@ -123,8 +144,13 @@ class TestPushSkipsAlreadyPushedLessons:
         d.mkdir(parents=True, exist_ok=True)
         p = d / f"{slug}.md"
         fm = {
-            "name": slug, "description": "d", "tags": [], "agent_type": "code",
-            "status": "active", "applies_when": "w", "hub_trace_id": hub_trace_id,
+            "name": slug,
+            "description": "d",
+            "tags": [],
+            "agent_type": "code",
+            "status": "active",
+            "applies_when": "w",
+            "hub_trace_id": hub_trace_id,
         }
         frontmatter.write(str(p), fm, "## Rule\nr\n\n## How to apply\nh\n")
         return p
@@ -151,9 +177,7 @@ class TestPushSkipsAlreadyPushedLessons:
         assert len(results) == 1
         assert results[0].hub_trace_id == "newly-minted-id"
 
-    def test_a_never_pushed_lesson_is_contributed_with_an_idempotency_key(
-        self, tmp_path, monkeypatch
-    ):
+    def test_a_never_pushed_lesson_is_contributed_with_an_idempotency_key(self, tmp_path, monkeypatch):
         import asyncio
 
         from unimem import hub_client
@@ -212,7 +236,9 @@ class TestTokenizersHandleNonAscii:
         from unimem import retrieval
 
         assert retrieval._tokenize("The database connection failed") == [
-            "database", "connection", "failed",
+            "database",
+            "connection",
+            "failed",
         ]
 
 
@@ -267,7 +293,9 @@ class TestCliReportsOperationalErrorsCleanly:
     def _run(self, *args):
         return subprocess.run(
             [sys.executable, "-m", "unimem", *args],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def test_malformed_json_is_a_message_not_a_traceback(self, tmp_path):
@@ -300,7 +328,9 @@ class TestExperimentLoopCloses:
     def _run(self, *args, dest):
         return subprocess.run(
             [sys.executable, "-m", "unimem", *args, "--dest", str(dest)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def _store_with_lesson(self, tmp_path):
@@ -310,10 +340,16 @@ class TestExperimentLoopCloses:
         frontmatter.write(
             str(ldir / "lesson_pagination.md"),
             {
-                "name": "lesson_pagination", "description": "Use keyset pagination",
-                "tags": ["pagination"], "agent_type": "code", "domain": "databases",
-                "importance": 4, "applies_when": "paginating a large table",
-                "do_not_apply_when": "small sets", "uses": 0, "last_hit": "NEVER",
+                "name": "lesson_pagination",
+                "description": "Use keyset pagination",
+                "tags": ["pagination"],
+                "agent_type": "code",
+                "domain": "databases",
+                "importance": 4,
+                "applies_when": "paginating a large table",
+                "do_not_apply_when": "small sets",
+                "uses": 0,
+                "last_hit": "NEVER",
                 "status": "active",
             },
             "## Rule\nUse keyset pagination.\n\n## How to apply\nPage on an immutable key.\n",
@@ -322,45 +358,102 @@ class TestExperimentLoopCloses:
 
     def test_capture_accepts_an_occasion_id_and_uses_it_as_the_trace_id(self, tmp_path):
         self._store_with_lesson(tmp_path)
-        r = self._run("capture", "--title", "t", "--context", "c", "--solution", "s",
-                      "--agent-type", "code", "--resolved",
-                      "--occasion-id", "task-100", dest=tmp_path)
+        r = self._run(
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "task-100",
+            dest=tmp_path,
+        )
         assert r.returncode == 0, r.stderr
         inst, _ = trace_io_read(r.stdout.strip())
         assert inst["id"] == "task-100"
 
     def test_the_arm_joins_to_the_outcome(self, tmp_path):
         self._store_with_lesson(tmp_path)
-        self._run("query", "paginating a large table", "--experiment",
-                  "--occasion-id", "task-100", dest=tmp_path)
-        self._run("capture", "--title", "t", "--context", "large table", "--solution", "s",
-                  "--agent-type", "code", "--resolved",
-                  "--occasion-id", "task-100", dest=tmp_path)
+        self._run("query", "paginating a large table", "--experiment", "--occasion-id", "task-100", dest=tmp_path)
+        self._run(
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "large table",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "task-100",
+            dest=tmp_path,
+        )
         r = self._run("experiment", dest=tmp_path)
         combined = r.stdout + r.stderr
         assert "none have a matching" not in combined, "the arm failed to join to its outcome"
 
     def test_without_an_occasion_id_nothing_joins(self, tmp_path):
         self._store_with_lesson(tmp_path)
-        self._run("query", "paginating a large table", "--experiment",
-                  "--occasion-id", "task-200", dest=tmp_path)
-        self._run("capture", "--title", "t", "--context", "large table", "--solution", "s",
-                  "--agent-type", "code", "--resolved", dest=tmp_path)
+        self._run("query", "paginating a large table", "--experiment", "--occasion-id", "task-200", dest=tmp_path)
+        self._run(
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "large table",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--resolved",
+            dest=tmp_path,
+        )
         r = self._run("experiment", dest=tmp_path)
         assert "none have a matching" in (r.stdout + r.stderr)
 
     def test_an_empty_occasion_id_is_refused(self, tmp_path):
         self._store_with_lesson(tmp_path)
-        r = self._run("capture", "--title", "t", "--context", "c", "--solution", "s",
-                      "--agent-type", "code", "--occasion-id", "   ", dest=tmp_path)
+        r = self._run(
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--occasion-id",
+            "   ",
+            dest=tmp_path,
+        )
         assert r.returncode == 1
         assert "cannot be empty" in r.stderr
 
     def test_an_unsafe_occasion_id_cannot_escape_the_traces_directory(self, tmp_path):
         self._store_with_lesson(tmp_path)
-        r = self._run("capture", "--title", "t", "--context", "c", "--solution", "s",
-                      "--agent-type", "code", "--resolved",
-                      "--occasion-id", "../../etc/pwned", dest=tmp_path)
+        r = self._run(
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "../../etc/pwned",
+            dest=tmp_path,
+        )
         assert r.returncode == 0, r.stderr
         out_path = os.path.realpath(r.stdout.strip())
         traces_dir = os.path.realpath(str(tmp_path / "memory" / "traces"))
@@ -373,23 +466,44 @@ class TestCaptureOccasionIdMergesRatherThanOverwrites:
     def _run(self, *args, dest):
         return subprocess.run(
             [sys.executable, "-m", "unimem", *args, "--dest", str(dest)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def test_recapture_preserves_original_context_and_solution_by_default(self, tmp_path):
         self._run("init", "--agent-type", "code", dest=tmp_path)
         first = self._run(
-            "capture", "--title", "original title", "--context", "original context",
-            "--solution", "original solution", "--agent-type", "code",
-            "--occasion-id", "task-1", dest=tmp_path,
+            "capture",
+            "--title",
+            "original title",
+            "--context",
+            "original context",
+            "--solution",
+            "original solution",
+            "--agent-type",
+            "code",
+            "--occasion-id",
+            "task-1",
+            dest=tmp_path,
         )
         assert first.returncode == 0, first.stderr
         out_path = first.stdout.strip()
 
         second = self._run(
-            "capture", "--title", "placeholder", "--context", "placeholder",
-            "--solution", "placeholder", "--agent-type", "code", "--resolved",
-            "--occasion-id", "task-1", dest=tmp_path,
+            "capture",
+            "--title",
+            "placeholder",
+            "--context",
+            "placeholder",
+            "--solution",
+            "placeholder",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "task-1",
+            dest=tmp_path,
         )
         assert second.returncode == 0, second.stderr
         assert second.stdout.strip() == out_path, "must update the SAME file, not write a second one"
@@ -403,18 +517,43 @@ class TestCaptureOccasionIdMergesRatherThanOverwrites:
     def test_recapture_merges_outcome_and_preserves_tags_agent_id_and_created_at(self, tmp_path):
         self._run("init", "--agent-type", "code", dest=tmp_path)
         first = self._run(
-            "capture", "--title", "t", "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--tags", "linux,gcc", "--tokens-used", "4200",
-            "--agent-id", "worker-9", "--occasion-id", "task-3", dest=tmp_path,
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--tags",
+            "linux,gcc",
+            "--tokens-used",
+            "4200",
+            "--agent-id",
+            "worker-9",
+            "--occasion-id",
+            "task-3",
+            dest=tmp_path,
         )
         assert first.returncode == 0, first.stderr
         out_path = first.stdout.strip()
         original = trace_io_read(out_path)[0]
 
         second = self._run(
-            "capture", "--title", "placeholder", "--context", "placeholder",
-            "--solution", "placeholder", "--agent-type", "code", "--resolved",
-            "--occasion-id", "task-3", dest=tmp_path,
+            "capture",
+            "--title",
+            "placeholder",
+            "--context",
+            "placeholder",
+            "--solution",
+            "placeholder",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "task-3",
+            dest=tmp_path,
         )
         assert second.returncode == 0, second.stderr
         assert second.stdout.strip() == out_path
@@ -429,16 +568,42 @@ class TestCaptureOccasionIdMergesRatherThanOverwrites:
     def test_recapture_new_tags_and_agent_id_replace_rather_than_merge(self, tmp_path):
         self._run("init", "--agent-type", "code", dest=tmp_path)
         first = self._run(
-            "capture", "--title", "t", "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--tags", "linux,gcc", "--agent-id", "worker-9",
-            "--occasion-id", "task-4", dest=tmp_path,
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--tags",
+            "linux,gcc",
+            "--agent-id",
+            "worker-9",
+            "--occasion-id",
+            "task-4",
+            dest=tmp_path,
         )
         out_path = first.stdout.strip()
 
         self._run(
-            "capture", "--title", "t", "--context", "c", "--solution", "s",
-            "--agent-type", "code", "--tags", "billing", "--agent-id", "worker-10",
-            "--occasion-id", "task-4", dest=tmp_path,
+            "capture",
+            "--title",
+            "t",
+            "--context",
+            "c",
+            "--solution",
+            "s",
+            "--agent-type",
+            "code",
+            "--tags",
+            "billing",
+            "--agent-id",
+            "worker-10",
+            "--occasion-id",
+            "task-4",
+            dest=tmp_path,
         )
 
         inst, _ = trace_io_read(out_path)
@@ -448,16 +613,36 @@ class TestCaptureOccasionIdMergesRatherThanOverwrites:
     def test_overwrite_flag_replaces_the_narrative(self, tmp_path):
         self._run("init", "--agent-type", "code", dest=tmp_path)
         first = self._run(
-            "capture", "--title", "original title", "--context", "original context",
-            "--solution", "original solution", "--agent-type", "code",
-            "--occasion-id", "task-2", dest=tmp_path,
+            "capture",
+            "--title",
+            "original title",
+            "--context",
+            "original context",
+            "--solution",
+            "original solution",
+            "--agent-type",
+            "code",
+            "--occasion-id",
+            "task-2",
+            dest=tmp_path,
         )
         out_path = first.stdout.strip()
 
         self._run(
-            "capture", "--title", "corrected title", "--context", "corrected context",
-            "--solution", "corrected solution", "--agent-type", "code", "--resolved",
-            "--occasion-id", "task-2", "--overwrite", dest=tmp_path,
+            "capture",
+            "--title",
+            "corrected title",
+            "--context",
+            "corrected context",
+            "--solution",
+            "corrected solution",
+            "--agent-type",
+            "code",
+            "--resolved",
+            "--occasion-id",
+            "task-2",
+            "--overwrite",
+            dest=tmp_path,
         )
 
         inst, _ = trace_io_read(out_path)
@@ -476,20 +661,30 @@ def trace_io_read(path):
 class TestHoldoutLogIntegrity:
     def _store(self, tmp_path):
         subprocess.run(
-            [sys.executable, "-m", "unimem", "init", "--agent-type", "code",
-             "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         ldir = tmp_path / "memory" / "lessons"
         ldir.mkdir(parents=True, exist_ok=True)
         for i in range(6):
             frontmatter.write(
                 str(ldir / f"lesson_topic{i}.md"),
-                {"name": f"lesson_topic{i}", "description": f"desc {i}",
-                 "tags": ["pagination"], "agent_type": "code", "domain": "databases",
-                 "importance": 3, "applies_when": "paginating a large table",
-                 "do_not_apply_when": "n/a", "uses": 0, "last_hit": "NEVER",
-                 "status": "active"},
+                {
+                    "name": f"lesson_topic{i}",
+                    "description": f"desc {i}",
+                    "tags": ["pagination"],
+                    "agent_type": "code",
+                    "domain": "databases",
+                    "importance": 3,
+                    "applies_when": "paginating a large table",
+                    "do_not_apply_when": "n/a",
+                    "uses": 0,
+                    "last_hit": "NEVER",
+                    "status": "active",
+                },
                 "## Rule\nr\n\n## How to apply\nh\n",
             )
         return tmp_path
@@ -502,9 +697,21 @@ class TestHoldoutLogIntegrity:
 
         def one(n):
             return subprocess.run(
-                [sys.executable, "-m", "unimem", "query", "paginating a large table",
-                 "--experiment", "--occasion-id", f"occ-{n}", "--dest", str(tmp_path)],
-                cwd=REPO_ROOT, capture_output=True, text=True,
+                [
+                    sys.executable,
+                    "-m",
+                    "unimem",
+                    "query",
+                    "paginating a large table",
+                    "--experiment",
+                    "--occasion-id",
+                    f"occ-{n}",
+                    "--dest",
+                    str(tmp_path),
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
             ).returncode
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
@@ -519,9 +726,21 @@ class TestHoldoutLogIntegrity:
     def test_a_corrupt_line_is_reported_not_silently_dropped(self, tmp_path):
         self._store(tmp_path)
         subprocess.run(
-            [sys.executable, "-m", "unimem", "query", "paginating a large table",
-             "--experiment", "--occasion-id", "occ-1", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "unimem",
+                "query",
+                "paginating a large table",
+                "--experiment",
+                "--occasion-id",
+                "occ-1",
+                "--dest",
+                str(tmp_path),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         log = tmp_path / "memory" / "holdout_log.jsonl"
         with open(log, "a", encoding="utf-8") as fh:
@@ -529,7 +748,9 @@ class TestHoldoutLogIntegrity:
 
         r = subprocess.run(
             [sys.executable, "-m", "unimem", "experiment", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert "unparseable line" in r.stderr
         assert "unreliable" in r.stderr
@@ -537,13 +758,27 @@ class TestHoldoutLogIntegrity:
     def test_a_clean_log_produces_no_warning(self, tmp_path):
         self._store(tmp_path)
         subprocess.run(
-            [sys.executable, "-m", "unimem", "query", "paginating a large table",
-             "--experiment", "--occasion-id", "occ-1", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "unimem",
+                "query",
+                "paginating a large table",
+                "--experiment",
+                "--occasion-id",
+                "occ-1",
+                "--dest",
+                str(tmp_path),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         r = subprocess.run(
             [sys.executable, "-m", "unimem", "experiment", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
         assert "unparseable line" not in r.stderr
 
@@ -552,7 +787,9 @@ class TestDoctorReportsFailuresInItsExitCode:
     def _run(self, *args):
         return subprocess.run(
             [sys.executable, "-m", "unimem", "doctor", *args],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def test_a_missing_store_exits_non_zero(self, tmp_path):
@@ -565,7 +802,10 @@ class TestDoctorReportsFailuresInItsExitCode:
         # passed when another test happened to have left one behind.
         subprocess.run(
             [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return str(tmp_path)
 
@@ -591,9 +831,11 @@ class TestDoctorReportsFailuresInItsExitCode:
 
     def test_a_fresh_store_with_no_lessons_is_not_a_failure(self, tmp_path):
         subprocess.run(
-            [sys.executable, "-m", "unimem", "init", "--agent-type", "code",
-             "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         r = self._run("--dest", str(tmp_path))
         assert r.returncode == 0
@@ -604,16 +846,14 @@ class TestValidatorRejectsTupleFormItems:
     def test_list_typed_items_raises_unsupported_not_attribute_error(self):
         from unimem import validate
 
-        schema = {"type": "object",
-                  "properties": {"tags": {"type": "array", "items": [{"type": "string"}]}}}
+        schema = {"type": "object", "properties": {"tags": {"type": "array", "items": [{"type": "string"}]}}}
         with pytest.raises(validate.UnsupportedSchemaError):
             validate.assert_supported_schema(schema)
 
     def test_the_supported_form_still_passes(self):
         from unimem import validate
 
-        schema = {"type": "object",
-                  "properties": {"tags": {"type": "array", "items": {"type": "string"}}}}
+        schema = {"type": "object", "properties": {"tags": {"type": "array", "items": {"type": "string"}}}}
         validate.assert_supported_schema(schema)
 
     def test_the_shipped_schemas_still_load(self):
@@ -627,9 +867,7 @@ class TestReportKeepsPlaceholderRows:
     def test_a_dash_only_data_row_is_not_mistaken_for_a_separator(self):
         from unimem.reference.measure_performance import _md_to_html_fragment
 
-        html = _md_to_html_fragment(
-            "| Metric | Value |\n|---|---|\n| lexical | 0.42 |\n| - | - |\n| fresh | 0.9 |\n"
-        )
+        html = _md_to_html_fragment("| Metric | Value |\n|---|---|\n| lexical | 0.42 |\n| - | - |\n| fresh | 0.9 |\n")
         assert html.count("<tr>") - 1 == 3, "a data row was dropped"
         assert "<td>-</td>" in html
 
@@ -642,11 +880,17 @@ class TestReportKeepsPlaceholderRows:
 
 class TestEveryThresholdFlagIsActuallyImplemented:
     def test_no_threshold_flag_reports_itself_as_unimplemented(self):
-        for flag in ("--threshold-lexical=0.99", "--threshold-freshness=0.5",
-                     "--threshold-composite=0.7", "--threshold-semantic=0.99"):
+        for flag in (
+            "--threshold-lexical=0.99",
+            "--threshold-freshness=0.5",
+            "--threshold-composite=0.7",
+            "--threshold-semantic=0.99",
+        ):
             r = subprocess.run(
                 [sys.executable, "-m", "unimem", "bench", flag],
-                cwd=REPO_ROOT, capture_output=True, text=True,
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
             )
             assert "not implemented" not in r.stderr, flag
 
@@ -654,12 +898,18 @@ class TestEveryThresholdFlagIsActuallyImplemented:
         from unimem.reference import measure_performance as mp
 
         lessons = {
-            "lesson_a": {"description": "Reuse the gateway idempotency key on a refund retry",
-                         "applies_when": "refund retry returns 409"},
-            "lesson_b": {"description": "On a refund retry reuse the gateway idempotency key",
-                         "applies_when": "refund retry returns 409"},
-            "lesson_c": {"description": "Escalate billing disputes to the finance queue",
-                         "applies_when": "customer disputes a charge"},
+            "lesson_a": {
+                "description": "Reuse the gateway idempotency key on a refund retry",
+                "applies_when": "refund retry returns 409",
+            },
+            "lesson_b": {
+                "description": "On a refund retry reuse the gateway idempotency key",
+                "applies_when": "refund retry returns 409",
+            },
+            "lesson_c": {
+                "description": "Escalate billing disputes to the finance queue",
+                "applies_when": "customer disputes a charge",
+            },
         }
         result = mp.compute_lexical_duplicates(lessons, 0.6)
         assert [{p["a"], p["b"]} for p in result["pairs"]] == [{"lesson_a", "lesson_b"}]
@@ -673,8 +923,7 @@ class TestEveryThresholdFlagIsActuallyImplemented:
         recent = (now - datetime.timedelta(days=5)).strftime("%Y-%m-%d")
         old = (now - datetime.timedelta(days=mp.FRESHNESS_WINDOW_DAYS + 30)).strftime("%Y-%m-%d")
         value, n = mp.compute_freshness(
-            {"a": {"last_hit": recent}, "b": {"last_hit": old},
-             "c": {"last_hit": "NEVER"}, "d": {"last_hit": recent}},
+            {"a": {"last_hit": recent}, "b": {"last_hit": old}, "c": {"last_hit": "NEVER"}, "d": {"last_hit": recent}},
             now=now,
         )
         assert n == 4
@@ -683,46 +932,64 @@ class TestEveryThresholdFlagIsActuallyImplemented:
     def test_the_composite_score_names_its_own_components(self):
         from unimem.reference import measure_performance as mp
 
-        composite = mp.compute_composite({
-            "lesson_quality": {"value": 0.8},
-            "implicit_retrieval": {"strict": 0.6},
-            "n_lessons": 10,
-            "extras": {"never_hit": ["x", "y"]},
-            "freshness": {"value": 1.0},
-        })
+        composite = mp.compute_composite(
+            {
+                "lesson_quality": {"value": 0.8},
+                "implicit_retrieval": {"strict": 0.6},
+                "n_lessons": 10,
+                "extras": {"never_hit": ["x", "y"]},
+                "freshness": {"value": 1.0},
+            }
+        )
         assert composite["value"] == pytest.approx((0.8 + 0.6 + 0.8 + 1.0) / 4)
-        assert set(composite["components"]) == {
-            "lesson_quality", "implicit_retrieval", "lesson_coverage", "freshness"
-        }
+        assert set(composite["components"]) == {"lesson_quality", "implicit_retrieval", "lesson_coverage", "freshness"}
 
     def test_a_threshold_that_is_not_passed_raises_no_alert(self):
         from unimem.reference import measure_performance as mp
 
         report = {
-            "lesson_quality": {"value": 0.9}, "implicit_retrieval": {"strict": 0.9},
-            "n_lessons": 1, "extras": {"never_hit": [], "importance_lessons": {}},
+            "lesson_quality": {"value": 0.9},
+            "implicit_retrieval": {"strict": 0.9},
+            "n_lessons": 1,
+            "extras": {"never_hit": [], "importance_lessons": {}},
             "freshness": {"value": 0.0, "n": 1, "window_days": 90},
             "composite": {"value": 0.0, "components": {}},
             "lexical_duplicates": {"pairs": [{"a": "x", "b": "y", "score": 1.0}], "n_lessons": 2},
         }
-        thresholds = {"quality": 0.7, "retrieval": 0.5, "never_hit": 0.3, "unimodal": 0.95,
-                      "lexical": None, "freshness": None, "composite": None}
+        thresholds = {
+            "quality": 0.7,
+            "retrieval": 0.5,
+            "never_hit": 0.3,
+            "unimodal": 0.95,
+            "lexical": None,
+            "freshness": None,
+            "composite": None,
+        }
         assert mp.compute_alerts(report, thresholds) == []
 
     def test_each_threshold_fires_when_it_is_breached(self):
         from unimem.reference import measure_performance as mp
 
         report = {
-            "lesson_quality": {"value": 0.9}, "implicit_retrieval": {"strict": 0.9},
-            "n_lessons": 1, "extras": {"never_hit": [], "importance_lessons": {}},
+            "lesson_quality": {"value": 0.9},
+            "implicit_retrieval": {"strict": 0.9},
+            "n_lessons": 1,
+            "extras": {"never_hit": [], "importance_lessons": {}},
             "freshness": {"value": 0.1, "n": 10, "window_days": 90},
             "composite": {"value": 0.2, "components": {"freshness": 0.1}},
             "lexical_duplicates": {"pairs": [{"a": "x", "b": "y", "score": 1.0}], "n_lessons": 2},
         }
         alerts = mp.compute_alerts(
             report,
-            {"quality": 0.7, "retrieval": 0.5, "never_hit": 0.3, "unimodal": 0.95,
-             "lexical": 0.6, "freshness": 0.5, "composite": 0.7},
+            {
+                "quality": 0.7,
+                "retrieval": 0.5,
+                "never_hit": 0.3,
+                "unimodal": 0.95,
+                "lexical": 0.6,
+                "freshness": 0.5,
+                "composite": 0.7,
+            },
         )
         joined = " | ".join(alerts)
         assert "near-duplicate lesson pair" in joined
@@ -749,9 +1016,7 @@ class TestRootResolutionMatchesTheReferenceScripts:
         from unimem import paths
 
         monkeypatch.setenv("UNIMEM_ROOT", str(tmp_path / "env"))
-        assert paths.resolve_root(str(tmp_path / "explicit")) == os.path.abspath(
-            str(tmp_path / "explicit")
-        )
+        assert paths.resolve_root(str(tmp_path / "explicit")) == os.path.abspath(str(tmp_path / "explicit"))
 
 
 class TestCoreSuiteNeedsNoHubDependencies:
@@ -804,7 +1069,8 @@ class TestSemanticQueryDetectsIndexMismatch:
         import importlib.util
 
         spec = importlib.util.spec_from_file_location(
-            "_query_probe", Path(REPO_ROOT) / "unimem" / "reference" / "query.py",
+            "_query_probe",
+            Path(REPO_ROOT) / "unimem" / "reference" / "query.py",
         )
         module = importlib.util.module_from_spec(spec)
         return module, spec
@@ -917,29 +1183,29 @@ class TestImportStreamsRatherThanBuffering:
     def _run_import(self, tmp_path, jsonl_lines):
         subprocess.run(
             [sys.executable, "-m", "unimem", "init", "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         src = tmp_path / "export.jsonl"
         src.write_text("\n".join(jsonl_lines) + "\n", encoding="utf-8")
         return subprocess.run(
-            [sys.executable, "-m", "unimem", "import", str(src),
-             "--agent-type", "code", "--dest", str(tmp_path)],
-            cwd=REPO_ROOT, capture_output=True, text=True,
+            [sys.executable, "-m", "unimem", "import", str(src), "--agent-type", "code", "--dest", str(tmp_path)],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
         )
 
     def test_a_bulk_import_still_writes_every_valid_row(self, tmp_path):
         import json as _json
 
-        rows = [
-            _json.dumps({"title": f"t{i}", "context": "c", "solution": "s"})
-            for i in range(50)
-        ]
+        rows = [_json.dumps({"title": f"t{i}", "context": "c", "solution": "s"}) for i in range(50)]
         r = self._run_import(tmp_path, rows)
         assert r.returncode == 0, r.stderr
         assert "50 row(s) parseable" in r.stdout
         written = [
-            p for p in (tmp_path / "memory" / "traces").iterdir()
-            if p.name.endswith(".md") and p.name != "README.md"
+            p for p in (tmp_path / "memory" / "traces").iterdir() if p.name.endswith(".md") and p.name != "README.md"
         ]
         assert len(written) == 50
 
@@ -963,7 +1229,8 @@ class TestImportStreamsRatherThanBuffering:
 
         mapping = import_data.FieldMapping()
         imported, skipped = import_data.parse_jsonl(
-            iter(['{"title": "t", "context": "c", "solution": "s"}']), mapping,
+            iter(['{"title": "t", "context": "c", "solution": "s"}']),
+            mapping,
         )
         assert len(imported) == 1 and len(skipped) == 0
 

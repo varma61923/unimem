@@ -27,23 +27,27 @@ _SECRET_PATTERNS_HIGH: tuple[tuple[str, re.Pattern], ...] = (
     ("Anthropic API key", re.compile(r"\bsk-ant-[A-Za-z0-9\-_]{20,}\b")),
     ("OpenAI-style API key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b")),
     ("UniMem Hub API key", re.compile(r"\bunimem_live_[A-Za-z0-9_-]{32,}\b")),
-    ("PEM private key block", re.compile(
-        r"-----BEGIN (?P<pem_kind>(?:RSA |EC |OPENSSH |DSA |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?)-----"
-        r"(?:[ \t]*\r?\n[\s\S]*?(?:-----END (?P=pem_kind)-----|\Z))?"
-    )),
+    (
+        "PEM private key block",
+        re.compile(
+            r"-----BEGIN (?P<pem_kind>(?:RSA |EC |OPENSSH |DSA |ENCRYPTED |PGP )?PRIVATE KEY(?: BLOCK)?)-----"
+            r"(?:[ \t]*\r?\n[\s\S]*?(?:-----END (?P=pem_kind)-----|\Z))?"
+        ),
+    ),
     ("URI credentials", re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@]+:[^\s/@]+@")),
-    ("JSON Web Token", re.compile(
-        r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
-    )),
+    ("JSON Web Token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
 )
 
 _SECRET_PATTERNS_HIGH += (("HTTP authorization credential", re.compile(r"(?i)\bbearer[ \t]+[A-Za-z0-9._~+/-]+=*")),)
 
 _SECRET_PATTERNS_MEDIUM: tuple[tuple[str, re.Pattern], ...] = (
-    ("possible credential assignment", re.compile(
-        r"(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret|"
-        r"private[_-]?key|passwd|password)\b\s*[:=]\s*['\"]?[A-Za-z0-9_\-/+=]{12,}['\"]?"
-    )),
+    (
+        "possible credential assignment",
+        re.compile(
+            r"(?i)\b(api[_-]?key|secret[_-]?key|access[_-]?token|client[_-]?secret|"
+            r"private[_-]?key|passwd|password)\b\s*[:=]\s*['\"]?[A-Za-z0-9_\-/+=]{12,}['\"]?"
+        ),
+    ),
 )
 
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -66,29 +70,32 @@ def _luhn_ok(digits: str) -> bool:
 
 
 _INJECTION_PHRASE_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
-    ("forged model-role delimiter", re.compile(
-        r"(?i)<\s*/?\s*(?:system|developer|assistant)\b[^>]{0,200}>|"
-        r"<\|(?:im_start|start_header_id)\|>\s*(?:system|developer|assistant)\b|\[INST\]"
-    )),
-    ("instruction-override phrasing", re.compile(
-        r"(?i)\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?"
-        r"(?:previous|prior|above|earlier|the\s+above)\s+"
-        r"(?:instructions?|rules?|prompts?|context)\b"
-    )),
-    ("forged system-role block", re.compile(
-        r"(?i)(?:^|\n)\s*(?:system|assistant)\s*(?:prompt)?\s*[:=]"
-    )),
-    ("fabricated new-instructions block", re.compile(
-        r"(?i)\bnew\s+instructions\s*:"
-    )),
-    ("jailbreak-style persona override", re.compile(
-        r"(?i)\byou\s+are\s+now\b[^.\n]{0,60}\b"
-        r"(?:dan|jailbreak(?:ed)?|unrestricted|no\s+rules|without\s+restrictions|"
-        r"free\s+from\s+(?:all\s+)?restrictions?)\b"
-    )),
-    ("smuggled instruction comment", re.compile(
-        r"(?i)<!--\s*(?:system|instruction|ignore)[^>]{0,200}-->", re.DOTALL
-    )),
+    (
+        "forged model-role delimiter",
+        re.compile(
+            r"(?i)<\s*/?\s*(?:system|developer|assistant)\b[^>]{0,200}>|"
+            r"<\|(?:im_start|start_header_id)\|>\s*(?:system|developer|assistant)\b|\[INST\]"
+        ),
+    ),
+    (
+        "instruction-override phrasing",
+        re.compile(
+            r"(?i)\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?"
+            r"(?:previous|prior|above|earlier|the\s+above)\s+"
+            r"(?:instructions?|rules?|prompts?|context)\b"
+        ),
+    ),
+    ("forged system-role block", re.compile(r"(?i)(?:^|\n)\s*(?:system|assistant)\s*(?:prompt)?\s*[:=]")),
+    ("fabricated new-instructions block", re.compile(r"(?i)\bnew\s+instructions\s*:")),
+    (
+        "jailbreak-style persona override",
+        re.compile(
+            r"(?i)\byou\s+are\s+now\b[^.\n]{0,60}\b"
+            r"(?:dan|jailbreak(?:ed)?|unrestricted|no\s+rules|without\s+restrictions|"
+            r"free\s+from\s+(?:all\s+)?restrictions?)\b"
+        ),
+    ),
+    ("smuggled instruction comment", re.compile(r"(?i)<!--\s*(?:system|instruction|ignore)[^>]{0,200}-->", re.DOTALL)),
 )
 
 _HIDDEN_CODEPOINTS = (
@@ -155,19 +162,23 @@ def _scrub(text: str) -> tuple[str, list[str]]:
     if not text:
         return text, found
     for label, pattern in _SECRET_PATTERNS_HIGH:
+
         def _mark(match, label=label):
             found.append(label)
             return f"[REDACTED {label}]"
+
         text = pattern.sub(_mark, text)
+
     # Explicit credential assignments are sensitive even when a provider prefix
     # is absent. Preserve field names and quotes, never the assigned value.
     def _assignment(match: re.Match[str]) -> str:
         value = match.group("value")
-        if value.lstrip("\"\'").startswith("[REDACTED"):
+        if value.lstrip("\"'").startswith("[REDACTED"):
             return match.group()
         found.append("credential assignment")
-        quote = value[0] if value.startswith(("\"", "\'")) else ""
+        quote = value[0] if value.startswith(('"', "'")) else ""
         return match.group("prefix") + quote + "[REDACTED credential assignment]" + quote
+
     text = _CREDENTIAL_VALUE_RE.sub(_assignment, text)
     return text, found
 
@@ -178,11 +189,23 @@ _CREDENTIAL_VALUE_RE = re.compile(
     r"(?P<value>\"(?:\\.|[^\"\\\r\n])+\"|'(?:\\.|[^'\\\r\n])+'|[^\s,;]+)"
 )
 
-_SECRET_FIELD_NAMES = frozenset({
-    "api_key", "apikey", "secret", "secret_key", "access_token", "auth_token",
-    "client_secret", "private_key", "passwd", "password", "authorization",
-    "aws_secret_access_key", "aws_session_token",
-})
+_SECRET_FIELD_NAMES = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "secret",
+        "secret_key",
+        "access_token",
+        "auth_token",
+        "client_secret",
+        "private_key",
+        "passwd",
+        "password",
+        "authorization",
+        "aws_secret_access_key",
+        "aws_session_token",
+    }
+)
 _IP_CANDIDATE_RE = re.compile(
     r"(?<![\w:.])(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9A-Fa-f]*:[0-9A-Fa-f:.]+)(?![\w:]|\.[0-9])"
 )
@@ -269,6 +292,7 @@ def redact_pii(text: str) -> tuple[str, list[str]]:
         def _mark(m: re.Match) -> str:
             found.append(label)
             return f"[REDACTED {label}]"
+
         return pattern.sub(_mark, text)
 
     text = _sub(_EMAIL_RE, "email", text)
@@ -284,6 +308,7 @@ def redact_pii(text: str) -> tuple[str, list[str]]:
         return m.group()
 
     text = _CARD_CANDIDATE_RE.sub(_card_mark, text)
+
     def _ip_mark(match: re.Match[str]) -> str:
         try:
             address = match.group().rstrip(".")
@@ -291,7 +316,8 @@ def redact_pii(text: str) -> tuple[str, list[str]]:
         except ValueError:
             return match.group()
         found.append("ip address")
-        return "[REDACTED ip address]" + match.group()[len(address):]
+        return "[REDACTED ip address]" + match.group()[len(address) :]
+
     text = _IP_CANDIDATE_RE.sub(_ip_mark, text)
     return text, found
 
@@ -303,39 +329,81 @@ def scan_text(text: str, field: str = "") -> list[Finding]:
 
     for label, pattern in _SECRET_PATTERNS_HIGH:
         for m in pattern.finditer(text):
-            findings.append(Finding(
-                CATEGORY_SECRET, CONFIDENCE_HIGH, label, field,
-                m.start(), m.end(), _redact(text, m.start(), m.end()),
-            ))
+            findings.append(
+                Finding(
+                    CATEGORY_SECRET,
+                    CONFIDENCE_HIGH,
+                    label,
+                    field,
+                    m.start(),
+                    m.end(),
+                    _redact(text, m.start(), m.end()),
+                )
+            )
     for label, pattern in _SECRET_PATTERNS_MEDIUM:
         for m in pattern.finditer(text):
-            findings.append(Finding(
-                CATEGORY_SECRET, CONFIDENCE_MEDIUM, label, field,
-                m.start(), m.end(), _redact(text, m.start(), m.end()),
-            ))
+            findings.append(
+                Finding(
+                    CATEGORY_SECRET,
+                    CONFIDENCE_MEDIUM,
+                    label,
+                    field,
+                    m.start(),
+                    m.end(),
+                    _redact(text, m.start(), m.end()),
+                )
+            )
 
     for m in _EMAIL_RE.finditer(text):
-        findings.append(Finding(
-            CATEGORY_PII, CONFIDENCE_HIGH, "email address", field,
-            m.start(), m.end(), _redact(text, m.start(), m.end()),
-        ))
+        findings.append(
+            Finding(
+                CATEGORY_PII,
+                CONFIDENCE_HIGH,
+                "email address",
+                field,
+                m.start(),
+                m.end(),
+                _redact(text, m.start(), m.end()),
+            )
+        )
     for m in _PHONE_RE.finditer(text):
-        findings.append(Finding(
-            CATEGORY_PII, CONFIDENCE_MEDIUM, "phone number", field,
-            m.start(), m.end(), _redact(text, m.start(), m.end()),
-        ))
+        findings.append(
+            Finding(
+                CATEGORY_PII,
+                CONFIDENCE_MEDIUM,
+                "phone number",
+                field,
+                m.start(),
+                m.end(),
+                _redact(text, m.start(), m.end()),
+            )
+        )
     for m in _SSN_RE.finditer(text):
-        findings.append(Finding(
-            CATEGORY_PII, CONFIDENCE_MEDIUM, "US SSN-shaped number", field,
-            m.start(), m.end(), _redact(text, m.start(), m.end()),
-        ))
+        findings.append(
+            Finding(
+                CATEGORY_PII,
+                CONFIDENCE_MEDIUM,
+                "US SSN-shaped number",
+                field,
+                m.start(),
+                m.end(),
+                _redact(text, m.start(), m.end()),
+            )
+        )
     for m in _CARD_CANDIDATE_RE.finditer(text):
         digits = re.sub(r"[ -]", "", m.group())
         if _luhn_ok(digits):
-            findings.append(Finding(
-                CATEGORY_PII, CONFIDENCE_HIGH, "card number (Luhn-valid)", field,
-                m.start(), m.end(), _redact(text, m.start(), m.end()),
-            ))
+            findings.append(
+                Finding(
+                    CATEGORY_PII,
+                    CONFIDENCE_HIGH,
+                    "card number (Luhn-valid)",
+                    field,
+                    m.start(),
+                    m.end(),
+                    _redact(text, m.start(), m.end()),
+                )
+            )
 
     findings.extend(scan_injection(text, field))
     return findings
@@ -347,16 +415,29 @@ def scan_injection(text: str, field: str = "") -> list[Finding]:
     findings: list[Finding] = []
     for label, pattern in _INJECTION_PHRASE_PATTERNS:
         for m in pattern.finditer(text):
-            findings.append(Finding(
-                CATEGORY_INJECTION, CONFIDENCE_HIGH, label, field,
-                m.start(), m.end(), _redact(text, m.start(), m.end()),
-            ))
+            findings.append(
+                Finding(
+                    CATEGORY_INJECTION,
+                    CONFIDENCE_HIGH,
+                    label,
+                    field,
+                    m.start(),
+                    m.end(),
+                    _redact(text, m.start(), m.end()),
+                )
+            )
     for m in _HIDDEN_CHARS_RE.finditer(text):
-        findings.append(Finding(
-            CATEGORY_INJECTION, CONFIDENCE_HIGH,
-            "hidden/bidi-override Unicode character", field,
-            m.start(), m.end(), _redact(text, m.start(), m.end()),
-        ))
+        findings.append(
+            Finding(
+                CATEGORY_INJECTION,
+                CONFIDENCE_HIGH,
+                "hidden/bidi-override Unicode character",
+                field,
+                m.start(),
+                m.end(),
+                _redact(text, m.start(), m.end()),
+            )
+        )
     return findings
 
 

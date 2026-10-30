@@ -4,6 +4,7 @@
 was recalled and either says it is enough or names what is missing as follow-up
 searches; each follow-up is searched on its own and keeps its best ranks, so a fact
 only one follow-up finds is not drowned by the rest."""
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,8 @@ ANSWER_MAX_BUDGET = 16_000
 
 def answer_options(**overrides) -> Options:
     """The recall options `answer` uses when the caller gives none."""
-    return Options(**{"budget": ANSWER_BUDGET, "adaptive_budget": True, "max_budget": ANSWER_MAX_BUDGET,
-                      **overrides})
+    return Options(**{"budget": ANSWER_BUDGET, "adaptive_budget": True, "max_budget": ANSWER_MAX_BUDGET, **overrides})
+
 
 GROUNDED = """\nReturn JSON only, with exactly these fields:
 {{"answer": "concise response", "citations": ["T123"], "abstain": false}}.
@@ -45,8 +46,12 @@ def _grounded_reply(raw: str, evidence: list[dict]) -> dict:
     """Validate bounded source membership; this does not prove entailment."""
     from unimem.llm import _extract_json_object
 
-    failed = {"answer": "I do not have a supported answer from the recalled evidence.", "citations": [],
-              "abstain": True, "citation_validation": "invalid-response"}
+    failed = {
+        "answer": "I do not have a supported answer from the recalled evidence.",
+        "citations": [],
+        "abstain": True,
+        "citation_validation": "invalid-response",
+    }
     if not isinstance(raw, str) or len(raw) > 64_000:
         return failed
     try:
@@ -54,15 +59,25 @@ def _grounded_reply(raw: str, evidence: list[dict]) -> dict:
     except (ValueError, json.JSONDecodeError):
         return failed
     allowed = {row["id"] for row in evidence}
-    if (set(data) != {"answer", "citations", "abstain"}
-            or not isinstance(data["answer"], str) or not 1 <= len(data["answer"].strip()) <= 32_000
-            or not isinstance(data["abstain"], bool) or not isinstance(data["citations"], list)
-            or len(data["citations"]) > 32
-            or any(not isinstance(identity, str) or identity not in allowed for identity in data["citations"])
-            or not data["abstain"] and not data["citations"]):
+    if (
+        set(data) != {"answer", "citations", "abstain"}
+        or not isinstance(data["answer"], str)
+        or not 1 <= len(data["answer"].strip()) <= 32_000
+        or not isinstance(data["abstain"], bool)
+        or not isinstance(data["citations"], list)
+        or len(data["citations"]) > 32
+        or any(not isinstance(identity, str) or identity not in allowed for identity in data["citations"])
+        or not data["abstain"]
+        and not data["citations"]
+    ):
         return failed
-    return {"answer": data["answer"].strip(), "citations": list(dict.fromkeys(data["citations"])),
-            "abstain": data["abstain"], "citation_validation": "source-membership-only"}
+    return {
+        "answer": data["answer"].strip(),
+        "citations": list(dict.fromkeys(data["citations"])),
+        "abstain": data["abstain"],
+        "citation_validation": "source-membership-only",
+    }
+
 
 ANSWER = """You answer with your memory of past conversations with the user.
 Facts about people, events and details from those conversations come only from the memories
@@ -96,33 +111,44 @@ Answer:"""
 # Extra direction for a question's shape, chosen from the question text alone.
 GUIDANCE = {
     "counting": "- This asks for a count or total: first list each distinct item with the date of the "
-                "session it comes from (an item mentioned in several sessions counts once), then give the number.",
+    "session it comes from (an item mentioned in several sessions counts once), then give the number.",
     "time": "- This asks about time: find the dated events involved and compute the date or interval from "
-            "the session dates, stating the dates you used.",
+    "the session dates, stating the dates you used.",
     "ordering": "- This asks for an order: answer with a numbered list, one event per line, earliest first.",
     "summary": "- This asks for a summary: cover the whole span in chronological order with the specifics "
-               "(names, numbers, decisions), not only the latest part.",
+    "(names, numbers, decisions), not only the latest part.",
     "suggestion": "- This asks for suggestions: make them concrete and build each on what the user said they "
-                  "like, use, own or did before, naming those details.",
+    "like, use, own or did before, naming those details.",
     "task": "- This asks you to do something: do it in full (the code, plan, steps or explanation asked for), "
-            "applying every standing instruction and stated preference; the memories supply the facts about "
-            "the user and their work.",
+    "applying every standing instruction and stated preference; the memories supply the facts about "
+    "the user and their work.",
 }
-ABSTAIN_NOTE = ("\n\n[Note: no memory above names the subject of this question. If they really never cover it, "
-                "say you do not have that information; if the question asks for an inference, reason from what "
-                "they do say.]")
+ABSTAIN_NOTE = (
+    "\n\n[Note: no memory above names the subject of this question. If they really never cover it, "
+    "say you do not have that information; if the question asks for an inference, reason from what "
+    "they do say.]"
+)
 
-_SUGGESTION = re.compile(r"\b(?:recommend\w*|suggest\w*|ideas?|tips?|advice|what should i|"
-                         r"any (?:good )?(?:options|ideas|tips|suggestions)|"
-                         r"can you (?:help me )?(?:find|pick|choose|plan))\b", re.I)
-_TASK = re.compile(r"^\s*(?:(?:can|could|would|will) you (?:please )?|please )?"
-                   r"(?:show me|write|create|draft|implement|build|set up|outline|walk me through|"
-                   r"give me (?:a|an|the|some)|explain how|"
-                   r"help me (?:write|build|set|create|plan|implement|fix|design|structure|improve|optimi[sz]e))\b"
-                   r"|^\s*how (?:do|can|should|would) i (?:implement|build|write|set up|add|create|fix|configure|"
-                   r"structure|test|deploy|optimi[sz]e|improve|handle|integrate|secure)\b", re.I)
-_TIME = re.compile(r"\b(?:when|what (?:date|day|month|year|time)|how long|how many (?:days|weeks|months|years|hours)|"
-                   r"how (?:old|recently)|before or after|first|earliest|latest)\b", re.I)
+_SUGGESTION = re.compile(
+    r"\b(?:recommend\w*|suggest\w*|ideas?|tips?|advice|what should i|"
+    r"any (?:good )?(?:options|ideas|tips|suggestions)|"
+    r"can you (?:help me )?(?:find|pick|choose|plan))\b",
+    re.I,
+)
+_TASK = re.compile(
+    r"^\s*(?:(?:can|could|would|will) you (?:please )?|please )?"
+    r"(?:show me|write|create|draft|implement|build|set up|outline|walk me through|"
+    r"give me (?:a|an|the|some)|explain how|"
+    r"help me (?:write|build|set|create|plan|implement|fix|design|structure|improve|optimi[sz]e))\b"
+    r"|^\s*how (?:do|can|should|would) i (?:implement|build|write|set up|add|create|fix|configure|"
+    r"structure|test|deploy|optimi[sz]e|improve|handle|integrate|secure)\b",
+    re.I,
+)
+_TIME = re.compile(
+    r"\b(?:when|what (?:date|day|month|year|time)|how long|how many (?:days|weeks|months|years|hours)|"
+    r"how (?:old|recently)|before or after|first|earliest|latest)\b",
+    re.I,
+)
 
 
 def question_shapes(question: str) -> list[str]:
@@ -149,8 +175,13 @@ def question_shapes(question: str) -> list[str]:
 def answer_prompt(context: str, question: str, now: str, *, abstain: bool = False) -> str:
     """The reader prompt for one question; the product and the benchmarks both use it."""
     guidance = "".join(GUIDANCE[shape] + "\n" for shape in question_shapes(question))
-    return ANSWER.format(context=(context or "(no memories)") + (ABSTAIN_NOTE if abstain else ""),
-                         question=question, now=now, guidance=guidance)
+    return ANSWER.format(
+        context=(context or "(no memories)") + (ABSTAIN_NOTE if abstain else ""),
+        question=question,
+        now=now,
+        guidance=guidance,
+    )
+
 
 DECIDE = """You are deciding whether the memories below are enough to answer a question.
 If they are, reply {{"done": true}}. If something is missing, reply with up to {n}
@@ -173,14 +204,25 @@ def _follow_ups(text: str) -> list[str] | None:
     if data.get("done") is not False:
         return None
     queries = data.get("queries")
-    if (not isinstance(queries, list) or not 1 <= len(queries) <= MAX_FOLLOW_UPS
-            or any(not isinstance(q, str) or not 1 <= len(q.strip()) <= 300 for q in queries)):
+    if (
+        not isinstance(queries, list)
+        or not 1 <= len(queries) <= MAX_FOLLOW_UPS
+        or any(not isinstance(q, str) or not 1 <= len(q.strip()) <= 300 for q in queries)
+    ):
         return None
     return list(dict.fromkeys(q.strip() for q in queries)) or None
 
 
-def answer(store: Store, question: str, *, now=None, options: Options | None = None, rounds: int = 1,
-           complete=None, grounded: bool = False) -> dict:
+def answer(
+    store: Store,
+    question: str,
+    *,
+    now=None,
+    options: Options | None = None,
+    rounds: int = 1,
+    complete=None,
+    grounded: bool = False,
+) -> dict:
     from unimem import llm
 
     complete = complete or llm.complete
@@ -195,8 +237,9 @@ def answer(store: Store, question: str, *, now=None, options: Options | None = N
     usage: list[dict] = []
     searched = 1
     for _round in range(rounds - 1):
-        reply, used = complete(DECIDE.format(question=question, context=result.context or "(nothing)",
-                                             n=MAX_FOLLOW_UPS))
+        reply, used = complete(
+            DECIDE.format(question=question, context=result.context or "(nothing)", n=MAX_FOLLOW_UPS)
+        )
         usage.append(used)
         follow = [q for q in (_follow_ups(reply) or []) if q not in asked]
         if not follow:
@@ -215,6 +258,14 @@ def answer(store: Store, question: str, *, now=None, options: Options | None = N
     text, used = complete(prompt)
     usage.append(used)
     response = _grounded_reply(text, evidence) if grounded else {"answer": text.strip()}
-    return {"question": question, **response, "context": result.context, "tokens": result.tokens,
-            "follow_ups": asked, "rounds": searched, "usage": usage, "turns": result.turns,
-            "explain": result.explain}
+    return {
+        "question": question,
+        **response,
+        "context": result.context,
+        "tokens": result.tokens,
+        "follow_ups": asked,
+        "rounds": searched,
+        "usage": usage,
+        "turns": result.turns,
+        "explain": result.explain,
+    }

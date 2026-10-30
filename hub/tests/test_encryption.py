@@ -65,7 +65,7 @@ class TestTamperDetection:
     def test_flipped_ciphertext_byte_fails_to_decrypt(self):
         cipher = EnvelopeCipher.from_config(generate_key(), "")
         envelope = cipher.encrypt("https://example.invalid/hook")
-        raw = bytearray(base64.urlsafe_b64decode(envelope[len(_PREFIX):]))
+        raw = bytearray(base64.urlsafe_b64decode(envelope[len(_PREFIX) :]))
         raw[-1] ^= 0xFF
         tampered = _PREFIX + base64.urlsafe_b64encode(bytes(raw)).decode("ascii")
         with pytest.raises(EncryptionError):

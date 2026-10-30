@@ -42,8 +42,13 @@ def test_typescript_generator_prevents_model_and_parameter_name_collisions(tmp_p
 
     calls = []
     monkeypatch.setattr(generate_sdks.subprocess, "run", lambda args, **kwargs: calls.append(args))
-    generate_sdks.generate(["java", "-jar", "verified.jar"], tmp_path / "spec.json", "typescript",
-                            tmp_path / "sdk", package_version="2.3.4-rc.1")
+    generate_sdks.generate(
+        ["java", "-jar", "verified.jar"],
+        tmp_path / "spec.json",
+        "typescript",
+        tmp_path / "sdk",
+        package_version="2.3.4-rc.1",
+    )
     options = calls[0][calls[0].index("--additional-properties") + 1]
     assert calls[0][calls[0].index("--git-user-id") + 1] == "varma61923"
     assert calls[0][calls[0].index("--git-repo-id") + 1] == "unimem"

@@ -678,11 +678,30 @@ def _tour_cli(*argv: str) -> str:
 def _tour_remember(root: str) -> dict[str, Any]:
     today = datetime.now(timezone.utc).date()
     switch = today - timedelta(days=120)
-    _tour_cli("fact", "add", "Refunds are issued through the v1 refunds endpoint.", "--category", "tool_rule",
-         "--valid-from", (today - timedelta(days=540)).isoformat(),
-         "--valid-until", (switch - timedelta(days=1)).isoformat(), "--dest", root)
-    _tour_cli("fact", "add", "Refunds are issued through the v2 payments API.", "--category", "tool_rule",
-         "--valid-from", switch.isoformat(), "--dest", root)
+    _tour_cli(
+        "fact",
+        "add",
+        "Refunds are issued through the v1 refunds endpoint.",
+        "--category",
+        "tool_rule",
+        "--valid-from",
+        (today - timedelta(days=540)).isoformat(),
+        "--valid-until",
+        (switch - timedelta(days=1)).isoformat(),
+        "--dest",
+        root,
+    )
+    _tour_cli(
+        "fact",
+        "add",
+        "Refunds are issued through the v2 payments API.",
+        "--category",
+        "tool_rule",
+        "--valid-from",
+        switch.isoformat(),
+        "--dest",
+        root,
+    )
     question = "How are refunds issued?"
     as_of = (today - timedelta(days=300)).isoformat()
 
@@ -712,11 +731,17 @@ def _tour_measure(root: str, occasions: int, seed: int) -> dict[str, Any]:
     rows = []
     for key, _, effect in TOUR_MEMORIES:
         found: dict[str, Any] = next((e for e in report["effects"] if e["lesson_slug"] == key), {})
-        rows.append({
-            "memory": key, "planted": effect, "verdict": found.get("verdict", "UNDERPOWERED"),
-            "effect": found.get("effect"), "ci": [found.get("ci_low"), found.get("ci_high")],
-            "with": found.get("rate_injected"), "without": found.get("rate_withheld"),
-        })
+        rows.append(
+            {
+                "memory": key,
+                "planted": effect,
+                "verdict": found.get("verdict", "UNDERPOWERED"),
+                "effect": found.get("effect"),
+                "ci": [found.get("ci_low"), found.get("ci_high")],
+                "with": found.get("rate_injected"),
+                "without": found.get("rate_withheld"),
+            }
+        )
     return {"occasions": occasions, "integrity": report["integrity"]["verdict"], "memories": rows}
 
 
@@ -729,8 +754,11 @@ def _tour_govern(root: str) -> dict[str, Any]:
     memory = CausalMemory(lambda task, **_: memories, root=root, durable=False, check_every=1, graduate=True)
     result = memory.recall_detailed("customer support ticket", occasion_id="ticket-next", record=False)
     settled = set(result.withdrawn) | set(result.graduated)
-    return {"withdrawn": sorted(result.withdrawn), "graduated": sorted(result.graduated),
-            "under_test": [key for key, _, _ in TOUR_MEMORIES if key not in settled]}
+    return {
+        "withdrawn": sorted(result.withdrawn),
+        "graduated": sorted(result.graduated),
+        "under_test": [key for key, _, _ in TOUR_MEMORIES if key not in settled],
+    }
 
 
 def _tour_pct(value: float | None) -> str:
@@ -764,16 +792,17 @@ def print_tour(result: dict[str, Any]) -> None:
     print("Next: unimem init --dest ./mem   ·   unimem install --target claude-code")
 
 
-
-
 def tour(occasions: int, seed: int, keep: str | None = None) -> dict[str, Any]:
     """Run the tour in a fresh store; ``keep`` names a new directory to retain it."""
     root = keep or tempfile.mkdtemp(prefix="unimem-demo-")
     started = time.monotonic()
     try:
         _tour_cli("init", "--dest", root)
-        result: dict[str, Any] = {"remember": _tour_remember(root), "measure": _tour_measure(root, occasions, seed),
-                                  "govern": _tour_govern(root)}
+        result: dict[str, Any] = {
+            "remember": _tour_remember(root),
+            "measure": _tour_measure(root, occasions, seed),
+            "govern": _tour_govern(root),
+        }
     finally:
         if not keep:
             shutil.rmtree(root, ignore_errors=True)

@@ -49,16 +49,23 @@ async def test_t3_hub_sync_and_local_parity(hub_sync_session, isolated_store: st
 
     res_cap = run_cli(
         "capture",
-        "--title", "Kafka consumer group lag alert",
-        "--context", "Consumer lag exceeded 10000 records on checkout topic",
-        "--solution", "Scale up replica consumer pods",
-        "--agent-type", "coding",
+        "--title",
+        "Kafka consumer group lag alert",
+        "--context",
+        "Consumer lag exceeded 10000 records on checkout topic",
+        "--solution",
+        "Scale up replica consumer pods",
+        "--agent-type",
+        "coding",
         dest=isolated_store,
     )
     res_cap.assert_success()
 
     hub_trace = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Kafka consumer group lag alert",
         context_text="Consumer lag exceeded 10000 records on checkout topic",
         solution_text="Scale up replica consumer pods",

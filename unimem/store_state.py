@@ -1,4 +1,5 @@
 """Why did that return nothing, and what is the next command?"""
+
 from __future__ import annotations
 
 import glob

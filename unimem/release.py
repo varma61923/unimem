@@ -92,12 +92,8 @@ def releases_log_path(root: str) -> str:
 
 def compute_id(parent_id: str, entries: tuple[Entry, ...]) -> str:
     """Content-addressed, over the parent and the pinned set."""
-    rows = _FIELD_SEP.join(
-        f"{e.slug}={e.revision}" for e in sorted(entries, key=lambda e: e.slug)
-    )
-    return hashlib.sha256(
-        (parent_id + _FIELD_SEP + rows).encode("utf-8")
-    ).hexdigest()
+    rows = _FIELD_SEP.join(f"{e.slug}={e.revision}" for e in sorted(entries, key=lambda e: e.slug))
+    return hashlib.sha256((parent_id + _FIELD_SEP + rows).encode("utf-8")).hexdigest()
 
 
 def active_entries(root: str) -> tuple[Entry, ...]:
@@ -170,7 +166,8 @@ def cut(
             "read. Re-read the current release, confirm the combined set is what "
             "you intend to run, and cut again -- a release recorded over theirs "
             "would lose a deployment decision, not a text edit.",
-            expected=base_id, actual=latest,
+            expected=base_id,
+            actual=latest,
         )
 
     entries = active_entries(root)
@@ -238,17 +235,9 @@ def diff(before: Release | None, after: Release) -> Diff:
     old = {e.slug: e.revision for e in (before.entries if before else ())}
     new = {e.slug: e.revision for e in after.entries}
 
-    added = tuple(
-        Entry(slug, new[slug]) for slug in sorted(new.keys() - old.keys())
-    )
-    removed = tuple(
-        Entry(slug, old[slug]) for slug in sorted(old.keys() - new.keys())
-    )
-    changed = tuple(
-        (slug, old[slug], new[slug])
-        for slug in sorted(old.keys() & new.keys())
-        if old[slug] != new[slug]
-    )
+    added = tuple(Entry(slug, new[slug]) for slug in sorted(new.keys() - old.keys()))
+    removed = tuple(Entry(slug, old[slug]) for slug in sorted(old.keys() - new.keys()))
+    changed = tuple((slug, old[slug], new[slug]) for slug in sorted(old.keys() & new.keys()) if old[slug] != new[slug])
     return Diff(added=added, removed=removed, changed=changed)
 
 
@@ -297,9 +286,7 @@ def plan_rollback(root: str, target: Release) -> RollbackPlan:
     )
 
 
-def apply_rollback(
-    root: str, plan: RollbackPlan, *, actor: str = "", allow_partial: bool = False
-) -> Release:
+def apply_rollback(root: str, plan: RollbackPlan, *, actor: str = "", allow_partial: bool = False) -> Release:
     """Flip statuses to match the plan, then cut a release recording it."""
     if plan.unrestorable and not allow_partial:
         listed = ", ".join(f"{slug} ({rev[:12]})" for slug, rev in plan.unrestorable[:5])
@@ -313,16 +300,15 @@ def apply_rollback(
         )
 
     for slug in plan.deactivate:
-        _set_status(root, slug, "review", actor=actor,
-                    reason=f"rolled back to {plan.target.release_id[:12]}")
+        _set_status(root, slug, "review", actor=actor, reason=f"rolled back to {plan.target.release_id[:12]}")
     for slug in plan.reactivate:
-        _set_status(root, slug, "active", actor=actor,
-                    reason=f"rolled back to {plan.target.release_id[:12]}")
+        _set_status(root, slug, "active", actor=actor, reason=f"rolled back to {plan.target.release_id[:12]}")
 
     return cut(
-        root, base_id=current_id(root), actor=actor,
-        reason=f"rollback to {plan.target.release_id[:12]}"
-               + (" (partial)" if plan.unrestorable else ""),
+        root,
+        base_id=current_id(root),
+        actor=actor,
+        reason=f"rollback to {plan.target.release_id[:12]}" + (" (partial)" if plan.unrestorable else ""),
     )
 
 

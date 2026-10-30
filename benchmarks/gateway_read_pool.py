@@ -4,6 +4,7 @@ The corpus is a deterministic operational-note workload, not customer traffic.
 No LLM, embeddings or oracle answer enters either request path. Both paths use
 the same production recall and compare returned contexts before timing claims.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,10 +45,12 @@ def measure(root, queries, fresh):
     try:
         for query in queries:
             started = time.perf_counter()
-            connection.request("POST", "/v1/conversation/recall", json.dumps({
-                "space": "operations", "question": query, "budget": 1500}), {
-                    "Authorization": "Bearer local-evaluation-token-not-a-credential",
-                    "Content-Type": "application/json"})
+            connection.request(
+                "POST",
+                "/v1/conversation/recall",
+                json.dumps({"space": "operations", "question": query, "budget": 1500}),
+                {"Authorization": "Bearer local-evaluation-token-not-a-credential", "Content-Type": "application/json"},
+            )
             response = connection.getresponse()
             result = json.loads(response.read())
             samples.append(1000 * (time.perf_counter() - started))
@@ -60,9 +63,12 @@ def measure(root, queries, fresh):
         server.server_close()
         thread.join(timeout=5)
     warm = sorted(samples[1:])
-    return {"cold_ms": samples[0], "warm_p50_ms": statistics.median(warm),
-            "warm_p95_ms": warm[min(len(warm) - 1, int(len(warm) * .95))],
-            "response_sha256": hashlib.sha256(json.dumps(bodies, sort_keys=True).encode()).hexdigest()}
+    return {
+        "cold_ms": samples[0],
+        "warm_p50_ms": statistics.median(warm),
+        "warm_p95_ms": warm[min(len(warm) - 1, int(len(warm) * 0.95))],
+        "response_sha256": hashlib.sha256(json.dumps(bodies, sort_keys=True).encode()).hexdigest(),
+    }
 
 
 def run(turns=2000, requests=40):
@@ -72,10 +78,18 @@ def run(turns=2000, requests=40):
         with tempfile.TemporaryDirectory(prefix="unimem-http-recall-") as root:
             with Store(root, "operations") as store:
                 for start in range(0, turns, 50):
-                    store.add(f"shift-{start // 50}", [{"role": "user", "text":
-                        f"Service component{i % 20} deployment runbook: verify health checks and snapshot backup. "
-                        f"Incident note {i} records rollout approval and recovery owner."}
-                        for i in range(start, min(start + 50, turns))], session_at="2024-01-01")
+                    store.add(
+                        f"shift-{start // 50}",
+                        [
+                            {
+                                "role": "user",
+                                "text": f"Service component{i % 20} deployment runbook: verify health checks and snapshot backup. "
+                                f"Incident note {i} records rollout approval and recovery owner.",
+                            }
+                            for i in range(start, min(start + 50, turns))
+                        ],
+                        session_at="2024-01-01",
+                    )
             results = {}
             for workload, queries in {
                 "repeated": ["component7 deployment health checks"] * requests,
@@ -84,12 +98,19 @@ def run(turns=2000, requests=40):
                 READ_POOL.discard_root(root)
                 fresh = measure(root, queries, True)
                 pooled = measure(root, queries, False)
-                results[workload] = {"fresh": fresh, "pooled": pooled,
+                results[workload] = {
+                    "fresh": fresh,
+                    "pooled": pooled,
                     "equivalent": fresh["response_sha256"] == pooled["response_sha256"],
-                    "warm_p50_speedup": fresh["warm_p50_ms"] / pooled["warm_p50_ms"]}
-            return {"transport": "HTTP/1.1 loopback, bearer auth, production gateway and recall",
-                    "turns": turns, "requests_per_arm": requests, "workloads": results,
-                    "scope": "simulated operational notes; excludes model inference and remote network latency"}
+                    "warm_p50_speedup": fresh["warm_p50_ms"] / pooled["warm_p50_ms"],
+                }
+            return {
+                "transport": "HTTP/1.1 loopback, bearer auth, production gateway and recall",
+                "turns": turns,
+                "requests_per_arm": requests,
+                "workloads": results,
+                "scope": "simulated operational notes; excludes model inference and remote network latency",
+            }
     finally:
         if old_setting is None:
             os.environ.pop("UNIMEM_CONVERSATION_EMBEDDER", None)

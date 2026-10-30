@@ -7,6 +7,7 @@ head. No private log can prevent an operator from hiding an entire history from
 an observer with no checkpoint. HMAC heads require a shared verifier secret;
 use the security extra and pinned Ed25519 keys for public verification.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -47,8 +48,9 @@ _TREES: OrderedDict[str, _Tree] = OrderedDict()
 def _remember(root: str, state: _Tree) -> None:
     _TREES[root] = state
     _TREES.move_to_end(root)
-    while len(_TREES) > 8 or sum(len(s.hashes) * 256 + len(s.nodes) * 512
-                               for s in _TREES.values()) > 128 * fp.MAX_BYTES:
+    while (
+        len(_TREES) > 8 or sum(len(s.hashes) * 256 + len(s.nodes) * 512 for s in _TREES.values()) > 128 * fp.MAX_BYTES
+    ):
         _TREES.popitem(last=False)
 
 
@@ -144,7 +146,7 @@ def frontier_append_with_proof(frontier: Sequence[str | None], leaf: str) -> tup
         result.append(value)
     else:
         result[level] = value
-    siblings.extend(str(subtree) for subtree in result[level + 1:] if subtree is not None)
+    siblings.extend(str(subtree) for subtree in result[level + 1 :] if subtree is not None)
     return result, siblings
 
 
@@ -192,6 +194,7 @@ def verify_inclusion(leaf: str, index: int, size: int, proof: list[str], root_ha
         fp.count(len(proof), 0, 32)
         for sibling in proof:
             _hash(sibling)
+
         def fold(start: int, length: int, offset: int) -> tuple[str, int]:
             if length == 1:
                 return leaf, offset
@@ -201,6 +204,7 @@ def verify_inclusion(leaf: str, index: int, size: int, proof: list[str], root_ha
                 return node_hash(child, proof[used]), used + 1
             child, used = fold(start + split, length - split, offset)
             return node_hash(proof[used], child), used + 1
+
         computed, used = fold(0, size, 0)
         return computed == root_hash and used == len(proof)
     except (ValueError, IndexError, TypeError):
@@ -299,18 +303,29 @@ def head(root: str, *, durable: bool = True) -> dict[str, Any]:
             latest = fp.signed_at(root, HEADS, state.head_tip[0] - 1)
             if latest["record"]["tree_size"] == len(state.hashes):
                 return latest
-        signed = fp.append(root, HEADS, {"tree_size": len(state.hashes), "root_hash": state.roots[-1],
-                                        "log_id": "local-store", "signature_kind": "store-pinned"}, durable=durable)
+        signed = fp.append(
+            root,
+            HEADS,
+            {
+                "tree_size": len(state.hashes),
+                "root_hash": state.roots[-1],
+                "log_id": "local-store",
+                "signature_kind": "store-pinned",
+            },
+            durable=durable,
+        )
         state.head_tip = fp.checkpoint(root, HEADS)
         _remember(os.path.realpath(root), state)
         # The node cache is disposable: verification always recomputes from leaves.
-        _jsonl.write_json(fp.filename(root, "transparency-nodes.json"),
-                          {"tree_size": len(state.hashes), "root_hash": state.roots[-1]})
+        _jsonl.write_json(
+            fp.filename(root, "transparency-nodes.json"), {"tree_size": len(state.hashes), "root_hash": state.roots[-1]}
+        )
         return signed
 
 
-def append(root: str, event: str, statement: dict[str, Any], *, durable: bool = True,
-           receipt: bool = True) -> dict[str, Any]:
+def append(
+    root: str, event: str, statement: dict[str, Any], *, durable: bool = True, receipt: bool = True
+) -> dict[str, Any]:
     """Commit a signed leaf; with ``receipt`` also sign a head and return an inclusion proof.
 
     Hot paths (holdout assignments, outcomes, ordinary writes) pass
@@ -331,25 +346,37 @@ def append(root: str, event: str, statement: dict[str, Any], *, durable: bool = 
         if not receipt:
             return {"leaf": len(state.hashes) - 1, "statement": signed}
         checkpoint = head(root, durable=durable)
-        return {"leaf": len(state.hashes) - 1, "statement": signed, "head": checkpoint,
-                "proof": _proof(state, len(state.hashes) - 1)}
+        return {
+            "leaf": len(state.hashes) - 1,
+            "statement": signed,
+            "head": checkpoint,
+            "proof": _proof(state, len(state.hashes) - 1),
+        }
 
 
 def prove(root: str, leaf: int) -> dict[str, Any]:
     with _jsonl.locked(fp.filename(root, LEAVES)), fp._GUARD:
         state = _tree(root)
         fp.count(leaf, 0, len(state.hashes) - 1, "leaf")
-        return {"leaf": leaf, "statement": fp.signed_at(root, LEAVES, leaf)["record"]["statement"],
-                "head": head(root), "proof": _proof(state, leaf)}
+        return {
+            "leaf": leaf,
+            "statement": fp.signed_at(root, LEAVES, leaf)["record"]["statement"],
+            "head": head(root),
+            "proof": _proof(state, leaf),
+        }
 
 
 def verify(root: str, receipt: dict[str, Any]) -> bool:
     try:
         checkpoint = receipt["head"]
         body = checkpoint["record"]
-        return (fp.verify(root, checkpoint) and fp.verify(root, receipt["statement"])
-                and verify_inclusion(leaf_hash(receipt["statement"]), receipt["leaf"], body["tree_size"],
-                                     receipt["proof"], body["root_hash"]))
+        return (
+            fp.verify(root, checkpoint)
+            and fp.verify(root, receipt["statement"])
+            and verify_inclusion(
+                leaf_hash(receipt["statement"]), receipt["leaf"], body["tree_size"], receipt["proof"], body["root_hash"]
+            )
+        )
     except (KeyError, ValueError, TypeError):
         return False
 
@@ -360,5 +387,10 @@ def consistent(root: str, old_size: int, size: int | None = None) -> dict[str, A
         size = len(hashes) if size is None else fp.count(size, 0, len(hashes), "tree size")
         hashes = hashes[:size]
         fp.count(old_size, 0, size, "old tree size")
-        return {"from": old_size, "to": size, "old_root": tree_hash(hashes[:old_size]),
-                "root_hash": tree_hash(hashes), "proof": consistency(hashes, old_size)}
+        return {
+            "from": old_size,
+            "to": size,
+            "old_root": tree_hash(hashes[:old_size]),
+            "root_hash": tree_hash(hashes),
+            "proof": consistency(hashes, old_size),
+        }

@@ -38,6 +38,7 @@ band) let the running means condition on the occasion, which narrows the
 interval when the label predicts the outcome. Strata never change what is
 estimated, only how precisely.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -159,9 +160,18 @@ def active(root: str, salt: str, now: datetime.datetime | None = None) -> Schedu
     return in_force(history(root), salt, now)
 
 
-def _publish(root: str, *, salt: str, default_rate: float, rates: dict[str, float], policy: Policy,
-             basis: dict, enabled: bool = True, now: datetime.datetime | None = None,
-             context_rates: dict[str, dict[str, float]] | None = None) -> Schedule:
+def _publish(
+    root: str,
+    *,
+    salt: str,
+    default_rate: float,
+    rates: dict[str, float],
+    policy: Policy,
+    basis: dict,
+    enabled: bool = True,
+    now: datetime.datetime | None = None,
+    context_rates: dict[str, dict[str, float]] | None = None,
+) -> Schedule:
     from unimem import frontmatter, holdout_io
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
@@ -170,19 +180,28 @@ def _publish(root: str, *, salt: str, default_rate: float, rates: dict[str, floa
     with frontmatter.locked(path):
         past = history(root)
         schedule = Schedule(
-            version=len(past), salt=salt,
+            version=len(past),
+            salt=salt,
             effective_from=(now + datetime.timedelta(seconds=EFFECTIVE_DELAY_S)).isoformat(),
-            default_rate=default_rate, rates=dict(sorted(rates.items())), policy=asdict(policy), basis=basis,
-            previous=past[-1].digest if past else "", created_at=now.isoformat(), enabled=enabled,
-            context_rates={lesson: dict(sorted(by.items())) for lesson, by in sorted((context_rates or {}).items())})
+            default_rate=default_rate,
+            rates=dict(sorted(rates.items())),
+            policy=asdict(policy),
+            basis=basis,
+            previous=past[-1].digest if past else "",
+            created_at=now.isoformat(),
+            enabled=enabled,
+            context_rates={lesson: dict(sorted(by.items())) for lesson, by in sorted((context_rates or {}).items())},
+        )
         schedule.digest = schedule_digest(schedule.body())
-        holdout_io._append_lines(path, [json.dumps({**schedule.body(), "digest": schedule.digest},
-                                                   sort_keys=True, ensure_ascii=False)])
+        holdout_io._append_lines(
+            path, [json.dumps({**schedule.body(), "digest": schedule.digest}, sort_keys=True, ensure_ascii=False)]
+        )
     _CACHE.pop(path, None)
     from unimem import transparency_log
 
-    transparency_log.append(root, "schedule-publication", {"digest": schedule.digest,
-                                                          "effective_from": schedule.effective_from})
+    transparency_log.append(
+        root, "schedule-publication", {"digest": schedule.digest, "effective_from": schedule.effective_from}
+    )
     return schedule
 
 
@@ -194,8 +213,15 @@ def enable(root: str, policy: Policy | None = None, *, now: datetime.datetime | 
     if not (config.started_at and config.running):
         raise ValueError("start an experiment first (unimem experiment --configure)")
     policy = policy or Policy()
-    return _publish(root, salt=config.salt, default_rate=policy.explore, rates={}, policy=policy,
-                    basis={"reason": "enabled"}, now=now)
+    return _publish(
+        root,
+        salt=config.salt,
+        default_rate=policy.explore,
+        rates={},
+        policy=policy,
+        basis={"reason": "enabled"},
+        now=now,
+    )
 
 
 def disable(root: str, *, now: datetime.datetime | None = None) -> Schedule:
@@ -203,12 +229,21 @@ def disable(root: str, *, now: datetime.datetime | None = None) -> Schedule:
     from unimem import holdout_io
 
     config = holdout_io.load_config(root)
-    return _publish(root, salt=config.salt, default_rate=config.rate, rates={}, policy=Policy(),
-                    basis={"reason": "disabled"}, enabled=False, now=now)
+    return _publish(
+        root,
+        salt=config.salt,
+        default_rate=config.rate,
+        rates={},
+        policy=Policy(),
+        basis={"reason": "disabled"},
+        enabled=False,
+        now=now,
+    )
 
 
-def plan(root: str, *, now: datetime.datetime | None = None, alpha: float = 0.05,
-         require_certificate: bool = False) -> Schedule:
+def plan(
+    root: str, *, now: datetime.datetime | None = None, alpha: float = 0.05, require_certificate: bool = False
+) -> Schedule:
     """Publish the next era's rates from every outcome recorded so far."""
     from unimem import holdout_io
     from unimem.commands import experiment_cmd
@@ -231,23 +266,44 @@ def plan(root: str, *, now: datetime.datetime | None = None, alpha: float = 0.05
             # trialled against the incumbent before this plan; per-era rates are
             # its outputs and cannot be certified before they are computed.
             gate = policy_hash(policy)
-            found = next((row for row in reversed(fp.journal(root, "promotion-certificates.jsonl"))
-                          if promotion.verify(root, row, artifact_hash=gate)), None)
+            found = next(
+                (
+                    row
+                    for row in reversed(fp.journal(root, "promotion-certificates.jsonl"))
+                    if promotion.verify(root, row, artifact_hash=gate)
+                ),
+                None,
+            )
             if found is None:
-                raise ValueError("the Thompson gate requires an unrevoked promotion certificate for policy "
-                                 f"{gate}: register a change plan with this artifact_hash, trial it, certify it")
+                raise ValueError(
+                    "the Thompson gate requires an unrevoked promotion certificate for policy "
+                    f"{gate}: register a change plan with this artifact_hash, trial it, certify it"
+                )
             basis["promotion_certificate"] = fp.digest(found["certificate"])
-        return _publish(root, salt=config.salt, default_rate=policy.explore, rates=rates, policy=policy,
-                        basis=basis, now=now, context_rates=context_rates)
+        return _publish(
+            root,
+            salt=config.salt,
+            default_rate=policy.explore,
+            rates=rates,
+            policy=policy,
+            basis=basis,
+            now=now,
+            context_rates=context_rates,
+        )
     rows, _rate, _corrupt = experiment_cmd._load(root)
     rows, _salt, _other = experiment_cmd.scope_to_current_salt(root, rows)
     effects = experiment.analyze(experiment_cmd._observations(rows), sequential=True, alpha=alpha)
     rates = {e.lesson_slug: next_rate(e.verdict, policy) for e in effects}
     resolved = sum(r.succeeded is not None for r in rows)
-    basis = {"assignments": len(rows), "resolved": resolved,
-             "verdicts": {e.lesson_slug: e.verdict for e in effects}, "previous_version": current.version}
-    return _publish(root, salt=config.salt, default_rate=policy.explore, rates=rates, policy=policy,
-                    basis=basis, now=now)
+    basis = {
+        "assignments": len(rows),
+        "resolved": resolved,
+        "verdicts": {e.lesson_slug: e.verdict for e in effects},
+        "previous_version": current.version,
+    }
+    return _publish(
+        root, salt=config.salt, default_rate=policy.explore, rates=rates, policy=policy, basis=basis, now=now
+    )
 
 
 def policy_hash(policy: Policy) -> str:

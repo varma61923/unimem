@@ -42,20 +42,20 @@ async def append_change(
     allocated = await session.execute(
         insert(MemoryChangeClock)
         .values(org_id=org_id, sequence=1)
-        .on_conflict_do_update(
-            index_elements=["org_id"], set_={"sequence": MemoryChangeClock.sequence + 1}
-        )
+        .on_conflict_do_update(index_elements=["org_id"], set_={"sequence": MemoryChangeClock.sequence + 1})
         .returning(MemoryChangeClock.sequence)
     )
     sequence = allocated.scalar_one()
-    await session.execute(insert(MemoryChangeEvent).values(
-        org_id=org_id,
-        sequence=sequence,
-        record_id=record_id,
-        version=version,
-        operation="upsert" if record is not None else "delete",
-        record=record.to_dict() if record is not None else None,
-    ))
+    await session.execute(
+        insert(MemoryChangeEvent).values(
+            org_id=org_id,
+            sequence=sequence,
+            record_id=record_id,
+            version=version,
+            operation="upsert" if record is not None else "delete",
+            record=record.to_dict() if record is not None else None,
+        )
+    )
     return sequence
 
 
@@ -69,11 +69,11 @@ async def redact_changes(session, org_id: str, identities: Iterable[str]) -> Non
     identities = list(dict.fromkeys(identities))
     # Stay below asyncpg's parameter limit for large source/derived cascades.
     for start in range(0, len(identities), 500):
-        batch = identities[start:start + 500]
+        batch = identities[start : start + 500]
         await session.execute(
-            update(MemoryChangeEvent).where(
-                MemoryChangeEvent.org_id == org_id, MemoryChangeEvent.record_id.in_(batch)
-            ).values(operation="delete", record=None)
+            update(MemoryChangeEvent)
+            .where(MemoryChangeEvent.org_id == org_id, MemoryChangeEvent.record_id.in_(batch))
+            .values(operation="delete", record=None)
         )
         await session.execute(
             delete(MemoryEmbeddingCache).where(

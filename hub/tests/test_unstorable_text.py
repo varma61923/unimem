@@ -31,9 +31,16 @@ async def trace_id(session_factory, org, config):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         t = await crud.contribute_trace(
-            session, org, config, rate_limiter,
-            title="ok", context_text="c", solution_text="s", tags=[],
-            agent_type="code", actor="test",
+            session,
+            org,
+            config,
+            rate_limiter,
+            title="ok",
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
+            actor="test",
         )
     return t["id"]
 
@@ -42,9 +49,15 @@ async def trace_id(session_factory, org, config):
 async def kb_entry_id(session_factory, org):
     async with session_scope(session_factory) as session:
         trace = Trace(
-            org_id=org, title="kb entry", context_text="c", solution_text="s",
-            tags=[], agent_type="code", shared_with_commons=True,
-            shared_at=datetime.now(timezone.utc), shared_rationale="test fixture",
+            org_id=org,
+            title="kb entry",
+            context_text="c",
+            solution_text="s",
+            tags=[],
+            agent_type="code",
+            shared_with_commons=True,
+            shared_at=datetime.now(timezone.utc),
+            shared_rationale="test fixture",
             commons_signature=commons.signature_for("kb entry", "c", []),
             commons_source="seed",
         )
@@ -58,8 +71,13 @@ async def pending_submission_id(session_factory, org, config):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         s = await crud.submit_kb_entry(
-            session, org, config, rate_limiter,
-            title="t", context_text="c", solution_text="s",
+            session,
+            org,
+            config,
+            rate_limiter,
+            title="t",
+            context_text="c",
+            solution_text="s",
         )
     return s["id"]
 
@@ -73,7 +91,7 @@ class TestRejectUnstorableTextItself:
         reject_unstorable_text("", "field")
 
     def test_a_properly_paired_supplementary_character_passes(self):
-        reject_unstorable_text("great work \U0001F600", "field")
+        reject_unstorable_text("great work \U0001f600", "field")
 
     @BAD_FRAGMENTS
     def test_a_bad_fragment_raises_naming_the_field(self, bad):
@@ -97,9 +115,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="title"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="bad" + bad + "title", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="bad" + bad + "title",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                 )
 
     @BAD_FRAGMENTS
@@ -108,9 +133,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="context_text"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="bad" + bad, solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="bad" + bad,
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                 )
 
     @BAD_FRAGMENTS
@@ -119,9 +151,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="solution_text"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="bad" + bad,
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="bad" + bad,
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                 )
 
     @BAD_FRAGMENTS
@@ -130,9 +169,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="tag"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
-                    tags=["fine", "bad" + bad], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=["fine", "bad" + bad],
+                    agent_type="code",
+                    actor="test",
                 )
 
     @BAD_FRAGMENTS
@@ -141,9 +187,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="agent_type"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
-                    tags=[], agent_type="bad" + bad, actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="bad" + bad,
+                    actor="test",
                 )
 
     @BAD_FRAGMENTS
@@ -152,9 +205,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="idempotency_key"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     idempotency_key="bad" + bad + "key",
                 )
 
@@ -164,9 +224,16 @@ class TestContributeTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="agent_id"):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                     agent_id="bad" + bad + "id",
                 )
 
@@ -178,8 +245,13 @@ class TestAmendTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="title"):
                 await crud.amend_trace(
-                    session, org, trace_id, config, rate_limiter,
-                    title="bad" + bad + "title", actor="test",
+                    session,
+                    org,
+                    trace_id,
+                    config,
+                    rate_limiter,
+                    title="bad" + bad + "title",
+                    actor="test",
                 )
 
 
@@ -189,8 +261,13 @@ class TestVoteTrace:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="feedback_text"):
                 await crud.vote_trace(
-                    session, org, trace_id, "down",
-                    feedback_tag="wrong", feedback_text="bad" + bad, actor="test",
+                    session,
+                    org,
+                    trace_id,
+                    "down",
+                    feedback_tag="wrong",
+                    feedback_text="bad" + bad,
+                    actor="test",
                 )
 
 
@@ -257,8 +334,13 @@ class TestKnowledgeBaseSubmissions:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="rationale"):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
                     rationale="bad" + bad,
                 )
 
@@ -268,8 +350,13 @@ class TestKnowledgeBaseSubmissions:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="idempotency_key"):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="t", context_text="c", solution_text="s",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
                     idempotency_key="bad" + bad + "key",
                 )
 
@@ -281,8 +368,13 @@ class TestKnowledgeBaseSubmissions:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="title"):
                 await crud.submit_kb_entry(
-                    session, org, config, rate_limiter,
-                    title="bad" + bad, context_text="c", solution_text="s",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="bad" + bad,
+                    context_text="c",
+                    solution_text="s",
                 )
 
     @BAD_FRAGMENTS
@@ -292,8 +384,12 @@ class TestKnowledgeBaseSubmissions:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="reviewer"):
                 await crud.review_kb_submission(
-                    session, pending_submission_id, "reject", org,
-                    reviewer="bad" + bad, rejection_reason="fine",
+                    session,
+                    pending_submission_id,
+                    "reject",
+                    org,
+                    reviewer="bad" + bad,
+                    rejection_reason="fine",
                 )
 
     @BAD_FRAGMENTS
@@ -303,8 +399,12 @@ class TestKnowledgeBaseSubmissions:
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError, match="rejection_reason"):
                 await crud.review_kb_submission(
-                    session, pending_submission_id, "reject", org,
-                    reviewer="test", rejection_reason="bad" + bad,
+                    session,
+                    pending_submission_id,
+                    "reject",
+                    org,
+                    reviewer="test",
+                    rejection_reason="bad" + bad,
                 )
 
 
@@ -318,22 +418,34 @@ class TestRetractKbEntry:
 
 class TestSessionIsUsableAfterARejection:
     @BAD_FRAGMENTS
-    async def test_a_fresh_session_after_a_rejected_call_works_normally(
-        self, session_factory, org, config, bad
-    ):
+    async def test_a_fresh_session_after_a_rejected_call_works_normally(self, session_factory, org, config, bad):
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             with pytest.raises(ValueError):
                 await crud.contribute_trace(
-                    session, org, config, rate_limiter,
-                    title="bad" + bad, context_text="c", solution_text="s",
-                    tags=[], agent_type="code", actor="test",
+                    session,
+                    org,
+                    config,
+                    rate_limiter,
+                    title="bad" + bad,
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    actor="test",
                 )
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="fine now", context_text="c", solution_text="s",
-                tags=[], agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="fine now",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         assert result["id"]
         assert result["quarantined"] is False

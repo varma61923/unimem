@@ -14,8 +14,16 @@ import time
 import uuid
 
 EVENTS = (
-    "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-    "PreCompact", "SubagentStart", "SubagentStop", "Stop", "SessionEnd",
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+    "PostToolUseFailure",
+    "PreCompact",
+    "SubagentStart",
+    "SubagentStop",
+    "Stop",
+    "SessionEnd",
 )
 AGENTS = ("claude", "codex", "cursor", "cline", "gemini", "kimi", "windsurf", "openhands")
 FRAME_LIMIT = 100000
@@ -153,11 +161,27 @@ def _capture(args, payload):
         stream.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         stream.seek(0)
         subprocess.Popen(  # noqa: S603 - interpreter and argv are generated, never a shell
-            [args.python or sys.executable, "-I", "-c", bootstrap, "--capture-only",
-             "--dest", args.dest, "--agent-id", args.agent_id, "--scope", args.scope,
-             "--event", args.event, *(["--format", args.format] if args.format else [])],
-            stdin=stream, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            start_new_session=True, close_fds=True,
+            [
+                args.python or sys.executable,
+                "-I",
+                "-c",
+                bootstrap,
+                "--capture-only",
+                "--dest",
+                args.dest,
+                "--agent-id",
+                args.agent_id,
+                "--scope",
+                args.scope,
+                "--event",
+                args.event,
+                *(["--format", args.format] if args.format else []),
+            ],
+            stdin=stream,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            close_fds=True,
         )
 
 
@@ -170,8 +194,13 @@ def _exchange(args, scope, payload):
             deadline = time.monotonic() + RESPONSE_SECONDS
             _remaining(client, deadline)
             client.connect(os.path.join(args.dest, "memory", "hooks.sock"))
-            request = {"agent": args.agent_id, "scope": scope, "event": args.event,
-                       "format": args.format, "payload": payload}
+            request = {
+                "agent": args.agent_id,
+                "scope": scope,
+                "event": args.event,
+                "format": args.format,
+                "payload": payload,
+            }
             _remaining(client, deadline)
             encoded = json.dumps(request, ensure_ascii=False).encode("utf-8") + b"\n"
             if len(encoded) > FRAME_LIMIT:

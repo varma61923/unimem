@@ -4,6 +4,7 @@ Every content hash and request hash in unimem and the Hub is computed here so
 identical inputs always produce identical outputs. Import from this module instead
 of reimplementing the formulas elsewhere.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,8 +46,13 @@ def file_fingerprint(
     """sha256 of a file's bytes; a file over *lazy_hash_bytes* is sampled (size, head,
     tail) unless another file of the same size is known, when it is hashed in full."""
     with open(path, "rb") as fh:
-        return stream_fingerprint(fh, os.fstat(fh.fileno()).st_size, known_sizes=known_sizes,
-                                  lazy_hash_bytes=lazy_hash_bytes, sample_bytes=sample_bytes)
+        return stream_fingerprint(
+            fh,
+            os.fstat(fh.fileno()).st_size,
+            known_sizes=known_sizes,
+            lazy_hash_bytes=lazy_hash_bytes,
+            sample_bytes=sample_bytes,
+        )
 
 
 def stream_fingerprint(
@@ -109,7 +115,10 @@ def amend_request_hash(
 ) -> str:
     """Idempotency hash for an amend-trace request (Hub server and client agree)."""
     payload = [
-        trace_id, title, context_text, solution_text,
+        trace_id,
+        title,
+        context_text,
+        solution_text,
         sorted(tags) if tags is not None else None,
         outcome,
     ]
@@ -122,12 +131,13 @@ def push_fingerprint(title: str, context_text: str, solution_text: str, tags: li
     return hashlib.sha256("\x1e".join(parts).encode("utf-8")).hexdigest()
 
 
-def trace_push_fingerprint(
-    title: str, context_text: str, solution_text: str, tags: list[str], outcome: dict
-) -> str:
+def trace_push_fingerprint(title: str, context_text: str, solution_text: str, tags: list[str], outcome: dict) -> str:
     """Fingerprint of a trace push; equal fingerprints mean nothing changed since the last push."""
     parts = [
-        title, context_text, solution_text, "\x1f".join(sorted(tags)),
+        title,
+        context_text,
+        solution_text,
+        "\x1f".join(sorted(tags)),
         json.dumps(outcome or {}, sort_keys=True, ensure_ascii=False),
     ]
     return hashlib.sha256("\x1e".join(parts).encode("utf-8")).hexdigest()

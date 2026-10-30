@@ -8,12 +8,19 @@ from unimem import consolidate, templates
 from unimem.cli import main
 
 
-def _lesson(slug, description, applies_when, body, *, status="active",
-            uses=0, last_hit="NEVER", do_not_apply_when="n/a"):
+def _lesson(
+    slug, description, applies_when, body, *, status="active", uses=0, last_hit="NEVER", do_not_apply_when="n/a"
+):
     return {
-        "name": slug, "status": status, "description": description,
-        "applies_when": applies_when, "do_not_apply_when": do_not_apply_when,
-        "tags": [], "domain": "other", "uses": uses, "last_hit": last_hit,
+        "name": slug,
+        "status": status,
+        "description": description,
+        "applies_when": applies_when,
+        "do_not_apply_when": do_not_apply_when,
+        "tags": [],
+        "domain": "other",
+        "uses": uses,
+        "last_hit": last_hit,
         templates.BODY_KEY: body,
     }
 
@@ -44,10 +51,16 @@ class TestNeverHit:
 class TestBuildReport:
     def test_only_active_lessons_are_considered_for_fusion(self):
         lessons = [
-            _lesson("first", "Payment webhook delivered more than once.",
-                    "A webhook is retried after a timeout.", SAME_RULE),
-            _lesson("second", "Duplicate charge from a retried webhook.",
-                    "A webhook is retried after a timeout.", SAME_RULE, status="review"),
+            _lesson(
+                "first", "Payment webhook delivered more than once.", "A webhook is retried after a timeout.", SAME_RULE
+            ),
+            _lesson(
+                "second",
+                "Duplicate charge from a retried webhook.",
+                "A webhook is retried after a timeout.",
+                SAME_RULE,
+                status="review",
+            ),
         ]
         report = consolidate.build_report(lessons)
         assert report.fuse == ()
@@ -55,10 +68,12 @@ class TestBuildReport:
 
     def test_fusion_candidates_are_found_among_active_lessons(self):
         lessons = [
-            _lesson("first", "Payment webhook delivered more than once.",
-                    "A webhook is retried after a timeout.", SAME_RULE),
-            _lesson("second", "Duplicate charge from a retried webhook.",
-                    "A webhook is retried after a timeout.", SAME_RULE),
+            _lesson(
+                "first", "Payment webhook delivered more than once.", "A webhook is retried after a timeout.", SAME_RULE
+            ),
+            _lesson(
+                "second", "Duplicate charge from a retried webhook.", "A webhook is retried after a timeout.", SAME_RULE
+            ),
         ]
         report = consolidate.build_report(lessons)
         assert len(report.fuse) == 1
@@ -66,11 +81,18 @@ class TestBuildReport:
 
     def test_distinct_lessons_produce_no_fusion_candidate(self):
         lessons = [
-            _lesson("payments", "Payment webhook delivered more than once.",
-                    "A webhook is retried after a timeout.", SAME_RULE),
-            _lesson("security", "Credentials rotated too infrequently.",
-                    "A service account key is older than the rotation policy.",
-                    "Rotate service account credentials every ninety days."),
+            _lesson(
+                "payments",
+                "Payment webhook delivered more than once.",
+                "A webhook is retried after a timeout.",
+                SAME_RULE,
+            ),
+            _lesson(
+                "security",
+                "Credentials rotated too infrequently.",
+                "A service account key is older than the rotation policy.",
+                "Rotate service account credentials every ninety days.",
+            ),
         ]
         report = consolidate.build_report(lessons)
         assert report.fuse == ()
@@ -90,10 +112,8 @@ class TestBuildReport:
 
     def test_contradictions_are_delegated_to_reliability_py(self):
         lessons = [
-            _lesson("always", "Always retry a failed webhook delivery",
-                    "a webhook delivery fails transiently", "body"),
-            _lesson("never", "Never retry a failed webhook delivery",
-                    "a webhook delivery fails transiently", "body"),
+            _lesson("always", "Always retry a failed webhook delivery", "a webhook delivery fails transiently", "body"),
+            _lesson("never", "Never retry a failed webhook delivery", "a webhook delivery fails transiently", "body"),
         ]
         report = consolidate.build_report(lessons)
         assert len(report.contradict) == 1
@@ -124,12 +144,19 @@ class TestIsClean:
         from unimem import reliability as rel
 
         review_contradiction = rel.Contradiction(
-            slug_a="always", slug_b="never", activation_overlap=0.9,
-            polarity_a=1.0, polarity_b=-1.0, lift_a=None, lift_b=None,
-            signals=["opposite prescriptive/prohibitive polarity"], severity="review",
+            slug_a="always",
+            slug_b="never",
+            activation_overlap=0.9,
+            polarity_a=1.0,
+            polarity_b=-1.0,
+            lift_a=None,
+            lift_b=None,
+            signals=["opposite prescriptive/prohibitive polarity"],
+            severity="review",
         )
         report = consolidate.ConsolidationReport(
-            n_active=2, contradict=(review_contradiction,),
+            n_active=2,
+            contradict=(review_contradiction,),
         )
         assert not report.high_severity_contradictions
         assert report.is_clean
@@ -138,9 +165,15 @@ class TestIsClean:
         from unimem import reliability as rel
 
         high_contradiction = rel.Contradiction(
-            slug_a="a", slug_b="b", activation_overlap=0.9,
-            polarity_a=1.0, polarity_b=-1.0, lift_a=0.3, lift_b=-0.3,
-            signals=["opposite measured effect on task success"], severity="high",
+            slug_a="a",
+            slug_b="b",
+            activation_overlap=0.9,
+            polarity_a=1.0,
+            polarity_b=-1.0,
+            lift_a=0.3,
+            lift_b=-0.3,
+            signals=["opposite measured effect on task success"],
+            severity="high",
         )
         report = consolidate.ConsolidationReport(n_active=2, contradict=(high_contradiction,))
         assert report.high_severity_contradictions
@@ -182,10 +215,18 @@ def _write_lesson(store, slug, description, applies_when, body, **extra):
     root = str(store)
     path = f"{paths.lessons_dir(root)}/lesson_{slug}.md"
     fm = {
-        "name": slug, "status": "active", "description": description,
-        "applies_when": applies_when, "do_not_apply_when": "n/a",
-        "importance": 3, "importance_rationale": "fixture", "tags": [],
-        "agent_type": "code", "domain": "other", "uses": 0, "last_hit": "NEVER",
+        "name": slug,
+        "status": "active",
+        "description": description,
+        "applies_when": applies_when,
+        "do_not_apply_when": "n/a",
+        "importance": 3,
+        "importance_rationale": "fixture",
+        "tags": [],
+        "agent_type": "code",
+        "domain": "other",
+        "uses": 0,
+        "last_hit": "NEVER",
     }
     fm.update(extra)
     lesson_io.write_lesson(path, fm, body, root=root, actor="test", reason="fixture")
@@ -200,10 +241,20 @@ class TestConsolidateCLI:
 
     def test_finds_a_fusion_candidate_end_to_end(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "first", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
-        _write_lesson(store, "second", "Duplicate charge from a retried webhook.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
+        _write_lesson(
+            store,
+            "first",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
+        _write_lesson(
+            store,
+            "second",
+            "Duplicate charge from a retried webhook.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
         capsys.readouterr()
         assert main(["consolidate", "--dest", str(store)]) == 0
         out = capsys.readouterr().out
@@ -211,10 +262,20 @@ class TestConsolidateCLI:
 
     def test_json_output_is_well_formed(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "first", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
-        _write_lesson(store, "second", "Duplicate charge from a retried webhook.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
+        _write_lesson(
+            store,
+            "first",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
+        _write_lesson(
+            store,
+            "second",
+            "Duplicate charge from a retried webhook.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
         capsys.readouterr()
         assert main(["consolidate", "--dest", str(store), "--json"]) == 0
         payload = json.loads(capsys.readouterr().out)
@@ -224,33 +285,67 @@ class TestConsolidateCLI:
 
     def test_strict_fails_the_build_on_a_fusion_candidate(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "first", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
-        _write_lesson(store, "second", "Duplicate charge from a retried webhook.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
+        _write_lesson(
+            store,
+            "first",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
+        _write_lesson(
+            store,
+            "second",
+            "Duplicate charge from a retried webhook.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
         capsys.readouterr()
         assert main(["consolidate", "--dest", str(store), "--strict"]) == 1
         assert "fusion candidate" in capsys.readouterr().err
 
     def test_strict_passes_a_clean_corpus(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "payments", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE,
-                      uses=1, last_hit="2026-01-01")
+        _write_lesson(
+            store,
+            "payments",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+            uses=1,
+            last_hit="2026-01-01",
+        )
         capsys.readouterr()
         assert main(["consolidate", "--dest", str(store), "--strict"]) == 0
 
     def test_custom_redundancy_threshold_is_forwarded(self, store, capsys):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "payments", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
-        _write_lesson(store, "security", "Credentials rotated too infrequently.",
-                      "A service account key is older than the rotation policy.",
-                      "Rotate service account credentials every ninety days.")
+        _write_lesson(
+            store,
+            "payments",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
+        _write_lesson(
+            store,
+            "security",
+            "Credentials rotated too infrequently.",
+            "A service account key is older than the rotation policy.",
+            "Rotate service account credentials every ninety days.",
+        )
         capsys.readouterr()
-        assert main([
-            "consolidate", "--dest", str(store), "--redundancy-threshold", "0.01",
-        ]) == 0
+        assert (
+            main(
+                [
+                    "consolidate",
+                    "--dest",
+                    str(store),
+                    "--redundancy-threshold",
+                    "0.01",
+                ]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "`payments`" in out and "`security`" in out
 
@@ -258,10 +353,20 @@ class TestConsolidateCLI:
 class TestConsolidateDraft:
     def _pair(self, store):
         main(["init", "--agent-type", "code", "--dest", str(store)])
-        _write_lesson(store, "first", "Payment webhook delivered more than once.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
-        _write_lesson(store, "second", "Duplicate charge from a retried webhook.",
-                      "A webhook is retried after a timeout.", SAME_RULE)
+        _write_lesson(
+            store,
+            "first",
+            "Payment webhook delivered more than once.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
+        _write_lesson(
+            store,
+            "second",
+            "Duplicate charge from a retried webhook.",
+            "A webhook is retried after a timeout.",
+            SAME_RULE,
+        )
 
     def test_a_fusion_pair_becomes_one_review_status_merge_draft(self, store, monkeypatch, capsys):
         import json as _json
@@ -271,10 +376,12 @@ class TestConsolidateDraft:
 
         self._pair(store)
         monkeypatch.setenv("UNIMEM_LLM_API_KEY", "k")
-        reply = {"rule": "Make webhook handlers idempotent on the provider's event id.",
-                 "applies_when": "handling a webhook the provider may redeliver",
-                 "do_not_apply_when": "the handler has no side effects",
-                 "evidence": ["first", "second"]}
+        reply = {
+            "rule": "Make webhook handlers idempotent on the provider's event id.",
+            "applies_when": "handling a webhook the provider may redeliver",
+            "do_not_apply_when": "the handler has no side effects",
+            "evidence": ["first", "second"],
+        }
         monkeypatch.setattr(llm, "_call_anthropic", lambda cfg, prompt: (_json.dumps(reply), {}))
         before = sorted(os.listdir(paths.lessons_dir(str(store))))
         capsys.readouterr()

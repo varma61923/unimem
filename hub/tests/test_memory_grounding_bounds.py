@@ -48,12 +48,10 @@ async def test_deep_candidate_cannot_poison_shared_shallow_evidence(monkeypatch,
     scope = {"tenant": "owner", "user": "u"}
 
     def record(identity, parents):
-        return MemoryRecord(identity, "observation", 1, {"text": identity}, scope=scope,
-                            relations={"derives": parents})
+        return MemoryRecord(identity, "observation", 1, {"text": identity}, scope=scope, relations={"derives": parents})
 
     records = [record("a-long", ["path-0"]), record("b-short", ["shared"])]
-    records.extend(record(f"path-{index}", [f"path-{index + 1}" if index < 60 else "shared"])
-                   for index in range(61))
+    records.extend(record(f"path-{index}", [f"path-{index + 1}" if index < 60 else "shared"]) for index in range(61))
     records.extend([record("shared", ["leaf"]), record("leaf", ["terminal"]), record("terminal", [])])
     candidates = [item.id for item in records] if capability_mode else ["a-long", "b-short"]
     store, session = _hosted_graph(monkeypatch, records, candidates)
@@ -73,12 +71,13 @@ async def test_hosted_grounding_bounds_database_lookups_and_deduplicates_edges(m
     from unimem.record_visibility import GroundingState
 
     scope = {"tenant": "owner", "user": "u"}
-    leaves = [MemoryRecord(f"leaf-{index}", "observation", 1, {"text": "source"}, scope=scope)
-              for index in range(10)]
-    wide = MemoryRecord("wide", "observation", 1, {"text": "wide"}, scope=scope,
-                        relations={"derives": [record.id for record in leaves]})
-    duplicate = MemoryRecord("duplicate", "observation", 1, {"text": "duplicate"}, scope=scope,
-                             relations={"derives": [leaves[0].id] * 5000})
+    leaves = [MemoryRecord(f"leaf-{index}", "observation", 1, {"text": "source"}, scope=scope) for index in range(10)]
+    wide = MemoryRecord(
+        "wide", "observation", 1, {"text": "wide"}, scope=scope, relations={"derives": [record.id for record in leaves]}
+    )
+    duplicate = MemoryRecord(
+        "duplicate", "observation", 1, {"text": "duplicate"}, scope=scope, relations={"derives": [leaves[0].id] * 5000}
+    )
     monkeypatch.setattr(memory_records, "GroundingState", lambda: GroundingState(remaining=8))
     store, session = _hosted_graph(monkeypatch, [wide, *leaves], [wide.id])
     assert await store.search("", scope={"user": "u"}) == []

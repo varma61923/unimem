@@ -1,4 +1,5 @@
 """Lesson marketplace: fleet receipts -> referee certificate -> signed listing -> verified review-only install."""
+
 import json
 import os
 
@@ -17,10 +18,18 @@ def _store(tmp_path, name):
 
 def _lesson(root, slug="retry-flaky-network", status="active", rule="Retry idempotent calls with backoff."):
     fm = templates.lesson_frontmatter(
-        slug=slug, description="Retry idempotent network calls with jittered backoff", agent_type="coder",
-        domain="networking", tags=["network", "retry"], applies_when="an idempotent call fails transiently",
-        do_not_apply_when="the call mutates state", importance=4, importance_rationale="saves reruns",
-        source_traces=["local-trace-1"], status=status)
+        slug=slug,
+        description="Retry idempotent network calls with jittered backoff",
+        agent_type="coder",
+        domain="networking",
+        tags=["network", "retry"],
+        applies_when="an idempotent call fails transiently",
+        do_not_apply_when="the call mutates state",
+        importance=4,
+        importance_rationale="saves reruns",
+        source_traces=["local-trace-1"],
+        status=status,
+    )
     path = os.path.join(paths.lessons_dir(root), f"lesson_{slug}.md")
     lesson_io.write_lesson(path, fm, f"## Rule\n{rule}\n", root=root, actor="test", reason="test")
     return path
@@ -42,13 +51,22 @@ def market(tmp_path):
         marketplace.trust(referee, marketplace.card(ids[key]), role="fleet")
     marketplace.trust(buyer, marketplace.card(ids["pub"]), role="publisher")
     marketplace.trust(buyer, marketplace.card(ids["ref"]), role="referee")
-    receipts = [marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": .20, "standard_error": .04}),
-                marketplace.attest(fleet_b, "retry-flaky-network", effect={"effect": .15, "standard_error": .05})]
+    receipts = [
+        marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": 0.20, "standard_error": 0.04}),
+        marketplace.attest(fleet_b, "retry-flaky-network", effect={"effect": 0.15, "standard_error": 0.05}),
+    ]
     certificate = marketplace.certify(referee, receipts)
     licence = {"id": "CC-BY-4.0", "terms": "Attribution required.", "price": {"amount_usd": 12, "per": "install"}}
     listing = marketplace.publish(fleet_a, "retry-flaky-network", certificate, licence)
-    return {"fleet_a": fleet_a, "referee": referee, "buyer": buyer, "listing": listing,
-            "certificate": certificate, "receipts": receipts, "ids": ids}
+    return {
+        "fleet_a": fleet_a,
+        "referee": referee,
+        "buyer": buyer,
+        "listing": listing,
+        "certificate": certificate,
+        "receipts": receipts,
+        "ids": ids,
+    }
 
 
 def test_listing_verifies_with_public_keys_and_installs_for_review_only(market):
@@ -85,12 +103,12 @@ def test_untrusted_or_tampered_listings_are_refused(market, tmp_path):
 def test_publish_requires_replicated_positive_lift_for_this_exact_text(market, tmp_path):
     fleet_a, referee = market["fleet_a"], market["referee"]
     licence = {"id": "MIT", "terms": "MIT"}
-    weak = [marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": .02, "standard_error": .2})]
+    weak = [marketplace.attest(fleet_a, "retry-flaky-network", effect={"effect": 0.02, "standard_error": 0.2})]
     other = _store(tmp_path, "fleet-c")
     _lesson(other)
     marketplace.identity(other, "fleet", principal_id="fleet-c", organization="initech", create=True)
     marketplace.trust(referee, marketplace.card(marketplace.identity(other, "fleet")), role="fleet")
-    weak.append(marketplace.attest(other, "retry-flaky-network", effect={"effect": -.01, "standard_error": .2}))
+    weak.append(marketplace.attest(other, "retry-flaky-network", effect={"effect": -0.01, "standard_error": 0.2}))
     with pytest.raises(marketplace.MarketError, match="exclude zero"):
         marketplace.publish(fleet_a, "retry-flaky-network", marketplace.certify(referee, weak), licence)
     with pytest.raises(marketplace.MarketError, match="at least 2"):
@@ -109,7 +127,8 @@ def test_only_active_lessons_list_and_catalog_search(market, tmp_path):
     with pytest.raises(marketplace.MarketError, match="active"):
         marketplace.portable_lesson(root, "draft-lesson")
     assert [marketplace.summary(x)["name"] for x in marketplace.catalog(market["fleet_a"], "backoff retry")] == [
-        "retry-flaky-network"]
+        "retry-flaky-network"
+    ]
     assert marketplace.catalog(market["fleet_a"], "kubernetes") == []
 
 
@@ -121,8 +140,9 @@ def test_attest_measures_the_local_randomized_holdout(tmp_path):
         marketplace.measured_effect(root, "retry-flaky-network")
     for i in range(400):
         occasion = f"occ-{i}"
-        withheld = holdout_io.assign_and_log(root, ["retry-flaky-network"], occasion_id=occasion,
-                                             rate=0.5, salt="mkt", durable=False)
+        withheld = holdout_io.assign_and_log(
+            root, ["retry-flaky-network"], occasion_id=occasion, rate=0.5, salt="mkt", durable=False
+        )
         succeeded = (i % 10) < (4 if withheld else 7)
         holdout_io.record_outcome(root, occasion, succeeded, durable=False)
     measured = marketplace.measured_effect(root, "retry-flaky-network")
@@ -131,8 +151,12 @@ def test_attest_measures_the_local_randomized_holdout(tmp_path):
 
 
 def _call(gw, token, method, path, body=None):
-    response = gw.handle(method, path, {"Authorization": "Bearer " + token, "Host": "localhost"},
-                         json.dumps(body).encode() if body is not None else None)
+    response = gw.handle(
+        method,
+        path,
+        {"Authorization": "Bearer " + token, "Host": "localhost"},
+        json.dumps(body).encode() if body is not None else None,
+    )
     return response.status, json.loads(response.body)
 
 
@@ -171,8 +195,10 @@ def test_cli_round_trip(market, tmp_path, capsys):
     assert cli.main(["market", "list", "--dest", market["fleet_a"]]) == 0
     assert "retry-flaky-network" in capsys.readouterr().out
     card_path = tmp_path / "card.json"
-    assert cli.main(["market", "identity", "--role", "publisher", "--id", "o", "--organization", "o",
-                     "--dest", other]) == 0
+    assert (
+        cli.main(["market", "identity", "--role", "publisher", "--id", "o", "--organization", "o", "--dest", other])
+        == 0
+    )
     card_path.write_text(capsys.readouterr().out)
     assert cli.main(["market", "trust", str(card_path), "--role", "publisher", "--dest", buyer]) == 0
 
@@ -201,8 +227,12 @@ def _activate(root, slug):
 def test_settlement_pays_fees_and_shares_only_locally_proven_lift(market, capsys):
     from unimem import holdout_io, market_settlement
 
-    licence = {"id": "COMMERCIAL-1", "terms": "Per-install fee plus 20% of proven value.",
-               "price": {"amount_usd": 12, "per": "install"}, "outcome_share": 0.2}
+    licence = {
+        "id": "COMMERCIAL-1",
+        "terms": "Per-install fee plus 20% of proven value.",
+        "price": {"amount_usd": 12, "per": "install"},
+        "outcome_share": 0.2,
+    }
     listing = marketplace.publish(market["fleet_a"], "retry-flaky-network", market["certificate"], licence)
     buyer = market["buyer"]
     row = marketplace.install(buyer, listing, accept_licence="COMMERCIAL-1")
@@ -216,8 +246,9 @@ def test_settlement_pays_fees_and_shares_only_locally_proven_lift(market, capsys
     holdout_io.configure(buyer, rate=0.5, salt="buyer")
     for i in range(600):
         occasion = f"b{i}"
-        withheld = holdout_io.assign_and_log(buyer, [row["slug"]], occasion_id=occasion, rate=0.5, salt="buyer",
-                                             durable=False)
+        withheld = holdout_io.assign_and_log(
+            buyer, [row["slug"]], occasion_id=occasion, rate=0.5, salt="buyer", durable=False
+        )
         holdout_io.record_outcome(buyer, occasion, (i % 10) < (3 if withheld else 8), durable=False)
     statement = market_settlement.settle(buyer, period, value_per_occasion=10.0, commit=True)
     share = next(line for line in statement["lines"] if line["kind"] == "outcome-share")

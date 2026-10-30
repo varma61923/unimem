@@ -103,7 +103,10 @@ def from_no_reversal(
 
 
 def from_threshold(
-    value: float | None, *, minimum: float | None = None, maximum: float | None = None,
+    value: float | None,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
 ) -> bool | None:
     if minimum is None and maximum is None:
         raise ValueError("give a minimum, a maximum, or both")

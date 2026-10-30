@@ -1,4 +1,5 @@
 """Coverage-driven second retrieval pass: off by default, deterministic, bounded by the same budget."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,12 +17,23 @@ def store(tmp_path):
     # turns of other sessions that a two-unit pool leaves out of the first pass.
     s = Store(str(tmp_path), "chat")
     for n in range(2):
-        s.add(f"g{n}", [{"speaker": "Ana", "text": f"Trellis tomatoes, trellis tomatoes: trellis {n} of tomatoes."}],
-              session_at=f"2024-05-{n + 1:02d}")
+        s.add(
+            f"g{n}",
+            [{"speaker": "Ana", "text": f"Trellis tomatoes, trellis tomatoes: trellis {n} of tomatoes."}],
+            session_at=f"2024-05-{n + 1:02d}",
+        )
     for n in range(4):
-        s.add(f"p{n}", [{"speaker": "Ana", "text": f"Long chatter {n} about the weekend, the weather, the traffic, "
-                                                  "the neighbours, the news and also some peppers."}],
-              session_at=f"2024-06-{n + 10:02d}")
+        s.add(
+            f"p{n}",
+            [
+                {
+                    "speaker": "Ana",
+                    "text": f"Long chatter {n} about the weekend, the weather, the traffic, "
+                    "the neighbours, the news and also some peppers.",
+                }
+            ],
+            session_at=f"2024-06-{n + 10:02d}",
+        )
     yield s
     s.close()
 
@@ -52,10 +64,13 @@ def test_second_pass_adds_turns_for_missing_subject_terms(store):
 
 
 def test_second_pass_skips_when_no_budget_remains(store):
-    tight = conversation_recall(store, QUESTION, options=Options(embedder=None, rerank=None, pool=2, budget=20,
-                                                                  second_pass=True))
-    assert tight.explain["second_pass"]["skipped"] in ("no budget remains",
-                                                       "the new turns did not fit the remaining budget")
+    tight = conversation_recall(
+        store, QUESTION, options=Options(embedder=None, rerank=None, pool=2, budget=20, second_pass=True)
+    )
+    assert tight.explain["second_pass"]["skipped"] in (
+        "no budget remains",
+        "the new turns did not fit the remaining budget",
+    )
     assert tight.tokens <= 20
 
 

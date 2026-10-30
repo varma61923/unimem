@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from sqlalchemy import delete, func, select, update
 
@@ -61,7 +61,7 @@ class ObjectKind:
     """One purgeable table, and the vocabulary a policy may use about it."""
 
     name: str
-    model: type
+    model: type[Trace | Vote | HoldoutObservation | KnowledgeBaseSubmission | AuditLogEntry]
     timestamp: str
     statuses: dict
     floor_days: int
@@ -74,9 +74,7 @@ class ObjectKind:
 
 
 _TRACE_STATUSES = {
-    "active": lambda: (
-        (Trace.quarantined.is_(False)) & (Trace.commons_retracted_at.is_(None))
-    ),
+    "active": lambda: (Trace.quarantined.is_(False)) & (Trace.commons_retracted_at.is_(None)),
     "quarantined": lambda: Trace.quarantined.is_(True),
     "retracted": lambda: Trace.commons_retracted_at.isnot(None),
 }
@@ -87,8 +85,7 @@ _OBSERVATION_STATUSES = {
 }
 
 _SUBMISSION_STATUSES = {
-    name: (lambda n=name: KnowledgeBaseSubmission.status == n)
-    for name in ("pending", "approved", "rejected")
+    name: (lambda n=name: KnowledgeBaseSubmission.status == n) for name in ("pending", "approved", "rejected")
 }
 
 KINDS: dict[str, ObjectKind] = {
@@ -160,18 +157,12 @@ def kind_or_error(object_type: str) -> ObjectKind:
         return KINDS[object_type]
     except KeyError:
         known = ", ".join(sorted(KINDS))
-        raise RetentionError(
-            f"unknown object type {object_type!r}; retention is configurable "
-            f"for: {known}"
-        ) from None
+        raise RetentionError(f"unknown object type {object_type!r}; retention is configurable for: {known}") from None
 
 
 def check_status(kind: ObjectKind, status: str) -> str:
     if status != STATUS_ANY and status not in kind.statuses:
-        raise RetentionError(
-            f"{kind.name} has no status {status!r}; use one of "
-            f"{', '.join(kind.status_names)}"
-        )
+        raise RetentionError(f"{kind.name} has no status {status!r}; use one of {', '.join(kind.status_names)}")
     return status
 
 
@@ -220,8 +211,11 @@ async def set_policy(
 
     if existing is None:
         existing = RetentionPolicy(
-            org_id=org_id, object_type=object_type, status=status,
-            max_age_days=max_age_days, note=note,
+            org_id=org_id,
+            object_type=object_type,
+            status=status,
+            max_age_days=max_age_days,
+            note=note,
         )
         session.add(existing)
     else:
@@ -231,9 +225,7 @@ async def set_policy(
     return existing
 
 
-async def remove_policy(
-    session, org_id: str, object_type: str, *, status: str = STATUS_ANY
-) -> bool:
+async def remove_policy(session, org_id: str, object_type: str, *, status: str = STATUS_ANY) -> bool:
     kind = kind_or_error(object_type)
     check_status(kind, status)
     result = await session.execute(
@@ -275,39 +267,48 @@ async def place_hold(
         kind_or_error(object_type)
     if target_id and not object_type:
         raise RetentionError(
-            "a hold on one object needs its type as well as its id, so it "
-            "can be matched without searching every table"
+            "a hold on one object needs its type as well as its id, so it can be matched without searching every table"
         )
     hold = LegalHold(
-        org_id=org_id, object_type=object_type, target_id=target_id,
-        reason=reason.strip(), placed_by=placed_by,
+        org_id=org_id,
+        object_type=object_type,
+        target_id=target_id,
+        reason=reason.strip(),
+        placed_by=placed_by,
     )
     session.add(hold)
     await session.flush()
     with contextlib.suppress(events.EventError):
-        await events.emit(session, org_id, "legal_hold.placed", {
-            "hold_id": hold.id, "object_type": object_type,
-            "target_id": target_id,
-        })
+        await events.emit(
+            session,
+            org_id,
+            "legal_hold.placed",
+            {
+                "hold_id": hold.id,
+                "object_type": object_type,
+                "target_id": target_id,
+            },
+        )
     return hold
 
 
 async def release_hold(session, hold_id: str, *, reason: str = "") -> LegalHold:
-    hold = (
-        await session.execute(select(LegalHold).where(LegalHold.id == hold_id))
-    ).scalar_one_or_none()
+    hold = (await session.execute(select(LegalHold).where(LegalHold.id == hold_id))).scalar_one_or_none()
     if hold is None:
         raise RetentionError(f"no legal hold with id {hold_id}")
     if hold.released_at is not None:
-        raise RetentionError(
-            f"legal hold {hold_id} was already released at {hold.released_at}"
-        )
+        raise RetentionError(f"legal hold {hold_id} was already released at {hold.released_at}")
     hold.released_at = _now()
     hold.release_reason = reason
     with contextlib.suppress(events.EventError):
-        await events.emit(session, hold.org_id, "legal_hold.released", {
-            "hold_id": hold.id,
-        })
+        await events.emit(
+            session,
+            hold.org_id,
+            "legal_hold.released",
+            {
+                "hold_id": hold.id,
+            },
+        )
     return hold
 
 
@@ -321,7 +322,8 @@ async def active_holds(session, org_id: str) -> list[LegalHold]:
 
 
 def _holds_for_kind(holds, kind: ObjectKind) -> tuple[list, list]:
-    blanket, targeted = [], []
+    blanket: list[LegalHold] = []
+    targeted: list[LegalHold] = []
     for hold in holds:
         if hold.object_type and hold.object_type != kind.name:
             continue
@@ -364,8 +366,7 @@ class PurgePlan:
             if not b.blocked
         )
         return hashlib.sha256(
-            (_DIGEST_DOMAIN + _FIELD_SEP + self.org_id + _FIELD_SEP + rows)
-            .encode("utf-8")
+            (_DIGEST_DOMAIN + _FIELD_SEP + self.org_id + _FIELD_SEP + rows).encode("utf-8")
         ).hexdigest()
 
     @property
@@ -396,17 +397,13 @@ class PurgePlan:
 
         for bucket in sorted(self.buckets, key=lambda b: (b.object_type, b.status)):
             label = f"{bucket.object_type} [{bucket.status}]"
-            lines.append(
-                f"{label}: keep {bucket.max_age_days}d "
-                f"(older than {bucket.cutoff})"
-            )
+            lines.append(f"{label}: keep {bucket.max_age_days}d (older than {bucket.cutoff})")
             if bucket.blocked:
                 lines.append(f"    BLOCKED, nothing deleted: {bucket.blocked}")
             else:
                 lines.append(
                     f"    {bucket.n_doomed} to delete"
-                    + (f", {bucket.n_held} frozen by a legal hold"
-                       if bucket.n_held else "")
+                    + (f", {bucket.n_held} frozen by a legal hold" if bucket.n_held else "")
                 )
             if bucket.warning and bucket.n_doomed:
                 lines.append(f"    ! {bucket.warning}")
@@ -415,14 +412,8 @@ class PurgePlan:
             lines.append("Legal holds in force:")
             lines.extend(f"  - {r}" for r in self.hold_reasons)
             lines.append("")
-        lines.append(
-            f"TOTAL: {self.n_doomed} rows would be deleted, "
-            f"{self.n_held} frozen by a legal hold."
-        )
-        lines.append(
-            "Nothing has been deleted. This is a plan; apply it with the "
-            f"digest above ({self.digest[:16]})."
-        )
+        lines.append(f"TOTAL: {self.n_doomed} rows would be deleted, {self.n_held} frozen by a legal hold.")
+        lines.append(f"Nothing has been deleted. This is a plan; apply it with the digest above ({self.digest[:16]}).")
         return "\n".join(lines)
 
 
@@ -432,34 +423,35 @@ async def plan(session, org_id: str, *, now: datetime.datetime | None = None) ->
     policies = await policies_for(session, org_id)
     holds = await active_holds(session, org_id)
 
-    org = (
-        await session.execute(select(Organization).where(Organization.id == org_id))
-    ).scalar_one_or_none()
+    org = (await session.execute(select(Organization).where(Organization.id == org_id))).scalar_one_or_none()
     experiment_running = bool(org is not None and org.holdout_rate > 0)
 
     buckets: list[Bucket] = []
     for policy in policies:
         kind = KINDS.get(policy.object_type)
         if kind is None:
-            buckets.append(Bucket(
-                object_type=policy.object_type, status=policy.status,
-                max_age_days=policy.max_age_days, cutoff="",
-                blocked=(
-                    f"this build has no object type {policy.object_type!r}, so "
-                    "the policy matches nothing"
-                ),
-            ))
+            buckets.append(
+                Bucket(
+                    object_type=policy.object_type,
+                    status=policy.status,
+                    max_age_days=policy.max_age_days,
+                    cutoff="",
+                    blocked=(f"this build has no object type {policy.object_type!r}, so the policy matches nothing"),
+                )
+            )
             continue
 
         cutoff = moment - datetime.timedelta(days=policy.max_age_days)
-        common = dict(
-            object_type=kind.name, status=policy.status,
-            max_age_days=policy.max_age_days, cutoff=cutoff.isoformat(),
+        common = Bucket(
+            object_type=kind.name,
+            status=policy.status,
+            max_age_days=policy.max_age_days,
+            cutoff=cutoff.isoformat(),
             warning=kind.warning,
         )
 
         if kind.name == "holdout_observation" and experiment_running:
-            buckets.append(Bucket(blocked=BLOCKED_EXPERIMENT_RUNNING, **common))
+            buckets.append(replace(common, blocked=BLOCKED_EXPERIMENT_RUNNING))
             continue
 
         model = kind.model
@@ -470,24 +462,15 @@ async def plan(session, org_id: str, *, now: datetime.datetime | None = None) ->
         if policy.status != STATUS_ANY:
             conditions.append(kind.statuses[policy.status]())
 
-        matched = list(
-            (await session.execute(select(model.id).where(*conditions))).scalars()
-        )
+        matched = list((await session.execute(select(model.id).where(*conditions))).scalars())
 
         blanket, targeted = _holds_for_kind(holds, kind)
         if blanket:
-            buckets.append(Bucket(
-                n_matched=len(matched), n_held=len(matched), doomed=(), **common
-            ))
+            buckets.append(replace(common, n_matched=len(matched), n_held=len(matched), doomed=()))
             continue
         frozen = {h.target_id for h in targeted}
         doomed = tuple(sorted(i for i in matched if i not in frozen))
-        buckets.append(Bucket(
-            n_matched=len(matched),
-            n_held=len(matched) - len(doomed),
-            doomed=doomed,
-            **common,
-        ))
+        buckets.append(replace(common, n_matched=len(matched), n_held=len(matched) - len(doomed), doomed=doomed))
 
     return PurgePlan(
         org_id=org_id,
@@ -533,16 +516,19 @@ async def apply(
                 .where(Organization.id == org_id)
                 .values(trace_count=func.greatest(0, Organization.trace_count - result.rowcount))
             )
-        deleted[bucket.object_type] = (
-            deleted.get(bucket.object_type, 0) + (result.rowcount or 0)
-        )
+        deleted[bucket.object_type] = deleted.get(bucket.object_type, 0) + (result.rowcount or 0)
 
     with contextlib.suppress(events.EventError):
-        await events.emit(session, org_id, "retention.purged", {
-            "plan": fresh.digest,
-            "n_deleted": sum(deleted.values()),
-            "n_held": fresh.n_held,
-        })
+        await events.emit(
+            session,
+            org_id,
+            "retention.purged",
+            {
+                "plan": fresh.digest,
+                "n_deleted": sum(deleted.values()),
+                "n_held": fresh.n_held,
+            },
+        )
 
     await audit.record(
         session,
@@ -564,10 +550,6 @@ async def counts(session, org_id: str) -> dict[str, int]:
     """How many rows of each purgeable type the org holds right now."""
     out: dict[str, int] = {}
     for name, kind in KINDS.items():
-        total = await session.scalar(
-            select(func.count())
-            .select_from(kind.model)
-            .where(kind.model.org_id == org_id)
-        )
+        total = await session.scalar(select(func.count()).select_from(kind.model).where(kind.model.org_id == org_id))
         out[name] = int(total or 0)
     return out

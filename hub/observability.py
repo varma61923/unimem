@@ -10,20 +10,19 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Callable
 
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from hub.abuse import RateLimiter, make_named_limiter, rate_limit_key
+from hub.abuse import RateLimiterBackend, make_named_limiter, rate_limit_key
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
-current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "current_request_id", default=None
-)
+current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_request_id", default=None)
 
 _STANDARD_LOGRECORD_ATTRS = frozenset(
     """
@@ -169,10 +168,7 @@ class Metrics:
             "# TYPE unimem_hub_requests_total counter",
         ]
         for (method, path, status), count in sorted(requests.items()):
-            lines.append(
-                f'unimem_hub_requests_total{{method="{method}",path="{path}",'
-                f'status="{status}"}} {count}'
-            )
+            lines.append(f'unimem_hub_requests_total{{method="{method}",path="{path}",status="{status}"}} {count}')
         lines += [
             "# HELP unimem_hub_request_duration_ms Request duration in milliseconds, by route.",
             "# TYPE unimem_hub_request_duration_ms histogram",
@@ -180,18 +176,10 @@ class Metrics:
         for path in sorted(duration_buckets):
             counts = duration_buckets[path]
             for upper, cumulative in zip(self.BUCKETS_MS, counts):
-                lines.append(
-                    f'unimem_hub_request_duration_ms_bucket{{path="{path}",le="{upper:g}"}} {cumulative}'
-                )
-            lines.append(
-                f'unimem_hub_request_duration_ms_bucket{{path="{path}",le="+Inf"}} {counts[-1]}'
-            )
-            lines.append(
-                f'unimem_hub_request_duration_ms_sum{{path="{path}"}} {duration_sum[path]:.2f}'
-            )
-            lines.append(
-                f'unimem_hub_request_duration_ms_count{{path="{path}"}} {duration_count[path]}'
-            )
+                lines.append(f'unimem_hub_request_duration_ms_bucket{{path="{path}",le="{upper:g}"}} {cumulative}')
+            lines.append(f'unimem_hub_request_duration_ms_bucket{{path="{path}",le="+Inf"}} {counts[-1]}')
+            lines.append(f'unimem_hub_request_duration_ms_sum{{path="{path}"}} {duration_sum[path]:.2f}')
+            lines.append(f'unimem_hub_request_duration_ms_count{{path="{path}"}} {duration_count[path]}')
         lines += [
             "# HELP unimem_hub_rate_limited_total Requests refused, by which limiter refused them.",
             "# TYPE unimem_hub_rate_limited_total counter",
@@ -210,19 +198,19 @@ METRICS = Metrics()
 
 def add_health_routes(
     app,
-    session_factory: async_sessionmaker,
-    readyz_rate_limiter: RateLimiter | None = None,
+    session_factory: Callable[[], AsyncSession],
+    readyz_rate_limiter: RateLimiterBackend | None = None,
     trusted_proxy_hops: int = 0,
     metrics_token: str = "",
 ) -> None:
-    readyz_rate_limiter = readyz_rate_limiter or make_named_limiter(None, 120, 30, "readyz")
+    limiter = readyz_rate_limiter or make_named_limiter(None, 120, 30, "readyz")
 
     async def healthz(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
     async def readyz(request: Request) -> JSONResponse:
         client_key = rate_limit_key(request, trusted_proxy_hops) if request is not None else "unknown"
-        allowed, retry_after = await readyz_rate_limiter.check(client_key)
+        allowed, retry_after = await limiter.check(client_key)
         if not allowed:
             seconds = str(max(1, math.ceil(retry_after)))
             return JSONResponse(
@@ -234,15 +222,13 @@ def add_health_routes(
             async with session_factory() as session:
                 await session.execute(text("SELECT 1"))
         except Exception as exc:  # noqa: BLE001 - any failure means "not ready"
-            logging.getLogger("unimem.hub").warning(
-                "readiness check failed", extra={"error": str(exc)}
-            )
+            logging.getLogger("unimem.hub").warning("readiness check failed", extra={"error": str(exc)})
             return JSONResponse({"status": "not_ready", "database": "unreachable"}, status_code=503)
         return JSONResponse({"status": "ready", "database": "ok"})
 
     async def metrics(request: Request) -> Response:
         client_key = rate_limit_key(request, trusted_proxy_hops) if request is not None else "unknown"
-        allowed, retry_after = await readyz_rate_limiter.check(client_key)
+        allowed, retry_after = await limiter.check(client_key)
         if not allowed:
             seconds = str(max(1, math.ceil(retry_after)))
             return JSONResponse(
@@ -259,7 +245,8 @@ def add_health_routes(
                 presented.strip().encode(), metrics_token.encode()
             ):
                 return JSONResponse(
-                    {"status": "unauthorized"}, status_code=401,
+                    {"status": "unauthorized"},
+                    status_code=401,
                     headers={"WWW-Authenticate": 'Bearer realm="metrics"'},
                 )
         return Response(METRICS.render(), media_type="text/plain; version=0.0.4; charset=utf-8")

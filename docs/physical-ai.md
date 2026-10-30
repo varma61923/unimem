@@ -11,7 +11,10 @@ from unimem.robotics.edge import OutcomeQueue
 
 robot = RobotBridge(
     HTTPGateway("http://127.0.0.1:8787", token),
-    embodiment="parallel-jaw", site="depot", skill="grasp", robot="robot7",
+    embodiment="parallel-jaw",
+    site="depot",
+    skill="grasp",
+    robot="robot7",
     outcome_queue=OutcomeQueue("/var/lib/unimem-edge"),
 )
 context = robot.start("episode-42", "Recover the dropped object")

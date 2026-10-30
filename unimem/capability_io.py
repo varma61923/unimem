@@ -3,6 +3,7 @@
 Keys and tenancy are operator configuration. Tokens only narrow that authority.
 Signed metadata retains commitments; handoff content remains deletable storage.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -83,13 +84,25 @@ def _private(filename: str) -> bytes:
     return key
 
 
-def register_agent(root: str, identity: str, principal: str, *, algorithm: str = "hmac-sha256",
-                   secret_file: str = "", public_key: str = "", clearance: Sequence[str] = (),
-                   authority: str = "agent", require_capability: bool = True) -> dict[str, Any]:
+def register_agent(
+    root: str,
+    identity: str,
+    principal: str,
+    *,
+    algorithm: str = "hmac-sha256",
+    secret_file: str = "",
+    public_key: str = "",
+    clearance: Sequence[str] = (),
+    authority: str = "agent",
+    require_capability: bool = True,
+) -> dict[str, Any]:
     store.operator()
     identity, principal = cap._label(identity), cap._label(principal)
-    if (algorithm not in cap.ALGORITHMS or authority not in memory_authority.TRUST
-            or type(require_capability) is not bool):
+    if (
+        algorithm not in cap.ALGORITHMS
+        or authority not in memory_authority.TRUST
+        or type(require_capability) is not bool
+    ):
         raise ValueError("UniMem invalid agent algorithm, role or enrollment")
     labels = sorted({cap._label(label) for label in clearance})
     fp.count(len(labels), 0, 128)
@@ -116,9 +129,17 @@ def register_agent(root: str, identity: str, principal: str, *, algorithm: str =
             if len(public) != 32 or secret_file:
                 raise ValueError("UniMem Ed25519 enrollment pins only an external holder's public key")
             commitment = hashlib.sha256(public).hexdigest()
-        registration = {"id": identity, "principal": principal, "algorithm": algorithm,
-                        "secret_file": filename, "public_key": public_key, "key_commitment": commitment,
-                        "clearance": labels, "authority": authority, "require_capability": require_capability}
+        registration = {
+            "id": identity,
+            "principal": principal,
+            "algorithm": algorithm,
+            "secret_file": filename,
+            "public_key": public_key,
+            "key_commitment": commitment,
+            "clearance": labels,
+            "authority": authority,
+            "require_capability": require_capability,
+        }
         config["agents"][identity] = registration
         _save(root, config)
     return {key: item for key, item in registration.items() if key != "public_key"}
@@ -175,13 +196,23 @@ def check(root: str, token: Mapping[str, Any], *, tenant_id: str = "") -> dict[s
         if pin is None:
             raise PermissionError("UniMem external issuer has no trusted pin")
         algorithm, key, maximum = pin["algorithm"], bytes.fromhex(pin["public_key"]), pin["caveats"]
+
     def holder(identity: str) -> bytes:
         registration, key = _verification_key(root, identity)
         if registration["algorithm"] != algorithm:
             raise PermissionError("UniMem holder algorithm differs from this chain's issuer")
         return key
-    verified = cap.verify(token, issuer=issuer, tenant=tenant_id or tenant(root), algorithm=algorithm, key=key,
-                          holder_key=holder, now=fp.now(), revoked=sorted(revocations(root)))
+
+    verified = cap.verify(
+        token,
+        issuer=issuer,
+        tenant=tenant_id or tenant(root),
+        algorithm=algorithm,
+        key=key,
+        holder_key=holder,
+        now=fp.now(),
+        revoked=sorted(revocations(root)),
+    )
     if maximum is not None:
         cap.subset(maximum, links[0]["record"]["caveats"])
     for node in links:
@@ -194,8 +225,15 @@ def check(root: str, token: Mapping[str, Any], *, tenant_id: str = "") -> dict[s
 
 def grant(root: str, caveats: Mapping[str, Any], *, tenant_id: str = "") -> dict[str, Any]:
     store.operator()
-    token = cap.grant(caveats, issuer="local", tenant=tenant_id or tenant(root), nonce=secrets.token_hex(16),
-                      now=fp.now(), algorithm="hmac-sha256", key=_root_key(root))
+    token = cap.grant(
+        caveats,
+        issuer="local",
+        tenant=tenant_id or tenant(root),
+        nonce=secrets.token_hex(16),
+        now=fp.now(),
+        algorithm="hmac-sha256",
+        key=_root_key(root),
+    )
     return {"token": token, **check(root, token, tenant_id=tenant_id)}
 
 
@@ -232,9 +270,18 @@ def consume_nonce(root: str, identity: str, expires_at: str) -> None:
         db.close()
 
 
-def authenticate(root: str, token: Mapping[str, Any], proof: Mapping[str, Any], *, request_digest: str,
-                 operation: str, purpose: str, principal: str = "", tenant_id: str = "",
-                 consume: bool = True) -> dict[str, Any]:
+def authenticate(
+    root: str,
+    token: Mapping[str, Any],
+    proof: Mapping[str, Any],
+    *,
+    request_digest: str,
+    operation: str,
+    purpose: str,
+    principal: str = "",
+    tenant_id: str = "",
+    consume: bool = True,
+) -> dict[str, Any]:
     verified = check(root, token, tenant_id=tenant_id)
     policy = verified["caveats"]
     if operation not in policy["operations"] or purpose not in policy["purposes"]:
@@ -242,18 +289,35 @@ def authenticate(root: str, token: Mapping[str, Any], proof: Mapping[str, Any], 
     registration, key = _verification_key(root, policy["audience"])
     if principal and principal != registration["principal"]:
         raise PermissionError("UniMem primary authenticated principal differs from capability holder")
-    nonce = cap.verify_proof(token, verified, proof, key=key, algorithm=registration["algorithm"],
-                            request_digest=request_digest, now=fp.now())
+    nonce = cap.verify_proof(
+        token,
+        verified,
+        proof,
+        key=key,
+        algorithm=registration["algorithm"],
+        request_digest=request_digest,
+        now=fp.now(),
+    )
     nonce_id = fp.digest([verified["tenant"], policy["audience"], nonce])
     if consume:
         consume_nonce(root, nonce_id, proof["record"]["expires_at"])
-    return {"root": os.path.realpath(root), "token": json.loads(fp.wire(dict(token))), "verified": verified,
-            "proof": json.loads(fp.wire(dict(proof))), "principal": registration["principal"],
-            "authority": registration["authority"], "registration": fp.digest(registration),
-            "key_files": sorted({agent(root, node["record"]["caveats"]["audience"])["secret_file"]
-                                 for node in token["links"]} - {""}),
-            "request_digest": request_digest, "operation": operation, "purpose": purpose, "nonce_id": nonce_id,
-            "request_expires_at": proof["record"]["expires_at"]}
+    return {
+        "root": os.path.realpath(root),
+        "token": json.loads(fp.wire(dict(token))),
+        "verified": verified,
+        "proof": json.loads(fp.wire(dict(proof))),
+        "principal": registration["principal"],
+        "authority": registration["authority"],
+        "registration": fp.digest(registration),
+        "key_files": sorted(
+            {agent(root, node["record"]["caveats"]["audience"])["secret_file"] for node in token["links"]} - {""}
+        ),
+        "request_digest": request_digest,
+        "operation": operation,
+        "purpose": purpose,
+        "nonce_id": nonce_id,
+        "request_expires_at": proof["record"]["expires_at"],
+    }
 
 
 @contextmanager
@@ -268,9 +332,15 @@ def activate(authorization: dict[str, Any]) -> Iterator[None]:
 
 
 def _request_epoch(root: str, value: Mapping[str, Any]) -> tuple[Any, ...]:
-    return tuple(fp._stamp(filename) for filename in [
-        _config_path(root), os.path.join(paths.memory_dir(root), ".origin-key"),
-        fp.filename(root, store.journal_name("capability-revocations")), *value["key_files"]])
+    return tuple(
+        fp._stamp(filename)
+        for filename in [
+            _config_path(root),
+            os.path.join(paths.memory_dir(root), ".origin-key"),
+            fp.filename(root, store.journal_name("capability-revocations")),
+            *value["key_files"],
+        ]
+    )
 
 
 def current(root: str) -> dict[str, Any] | None:
@@ -289,8 +359,15 @@ def current(root: str) -> dict[str, Any] | None:
         registration, key = _verification_key(root, verified["caveats"]["audience"])
         if fp.digest(registration) != value["registration"]:
             raise PermissionError("UniMem holder registration changed during request")
-        cap.verify_proof(value["token"], verified, value["proof"], key=key, algorithm=registration["algorithm"],
-                         request_digest=value["request_digest"], now=fp.now())
+        cap.verify_proof(
+            value["token"],
+            verified,
+            value["proof"],
+            key=key,
+            algorithm=registration["algorithm"],
+            request_digest=value["request_digest"],
+            now=fp.now(),
+        )
         if epoch != _request_epoch(root, value):
             raise PermissionError("UniMem issuer or holder key changed during verification; retry")
         value["verified"], value["_epoch"] = verified, epoch
@@ -311,8 +388,14 @@ def permits(root: str, record: Mapping[str, Any], *, namespace: str = "", operat
     if value is None:
         return True
     namespace, kind, labels = record_policy(record, namespace=namespace)
-    return cap.permits(value["verified"]["caveats"], namespace=namespace, operation=operation, memory_class=kind,
-                       purpose=value["purpose"], labels=labels)
+    return cap.permits(
+        value["verified"]["caveats"],
+        namespace=namespace,
+        operation=operation,
+        memory_class=kind,
+        purpose=value["purpose"],
+        labels=labels,
+    )
 
 
 def before_write(root: str, record: Mapping[str, Any], *, namespace: str = "") -> tuple[str, str] | None:
@@ -325,21 +408,31 @@ def before_write(root: str, record: Mapping[str, Any], *, namespace: str = "") -
         return None
     if value["operation"] != "write" or not permits(root, record, namespace=namespace, operation="write"):
         raise PermissionError("UniMem write exceeds its leaf capability")
-    rank = min(value["verified"]["caveats"]["ceiling"], memory_authority.TRUST[value["authority"]],
-               memory_authority.TRUST[memory_authority.WRITER.get()[1]])
+    rank = min(
+        value["verified"]["caveats"]["ceiling"],
+        memory_authority.TRUST[value["authority"]],
+        memory_authority.TRUST[memory_authority.WRITER.get()[1]],
+    )
     authority = next(name for name in ("external", "agent", "user", "operator") if memory_authority.TRUST[name] == rank)
     return principal, authority
 
 
-def delegation(root: str, record: Mapping[str, Any], *, namespace: str = "",
-               operational: bool = False) -> dict[str, Any]:
+def delegation(
+    root: str, record: Mapping[str, Any], *, namespace: str = "", operational: bool = False
+) -> dict[str, Any]:
     value = current(root)
     if value is None:
         return {}
     if not operational:
         before_write(root, record, namespace=namespace)
-    return {"delegation": {"chain_digest": value["verified"]["chain_digest"], "chain": value["token"],
-                           "chain_ids": value["verified"]["chain_ids"], "purpose": value["purpose"]}}
+    return {
+        "delegation": {
+            "chain_digest": value["verified"]["chain_digest"],
+            "chain": value["token"],
+            "chain_ids": value["verified"]["chain_ids"],
+            "purpose": value["purpose"],
+        }
+    }
 
 
 def stamp(root: str, record: Mapping[str, Any], *, namespace: str = "") -> None:
@@ -350,13 +443,26 @@ def stamp(root: str, record: Mapping[str, Any], *, namespace: str = "") -> None:
     content_hash = fp.digest({key: item for key, item in record.items() if key != "id"})
     identity = fp.digest([record["id"], content_hash, value["verified"]["chain_digest"]])
     if identity not in store.latest(root, "capability-writes"):
-        store.event(root, "capability-writes", identity, {"target": fp.text(record["id"]), "content_hash": content_hash,
-            "chain": value["token"], "chain_ids": value["verified"]["chain_ids"],
-            "scopes": list(record.get("scopes", [])), "purpose": value["purpose"], "at": fp.now()})
+        store.event(
+            root,
+            "capability-writes",
+            identity,
+            {
+                "target": fp.text(record["id"]),
+                "content_hash": content_hash,
+                "chain": value["token"],
+                "chain_ids": value["verified"]["chain_ids"],
+                "scopes": list(record.get("scopes", [])),
+                "purpose": value["purpose"],
+                "at": fp.now(),
+            },
+        )
 
 
 _QUARANTINES: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _QUARANTINE_LOCK = threading.RLock()
+
+
 def _after_fork() -> None:
     global _QUARANTINE_LOCK
     _QUARANTINES.clear()
@@ -368,11 +474,20 @@ if hasattr(os, "register_at_fork"):
 
 
 def _quarantine_epoch(root: str, key_files: Sequence[str]) -> tuple[Any, ...]:
-    names = ["capabilities.json", ".origin-key", ".origin-ed25519-key", "origin-signing.json", "lineage.jsonl",
-             store.journal_name("capability-writes"), store.journal_name("capability-revocations"),
-             store.journal_name("capability-impacts")]
-    return tuple(fp._stamp(filename) for filename in
-                 [*(os.path.join(paths.memory_dir(root), name) for name in names), *key_files])
+    names = [
+        "capabilities.json",
+        ".origin-key",
+        ".origin-ed25519-key",
+        "origin-signing.json",
+        "lineage.jsonl",
+        store.journal_name("capability-writes"),
+        store.journal_name("capability-revocations"),
+        store.journal_name("capability-impacts"),
+    ]
+    return tuple(
+        fp._stamp(filename)
+        for filename in [*(os.path.join(paths.memory_dir(root), name) for name in names), *key_files]
+    )
 
 
 def _quarantine_snapshot(root: str) -> frozenset[str]:
@@ -380,8 +495,11 @@ def _quarantine_snapshot(root: str) -> frozenset[str]:
     now = cap.moment(fp.now())
     with _QUARANTINE_LOCK:
         previous = _QUARANTINES.get(root)
-        if (previous and now < previous["deadline"]
-                and previous["epoch"] == _quarantine_epoch(root, previous["key_files"])):
+        if (
+            previous
+            and now < previous["deadline"]
+            and previous["epoch"] == _quarantine_epoch(root, previous["key_files"])
+        ):
             _QUARANTINES.move_to_end(root)
             return frozenset(previous["blocked"])
         config = _config(root)
@@ -449,11 +567,12 @@ def revoke(root: str, chain_id: str, *, reason: str, context: Sequence[str] = ()
     fp.text(reason, "revocation reason", 2048)
     if chain_id in revocations(root):
         return {"revoked": chain_id, "already_revoked": True}
-    candidates = sorted({row["target"] for row in store.events(root, "capability-writes")
-                         if chain_id in row["chain_ids"]})
+    candidates = sorted(
+        {row["target"] for row in store.events(root, "capability-writes") if chain_id in row["chain_ids"]}
+    )
     visible = {}
     for start in range(0, len(candidates), 512):
-        visible.update(store.admit(root, candidates[start:start + 512], context=context))
+        visible.update(store.admit(root, candidates[start : start + 512], context=context))
     from unimem import contagion
 
     impacts, truncated = [], len(visible) > 128
@@ -470,20 +589,34 @@ def revoke(root: str, chain_id: str, *, reason: str, context: Sequence[str] = ()
             truncated = True
     for impact in impacts:
         store.event(root, "capability-impacts", fp.digest(impact), impact)
-    store.event(root, "capability-revocations", chain_id, {"at": fp.now(), "reason_digest": fp.digest(reason),
-                                                         "impact_truncated": truncated})
+    store.event(
+        root,
+        "capability-revocations",
+        chain_id,
+        {"at": fp.now(), "reason_digest": fp.digest(reason), "impact_truncated": truncated},
+    )
     from unimem import change_stream
 
     blocked = [identity for identity in visible if quarantined(root, identity)]
     if change_stream.enabled(root):
         for identity in blocked:
-            change_stream.publish(root, "quarantine", identity, scopes=visible[identity]["scopes"],
-                                  namespace=visible[identity].get("namespace", "traces" if
-                                      "content_digest" in visible[identity] else "facts"),
-                                  event_id=fp.digest(["capability-quarantine", chain_id, identity]))
-    return {"revoked": chain_id, "quarantined_previously_admitted": sorted(blocked),
-            "observed_output_count": len(impacts), "impact_truncated": truncated,
-            "classification": "chain revocation plus bounded observed dependencies; uninstrumented reads not covered"}
+            change_stream.publish(
+                root,
+                "quarantine",
+                identity,
+                scopes=visible[identity]["scopes"],
+                namespace=visible[identity].get(
+                    "namespace", "traces" if "content_digest" in visible[identity] else "facts"
+                ),
+                event_id=fp.digest(["capability-quarantine", chain_id, identity]),
+            )
+    return {
+        "revoked": chain_id,
+        "quarantined_previously_admitted": sorted(blocked),
+        "observed_output_count": len(impacts),
+        "impact_truncated": truncated,
+        "classification": "chain revocation plus bounded observed dependencies; uninstrumented reads not covered",
+    }
 
 
 def sticky_labels(root: str, principal: str) -> list[str]:
@@ -500,8 +633,9 @@ def inherit_labels(root: str, labels: Sequence[str]) -> list[str]:
     return sorted(set(labels) | set(sticky_labels(root, principal)))
 
 
-def handoff(root: str, identities: Sequence[str], recipient: str, *, context: Sequence[str] = (),
-            seconds: int = 300) -> dict[str, Any]:
+def handoff(
+    root: str, identities: Sequence[str], recipient: str, *, context: Sequence[str] = (), seconds: int = 300
+) -> dict[str, Any]:
     from unimem import hierarchical, memory_guard, memory_ifc, policy_io, safety, sentinel_io
 
     sentinel_io.assert_generalize(root, identities, context=context)
@@ -523,18 +657,23 @@ def handoff(root: str, identities: Sequence[str], recipient: str, *, context: Se
     for identity, record in sorted(admitted.items()):
         if not set(record["scopes"]) <= set(registration["clearance"]):
             continue
-        namespace = record.get("namespace") or ("facts" if identity in facts else
-                                                "traces" if "content_digest" in record else "lessons")
-        canonical = memory_authority.fact_record(facts[identity]) if identity in facts else {
-            "id": identity, "scopes": record["scopes"], "memory_type": record.get("memory_class", "general")}
+        namespace = record.get("namespace") or (
+            "facts" if identity in facts else "traces" if "content_digest" in record else "lessons"
+        )
+        canonical = (
+            memory_authority.fact_record(facts[identity])
+            if identity in facts
+            else {"id": identity, "scopes": record["scopes"], "memory_type": record.get("memory_class", "general")}
+        )
         if not permits(root, canonical, namespace=namespace, operation="export"):
             continue
         _, memory_class, labels = record_policy(canonical, namespace=namespace)
         text = record["text"]
         if identity not in protected:
             text = memory_guard.redact_pii(memory_guard.scrub_text(text))[0]
-        memory = memory_ifc.label(root, {**{key: item for key, item in record.items() if key != "quoted_text"},
-                                        "text": text})
+        memory = memory_ifc.label(
+            root, {**{key: item for key, item in record.items() if key != "quoted_text"}, "text": text}
+        )
         if memory_ifc.egress_match(root, tenant(root), text)["alert"]:
             raise PermissionError("UniMem handoff contains a tenant canary")
         records.append(memory)
@@ -545,11 +684,25 @@ def handoff(root: str, identities: Sequence[str], recipient: str, *, context: Se
     labels = sorted({label for record in records for label in record["scopes"]})
     identity = secrets.token_hex(16)
     expires_at = (cap.moment(fp.now()) + timedelta(seconds=seconds)).isoformat()
-    store.put(root, "handoff-bundles", identity, {"memories": records}, scopes=labels,
-              sources=sorted(commitments), immutable=True)
-    claim = {"type": "unimem.handoff.v1", "id": identity, "recipient": recipient,
-             "recipient_registration": fp.digest(registration), "labels": labels,
-             "commitments": commitments, "source_policies": policies, "expires_at": expires_at}
+    store.put(
+        root,
+        "handoff-bundles",
+        identity,
+        {"memories": records},
+        scopes=labels,
+        sources=sorted(commitments),
+        immutable=True,
+    )
+    claim = {
+        "type": "unimem.handoff.v1",
+        "id": identity,
+        "recipient": recipient,
+        "recipient_registration": fp.digest(registration),
+        "labels": labels,
+        "commitments": commitments,
+        "source_policies": policies,
+        "expires_at": expires_at,
+    }
     return {"claim": fp.sign(root, claim)}
 
 
@@ -561,9 +714,12 @@ def receive(root: str, signed: dict[str, Any], *, context: Sequence[str] = ()) -
         raise PermissionError("UniMem handoff signature rejected")
     claim = signed["record"]
     recipient = value["verified"]["caveats"]["audience"]
-    if (claim.get("type") != "unimem.handoff.v1" or claim.get("recipient") != recipient
-            or claim.get("recipient_registration") != fp.digest(agent(root, recipient))
-            or cap.moment(claim["expires_at"]) <= cap.moment(fp.now())):
+    if (
+        claim.get("type") != "unimem.handoff.v1"
+        or claim.get("recipient") != recipient
+        or claim.get("recipient_registration") != fp.digest(agent(root, recipient))
+        or cap.moment(claim["expires_at"]) <= cap.moment(fp.now())
+    ):
         raise PermissionError("UniMem handoff recipient binding or expiry rejected")
     if not set(claim["labels"]) <= set(context):
         raise PermissionError("UniMem handoff is outside recipient context")
@@ -577,8 +733,12 @@ def receive(root: str, signed: dict[str, Any], *, context: Sequence[str] = ()) -
         if claim["id"] in store.latest(root, "handoff-redemptions"):
             raise PermissionError("UniMem handoff claim was already redeemed")
         payload = store.get(root, "handoff-bundles", claim["id"], context=context)
-        store.event(root, "handoff-redemptions", claim["id"], {
-            "recipient_principal": value["principal"], "labels": claim["labels"], "expires_at": claim["expires_at"]})
+        store.event(
+            root,
+            "handoff-redemptions",
+            claim["id"],
+            {"recipient_principal": value["principal"], "labels": claim["labels"], "expires_at": claim["expires_at"]},
+        )
     return {"memories": payload["memories"], "sticky_labels": claim["labels"], "expires_at": claim["expires_at"]}
 
 
@@ -592,9 +752,11 @@ def agents_input_filter(root: str, signed: dict[str, Any], *, context: Sequence[
 
     def input_filter(data: Any) -> Any:
         bundle = receive(root, signed, context=context)
-        messages = tuple({"role": "user", "content": memory.get("quoted_text", memory["text"])}
-                         for memory in bundle["memories"])
+        messages = tuple(
+            {"role": "user", "content": memory.get("quoted_text", memory["text"])} for memory in bundle["memories"]
+        )
         return replace(data, input_history=messages, pre_handoff_items=(), new_items=())
+
     return input_filter
 
 
@@ -613,9 +775,12 @@ def fact_view(root: str, facts: dict[str, Any]) -> Iterator[dict[str, Any]]:
         yield facts
         return
     fp.count(len(facts), 0, 10000, "UniMem scoped canonical fact namespace")
-    working = {identity: deepcopy(fact) for identity, fact in facts.items()
-               if permits(root, memory_authority.fact_record(fact), namespace="facts")
-               and not memory_authority.lineage_blocked(root, identity)}
+    working = {
+        identity: deepcopy(fact)
+        for identity, fact in facts.items()
+        if permits(root, memory_authority.fact_record(fact), namespace="facts")
+        and not memory_authority.lineage_blocked(root, identity)
+    }
     before = {identity: fact.to_dict() for identity, fact in working.items()}
     yield working
     changed = [fact for identity, fact in working.items() if before.get(identity) != fact.to_dict()]
@@ -641,8 +806,9 @@ def fact_view(root: str, facts: dict[str, Any]) -> Iterator[dict[str, Any]]:
 
 def assert_forget(root: str, record: Mapping[str, Any], *, namespace: str) -> None:
     value = current(root)
-    if value is not None and (value["operation"] != "forget" or
-                             not permits(root, record, namespace=namespace, operation="forget")):
+    if value is not None and (
+        value["operation"] != "forget" or not permits(root, record, namespace=namespace, operation="forget")
+    ):
         raise PermissionError("UniMem delegated erasure exceeds its leaf capability")
 
 
@@ -655,8 +821,13 @@ def scope_labels(scope: Mapping[str, Any]) -> list[str]:
 
 def runtime_identity(root: str, identity: str, *, capture: bool = False) -> str:
     kind = "capture" if capture else "record"
-    return kind + ":" + hmac.new(_root_key(root), ("unimem." + kind + ".identity.v1\x00" +
-                                                fp.text(identity)).encode(), hashlib.sha256).hexdigest()
+    return (
+        kind
+        + ":"
+        + hmac.new(
+            _root_key(root), ("unimem." + kind + ".identity.v1\x00" + fp.text(identity)).encode(), hashlib.sha256
+        ).hexdigest()
+    )
 
 
 def runtime_descriptor(record: Any, *, root: str = "") -> dict[str, Any]:
@@ -667,8 +838,10 @@ def runtime_descriptor(record: Any, *, root: str = "") -> dict[str, Any]:
 
 
 def runtime_permits(root: str, record: Any, *, operation: str = "read") -> bool:
-    return bool((operation != "read" or not memory_authority.lineage_blocked(root, runtime_identity(root, record.id)))
-                and permits(root, runtime_descriptor(record), namespace="records", operation=operation))
+    return bool(
+        (operation != "read" or not memory_authority.lineage_blocked(root, runtime_identity(root, record.id)))
+        and permits(root, runtime_descriptor(record), namespace="records", operation=operation)
+    )
 
 
 def runtime_prepare(root: str, record: Any) -> Any:
@@ -689,11 +862,22 @@ def runtime_prepare(root: str, record: Any) -> Any:
     if effective is None:
         raise PermissionError("UniMem delegated runtime write lacks authenticated authority")
     if memory_authority.TRUST[effective[1]] < memory_authority.TRUST["user"] and (
-            record.kind in {"lesson", "directive"} or record.kind == "profile" and record.payload.get("critical")):
+        record.kind in {"lesson", "directive"} or record.kind == "profile" and record.payload.get("critical")
+    ):
         record = replace(record, status="quarantined")
-    return replace(record, provenance={**record.provenance, "principal": effective[0], "authority": effective[1],
-        "delegation": {"chain_digest": value["verified"]["chain_digest"], "chain_ids": value["verified"]["chain_ids"],
-                       "purpose": value["purpose"]}})
+    return replace(
+        record,
+        provenance={
+            **record.provenance,
+            "principal": effective[0],
+            "authority": effective[1],
+            "delegation": {
+                "chain_digest": value["verified"]["chain_digest"],
+                "chain_ids": value["verified"]["chain_ids"],
+                "purpose": value["purpose"],
+            },
+        },
+    )
 
 
 def runtime_attest(root: str, record: Any) -> dict[str, Any] | None:
@@ -707,14 +891,22 @@ def runtime_attest(root: str, record: Any) -> dict[str, Any] | None:
     return lineage.prepare(root, body, fp.sign(root, body), inputs=inputs, operation="runtime-record")
 
 
-def capture_descriptor(identity: str, session: str, event: str, payload: Mapping[str, Any],
-                       scope: Mapping[str, Any]) -> dict[str, Any]:
-    return {"id": identity, "session": session, "event": event, "payload": dict(payload),
-            "scopes": scope_labels(scope), "memory_type": "capture"}
+def capture_descriptor(
+    identity: str, session: str, event: str, payload: Mapping[str, Any], scope: Mapping[str, Any]
+) -> dict[str, Any]:
+    return {
+        "id": identity,
+        "session": session,
+        "event": event,
+        "payload": dict(payload),
+        "scopes": scope_labels(scope),
+        "memory_type": "capture",
+    }
 
 
-def capture_attest(root: str, identity: str, session: str, event: str, payload: Mapping[str, Any],
-                   scope: Mapping[str, Any]) -> dict[str, Any] | None:
+def capture_attest(
+    root: str, identity: str, session: str, event: str, payload: Mapping[str, Any], scope: Mapping[str, Any]
+) -> dict[str, Any] | None:
     if current(root) is None:
         return None
     body = capture_descriptor(runtime_identity(root, identity, capture=True), session, event, payload, scope)

@@ -27,8 +27,10 @@ class TestDetermineResultCausalOutranksCorrelational:
 
     def test_a_helps_effect_is_yes(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=[], causal_effects=[_effect("HELPS", "good_lesson")],
-            resolution_delta=None, has_baseline=False,
+            harmful_lesson_slugs=[],
+            causal_effects=[_effect("HELPS", "good_lesson")],
+            resolution_delta=None,
+            has_baseline=False,
         )
         assert v.level == pilot.RESULT_YES
         assert "good_lesson" in v.explanation
@@ -37,7 +39,8 @@ class TestDetermineResultCausalOutranksCorrelational:
         v = pilot.determine_result(
             harmful_lesson_slugs=[],
             causal_effects=[_effect("HELPS", "a"), _effect("HURTS", "b")],
-            resolution_delta=None, has_baseline=False,
+            resolution_delta=None,
+            has_baseline=False,
         )
         assert v.level == pilot.RESULT_NO
 
@@ -45,14 +48,17 @@ class TestDetermineResultCausalOutranksCorrelational:
         v = pilot.determine_result(
             harmful_lesson_slugs=[],
             causal_effects=[_effect("NO_MEASURABLE_EFFECT"), _effect("UNDERPOWERED")],
-            resolution_delta=0.9, has_baseline=True,
+            resolution_delta=0.9,
+            has_baseline=True,
         )
         assert v.level == pilot.RESULT_UNKNOWN
 
     def test_empty_causal_effects_list_is_treated_as_holdout_data_with_no_signal_yet(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=["some_harmful_lesson"], causal_effects=[],
-            resolution_delta=None, has_baseline=False,
+            harmful_lesson_slugs=["some_harmful_lesson"],
+            causal_effects=[],
+            resolution_delta=None,
+            has_baseline=False,
         )
         assert v.level == pilot.RESULT_UNKNOWN
 
@@ -60,16 +66,20 @@ class TestDetermineResultCausalOutranksCorrelational:
 class TestDetermineResultCorrelationalFallback:
     def test_harmful_lesson_is_no_when_no_causal_data_exists(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=["lesson_bad"], causal_effects=None,
-            resolution_delta=0.5, has_baseline=True,
+            harmful_lesson_slugs=["lesson_bad"],
+            causal_effects=None,
+            resolution_delta=0.5,
+            has_baseline=True,
         )
         assert v.level == pilot.RESULT_NO
         assert "lesson_bad" in v.explanation
 
     def test_improved_resolution_rate_with_no_harmful_lesson_is_likely_not_yes(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=[], causal_effects=None,
-            resolution_delta=0.10, has_baseline=True,
+            harmful_lesson_slugs=[],
+            causal_effects=None,
+            resolution_delta=0.10,
+            has_baseline=True,
         )
         assert v.level == pilot.RESULT_UNKNOWN
         assert "LIKELY" in v.label
@@ -78,15 +88,19 @@ class TestDetermineResultCorrelationalFallback:
 
     def test_flat_or_negative_resolution_rate_is_not_yet(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=[], causal_effects=None,
-            resolution_delta=-0.10, has_baseline=True,
+            harmful_lesson_slugs=[],
+            causal_effects=None,
+            resolution_delta=-0.10,
+            has_baseline=True,
         )
         assert v.level == pilot.RESULT_NO
 
     def test_no_baseline_and_no_causal_data_is_not_enough_data(self):
         v = pilot.determine_result(
-            harmful_lesson_slugs=[], causal_effects=None,
-            resolution_delta=None, has_baseline=False,
+            harmful_lesson_slugs=[],
+            causal_effects=None,
+            resolution_delta=None,
+            has_baseline=False,
         )
         assert v.level == pilot.RESULT_UNKNOWN
         assert "NOT ENOUGH DATA" in v.label
@@ -120,11 +134,14 @@ def _write_trace_file(root, name, resolved, tokens_used, baseline):
 
 def _write_episode(mem_dir, name, verdict, retrieved, hit):
     fm = {
-        "name": name, "verdict": verdict,
-        "lessons_retrieved_by_alpha": retrieved, "lessons_hit": hit,
+        "name": name,
+        "verdict": verdict,
+        "lessons_retrieved_by_alpha": retrieved,
+        "lessons_hit": hit,
     }
     (mem_dir / "episodes" / f"{name}.md").write_text(
-        "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n", encoding="utf-8",
+        "---\n" + yaml.safe_dump(fm) + "---\n\nbody\n",
+        encoding="utf-8",
     )
 
 

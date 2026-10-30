@@ -58,8 +58,7 @@ def test_the_cached_index_ranks_exactly_like_a_fresh_one(scorer):
         query = " ".join(rng.choice(WORDS) for _ in range(rng.randint(1, 6)))
         for kw in ({}, {"reliability_lookup": rel, "reliability_weight": 0.3}):
             fresh = retrieval.rank_lessons(query, lessons, top_k=15, scorer=scorer, **kw)
-            cached = retrieval.rank_lessons(query, lessons, top_k=15, scorer=scorer,
-                                            term_cache=tc, **kw)
+            cached = retrieval.rank_lessons(query, lessons, top_k=15, scorer=scorer, term_cache=tc, **kw)
             assert _as_dicts(cached) == _as_dicts(fresh), query
     assert retrieval._INDEX_CACHE, "the stamped path should have been cached"
 
@@ -111,8 +110,9 @@ def _store(tmp_path, n=12):
     rng = random.Random(1)
     for i in range(n):
         fm = _lesson(rng, i)
-        lesson_io.write_lesson(os.path.join(ldir, f"lesson_lesson-{i}.md"), fm, "body",
-                               root=root, actor="test", reason="fixture")
+        lesson_io.write_lesson(
+            os.path.join(ldir, f"lesson_lesson-{i}.md"), fm, "body", root=root, actor="test", reason="fixture"
+        )
     return root
 
 
@@ -130,8 +130,7 @@ def test_an_edited_lesson_is_seen_on_the_next_call(tmp_path):
     path = os.path.join(paths.lessons_dir(root), "lesson_lesson-3.md")
     fm = dict(lessons[[p for p, _ in lessons].index(path)][1])
     fm["description"] = "zebra crossing zebra"
-    lesson_io.write_lesson(path, {**fm, "status": "active"}, "body", root=root,
-                           actor="test", reason="edit")
+    lesson_io.write_lesson(path, {**fm, "status": "active"}, "body", root=root, actor="test", reason="edit")
     lessons2, terms2 = lesson_cache.load_active_with_terms(root)
     assert lessons2 is not lessons
     ranked = retrieval.rank_lessons("zebra", lessons2, term_cache=terms2)
@@ -143,9 +142,14 @@ def test_a_new_and_a_deleted_lesson_are_seen(tmp_path):
     lesson_cache.load_active_with_terms(root)
     ldir = paths.lessons_dir(root)
     os.unlink(os.path.join(ldir, "lesson_lesson-0.md"))
-    lesson_io.write_lesson(os.path.join(ldir, "lesson_new-one.md"),
-                           {"name": "new-one", "description": "quasar", "status": "active"},
-                           "body", root=root, actor="test", reason="new")
+    lesson_io.write_lesson(
+        os.path.join(ldir, "lesson_new-one.md"),
+        {"name": "new-one", "description": "quasar", "status": "active"},
+        "body",
+        root=root,
+        actor="test",
+        reason="new",
+    )
     lessons, terms = lesson_cache.load_active_with_terms(root)
     slugs = {fm["name"] for _p, fm in lessons}
     assert "new-one" in slugs and "lesson-0" not in slugs
@@ -156,7 +160,7 @@ def test_a_cache_file_rewritten_by_another_process_is_reread(tmp_path):
     root = _store(tmp_path)
     lesson_cache.load_active_with_terms(root)
     cpath = lesson_cache.cache_path(root)
-    raw = json.loads(Path(cpath).read_text(encoding='utf-8'))
+    raw = json.loads(Path(cpath).read_text(encoding="utf-8"))
     some = next(iter(raw["entries"]))
     raw["entries"][some]["terms"] = "not-a-list"
     tmp = cpath + ".other"
@@ -179,7 +183,7 @@ def test_a_cache_file_another_process_left_incomplete_is_rewritten(tmp_path):
     root = _store(tmp_path)
     lesson_cache.load_active_with_terms(root)
     cpath = lesson_cache.cache_path(root)
-    raw = json.loads(Path(cpath).read_text(encoding='utf-8'))
+    raw = json.loads(Path(cpath).read_text(encoding="utf-8"))
     dropped = next(iter(raw["entries"]))
     del raw["entries"][dropped]
     tmp = cpath + ".other"
@@ -187,4 +191,4 @@ def test_a_cache_file_another_process_left_incomplete_is_rewritten(tmp_path):
         json.dump(raw, fh)
     os.replace(tmp, cpath)
     lesson_cache.load_active_with_terms(root)
-    assert dropped in json.loads(Path(cpath).read_text(encoding='utf-8'))["entries"]
+    assert dropped in json.loads(Path(cpath).read_text(encoding="utf-8"))["entries"]

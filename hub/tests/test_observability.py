@@ -82,8 +82,13 @@ class TestDurationHistogram:
 class TestJsonLogFormatter:
     def _record(self, **kwargs):
         record = logging.LogRecord(
-            name="test.logger", level=logging.INFO, pathname="p", lineno=1,
-            msg=kwargs.pop("msg", "hello"), args=(), exc_info=None,
+            name="test.logger",
+            level=logging.INFO,
+            pathname="p",
+            lineno=1,
+            msg=kwargs.pop("msg", "hello"),
+            args=(),
+            exc_info=None,
         )
         for k, v in kwargs.items():
             setattr(record, k, v)
@@ -97,9 +102,7 @@ class TestJsonLogFormatter:
         assert "ts" in out
 
     def test_extra_fields_are_merged(self):
-        out = json.loads(
-            observability.JsonLogFormatter().format(self._record(http_status=503, duration_ms=12.5))
-        )
+        out = json.loads(observability.JsonLogFormatter().format(self._record(http_status=503, duration_ms=12.5)))
         assert out["http_status"] == 503
         assert out["duration_ms"] == 12.5
 
@@ -116,9 +119,7 @@ class TestJsonLogFormatter:
         assert out["request_id"] == "req-abc"
 
     def test_request_id_absent_when_unset(self):
-        assert "request_id" not in json.loads(
-            observability.JsonLogFormatter().format(self._record())
-        )
+        assert "request_id" not in json.loads(observability.JsonLogFormatter().format(self._record()))
 
 
 class TestResolveRequestId:
@@ -171,7 +172,9 @@ class TestHealthAndReadiness:
         app = Starlette()
         observability.add_health_routes(app, session_factory)
         for route in app.routes:
-            if getattr(route, "path", None) == path:
+            from starlette.routing import Route
+
+            if isinstance(route, Route) and route.path == path:
                 return route.endpoint
         raise AssertionError(f"{path} was never registered by add_health_routes()")
 
@@ -220,9 +223,7 @@ class TestHealthAndReadiness:
             client: _FakeClient
 
         app = Starlette()
-        observability.add_health_routes(
-            app, session_factory, readyz_rate_limiter=RateLimiter(per_minute=60, burst=1)
-        )
+        observability.add_health_routes(app, session_factory, readyz_rate_limiter=RateLimiter(per_minute=60, burst=1))
         readyz = next(r.endpoint for r in app.routes if getattr(r, "path", None) == "/readyz")
 
         async with session_factory() as _warmup_session:
@@ -277,7 +278,9 @@ class TestTransportSafety:
         from hub.config import HubConfig
 
         config = HubConfig(
-            database_url="postgresql+asyncpg://x/y", host="0.0.0.0", allow_insecure_http=True,
+            database_url="postgresql+asyncpg://x/y",
+            host="0.0.0.0",
+            allow_insecure_http=True,
         )
         config.validate_transport_safety()
 

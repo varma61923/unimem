@@ -1,4 +1,5 @@
 """Memory evolution commands using the same operations as the local/HTTP SDK."""
+
 from __future__ import annotations
 
 import argparse
@@ -36,35 +37,75 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     runtime.add_argument("--expires-at")
     runtime.add_argument("--source-agent", choices=("claude", "codex", "cursor", "gemini"))
     runtime.set_defaults(func=run_runtime)
-    for name in ("add", "search", "reason", "triplets", "reflect", "profile", "directive", "question",
-                 "foresight", "propose",
-                 "models", "proposals", "directives", "offline", "recipes", "install", "heartbeat", "distill-session",
-                 "skills", "skill-review", "skill-publish", "foresight-review", "hook"):
+    for name in (
+        "add",
+        "search",
+        "reason",
+        "triplets",
+        "reflect",
+        "profile",
+        "directive",
+        "question",
+        "foresight",
+        "propose",
+        "models",
+        "proposals",
+        "directives",
+        "offline",
+        "recipes",
+        "install",
+        "heartbeat",
+        "distill-session",
+        "skills",
+        "skill-review",
+        "skill-publish",
+        "foresight-review",
+        "hook",
+    ):
         q = sub.add_parser(name)
         q.add_argument("--dest", default=None)
         q.add_argument("--context", action="append", default=[], help="Orthogonal scope label; repeatable.")
-        if name in ("add", "search", "reason", "triplets", "reflect", "profile", "directive", "question",
-                    "foresight", "propose"):
+        if name in (
+            "add",
+            "search",
+            "reason",
+            "triplets",
+            "reflect",
+            "profile",
+            "directive",
+            "question",
+            "foresight",
+            "propose",
+        ):
             q.add_argument("text", nargs="?", default="")
         if name == "reason":
-            q.add_argument("--max-hops", type=int, choices=range(1, 4), default=3,
-                           help="bridge-entity hops to chain (default: 3)")
+            q.add_argument(
+                "--max-hops", type=int, choices=range(1, 4), default=3, help="bridge-entity hops to chain (default: 3)"
+            )
             q.add_argument("--limit", type=int, default=10)
             q.add_argument("--as-of", help="ISO valid-time snapshot.")
             q.add_argument("--known-at", help="ISO snapshot of when the store learned the evidence.")
-            q.add_argument("--graph-hops", type=int, choices=range(5), default=2,
-                           help="knowledge-graph depth folded into the walk; 0 uses the entity index only")
-            q.add_argument("--model", action="store_true",
-                           help="let the configured model propose sub-questions and follow-up queries")
+            q.add_argument(
+                "--graph-hops",
+                type=int,
+                choices=range(5),
+                default=2,
+                help="knowledge-graph depth folded into the walk; 0 uses the entity index only",
+            )
+            q.add_argument(
+                "--model",
+                action="store_true",
+                help="let the configured model propose sub-questions and follow-up queries",
+            )
         if name == "triplets":
             q.add_argument("--top-k", type=int, default=10)
             q.add_argument("--as-of", help="ISO valid-time snapshot.")
             q.add_argument("--known-at", help="ISO snapshot of when the store learned the evidence.")
-            q.add_argument("--relation", action="append", default=None,
-                           help="restrict to this relation; repeatable")
+            q.add_argument("--relation", action="append", default=None, help="restrict to this relation; repeatable")
         if name == "add":
-            q.add_argument("--model", action="store_true",
-                           help="One-pass model extraction; default explicit assertion.")
+            q.add_argument(
+                "--model", action="store_true", help="One-pass model extraction; default explicit assertion."
+            )
             from unimem.decay import HALF_LIVES_DAYS
 
             q.add_argument("--memory-type", default="general", choices=sorted(HALF_LIVES_DAYS))
@@ -75,18 +116,29 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
             q.add_argument("--center", default="")
             q.add_argument("--as-of", help="ISO valid-time snapshot.")
             q.add_argument("--known-at", help="ISO snapshot of when the store learned the evidence.")
-            q.add_argument("--graph-hops", type=int, choices=range(5), default=2,
-                           help="bounded BFS depth; 0 disables graph expansion (default: 2)")
-            q.add_argument("--reranker", default=None,
-                           help="second-stage reranker for the top facts: cross-encoder, bge-reranker-v2-m3, "
-                                "mxbai-rerank, mmr, cohere[:model], voyage[:model], jina[:model], llm[:model] or none "
-                                "(default: memory/budgets.json, then the profile's cached reranker)")
+            q.add_argument(
+                "--graph-hops",
+                type=int,
+                choices=range(5),
+                default=2,
+                help="bounded BFS depth; 0 disables graph expansion (default: 2)",
+            )
+            q.add_argument(
+                "--reranker",
+                default=None,
+                help="second-stage reranker for the top facts: cross-encoder, bge-reranker-v2-m3, "
+                "mxbai-rerank, mmr, cohere[:model], voyage[:model], jina[:model], llm[:model] or none "
+                "(default: memory/budgets.json, then the profile's cached reranker)",
+            )
         if name in ("question", "reflect"):
             q.add_argument("--budget", type=int, default=600)
         if name == "reflect":
             q.add_argument("--exploration-slots", type=int, default=0)
-            q.add_argument("--adaptive-budget", action="store_true",
-                           help="size the budget by the question's shape and grow it while evidence is thin")
+            q.add_argument(
+                "--adaptive-budget",
+                action="store_true",
+                help="size the budget by the question's shape and grow it while evidence is thin",
+            )
         if name == "question":
             q.add_argument("--refresh-seconds", type=int, default=3600)
         if name == "directive":
@@ -136,18 +188,37 @@ def run(args) -> int:
 
             return agent_hooks.main([args.hook_operation, "--agent-id", args.agent_id, "--dest", root])
         if op == "add":
-            result = additive_extract.extract(root, args.text, local=not args.model, scopes=context,
-                                               memory_type=args.memory_type, entity_model_path=args.gliner_model)
+            result = additive_extract.extract(
+                root,
+                args.text,
+                local=not args.model,
+                scopes=context,
+                memory_type=args.memory_type,
+                entity_model_path=args.gliner_model,
+            )
         elif op == "search":
             extra = {"reranker": args.reranker} if args.reranker is not None else {}
-            result = REGISTRY.retrieve(args.retriever, root, args.text, recipe=args.recipe,
-                                       context=context, center=args.center, as_of=args.as_of,
-                                       known_at=args.known_at, graph_hops=args.graph_hops, **extra)
+            result = REGISTRY.retrieve(
+                args.retriever,
+                root,
+                args.text,
+                recipe=args.recipe,
+                context=context,
+                center=args.center,
+                as_of=args.as_of,
+                known_at=args.known_at,
+                graph_hops=args.graph_hops,
+                **extra,
+            )
         elif op == "reason":
             from unimem import multihop
 
-            options: dict[str, Any] = {"context": context, "as_of": args.as_of, "known_at": args.known_at,
-                                       "graph_hops": args.graph_hops}
+            options: dict[str, Any] = {
+                "context": context,
+                "as_of": args.as_of,
+                "known_at": args.known_at,
+                "graph_hops": args.graph_hops,
+            }
             if args.model:
                 import hashlib
 
@@ -156,35 +227,59 @@ def run(args) -> int:
 
                 runtime = LLMRuntime(root, "reason-" + hashlib.sha256(args.text.encode()).hexdigest()[:24])
                 with runtime.scope():
-                    result = multihop.reason(root, args.text, complete=llm.complete, max_hops=args.max_hops,
-                                             limit=args.limit, **options)
+                    result = multihop.reason(
+                        root, args.text, complete=llm.complete, max_hops=args.max_hops, limit=args.limit, **options
+                    )
             else:
                 result = multihop.reason(root, args.text, max_hops=args.max_hops, limit=args.limit, **options)
         elif op == "triplets":
             from unimem import triplet_search
 
-            result = triplet_search.search(root, args.text, top_k=args.top_k, context=context,
-                                           as_of=args.as_of, known_at=args.known_at, relations=args.relation)
+            result = triplet_search.search(
+                root,
+                args.text,
+                top_k=args.top_k,
+                context=context,
+                as_of=args.as_of,
+                known_at=args.known_at,
+                relations=args.relation,
+            )
         elif op == "reflect":
-            result = memory_control.reflect(root, args.text, context=context, budget=args.budget,
-                                             exploration_slots=args.exploration_slots,
-                                             adaptive_budget=args.adaptive_budget)
+            result = memory_control.reflect(
+                root,
+                args.text,
+                context=context,
+                budget=args.budget,
+                exploration_slots=args.exploration_slots,
+                adaptive_budget=args.adaptive_budget,
+            )
         elif op == "profile":
             result = memory_control.profile(root, args.text, context=context)
         elif op == "directive":
-            result = memory_control.directive(root, args.text, labels=context,
-                                               deny_tools=args.deny_tool, required_tags=args.require_tag)
+            result = memory_control.directive(
+                root, args.text, labels=context, deny_tools=args.deny_tool, required_tags=args.require_tag
+            )
         elif op == "question":
-            result = memory_control.standing_question(root, args.text, context=context,
-                           budget=args.budget, refresh_seconds=args.refresh_seconds)
+            result = memory_control.standing_question(
+                root, args.text, context=context, budget=args.budget, refresh_seconds=args.refresh_seconds
+            )
         elif op == "foresight":
-            result = memory_control.foresight(root, args.text, context=context, sources=args.source,
-                           valid_from=args.valid_from, expires_at=args.expires_at)
+            result = memory_control.foresight(
+                root,
+                args.text,
+                context=context,
+                sources=args.source,
+                valid_from=args.valid_from,
+                expires_at=args.expires_at,
+            )
         elif op == "propose":
             result = memory_control.proposal(root, args.text, context=context, sources=args.source)
         elif op in ("models", "proposals", "directives"):
-            result = memory_control.records(root, {"models": "mental-model", "proposals": "proposal",
-                                                  "directives": "directive"}[op], context=context or None)
+            result = memory_control.records(
+                root,
+                {"models": "mental-model", "proposals": "proposal", "directives": "directive"}[op],
+                context=context or None,
+            )
         elif op == "offline":
             result = memory_control.offline_pass(root, max_jobs=args.max_jobs, seconds=args.seconds)
         elif op == "recipes":
@@ -207,13 +302,15 @@ def run(args) -> int:
             elif op == "skill-review":
                 with open(args.evidence, encoding="utf-8") as fh:
                     evidence = json.load(fh)
-                result = experience_skills.review(root, args.id, args.expected_revision,
-                    actor=args.actor, verdict=args.verdict, evidence=evidence)
+                result = experience_skills.review(
+                    root, args.id, args.expected_revision, actor=args.actor, verdict=args.verdict, evidence=evidence
+                )
             else:
                 result = {"path": experience_skills.publish(root, args.id, args.directory, context=context or None)}
         elif op == "foresight-review":
-            result = memory_control.review_foresight(root, args.id, args.expected_revision,
-                       actor=args.actor, approve=args.approve)
+            result = memory_control.review_foresight(
+                root, args.id, args.expected_revision, actor=args.actor, approve=args.approve
+            )
         else:
             raise ValueError("unknown memory evolution command")
         print(json.dumps(result, indent=2, ensure_ascii=False))
@@ -221,6 +318,8 @@ def run(args) -> int:
     except (ValueError, OSError, PermissionError) as exc:
         print(f"[unimem] {exc}", file=sys.stderr)
         return 1
+
+
 def run_runtime(args):
     from unimem import history_import, session_learning
     from unimem.framework_middleware import scope_from_labels
@@ -231,9 +330,7 @@ def run_runtime(args):
     if args.action == "learn":
         if not args.session_id:
             raise ValueError("--session-id is required")
-        result = session_learning.learn(
-            root, args.session_id, scope=scope, semantic_segments=args.semantic_segments
-        )
+        result = session_learning.learn(root, args.session_id, scope=scope, semantic_segments=args.semantic_segments)
     elif args.action == "evaluate":
         if not args.id or not args.actor or not args.expires_at:
             raise ValueError("--id, --actor and --expires-at are required")

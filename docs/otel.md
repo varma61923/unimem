@@ -9,6 +9,7 @@ Enable the optional instrumentation explicitly:
 
 ```python
 from unimem import otel_memory
+
 otel_memory.configure(root, enabled=True, include_content=False)
 ```
 

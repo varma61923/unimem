@@ -91,9 +91,7 @@ async def test_search_traces_by_shared_tag_excludes_other_org(
     _assert_no_org_b_leakage(results, fixture["org_b_trace_id"], fixture["org_b_id"])
 
 
-async def test_contribute_trace_is_scoped_to_calling_org(
-    session_factory, config, two_orgs_with_overlapping_content
-):
+async def test_contribute_trace_is_scoped_to_calling_org(session_factory, config, two_orgs_with_overlapping_content):
     fixture = two_orgs_with_overlapping_content
     async with session_scope(session_factory) as session:
         own = await crud.get_trace(session, fixture["org_a_id"], fixture["org_a_trace_id"])
@@ -115,9 +113,7 @@ async def test_get_trace_on_other_orgs_id_is_not_found_not_forbidden(
     assert never_existed is None
 
 
-async def test_vote_trace_cannot_target_other_orgs_trace(
-    session_factory, config, two_orgs_with_overlapping_content
-):
+async def test_vote_trace_cannot_target_other_orgs_trace(session_factory, config, two_orgs_with_overlapping_content):
     fixture = two_orgs_with_overlapping_content
     async with session_scope(session_factory) as session:
         result = await crud.vote_trace(session, fixture["org_a_id"], fixture["org_b_trace_id"], "up")
@@ -128,14 +124,16 @@ async def test_vote_trace_cannot_target_other_orgs_trace(
     assert untouched["trust"] == 0.5
 
 
-async def test_amend_trace_cannot_target_other_orgs_trace(
-    session_factory, config, two_orgs_with_overlapping_content
-):
+async def test_amend_trace_cannot_target_other_orgs_trace(session_factory, config, two_orgs_with_overlapping_content):
     fixture = two_orgs_with_overlapping_content
     async with session_scope(session_factory) as session:
         result = await crud.amend_trace(
-            session, fixture["org_a_id"], fixture["org_b_trace_id"],
-            config, make_rate_limiter(config), title="hijacked",
+            session,
+            fixture["org_a_id"],
+            fixture["org_b_trace_id"],
+            config,
+            make_rate_limiter(config),
+            title="hijacked",
         )
     assert result is None
 
@@ -260,8 +258,14 @@ async def test_org_identity_is_per_request_not_per_session(session_factory, conf
 
     async with session_scope(session_factory) as session:
         a_trace = await crud.contribute_trace(
-            session, org_a_id, config, rate_limiter,
-            title="ctx-a-secret", context_text="org a only", solution_text="s", tags=["ctx-a"],
+            session,
+            org_a_id,
+            config,
+            rate_limiter,
+            title="ctx-a-secret",
+            context_text="org a only",
+            solution_text="s",
+            tags=["ctx-a"],
         )
     a_trace_id = a_trace["id"]
 
@@ -293,7 +297,9 @@ async def test_org_identity_is_per_request_not_per_session(session_factory, conf
 
 
 async def test_console_activity_counts_only_the_calling_orgs_rows(
-    session_factory, config, two_orgs_with_overlapping_content,
+    session_factory,
+    config,
+    two_orgs_with_overlapping_content,
 ):
     fixture = two_orgs_with_overlapping_content
     now = datetime.now(timezone.utc)
@@ -303,18 +309,25 @@ async def test_console_activity_counts_only_the_calling_orgs_rows(
 
         def obs(org_id, occasion, injected, ok, *, salt=salt, at=now):
             return HoldoutObservation(
-                org_id=org_id, trace_id=str(uuid.uuid4()), occasion_id=occasion,
-                injected=injected, succeeded=ok, salt=salt, resolved_at=at,
+                org_id=org_id,
+                trace_id=str(uuid.uuid4()),
+                occasion_id=occasion,
+                injected=injected,
+                succeeded=ok,
+                salt=salt,
+                resolved_at=at,
             )
 
-        session.add_all([
-            obs(fixture["org_a_id"], "a-1", True, True),
-            obs(fixture["org_a_id"], "a-1", True, True),
-            obs(fixture["org_a_id"], "a-2", False, False),
-            obs(fixture["org_a_id"], "a-old-salt", True, True, salt="retired-salt"),
-            obs(fixture["org_a_id"], "a-ancient", True, True, at=now - timedelta(weeks=40)),
-            *[obs(fixture["org_b_id"], f"b-{i}", bool(i % 2), True) for i in range(6)],
-        ])
+        session.add_all(
+            [
+                obs(fixture["org_a_id"], "a-1", True, True),
+                obs(fixture["org_a_id"], "a-1", True, True),
+                obs(fixture["org_a_id"], "a-2", False, False),
+                obs(fixture["org_a_id"], "a-old-salt", True, True, salt="retired-salt"),
+                obs(fixture["org_a_id"], "a-ancient", True, True, at=now - timedelta(weeks=40)),
+                *[obs(fixture["org_b_id"], f"b-{i}", bool(i % 2), True) for i in range(6)],
+            ]
+        )
 
     async with session_scope(session_factory) as session:
         activity = await crud.console_activity(session, fixture["org_a_id"], now=now)

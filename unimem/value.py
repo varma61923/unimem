@@ -101,10 +101,11 @@ class OccasionOverlap:
 
     def conflicts_among(self, slugs) -> list[tuple[str, str]]:
         wanted = set(slugs)
-        found = [
-            tuple(sorted(pair)) for pair in self.shared_pairs
-            if len(pair & wanted) == 2
-        ]
+        found: list[tuple[str, str]] = []
+        for pair in self.shared_pairs:
+            if len(pair & wanted) == 2:
+                left, right = sorted(pair)
+                found.append((left, right))
         return sorted(found)
 
 
@@ -125,7 +126,7 @@ def overlap_from_assignments(assignments) -> OccasionOverlap:
             continue
         ordered = sorted(lessons)
         for i, first in enumerate(ordered):
-            for second in ordered[i + 1:]:
+            for second in ordered[i + 1 :]:
                 pairs.add(frozenset((first, second)))
     return OccasionOverlap(
         shared_pairs=frozenset(pairs),
@@ -152,9 +153,7 @@ class PolicyEffect:
         return self.effect * self.n_treated
 
 
-def policy_effect(
-    assignments, min_arm: int = experiment.DEFAULT_MIN_ARM, alpha: float = 0.05
-) -> PolicyEffect:
+def policy_effect(assignments, min_arm: int = experiment.DEFAULT_MIN_ARM, alpha: float = 0.05) -> PolicyEffect:
     """Estimate the whole memory policy's effect, on unique occasions."""
     treated_success: dict[str, bool] = {}
     treated_any: dict[str, bool] = {}
@@ -165,13 +164,9 @@ def policy_effect(
         succeeded = getattr(row, "succeeded", None)
         if succeeded is None:
             treated_any.setdefault(occasion, False)
-            treated_any[occasion] = treated_any[occasion] or bool(
-                getattr(row, "injected", False)
-            )
+            treated_any[occasion] = treated_any[occasion] or bool(getattr(row, "injected", False))
             continue
-        treated_any[occasion] = treated_any.get(occasion, False) or bool(
-            getattr(row, "injected", False)
-        )
+        treated_any[occasion] = treated_any.get(occasion, False) or bool(getattr(row, "injected", False))
         if occasion in treated_success:
             treated_success[occasion] = treated_success[occasion] and bool(succeeded)
         else:
@@ -191,9 +186,15 @@ def policy_effect(
 
     if n_treated < min_arm or n_control < min_arm:
         return PolicyEffect(
-            n_treated=n_treated, n_control=n_control,
-            rate_treated=rate_treated, rate_control=rate_control,
-            effect=0.0, ci_low=0.0, ci_high=0.0, p_value=1.0, significant=False,
+            n_treated=n_treated,
+            n_control=n_control,
+            rate_treated=rate_treated,
+            rate_control=rate_control,
+            effect=0.0,
+            ci_low=0.0,
+            ci_high=0.0,
+            p_value=1.0,
+            significant=False,
             readable=False,
             reason=(
                 f"Not enough resolved occasions to compare policies: {n_treated} with "
@@ -206,17 +207,18 @@ def policy_effect(
         )
 
     effect = rate_treated - rate_control
-    _, p_value = experiment.two_proportion_test(
-        s_treated, n_treated, s_control, n_control
-    )
-    ci_low, ci_high = experiment.diff_confidence_interval(
-        s_treated, n_treated, s_control, n_control
-    )
+    _, p_value = experiment.two_proportion_test(s_treated, n_treated, s_control, n_control)
+    ci_low, ci_high = experiment.diff_confidence_interval(s_treated, n_treated, s_control, n_control)
     return PolicyEffect(
-        n_treated=n_treated, n_control=n_control,
-        rate_treated=rate_treated, rate_control=rate_control,
-        effect=effect, ci_low=ci_low, ci_high=ci_high,
-        p_value=p_value, significant=p_value < alpha,
+        n_treated=n_treated,
+        n_control=n_control,
+        rate_treated=rate_treated,
+        rate_control=rate_control,
+        effect=effect,
+        ci_low=ci_low,
+        ci_high=ci_high,
+        p_value=p_value,
+        significant=p_value < alpha,
         readable=True,
     )
 
@@ -276,22 +278,29 @@ class ValueReport:
         previous = _LEDGER_GENESIS
         for index, memory in enumerate(m for m in self.memories if m.counted):
             money = memory.occasions_improved * rate
-            row = _FIELD_SEP.join((
-                str(index),
-                memory.slug,
-                memory.verdict,
-                f"{memory.occasions_improved:.6f}",
-                f"{rate:.6f}",
-                f"{money:.6f}",
-            ))
-            digest = hashlib.sha256(
-                (previous + _FIELD_SEP + row).encode("utf-8")
-            ).hexdigest()
-            entries.append(LedgerEntry(
-                index=index, slug=memory.slug, verdict=memory.verdict,
-                occasions_improved=memory.occasions_improved, rate=rate,
-                money=round(money, 2), previous_hash=previous, entry_hash=digest,
-            ))
+            row = _FIELD_SEP.join(
+                (
+                    str(index),
+                    memory.slug,
+                    memory.verdict,
+                    f"{memory.occasions_improved:.6f}",
+                    f"{rate:.6f}",
+                    f"{money:.6f}",
+                )
+            )
+            digest = hashlib.sha256((previous + _FIELD_SEP + row).encode("utf-8")).hexdigest()
+            entries.append(
+                LedgerEntry(
+                    index=index,
+                    slug=memory.slug,
+                    verdict=memory.verdict,
+                    occasions_improved=memory.occasions_improved,
+                    rate=rate,
+                    money=round(money, 2),
+                    previous_hash=previous,
+                    entry_hash=digest,
+                )
+            )
             previous = digest
         return entries
 
@@ -302,17 +311,17 @@ def verify_ledger(entries: list[LedgerEntry]) -> int | None:
     for position, entry in enumerate(entries):
         if entry.previous_hash != previous or entry.index != position:
             return position
-        row = _FIELD_SEP.join((
-            str(entry.index),
-            entry.slug,
-            entry.verdict,
-            f"{entry.occasions_improved:.6f}",
-            f"{entry.rate:.6f}",
-            f"{entry.occasions_improved * entry.rate:.6f}",
-        ))
-        if hashlib.sha256(
-            (previous + _FIELD_SEP + row).encode("utf-8")
-        ).hexdigest() != entry.entry_hash:
+        row = _FIELD_SEP.join(
+            (
+                str(entry.index),
+                entry.slug,
+                entry.verdict,
+                f"{entry.occasions_improved:.6f}",
+                f"{entry.rate:.6f}",
+                f"{entry.occasions_improved * entry.rate:.6f}",
+            )
+        )
+        if hashlib.sha256((previous + _FIELD_SEP + row).encode("utf-8")).hexdigest() != entry.entry_hash:
             return position
         previous = entry.entry_hash
     return None
@@ -338,9 +347,11 @@ def record_evidence(root: str, assignments) -> list[dict]:
         snapshot = fp.digest({"salt": salt, "era": era, "evidence": evidence})
         if any(entry.get("snapshot") == snapshot for entry in existing):
             continue
-        signed = fp.append(root, "value-evidence.jsonl",
-                           {"kind": "e-process-era", "salt": salt, "era": era,
-                            "evidence": evidence, "snapshot": snapshot})
+        signed = fp.append(
+            root,
+            "value-evidence.jsonl",
+            {"kind": "e-process-era", "salt": salt, "era": era, "evidence": evidence, "snapshot": snapshot},
+        )
         existing.append(signed["record"])
     return existing
 
@@ -354,29 +365,46 @@ def ledger_root(entries: list[LedgerEntry]) -> str:
 
 
 def sign_ledger(
-    entries: list[LedgerEntry], key: bytes, *, org_id: str, issued_at: str,
-    evidence_digest: str = "", prereg_fingerprint: str = "",
+    entries: list[LedgerEntry],
+    key: bytes,
+    *,
+    org_id: str,
+    issued_at: str,
+    evidence_digest: str = "",
+    prereg_fingerprint: str = "",
 ) -> str:
-    payload = _SIGNATURE_DOMAIN + _FIELD_SEP.encode("utf-8") + _FIELD_SEP.join(
-        (org_id, issued_at, ledger_root(entries), evidence_digest, prereg_fingerprint)
-    ).encode("utf-8")
+    payload = (
+        _SIGNATURE_DOMAIN
+        + _FIELD_SEP.encode("utf-8")
+        + _FIELD_SEP.join((org_id, issued_at, ledger_root(entries), evidence_digest, prereg_fingerprint)).encode(
+            "utf-8"
+        )
+    )
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
 def verify_ledger_signature(
-    entries: list[LedgerEntry], signature: str, key: bytes, *, org_id: str,
-    issued_at: str, evidence_digest: str = "", prereg_fingerprint: str = "",
+    entries: list[LedgerEntry],
+    signature: str,
+    key: bytes,
+    *,
+    org_id: str,
+    issued_at: str,
+    evidence_digest: str = "",
+    prereg_fingerprint: str = "",
 ) -> bool:
     expected = sign_ledger(
-        entries, key, org_id=org_id, issued_at=issued_at,
-        evidence_digest=evidence_digest, prereg_fingerprint=prereg_fingerprint,
+        entries,
+        key,
+        org_id=org_id,
+        issued_at=issued_at,
+        evidence_digest=evidence_digest,
+        prereg_fingerprint=prereg_fingerprint,
     )
     return hmac.compare_digest(expected, signature)
 
 
-def _check_aggregate(
-    counted_slugs: list[str], overlap: OccasionOverlap | None
-) -> tuple[bool, str]:
+def _check_aggregate(counted_slugs: list[str], overlap: OccasionOverlap | None) -> tuple[bool, str]:
     if len(counted_slugs) < 2:
         return True, ""
     if overlap is None:
@@ -416,12 +444,9 @@ def compute(
 ) -> ValueReport:
     """Causal value delivered, or a refusal to state one."""
     if value_per_occasion is not None and not (
-        isinstance(value_per_occasion, (int, float))
-        and math.isfinite(value_per_occasion) and value_per_occasion >= 0
+        isinstance(value_per_occasion, (int, float)) and math.isfinite(value_per_occasion) and value_per_occasion >= 0
     ):
-        raise ValueError(
-            f"value_per_occasion must be a finite, non-negative number, got {value_per_occasion!r}"
-        )
+        raise ValueError(f"value_per_occasion must be a finite, non-negative number, got {value_per_occasion!r}")
     policy = policy_effect(assignments) if assignments is not None else None
     if assignments is not None and overlap is None:
         overlap = overlap_from_assignments(assignments)
@@ -430,11 +455,16 @@ def compute(
         return ValueReport(
             readable=False,
             reason="No validity audit was supplied for this experiment, so the effects "
-                   "it produced have not been checked. A value figure computed from an "
-                   "unexamined comparison is not a measurement.",
-            memories=[], occasions_improved=0.0, ci_low=0.0, ci_high=0.0,
-            n_counted=0, n_excluded=len(effects),
-            value_per_occasion=value_per_occasion, rate_card=rate_card,
+            "it produced have not been checked. A value figure computed from an "
+            "unexamined comparison is not a measurement.",
+            memories=[],
+            occasions_improved=0.0,
+            ci_low=0.0,
+            ci_high=0.0,
+            n_counted=0,
+            n_excluded=len(effects),
+            value_per_occasion=value_per_occasion,
+            rate_card=rate_card,
             aggregate_readable=True,
             unique_occasions=(overlap.unique_injected_occasions if overlap else None),
             n_examined=len(effects),
@@ -450,9 +480,14 @@ def compute(
                 "No figure is given, because a value report is precisely where a caveat "
                 "gets separated from the number it qualifies."
             ),
-            memories=[], occasions_improved=0.0, ci_low=0.0, ci_high=0.0,
-            n_counted=0, n_excluded=len(effects),
-            value_per_occasion=value_per_occasion, rate_card=rate_card,
+            memories=[],
+            occasions_improved=0.0,
+            ci_low=0.0,
+            ci_high=0.0,
+            n_counted=0,
+            n_excluded=len(effects),
+            value_per_occasion=value_per_occasion,
+            rate_card=rate_card,
             aggregate_readable=True,
             unique_occasions=(overlap.unique_injected_occasions if overlap else None),
             n_examined=len(effects),
@@ -477,39 +512,56 @@ def compute(
         if evidence_horizon_days is not None:
             fresh = decay_mod.freshness(
                 (last_measured or {}).get(effect.lesson_slug),
-                now=now, horizon_days=evidence_horizon_days,
+                now=now,
+                horizon_days=evidence_horizon_days,
             )
             if include:
                 still, stale_reason = decay_mod.still_counts(
-                    effect.verdict, fresh,
-                    helps=experiment.VERDICT_HELPS, hurts=experiment.VERDICT_HURTS,
+                    effect.verdict,
+                    fresh,
+                    helps=experiment.VERDICT_HELPS,
+                    hurts=experiment.VERDICT_HURTS,
                 )
                 if not still:
                     include = False
                     why_not = stale_reason
-            decayed.append(decay_mod.DecayItem(
-                slug=effect.lesson_slug, verdict=effect.verdict,
-                freshness=fresh, withheld=bool(why_not),
-            ))
+            decayed.append(
+                decay_mod.DecayItem(
+                    slug=effect.lesson_slug,
+                    verdict=effect.verdict,
+                    freshness=fresh,
+                    withheld=bool(why_not),
+                )
+            )
 
         if why_not:
             pass
         elif effect.verdict == experiment.VERDICT_UNDERPOWERED:
-            why_not = ("not established: this design could not detect an effect worth "
-                       "acting on, so multiplying it by a volume would produce a large "
-                       "number with no evidence under it")
+            why_not = (
+                "not established: this design could not detect an effect worth "
+                "acting on, so multiplying it by a volume would produce a large "
+                "number with no evidence under it"
+            )
         elif effect.verdict == experiment.VERDICT_NO_EFFECT:
-            why_not = ("measured, and the effect is indistinguishable from zero -- so "
-                       "its contribution is zero, which is a result rather than an "
-                       "omission")
+            why_not = (
+                "measured, and the effect is indistinguishable from zero -- so "
+                "its contribution is zero, which is a result rather than an "
+                "omission"
+            )
 
-        memories.append(MemoryValue(
-            slug=effect.lesson_slug, verdict=effect.verdict,
-            n_injected=effect.n_injected, effect=effect.effect,
-            occasions_improved=round(improved, 2),
-            ci_low=round(item_low, 2), ci_high=round(item_high, 2),
-            counted=include, why_not=why_not,
-        ))
+        memories.append(
+            MemoryValue(
+                slug=effect.lesson_slug,
+                verdict=effect.verdict,
+                n_injected=effect.n_injected,
+                effect=effect.effect,
+                occasions_improved=round(improved, 2),
+                ci_low=round(item_low, 2),
+                ci_high=round(item_high, 2),
+                counted=include,
+                why_not=why_not,
+            )
+        )
         if effect.verdict != experiment.VERDICT_UNDERPOWERED:
             unselected_total += improved
 
@@ -542,9 +594,12 @@ def compute(
         reason=reason,
         memories=memories,
         occasions_improved=round(total, 2),
-        ci_low=round(low, 2), ci_high=round(high, 2),
-        n_counted=counted, n_excluded=len(effects) - counted,
-        value_per_occasion=value_per_occasion, rate_card=rate_card,
+        ci_low=round(low, 2),
+        ci_high=round(high, 2),
+        n_counted=counted,
+        n_excluded=len(effects) - counted,
+        value_per_occasion=value_per_occasion,
+        rate_card=rate_card,
         aggregate_readable=aggregate_readable,
         aggregate_reason=aggregate_reason,
         unique_occasions=(overlap.unique_injected_occasions if overlap else None),
@@ -552,9 +607,9 @@ def compute(
         n_examined=len(effects),
         policy=policy,
         decay=(
-            decay_mod.DecayReport(
-                items=tuple(decayed), horizon_days=evidence_horizon_days)
-            if evidence_horizon_days is not None else None
+            decay_mod.DecayReport(items=tuple(decayed), horizon_days=evidence_horizon_days)
+            if evidence_horizon_days is not None
+            else None
         ),
     )
 
@@ -610,24 +665,23 @@ def render(report: ValueReport, unit: str = "occasion") -> str:
             "figures are not. It attributes nothing to an individual memory._",
             "",
         ]
-    if report.money is not None:
-        low, high = report.money_range
+    money, money_range = report.money, report.money_range
+    if money is not None and money_range is not None:
+        low, high = money_range
         lines += [
             f"At the {report.value_per_occasion:,.2f} per resolved {unit} you supplied, "
-            f"that is **{report.money:+,.0f}** ({low:+,.0f} to {high:+,.0f}).",
+            f"that is **{money:+,.0f}** ({low:+,.0f} to {high:+,.0f}).",
             "",
             f"_The {unit} count is measured here; the rate is yours. This repository "
             "attaches no currency to anything -- it ships the quantity and takes the "
             "price from you._",
             "",
         ]
-    lines += ["| Memory | Verdict | Injected | Effect | Occasions | Counted |",
-              "|---|---|---:|---:|---:|---|"]
+    lines += ["| Memory | Verdict | Injected | Effect | Occasions | Counted |", "|---|---|---:|---:|---:|---|"]
     for m in report.memories:
         mark = "yes" if m.counted else "no"
         lines.append(
-            f"| `{m.slug}` | {m.verdict} | {m.n_injected:,} | {m.effect:+.1%} | "
-            f"{m.occasions_improved:+,.0f} | {mark} |"
+            f"| `{m.slug}` | {m.verdict} | {m.n_injected:,} | {m.effect:+.1%} | {m.occasions_improved:+,.0f} | {mark} |"
         )
     excluded = [m for m in report.memories if not m.counted and m.why_not]
     if excluded:

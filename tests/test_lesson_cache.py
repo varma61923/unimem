@@ -3,15 +3,31 @@ import os
 from unimem import frontmatter, lesson_cache, paths, retrieval
 
 
-def _write_lesson(root, slug, description="", applies_when="", tags=None,
-                  domain="", importance=3, uses=0, status="active", agent_type="code"):
+def _write_lesson(
+    root,
+    slug,
+    description="",
+    applies_when="",
+    tags=None,
+    domain="",
+    importance=3,
+    uses=0,
+    status="active",
+    agent_type="code",
+):
     ldir = paths.lessons_dir(root)
     os.makedirs(ldir, exist_ok=True)
     path = os.path.join(ldir, f"{slug}.md")
     fm = {
-        "name": slug, "description": description, "applies_when": applies_when,
-        "tags": tags or [], "domain": domain, "importance": importance,
-        "uses": uses, "status": status, "agent_type": agent_type,
+        "name": slug,
+        "description": description,
+        "applies_when": applies_when,
+        "tags": tags or [],
+        "domain": domain,
+        "importance": importance,
+        "uses": uses,
+        "status": status,
+        "agent_type": agent_type,
         "last_hit": "2026-07-01",
     }
     frontmatter.write(path, fm, "## Rule\nSomething.\n")
@@ -38,14 +54,21 @@ def _direct_scan(root, agent_type=None):
 class TestCacheMatchesDirectScan:
     def test_a_fresh_store_ranks_identically_cached_and_direct(self, tmp_path):
         root = str(tmp_path)
-        _write_lesson(root, "lesson_git_safety",
-                      description="Never force-push a shared branch",
-                      applies_when="force-pushing shared history", tags=["git", "safety"])
-        _write_lesson(root, "lesson_unrelated",
-                      description="How to write a changelog entry",
-                      applies_when="documenting a release", tags=["docs"])
-        _write_lesson(root, "lesson_archived",
-                      description="Force-push guidance, but retired", status="archived")
+        _write_lesson(
+            root,
+            "lesson_git_safety",
+            description="Never force-push a shared branch",
+            applies_when="force-pushing shared history",
+            tags=["git", "safety"],
+        )
+        _write_lesson(
+            root,
+            "lesson_unrelated",
+            description="How to write a changelog entry",
+            applies_when="documenting a release",
+            tags=["docs"],
+        )
+        _write_lesson(root, "lesson_archived", description="Force-push guidance, but retired", status="archived")
 
         query = "I need to force-push a shared branch, is that safe"
 
@@ -53,8 +76,7 @@ class TestCacheMatchesDirectScan:
         cached_lessons, term_cache = lesson_cache.load_active_with_terms(root)
 
         direct_ranked = retrieval.rank_lessons(query, direct, floor=0.0)
-        cached_ranked = retrieval.rank_lessons(
-            query, cached_lessons, floor=0.0, term_cache=term_cache)
+        cached_ranked = retrieval.rank_lessons(query, cached_lessons, floor=0.0, term_cache=term_cache)
 
         assert direct_ranked == cached_ranked
         assert [r.slug for r in cached_ranked][:1] == ["lesson_git_safety"]
@@ -62,29 +84,28 @@ class TestCacheMatchesDirectScan:
     def test_cold_cache_and_warm_cache_rank_identically(self, tmp_path):
         root = str(tmp_path)
         for i in range(12):
-            _write_lesson(root, f"lesson_{i:03d}",
-                          description=f"topic {i} handling and recovery",
-                          applies_when=f"working with topic {i}", tags=[f"tag{i}", "shared"])
+            _write_lesson(
+                root,
+                f"lesson_{i:03d}",
+                description=f"topic {i} handling and recovery",
+                applies_when=f"working with topic {i}",
+                tags=[f"tag{i}", "shared"],
+            )
 
         query = "topic 5 handling and recovery"
         cold_lessons, cold_terms = lesson_cache.load_active_with_terms(root)
-        cold = retrieval.rank_lessons(query, cold_lessons, floor=0.0,
-                                      term_cache=cold_terms)
+        cold = retrieval.rank_lessons(query, cold_lessons, floor=0.0, term_cache=cold_terms)
 
         assert os.path.isfile(lesson_cache.cache_path(root))
 
         warm_lessons, warm_terms = lesson_cache.load_active_with_terms(root)
-        warm = retrieval.rank_lessons(query, warm_lessons, floor=0.0,
-                                      term_cache=warm_terms)
+        warm = retrieval.rank_lessons(query, warm_lessons, floor=0.0, term_cache=warm_terms)
 
         assert cold == warm
 
     def test_editing_one_lesson_reparses_only_that_one(self, tmp_path, monkeypatch):
         root = str(tmp_path)
-        paths_written = [
-            _write_lesson(root, f"lesson_{i:03d}", description=f"content {i}")
-            for i in range(5)
-        ]
+        paths_written = [_write_lesson(root, f"lesson_{i:03d}", description=f"content {i}") for i in range(5)]
         lesson_cache.load_active_with_terms(root)
 
         parsed = []
@@ -98,8 +119,7 @@ class TestCacheMatchesDirectScan:
         with open(paths_written[2], "a", encoding="utf-8") as fh:
             fh.write("\nExtra line.\n")
 
-        lesson_cache.load_active_with_terms(
-            root, reader=lambda p: counting_read(p))
+        lesson_cache.load_active_with_terms(root, reader=lambda p: counting_read(p))
 
         assert parsed == [paths_written[2]]
 
@@ -203,13 +223,19 @@ class TestScoringIsProcessOrderIndependent:
 
         root = str(tmp_path)
         _write_lesson(
-            root, "lesson_a",
+            root,
+            "lesson_a",
             description="Counterparty requests a mutual NDA instead of one-way",
-            applies_when="converting a one-way NDA to mutual", tags=["nda", "legal"])
+            applies_when="converting a one-way NDA to mutual",
+            tags=["nda", "legal"],
+        )
         _write_lesson(
-            root, "lesson_b",
+            root,
+            "lesson_b",
             description="Limitation of liability cap negotiation instead of a waiver",
-            applies_when="raising the standard liability cap", tags=["liability", "legal"])
+            applies_when="raising the standard liability cap",
+            tags=["liability", "legal"],
+        )
 
         script = (
             "import sys; sys.path.insert(0, %r)\n"
@@ -226,8 +252,11 @@ class TestScoringIsProcessOrderIndependent:
         for seed in ("0", "1", "2"):
             env = dict(os.environ, PYTHONHASHSEED=seed)
             proc = subprocess.run(
-                [sys.executable, "-c", script], capture_output=True, text=True,
-                env=env, check=True,
+                [sys.executable, "-c", script],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=True,
             )
             outputs.append(json.loads(proc.stdout))
 

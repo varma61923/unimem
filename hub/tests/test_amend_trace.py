@@ -24,9 +24,17 @@ async def _contribute_with_extra_fields(session_factory, config, org_id):
     rate_limiter = make_rate_limiter(config)
     async with session_scope(session_factory) as session:
         result = await crud.contribute_trace(
-            session, org_id, config, rate_limiter,
-            title="original title", context_text="c", solution_text="s",
-            tags=["a", "b"], agent_type="claude-code", agent_id="agent-42", actor="test",
+            session,
+            org_id,
+            config,
+            rate_limiter,
+            title="original title",
+            context_text="c",
+            solution_text="s",
+            tags=["a", "b"],
+            agent_type="claude-code",
+            agent_id="agent-42",
+            actor="test",
         )
     async with session_scope(session_factory) as session:
         trace = await session.get(Trace, result["id"])
@@ -46,7 +54,13 @@ class TestAmendTraceFieldCarryForward:
 
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter, title="new title", actor="test",
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                title="new title",
+                actor="test",
             )
 
         async with session_scope(session_factory) as session:
@@ -64,15 +78,19 @@ class TestAmendTraceFieldCarryForward:
         assert row.tags == ["a", "b"]
         assert amended["agent_id"] == "agent-42"
 
-    async def test_amending_only_context_leaves_outcome_and_contributor_intact(
-        self, session_factory, config, org
-    ):
+    async def test_amending_only_context_leaves_outcome_and_contributor_intact(self, session_factory, config, org):
         trace_id = await _contribute_with_extra_fields(session_factory, config, org)
         rate_limiter = make_rate_limiter(config)
 
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, trace_id, config, rate_limiter, context_text="new context", actor="test",
+                session,
+                org,
+                trace_id,
+                config,
+                rate_limiter,
+                context_text="new context",
+                actor="test",
             )
 
         async with session_scope(session_factory) as session:
@@ -89,9 +107,16 @@ class TestAmendTraceQuarantineInheritance:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="original", context_text="c", solution_text="s",
-                tags=[], agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="original",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, result["id"])
@@ -100,8 +125,13 @@ class TestAmendTraceQuarantineInheritance:
 
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, result["id"], config, rate_limiter,
-                title="an innocuous-looking edit", actor="test",
+                session,
+                org,
+                result["id"],
+                config,
+                rate_limiter,
+                title="an innocuous-looking edit",
+                actor="test",
             )
 
         assert amended["quarantined"] is True
@@ -114,15 +144,27 @@ class TestAmendTraceQuarantineInheritance:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="original", context_text="c", solution_text="s",
-                tags=[], agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="original",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         spam = " ".join(f"http://spam{i}.example.com" for i in range(20))
         async with session_scope(session_factory) as session:
             amended = await crud.amend_trace(
-                session, org, result["id"], config, rate_limiter,
-                context_text=spam, actor="test",
+                session,
+                org,
+                result["id"],
+                config,
+                rate_limiter,
+                context_text=spam,
+                actor="test",
             )
         assert amended["quarantined"] is True
 
@@ -130,9 +172,16 @@ class TestAmendTraceQuarantineInheritance:
         rate_limiter = make_rate_limiter(config)
         async with session_scope(session_factory) as session:
             result = await crud.contribute_trace(
-                session, org, config, rate_limiter,
-                title="t", context_text="c", solution_text="s",
-                tags=[], agent_type="code", actor="test",
+                session,
+                org,
+                config,
+                rate_limiter,
+                title="t",
+                context_text="c",
+                solution_text="s",
+                tags=[],
+                agent_type="code",
+                actor="test",
             )
         async with session_scope(session_factory) as session:
             trace = await session.get(Trace, result["id"])

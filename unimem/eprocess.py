@@ -14,6 +14,7 @@ an arithmetic mean is valid under arbitrary dependence. Different memories may
 share outcomes: e-BH still controls FDR at each decision time, including one joint
 stopping time. Repeated separate e-BH releases require an online FDR procedure.
 """
+
 from __future__ import annotations
 
 import math
@@ -50,8 +51,9 @@ def ebh(values: Sequence[float], alpha: float = 0.05) -> list[bool]:
     return [i in rejected for i in range(len(values))]
 
 
-def _adjusted(observations: list[aipw.Observation],
-              prior_success: Sequence[float] | None) -> tuple[list[float], list[float]]:
+def _adjusted(
+    observations: list[aipw.Observation], prior_success: Sequence[float] | None
+) -> tuple[list[float], list[float]]:
     """Predictable AIPW scores and their design bounds, optionally regression-adjusted.
 
     Context labels enter through ``Observation.stratum``: the AIPW arm means are
@@ -88,8 +90,8 @@ def _adjusted(observations: list[aipw.Observation],
             slope = (sby - sb * sy / n) / variance if n >= 10 and variance > 1e-9 else 0.0
             slope = max(-1.0, min(1.0, slope))
             # Predictable control variate: conditional expectation zero.
-            scores[i] = score - slope * (int(row.injected) / p - int(not row.injected) / row.rate) * (b - .5)
-            bound += .5 / min(p, row.rate)
+            scores[i] = score - slope * (int(row.injected) / p - int(not row.injected) / row.rate) * (b - 0.5)
+            bound += 0.5 / min(p, row.rate)
             n, sb, sy, sbb, sby = n + 1, sb + b, sy + y, sbb + b * b, sby + b * y
         bounds.append(bound)
     return scores, bounds
@@ -101,7 +103,7 @@ def _wealth(scores: Sequence[float], bounds: Sequence[float], *, delta: float, d
         bound = design_bound + abs(delta)
         value = (score if direction == "helps" else -score) - delta
         # All ingredients are measured before the current outcome is inspected.
-        bet = min(.5 / bound, max(.02 / bound, total / squares))
+        bet = min(0.5 / bound, max(0.02 / bound, total / squares))
         factor = 1 + bet * value
         if factor <= 0 or not math.isfinite(factor):
             raise ValueError("score violates predictable betting bounds")
@@ -112,8 +114,13 @@ def _wealth(scores: Sequence[float], bounds: Sequence[float], *, delta: float, d
     return Evidence(math.exp(min(log_e, 690)), log_e, peak, len(scores), direction, delta)
 
 
-def process(observations: list[aipw.Observation], *, delta: float = 0.0,
-            direction: str = "helps", prior_success: Sequence[float] | None = None) -> Evidence:
+def process(
+    observations: list[aipw.Observation],
+    *,
+    delta: float = 0.0,
+    direction: str = "helps",
+    prior_success: Sequence[float] | None = None,
+) -> Evidence:
     fp.number(delta, -1, 1, "null margin")
     if direction not in ("helps", "hurts"):
         raise ValueError("direction must be helps or hurts")
@@ -132,7 +139,7 @@ def combine(values: Sequence[float], *, independent: bool = False) -> float:
     return math.fsum(v / len(values) for v in values)
 
 
-def interval(scores: Sequence[float], *, bound: float, alpha: float = .05) -> tuple[float, float, float]:
+def interval(scores: Sequence[float], *, bound: float, alpha: float = 0.05) -> tuple[float, float, float]:
     """Finite-sample betting confidence sequence for a stationary score mean.
 
     Predictable bets use preceding raw scores, so the inverted wealth is
@@ -140,7 +147,7 @@ def interval(scores: Sequence[float], *, bound: float, alpha: float = .05) -> tu
     is used to assert coverage. `bound` must be fixed by the trial design.
     """
     fp.number(bound, 1, 1e6, "design score bound")
-    fp.number(alpha, 1e-9, .99)
+    fp.number(alpha, 1e-9, 0.99)
     fp.count(len(scores), 0, fp.MAX_ROWS)
     for value in scores:
         fp.number(value, -bound, bound, "DR score")
@@ -151,7 +158,7 @@ def interval(scores: Sequence[float], *, bound: float, alpha: float = .05) -> tu
         bets = []
         total, squares = 0.0, 1.0
         for x in values:
-            bets.append(min(.5 / (bound + 1), max(.01 / (bound + 1), total / squares)))
+            bets.append(min(0.5 / (bound + 1), max(0.01 / (bound + 1), total / squares)))
             total += x
             squares += x * x
 
@@ -209,10 +216,14 @@ def report(assignments: Iterable[Any], *, strict: bool = True) -> dict[str, dict
         scores, bounds = _adjusted(observations, None)
         helps = _wealth(scores, bounds, delta=0.0, direction="helps")
         hurts = _wealth(scores, bounds, delta=0.0, direction="hurts")
-        result[lesson] = {"e_value": (helps.e_value + hurts.e_value) / 2,
-                          "helps": helps.e_value, "hurts": hurts.e_value, "n": helps.n,
-                          "assumptions": helps.kind,
-                          "e_value_null": "effect equals zero; helps/hurts fields have separate directional nulls"}
+        result[lesson] = {
+            "e_value": (helps.e_value + hurts.e_value) / 2,
+            "helps": helps.e_value,
+            "hurts": hurts.e_value,
+            "n": helps.n,
+            "assumptions": helps.kind,
+            "e_value_null": "effect equals zero; helps/hurts fields have separate directional nulls",
+        }
         if duplicates.get(lesson):
             result[lesson]["duplicates_dropped"] = duplicates[lesson]
     return result

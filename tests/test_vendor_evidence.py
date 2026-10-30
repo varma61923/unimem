@@ -23,8 +23,10 @@ FIXTURES = {
 class Response:
     def __init__(self, data):
         self.data, self.content = data, json.dumps(data).encode()
+
     def raise_for_status(self):
         pass
+
     def json(self):
         return self.data
 
@@ -32,6 +34,7 @@ class Response:
 class Client:
     def __init__(self, data):
         self.data, self.requests = data, []
+
     def post(self, endpoint, **kwargs):
         self.requests.append(kwargs)
         return Response(self.data)
@@ -40,15 +43,20 @@ class Client:
 @pytest.mark.parametrize("provider", sorted(FIXTURES))
 def test_pinned_vendor_fixtures_stable_ids_and_safe_provenance(provider, tmp_path):
     client = Client(FIXTURES[provider])
-    adapter = memory_adapters.VendorReadAdapter(provider, endpoint="https://memory.example/retrieve",
-        scope={"tenant_id": "acme"}, client=client, headers={"Authorization": "secret-token"})
+    adapter = memory_adapters.VendorReadAdapter(
+        provider,
+        endpoint="https://memory.example/retrieve",
+        scope={"tenant_id": "acme"},
+        client=client,
+        headers={"Authorization": "secret-token"},
+    )
     first, second = adapter.search("object"), adapter.search("object")
     assert first == second and first[0].text == "Verify the object class"
     assert "secret-token" not in str(first)
     with pytest.raises(ValueError, match="scopes are pinned"):
         adapter.search("object", tenant_id="other")
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="foreign")
+    holdout_io.configure(root, rate=0.5, salt="foreign")
     measured = memory_adapters.MeasuredMemory(adapter, root=root, check_every=1000)
     for i in range(30):
         recalled = measured.recall("object", occasion_id=str(i))
@@ -58,27 +66,36 @@ def test_pinned_vendor_fixtures_stable_ids_and_safe_provenance(provider, tmp_pat
     if detailed.items:
         assert not detailed.items[0].raw["ifc"]["procedure"]
     assert provider in memory_adapters.comparative_report(root)["stores"]
-    assert "secret-token" not in Path(fp.filename(root, 'lineage.jsonl')).read_text()
+    assert "secret-token" not in Path(fp.filename(root, "lineage.jsonl")).read_text()
 
 
 def test_credential_bearing_transport_errors_are_sanitized():
     class BadClient:
         def post(self, *args, **kwargs):
             raise RuntimeError("Authorization: super-secret")
-    adapter = memory_adapters.VendorReadAdapter("vertex", endpoint="https://memory.example/retrieve",
-                                                scope={"tenant": "acme"}, client=BadClient())
+
+    adapter = memory_adapters.VendorReadAdapter(
+        "vertex", endpoint="https://memory.example/retrieve", scope={"tenant": "acme"}, client=BadClient()
+    )
     with pytest.raises(ValueError) as exc:
         adapter.search("object")
     assert "super-secret" not in str(exc.value)
 
 
 def test_one_bad_vendor_item_is_skipped_not_fatal(tmp_path):
-    data = {"results": [{"id": "huge", "memory": "x" * 70_000}, {"id": "empty", "memory": ""},
-                        {"id": "nested", "memory": {"unexpected": 1}}, {"id": "ok", "memory": "Verify the class"}]}
-    adapter = memory_adapters.VendorReadAdapter("mem0", endpoint="https://memory.example/retrieve",
-                                                scope={"tenant_id": "acme"}, client=Client(data))
+    data = {
+        "results": [
+            {"id": "huge", "memory": "x" * 70_000},
+            {"id": "empty", "memory": ""},
+            {"id": "nested", "memory": {"unexpected": 1}},
+            {"id": "ok", "memory": "Verify the class"},
+        ]
+    }
+    adapter = memory_adapters.VendorReadAdapter(
+        "mem0", endpoint="https://memory.example/retrieve", scope={"tenant_id": "acme"}, client=Client(data)
+    )
     assert [item.text for item in adapter.search("class")] == ["Verify the class"]
     root = str(tmp_path)
-    holdout_io.configure(root, rate=.5, salt="foreign")
+    holdout_io.configure(root, rate=0.5, salt="foreign")
     measured = memory_adapters.MeasuredMemory(adapter, root=root, check_every=1000)
     assert measured.recall_detailed("class", occasion_id="one").items is not None

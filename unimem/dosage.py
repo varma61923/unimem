@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 CORE_FIELD = "core"
@@ -25,6 +26,7 @@ def redundant_reason(other_slug: str) -> str:
 @dataclass(frozen=True)
 class Budget:
     """Hard context caps; zero count or characters delivers no optional lessons."""
+
     max_lessons: int = DEFAULT_MAX_LESSONS
     max_chars: int = DEFAULT_MAX_CHARS
     redundancy_threshold: float = DEFAULT_REDUNDANCY_THRESHOLD
@@ -37,8 +39,7 @@ class Budget:
             )
         if not 0.0 <= self.redundancy_threshold <= 1.0:
             raise ValueError(
-                "redundancy_threshold must be between 0.0 (off) and 1.0 "
-                f"(got {self.redundancy_threshold})"
+                f"redundancy_threshold must be between 0.0 (off) and 1.0 (got {self.redundancy_threshold})"
             )
 
 
@@ -68,6 +69,7 @@ class Candidate:
 @dataclass(frozen=True)
 class Dropped:
     """A candidate excluded by count, context size or redundancy checks."""
+
     slug: str
     reason: str
     core: bool = False
@@ -101,19 +103,14 @@ class Dose:
     @property
     def redundant_core(self) -> tuple[Dropped, ...]:
         """Core lessons that duplicate another admitted lesson."""
-        return tuple(
-            d for d in self.noted if d.core and d.reason.startswith(REASON_REDUNDANT)
-        )
+        return tuple(d for d in self.noted if d.core and d.reason.startswith(REASON_REDUNDANT))
 
     @property
     def chars_available(self) -> int:
         return max(0, self.budget.max_chars - self.chars_used)
 
     def gauge(self, also_left_out: int = 0) -> str:
-        pct = (
-            (self.chars_used / self.budget.max_chars * 100)
-            if self.budget.max_chars else 0.0
-        )
+        pct = (self.chars_used / self.budget.max_chars * 100) if self.budget.max_chars else 0.0
         line = (
             f"{len(self.admitted)}/{self.budget.max_lessons} lessons, "
             f"{self.chars_used:,}/{self.budget.max_chars:,} chars ({pct:.0f}%)"
@@ -123,8 +120,9 @@ class Dose:
         return line
 
 
-def select(candidates, budget: Budget | None = None, *, root: str | None = None, context: str = "",
-           scorer: str | None = None) -> Dose:
+def select(
+    candidates, budget: Budget | None = None, *, root: str | None = None, context: str = "", scorer: str | None = None
+) -> Dose:
     """Admit as much as the budget allows: core first, then by rank.
 
     With a store ``root``, reviewed hazards are flagged and always admitted, an
@@ -157,8 +155,12 @@ def select(candidates, budget: Budget | None = None, *, root: str | None = None,
                 # Core memories are operator-pinned and never randomized, so no
                 # calibration covers them; the budget governs discretionary memory.
                 if candidate.core or conformal_gate.admit(
-                        gate, conformal_gate.score(candidate.relevance), context=context,
-                        hazard=candidate.hazard, scorer=scorer):
+                    gate,
+                    conformal_gate.score(candidate.relevance),
+                    context=context,
+                    hazard=candidate.hazard,
+                    scorer=scorer,
+                ):
                     kept.append(candidate)
                 else:
                     gate_dropped.append(Dropped(candidate.slug, "harm-budget gate", candidate.core))
@@ -170,13 +172,20 @@ def select(candidates, budget: Budget | None = None, *, root: str | None = None,
             for item in items:
                 fp.number(item.relevance, -1e6, 1e6, "relevance")
             priors = options.get("contexts", {}).get(context, {})
-            values = {item.slug: priors.get(item.slug, options.get("lessons", {}).get(item.slug, 0))
-                      * max(0, min(1, item.relevance)) for item in items}
-            selected, packing = value_pack(items, values, max_tokens=budget.max_chars // 4,
-                                           max_items=budget.max_lessons)
+            values = {
+                item.slug: priors.get(item.slug, options.get("lessons", {}).get(item.slug, 0))
+                * max(0, min(1, item.relevance))
+                for item in items
+            }
+            selected, packing = value_pack(
+                items, values, max_tokens=budget.max_chars // 4, max_items=budget.max_lessons
+            )
             picked = {item.slug for item in selected}
-            gate_dropped.extend(Dropped(item.slug, "causal value-per-token packing", item.core)
-                                for item in items if item.slug not in picked)
+            gate_dropped.extend(
+                Dropped(item.slug, "causal value-per-token packing", item.core)
+                for item in items
+                if item.slug not in picked
+            )
             items = selected
 
     core = sorted(
@@ -192,8 +201,8 @@ def select(candidates, budget: Budget | None = None, *, root: str | None = None,
 
     check_redundancy = budget.redundancy_threshold > 0
     admitted_tokens: list[tuple[str, frozenset[str]]] = []
-    token_set = None
-    jaccard = None
+    token_set: Callable[[str], frozenset[str]] | None = None
+    jaccard: Callable[[Iterable[str], Iterable[str]], float] | None = None
     if check_redundancy:
         from unimem.redundancy import jaccard, token_set  # noqa: PLC0415
 
@@ -216,9 +225,7 @@ def select(candidates, budget: Budget | None = None, *, root: str | None = None,
                         duplicate_of = other_slug
                         break
                 if duplicate_of and not candidate.core:
-                    dropped.append(
-                        Dropped(candidate.slug, redundant_reason(duplicate_of), False)
-                    )
+                    dropped.append(Dropped(candidate.slug, redundant_reason(duplicate_of), False))
                     continue
 
             if used + candidate.cost > budget.max_chars:
@@ -231,9 +238,7 @@ def select(candidates, budget: Budget | None = None, *, root: str | None = None,
                 assert token_set is not None
                 admitted_tokens.append((candidate.slug, token_set(candidate.comparable)))
                 if duplicate_of:
-                    noted.append(
-                        Dropped(candidate.slug, redundant_reason(duplicate_of), True)
-                    )
+                    noted.append(Dropped(candidate.slug, redundant_reason(duplicate_of), True))
 
     return Dose(
         admitted=tuple(admitted),
@@ -254,8 +259,14 @@ def is_core(fm: dict) -> bool:
     return bool(raw)
 
 
-def value_pack(candidates: list[Candidate], values: dict[str, float], *, max_tokens: int,
-               max_items: int = 10, duplicate_penalty: float = .5) -> tuple[list[Candidate], dict]:
+def value_pack(
+    candidates: list[Candidate],
+    values: dict[str, float],
+    *,
+    max_tokens: int,
+    max_items: int = 10,
+    duplicate_penalty: float = 0.5,
+) -> tuple[list[Candidate], dict]:
     """Bounded knapsack with a relevance-baseline fallback and mandatory hazards.
 
     Values are posterior uplift times relevance, hence estimates, not guarantees
@@ -272,18 +283,22 @@ def value_pack(candidates: list[Candidate], values: dict[str, float], *, max_tok
     fp.number(duplicate_penalty, 0, 1)
     mandatory = [item for item in candidates if item.hazard or item.core]
     optional = [item for item in candidates if not item.hazard and not item.core]
+
     def weight(item: Candidate) -> int:
         return max(1, (len(item.text) + 3) // 4)
+
     capacity = max(0, max_tokens - sum(weight(item) for item in mandatory))
     slots = max(0, max_items - len(mandatory))
-    utilities, prior_terms = {}, []
+    utilities: dict[str, float] = {}
+    prior_terms: list[frozenset[str]] = []
     for item in optional:
         value = fp.number(values.get(item.slug, 0), -1, 1, "posterior uplift times relevance")
         terms = token_set(item.comparable[:4096])
         duplicate = max((jaccard(terms, before) for before in prior_terms), default=0)
         utilities[item.slug] = value * (1 - duplicate_penalty * duplicate)
         prior_terms.append(terms)
-    baseline, spent = [], 0
+    baseline: list[Candidate] = []
+    spent = 0
     for item in optional:
         if len(baseline) < slots and spent + weight(item) <= capacity:
             baseline.append(item)
@@ -305,9 +320,13 @@ def value_pack(candidates: list[Candidate], values: dict[str, float], *, max_tok
     best_value, picked = max(states.values(), key=lambda state: (state[0], -len(state[1])))
     baseline_value = sum(utilities[item.slug] for item in baseline)
     chosen = baseline if baseline_value >= best_value else [optional[i] for i in picked]
-    return [*mandatory, *chosen], {"method": "bounded knapsack with baseline dominance", "capped": capped,
-                                  "estimated_value": max(best_value, baseline_value),
-                                  "baseline_value": baseline_value, "tokenizer": "four-character estimate"}
+    return [*mandatory, *chosen], {
+        "method": "bounded knapsack with baseline dominance",
+        "capped": capped,
+        "estimated_value": max(best_value, baseline_value),
+        "baseline_value": baseline_value,
+        "tokenizer": "four-character estimate",
+    }
 
 
 _PACKING: dict[str, tuple[tuple[int, int, int], dict]] = {}
@@ -351,7 +370,11 @@ def configure_value_packing(root: str) -> dict:
     contexts: dict[str, dict[str, float]] = {}
     for (lesson, context), posterior in model.contexts.items():
         contexts.setdefault(context, {})[lesson] = posterior.mean
-    body = {"enabled": True, "lessons": {lesson: posterior.mean for lesson, posterior in model.lessons.items()},
-            "contexts": contexts, "calibrated_at": fp.now()}
+    body = {
+        "enabled": True,
+        "lessons": {lesson: posterior.mean for lesson, posterior in model.lessons.items()},
+        "contexts": contexts,
+        "calibrated_at": fp.now(),
+    }
     _jsonl.write_json(fp.filename(root, "context-packing.json"), body)
     return body

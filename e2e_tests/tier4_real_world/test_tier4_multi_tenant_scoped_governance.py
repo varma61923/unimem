@@ -47,7 +47,10 @@ async def test_t4_multi_tenant_scoped_governance(hub_governance_session, isolate
     limiter = RateLimiter(per_minute=1000, burst=1000)
 
     t_global = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Enterprise Security Policy TLS 1.3",
         context_text="Mandatory corporate cryptographic cipher suite requirement",
         solution_text="Enforce TLS 1.3 on all internal and external communication endpoints",
@@ -56,7 +59,10 @@ async def test_t4_multi_tenant_scoped_governance(hub_governance_session, isolate
     )
 
     t_backend = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Backend PgBouncer connection pooling",
         context_text="Postgres connection starvation prevention",
         solution_text="All database clients connect through PgBouncer",
@@ -65,7 +71,10 @@ async def test_t4_multi_tenant_scoped_governance(hub_governance_session, isolate
     )
 
     t_frontend = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Frontend Webpack code-splitting policy",
         context_text="Initial load performance optimization",
         solution_text="Dynamic import for heavy charting components",
@@ -74,7 +83,10 @@ async def test_t4_multi_tenant_scoped_governance(hub_governance_session, isolate
     )
 
     t_data = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Data infra Spark shuffle tuning",
         context_text="Out of memory errors during nightly ETL",
         solution_text="Set spark.sql.shuffle.partitions=800",

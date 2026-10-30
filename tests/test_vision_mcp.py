@@ -89,7 +89,8 @@ class TestVisionDisabledByDefault:
 
         monkeypatch.setattr(llm, "_post_json", must_not_post)
         out = vision.describe_image(
-            str(path), enabled=True,
+            str(path),
+            enabled=True,
             config=llm.Config(provider="bedrock", model="m", api_key="", region="r"),
         )
         assert isinstance(out, str)
@@ -124,12 +125,10 @@ class TestImagePayloadShapes:
 
         def fake_post(url, headers, payload):
             captured.update(url=url, headers=headers, payload=payload)
-            return {"content": [{"type": "text", "text": "a cat"}],
-                    "usage": {"input_tokens": 50, "output_tokens": 9}}
+            return {"content": [{"type": "text", "text": "a cat"}], "usage": {"input_tokens": 50, "output_tokens": 9}}
 
         monkeypatch.setattr(llm, "_post_json", fake_post)
-        text, usage = llm.complete_with_image(
-            _vision_config(), "what?", b"\xff\xd8fake", "image/jpeg")
+        text, usage = llm.complete_with_image(_vision_config(), "what?", b"\xff\xd8fake", "image/jpeg")
         assert text == "a cat" and usage == {"input_tokens": 50, "output_tokens": 9}
         assert captured["url"] == llm._ANTHROPIC_URL
         content = captured["payload"]["messages"][0]["content"]
@@ -143,8 +142,10 @@ class TestImagePayloadShapes:
 
         def fake_post(url, headers, payload):
             captured.update(url=url, payload=payload)
-            return {"choices": [{"message": {"content": "a dog"}}],
-                    "usage": {"prompt_tokens": 60, "completion_tokens": 3}}
+            return {
+                "choices": [{"message": {"content": "a dog"}}],
+                "usage": {"prompt_tokens": 60, "completion_tokens": 3},
+            }
 
         monkeypatch.setattr(llm, "_post_json", fake_post)
         config = _vision_config(provider="openai-compatible", base_url="http://x:11434/v1")
@@ -153,8 +154,7 @@ class TestImagePayloadShapes:
         assert captured["url"] == "http://x:11434/v1/chat/completions"
         part = captured["payload"]["messages"][0]["content"][1]
         assert part["type"] == "image_url"
-        assert part["image_url"]["url"] == (
-            "data:image/png;base64," + base64.b64encode(b"imgbytes").decode("ascii"))
+        assert part["image_url"]["url"] == ("data:image/png;base64," + base64.b64encode(b"imgbytes").decode("ascii"))
 
     def test_ollama_config_takes_the_openai_path(self, monkeypatch):
         seen = {}
@@ -164,8 +164,7 @@ class TestImagePayloadShapes:
             return {"choices": [{"message": {"content": "ok"}}], "usage": {}}
 
         monkeypatch.setattr(llm, "_post_json", fake_post)
-        text, _ = llm.complete_with_image(
-            llm.Config(provider="ollama", model="m", api_key=""), "p", b"b", "image/png")
+        text, _ = llm.complete_with_image(llm.Config(provider="ollama", model="m", api_key=""), "p", b"b", "image/png")
         assert text == "ok" and seen["url"].startswith("http://localhost:11434/v1/")
 
 
@@ -231,8 +230,12 @@ class TestVisionProviderRecovery:
         with pytest.raises(llm.LLMUnavailable, match="retry in"):
             llm.complete("p", config)
         assert len(calls) == 5
-        for other in (_vision_config(api_key="other"), _vision_config(cache_namespace="other"),
-                      _vision_config(base_url="https://other"), _vision_config(model="other")):
+        for other in (
+            _vision_config(api_key="other"),
+            _vision_config(cache_namespace="other"),
+            _vision_config(base_url="https://other"),
+            _vision_config(model="other"),
+        ):
             with pytest.raises(urllib.error.URLError):
                 llm.complete_with_image(other, "p", b"b", "image/png")
         assert len(calls) == 9
@@ -281,7 +284,8 @@ class TestVisionProviderRecovery:
         monkeypatch.setattr(llm, "_post_json", unavailable)
         for _ in range(7):
             assert vision.describe_image(str(path), config=_vision_config(), enabled=True) == (
-                "image photo.png (image/png, 8 bytes)")
+                "image photo.png (image/png, 8 bytes)"
+            )
         assert len(calls) == 5
 
     def test_oversized_images_use_bounded_reads(self, tmp_path, monkeypatch):
@@ -311,7 +315,8 @@ class TestVisionProviderRecovery:
         monkeypatch.setattr(vision, "open", lambda *_args: GuardedFile(), raising=False)
         monkeypatch.setattr(llm, "complete_with_image", lambda *_args: pytest.fail("oversized image sent"))
         assert vision.describe_image(str(path), config=_vision_config(), enabled=True) == (
-            f"image large.png (image/png, {vision.MAX_IMAGE_BYTES * 4} bytes)")
+            f"image large.png (image/png, {vision.MAX_IMAGE_BYTES * 4} bytes)"
+        )
         assert reads == [vision.MAX_IMAGE_BYTES + 1]
 
 
@@ -323,9 +328,7 @@ class TestGraphVizMcpTool:
         pytest.importorskip("mcp", reason="needs the MCP SDK")
         from unimem import graph_viz, mcp_server
 
-        monkeypatch.setattr(
-            graph_viz, "render_html",
-            lambda root, as_of=None: "<html><body>GRAPH</body></html>")
+        monkeypatch.setattr(graph_viz, "render_html", lambda root, as_of=None: "<html><body>GRAPH</body></html>")
         server = mcp_server.build_server(str(tmp_path))
         names = {t.name for t in asyncio.run(server.list_tools())}
         assert "graph_viz_html" in names
@@ -351,32 +354,36 @@ class TestGraphVizMcpTool:
 
     def test_vision_end_to_end_through_a_mocked_model(self, tmp_path):
         def fake_post(url, headers, payload):
-            return {"content": [{"type": "text", "text": "a red door"}],
-                    "usage": {"input_tokens": 1, "output_tokens": 2}}
+            return {
+                "content": [{"type": "text", "text": "a red door"}],
+                "usage": {"input_tokens": 1, "output_tokens": 2},
+            }
 
         import unittest.mock as mock
 
         path = tmp_path / "door.png"
         path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
         with mock.patch.object(llm, "_post_json", fake_post):
-            out = vision.describe_image(str(path), enabled=True,
-                                        config=_vision_config())
+            out = vision.describe_image(str(path), enabled=True, config=_vision_config())
         assert out == "a red door"
 
 
 class TestImageTypeSniffing:
     # imghdr was removed in Python 3.13; the import failed silently there and
     # every extensionless image except PNG/GIF was reported as octet-stream.
-    @pytest.mark.parametrize("blob,mime", [
-        (b"\x89PNG\r\n\x1a\n" + b"\0" * 8, "image/png"),
-        (b"\xff\xd8\xff\xe0" + b"\0" * 8, "image/jpeg"),
-        (b"GIF89a" + b"\0" * 8, "image/gif"),
-        (b"GIF87a" + b"\0" * 8, "image/gif"),
-        (b"RIFF\x24\0\0\0WEBPVP8 ", "image/webp"),
-        (b"BM" + b"\0" * 12, "image/bmp"),
-        (b"II*\x00" + b"\0" * 8, "image/tiff"),
-        (b"MM\x00*" + b"\0" * 8, "image/tiff"),
-    ])
+    @pytest.mark.parametrize(
+        "blob,mime",
+        [
+            (b"\x89PNG\r\n\x1a\n" + b"\0" * 8, "image/png"),
+            (b"\xff\xd8\xff\xe0" + b"\0" * 8, "image/jpeg"),
+            (b"GIF89a" + b"\0" * 8, "image/gif"),
+            (b"GIF87a" + b"\0" * 8, "image/gif"),
+            (b"RIFF\x24\0\0\0WEBPVP8 ", "image/webp"),
+            (b"BM" + b"\0" * 12, "image/bmp"),
+            (b"II*\x00" + b"\0" * 8, "image/tiff"),
+            (b"MM\x00*" + b"\0" * 8, "image/tiff"),
+        ],
+    )
     def test_an_extensionless_image_is_identified_by_its_bytes(self, blob, mime):
         from unimem import vision
 

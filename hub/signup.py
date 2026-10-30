@@ -88,47 +88,62 @@ def add_signup_routes(
         return _page("Create account", _FORM.format(path=SIGNUP_PATH, error=""))
 
     async def signup(request: Request) -> Response:
-        allowed, _retry_after = await signup_limiter.check(
-            rate_limit_key(request, trusted_proxy_hops)
-        )
+        allowed, _retry_after = await signup_limiter.check(rate_limit_key(request, trusted_proxy_hops))
         if not allowed:
-            return _page("Create account", _FORM.format(
-                path=SIGNUP_PATH,
-                error='<p class="err" role="alert">Too many signups from this address. Try again shortly.</p>',
-            ))
+            return _page(
+                "Create account",
+                _FORM.format(
+                    path=SIGNUP_PATH,
+                    error='<p class="err" role="alert">Too many signups from this address. Try again shortly.</p>',
+                ),
+            )
         form = await request.form()
         if str(form.get("website") or "").strip():
             logger.info("signup rejected: honeypot field filled")
-            return _page("Create account", _FORM.format(
-                path=SIGNUP_PATH,
-                error='<p class="err" role="alert">Something went wrong. Please try again.</p>',
-            ))
+            return _page(
+                "Create account",
+                _FORM.format(
+                    path=SIGNUP_PATH,
+                    error='<p class="err" role="alert">Something went wrong. Please try again.</p>',
+                ),
+            )
         org_name = str(form.get("org_name") or "").strip()
         try:
             reject_unstorable_text(org_name, "org_name")
         except ValueError:
             org_name = ""  # an embedded NUL or lone surrogate: refuse like any invalid name
         if not (MIN_NAME_CHARS <= len(org_name) <= MAX_NAME_CHARS):
-            return _page("Create account", _FORM.format(
-                path=SIGNUP_PATH,
-                error=f'<p class="err" role="alert">Organization name must be {MIN_NAME_CHARS}-'
-                      f'{MAX_NAME_CHARS} characters.</p>',
-            ))
+            return _page(
+                "Create account",
+                _FORM.format(
+                    path=SIGNUP_PATH,
+                    error=f'<p class="err" role="alert">Organization name must be {MIN_NAME_CHARS}-'
+                    f"{MAX_NAME_CHARS} characters.</p>",
+                ),
+            )
         async with session_scope(session_factory) as session:
             org = Organization(name=org_name)
             session.add(org)
             await session.flush()
             issued = await issue_api_key(session, org.id)
             await audit.record(
-                session, actor=ACTOR_SELF_SERVE_SIGNUP, action="create_org",
-                org_id=org.id, target_type="org", target_id=org.id,
+                session,
+                actor=ACTOR_SELF_SERVE_SIGNUP,
+                action="create_org",
+                org_id=org.id,
+                target_type="org",
+                target_id=org.id,
                 summary=f"name={org_name!r} via self-serve signup",
             )
             org_id = org.id
-        return _page("Account created", _ISSUED.format(
-            key_field=secret_field(issued.raw_key, "api-key-label"), org_id=h(org_id),
-            console_path=console_path,
-        ))
+        return _page(
+            "Account created",
+            _ISSUED.format(
+                key_field=secret_field(issued.raw_key, "api-key-label"),
+                org_id=h(org_id),
+                console_path=console_path,
+            ),
+        )
 
     app.add_route(SIGNUP_PATH, signup_page, methods=["GET"])
     app.add_route(SIGNUP_PATH, refuse_cross_origin(signup), methods=["POST"])

@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from hub import audit, auth, rbac, scopes
-from hub.abuse import RateLimiter, rate_limit_key, reject_unstorable_text
+from hub.abuse import RateLimiterBackend, rate_limit_key, reject_unstorable_text
 from hub.crud import _is_uuid
 from hub.db import session_scope
 from hub.models import Organization, ScimGroup, ScimGroupMembership, User
@@ -94,7 +94,9 @@ async def create_user(session: AsyncSession, org_id: str, body: dict, *, actor: 
     if org is None:
         raise ScimError(f"no such organization: {org_id}", status=404)
     user = User(
-        org_id=org_id, email=user_name, role=DEFAULT_PROVISIONED_ROLE,
+        org_id=org_id,
+        email=user_name,
+        role=DEFAULT_PROVISIONED_ROLE,
         display_name=_scim_text(body.get("displayName"), "displayName", _MAX_DISPLAY_NAME_CHARS),
         created_by=actor,
     )
@@ -107,11 +109,17 @@ async def create_user(session: AsyncSession, org_id: str, body: dict, *, actor: 
         await session.rollback()
         raise ScimError(
             f"{org_id} already has a user with userName {user_name!r}",
-            status=409, scim_type="uniqueness",
+            status=409,
+            scim_type="uniqueness",
         ) from None
     await audit.record(
-        session, actor=actor, action="scim.create_user", org_id=org_id,
-        target_type="user", target_id=user.id, summary=f"userName={user_name}",
+        session,
+        actor=actor,
+        action="scim.create_user",
+        org_id=org_id,
+        target_type="user",
+        target_id=user.id,
+        summary=f"userName={user_name}",
     )
     return user
 
@@ -126,8 +134,12 @@ async def get_user(session: AsyncSession, org_id: str, user_id: str) -> User | N
 
 
 async def list_users(
-    session: AsyncSession, org_id: str, *, user_name: str | None = None,
-    start_index: int = 1, count: int = DEFAULT_PAGE_SIZE,
+    session: AsyncSession,
+    org_id: str,
+    *,
+    user_name: str | None = None,
+    start_index: int = 1,
+    count: int = DEFAULT_PAGE_SIZE,
 ) -> tuple[int, list[User]]:
     start_index = max(1, min(start_index, MAX_START_INDEX))
     count = max(0, min(count, MAX_PAGE_SIZE))
@@ -135,11 +147,7 @@ async def list_users(
     if user_name is not None:
         query = query.where(User.email == user_name)
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
-    rows = (
-        await session.execute(
-            query.order_by(User.created_at).offset(start_index - 1).limit(count)
-        )
-    ).scalars().all()
+    rows = (await session.execute(query.order_by(User.created_at).offset(start_index - 1).limit(count))).scalars().all()
     return int(total or 0), list(rows)
 
 
@@ -173,8 +181,12 @@ def _apply_active(user: User, active: bool) -> bool:
 async def _record_active_change(session: AsyncSession, org_id: str, user_id: str, active: bool, *, actor: str) -> None:
     action = "scim.enable_user" if active else "scim.disable_user"
     await audit.record(
-        session, actor=actor, action=action, org_id=org_id,
-        target_type="user", target_id=user_id,
+        session,
+        actor=actor,
+        action=action,
+        org_id=org_id,
+        target_type="user",
+        target_id=user_id,
     )
 
 
@@ -231,20 +243,28 @@ async def deactivate_user(session: AsyncSession, org_id: str, user_id: str, *, a
     if user.disabled_at is None:
         user.disabled_at = datetime.now(timezone.utc)
         await audit.record(
-            session, actor=actor, action="scim.disable_user", org_id=org_id,
-            target_type="user", target_id=user_id,
+            session,
+            actor=actor,
+            action="scim.disable_user",
+            org_id=org_id,
+            target_type="user",
+            target_id=user_id,
         )
     return user
 
 
 async def _member_ids(session: AsyncSession, group_id: str) -> list[str]:
     rows = (
-        await session.execute(
-            select(ScimGroupMembership.user_id)
-            .where(ScimGroupMembership.group_id == group_id)
-            .order_by(ScimGroupMembership.created_at)
+        (
+            await session.execute(
+                select(ScimGroupMembership.user_id)
+                .where(ScimGroupMembership.group_id == group_id)
+                .order_by(ScimGroupMembership.created_at)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -252,9 +272,7 @@ async def group_to_scim(session: AsyncSession, group: ScimGroup) -> dict:
     member_ids = await _member_ids(session, group.id)
     members = []
     if member_ids:
-        users = (
-            await session.execute(select(User).where(User.id.in_(member_ids)))
-        ).scalars().all()
+        users = (await session.execute(select(User).where(User.id.in_(member_ids)))).scalars().all()
         by_id = {u.id: u for u in users}
         for user_id in member_ids:
             user = by_id.get(user_id)
@@ -273,10 +291,10 @@ async def _existing_org_user_ids(session: AsyncSession, org_id: str, candidate_i
     if not uuid_candidates:
         return set()
     rows = (
-        await session.execute(
-            select(User.id).where(User.id.in_(uuid_candidates), User.org_id == org_id)
-        )
-    ).scalars().all()
+        (await session.execute(select(User.id).where(User.id.in_(uuid_candidates), User.org_id == org_id)))
+        .scalars()
+        .all()
+    )
     return set(rows)
 
 
@@ -310,7 +328,8 @@ async def _remove_members(session: AsyncSession, group_id: str, user_ids: set[st
         return
     await session.execute(
         delete(ScimGroupMembership).where(
-            ScimGroupMembership.group_id == group_id, ScimGroupMembership.user_id.in_(user_ids),
+            ScimGroupMembership.group_id == group_id,
+            ScimGroupMembership.user_id.in_(user_ids),
         )
     )
 
@@ -333,7 +352,8 @@ async def create_group(session: AsyncSession, org_id: str, body: dict, *, actor:
     if org is None:
         raise ScimError(f"no such organization: {org_id}", status=404)
     group = ScimGroup(
-        org_id=org_id, display_name=display_name,
+        org_id=org_id,
+        display_name=display_name,
         external_id=_scim_text(body.get("externalId"), "externalId", _MAX_EXTERNAL_ID_CHARS),
     )
     session.add(group)
@@ -343,14 +363,19 @@ async def create_group(session: AsyncSession, org_id: str, body: dict, *, actor:
         await session.rollback()
         raise ScimError(
             f"{org_id} already has a group named {display_name!r}",
-            status=409, scim_type="uniqueness",
+            status=409,
+            scim_type="uniqueness",
         ) from None
     member_ids = _member_values(body.get("members"))
     if member_ids:
         await _add_members(session, org_id, group.id, member_ids)
     await audit.record(
-        session, actor=actor, action="scim.create_group", org_id=org_id,
-        target_type="scim_group", target_id=group.id,
+        session,
+        actor=actor,
+        action="scim.create_group",
+        org_id=org_id,
+        target_type="scim_group",
+        target_id=group.id,
         summary=f"displayName={display_name}",
     )
     return group
@@ -366,8 +391,12 @@ async def get_group(session: AsyncSession, org_id: str, group_id: str) -> ScimGr
 
 
 async def list_groups(
-    session: AsyncSession, org_id: str, *, display_name: str | None = None,
-    start_index: int = 1, count: int = DEFAULT_PAGE_SIZE,
+    session: AsyncSession,
+    org_id: str,
+    *,
+    display_name: str | None = None,
+    start_index: int = 1,
+    count: int = DEFAULT_PAGE_SIZE,
 ) -> tuple[int, list[ScimGroup]]:
     start_index = max(1, min(start_index, MAX_START_INDEX))
     count = max(0, min(count, MAX_PAGE_SIZE))
@@ -376,15 +405,20 @@ async def list_groups(
         query = query.where(ScimGroup.display_name == display_name)
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
     rows = (
-        await session.execute(
-            query.order_by(ScimGroup.created_at).offset(start_index - 1).limit(count)
-        )
-    ).scalars().all()
+        (await session.execute(query.order_by(ScimGroup.created_at).offset(start_index - 1).limit(count)))
+        .scalars()
+        .all()
+    )
     return int(total or 0), list(rows)
 
 
 async def replace_group(
-    session: AsyncSession, org_id: str, group_id: str, body: dict, *, actor: str,
+    session: AsyncSession,
+    org_id: str,
+    group_id: str,
+    body: dict,
+    *,
+    actor: str,
 ) -> ScimGroup | None:
     group = await get_group(session, org_id, group_id)
     if group is None:
@@ -397,8 +431,12 @@ async def replace_group(
         await _set_members(session, org_id, group_id, _member_values(body.get("members")))
     group.updated_at = datetime.now(timezone.utc)
     await audit.record(
-        session, actor=actor, action="scim.replace_group", org_id=org_id,
-        target_type="scim_group", target_id=group_id,
+        session,
+        actor=actor,
+        action="scim.replace_group",
+        org_id=org_id,
+        target_type="scim_group",
+        target_id=group_id,
     )
     return group
 
@@ -451,8 +489,12 @@ async def patch_group(session: AsyncSession, org_id: str, group_id: str, body: d
     if changed:
         group.updated_at = datetime.now(timezone.utc)
         await audit.record(
-            session, actor=actor, action="scim.patch_group", org_id=org_id,
-            target_type="scim_group", target_id=group_id,
+            session,
+            actor=actor,
+            action="scim.patch_group",
+            org_id=org_id,
+            target_type="scim_group",
+            target_id=group_id,
         )
     return group
 
@@ -462,8 +504,12 @@ async def delete_group(session: AsyncSession, org_id: str, group_id: str, *, act
     if group is None:
         return False
     await audit.record(
-        session, actor=actor, action="scim.delete_group", org_id=org_id,
-        target_type="scim_group", target_id=group_id,
+        session,
+        actor=actor,
+        action="scim.delete_group",
+        org_id=org_id,
+        target_type="scim_group",
+        target_id=group_id,
         summary=f"displayName={group.display_name}",
     )
     await session.delete(group)
@@ -478,10 +524,13 @@ _SERVICE_PROVIDER_CONFIG = {
     "changePassword": {"supported": False},
     "sort": {"supported": False},
     "etag": {"supported": False},
-    "authenticationSchemes": [{
-        "type": "oauthbearertoken", "name": "Bearer",
-        "description": "hub.manage issue-key <org_id> [days] scim",
-    }],
+    "authenticationSchemes": [
+        {
+            "type": "oauthbearertoken",
+            "name": "Bearer",
+            "description": "hub.manage issue-key <org_id> [days] scim",
+        }
+    ],
 }
 
 _RESOURCE_TYPES = {
@@ -548,13 +597,17 @@ def _rate_limited(retry_after: float) -> JSONResponse:
     seconds = max(1, math.ceil(retry_after))
     return JSONResponse(
         {"schemas": [SCIM_ERROR_SCHEMA], "detail": "too many auth attempts", "status": "429"},
-        status_code=429, media_type=SCIM_CONTENT_TYPE, headers={"Retry-After": str(seconds)},
+        status_code=429,
+        media_type=SCIM_CONTENT_TYPE,
+        headers={"Retry-After": str(seconds)},
     )
 
 
 async def _authenticate(
-    request: Request, session_factory: async_sessionmaker,
-    auth_rate_limiter: RateLimiter, trusted_proxy_hops: int,
+    request: Request,
+    session_factory: async_sessionmaker,
+    auth_rate_limiter: RateLimiterBackend,
+    trusted_proxy_hops: int,
 ) -> tuple[str, str] | JSONResponse:
     client_key = rate_limit_key(request, trusted_proxy_hops)
     allowed, retry_after = await auth_rate_limiter.check(client_key)
@@ -562,23 +615,22 @@ async def _authenticate(
         return _rate_limited(retry_after)
     header = request.headers.get("authorization", "")
     if not header.lower().startswith("bearer "):
-        return _scim_error_response(
-            "missing or malformed Authorization: Bearer <token> header", status=401
-        )
-    raw_token = header[len("bearer "):].strip()
+        return _scim_error_response("missing or malformed Authorization: Bearer <token> header", status=401)
+    raw_token = header[len("bearer ") :].strip()
     async with session_scope(session_factory) as session:
         key = await auth.verify_api_key(session, raw_token)
     if key is None or not scopes.satisfies(key.scopes, scopes.SCOPE_SCIM):
-        return _scim_error_response(
-            "invalid, expired, revoked, or insufficiently-scoped token", status=401
-        )
+        return _scim_error_response("invalid, expired, revoked, or insufficiently-scoped token", status=401)
     auth_rate_limiter.refund(client_key)
     return key.org_id, audit.actor_for_api_key(key.key_prefix)
 
 
 def add_scim_routes(
-    app, session_factory: async_sessionmaker, *,
-    auth_rate_limiter: RateLimiter, trusted_proxy_hops: int = 0,
+    app,
+    session_factory: async_sessionmaker,
+    *,
+    auth_rate_limiter: RateLimiterBackend,
+    trusted_proxy_hops: int = 0,
 ) -> None:
     async def service_provider_config(request: Request) -> JSONResponse:
         return _response(_SERVICE_PROVIDER_CONFIG)
@@ -632,16 +684,22 @@ def add_scim_routes(
             return _scim_error_response("startIndex and count must be integers")
         async with session_scope(session_factory) as session:
             total, rows = await list_users(
-                session, org_id, user_name=user_name, start_index=start_index, count=count,
+                session,
+                org_id,
+                user_name=user_name,
+                start_index=start_index,
+                count=count,
             )
             resources = [user_to_scim(u) for u in rows]
-        return _response({
-            "schemas": [SCIM_LIST_RESPONSE_SCHEMA],
-            "totalResults": total,
-            "startIndex": max(1, min(start_index, MAX_START_INDEX)),
-            "itemsPerPage": len(resources),
-            "Resources": resources,
-        })
+        return _response(
+            {
+                "schemas": [SCIM_LIST_RESPONSE_SCHEMA],
+                "totalResults": total,
+                "startIndex": max(1, min(start_index, MAX_START_INDEX)),
+                "itemsPerPage": len(resources),
+                "Resources": resources,
+            }
+        )
 
     async def user_item(request: Request) -> JSONResponse:
         result = await _authenticate(request, session_factory, auth_rate_limiter, trusted_proxy_hops)
@@ -728,16 +786,22 @@ def add_scim_routes(
             return _scim_error_response("startIndex and count must be integers")
         async with session_scope(session_factory) as session:
             total, rows = await list_groups(
-                session, org_id, display_name=display_name, start_index=start_index, count=count,
+                session,
+                org_id,
+                display_name=display_name,
+                start_index=start_index,
+                count=count,
             )
             resources = [await group_to_scim(session, g) for g in rows]
-        return _response({
-            "schemas": [SCIM_LIST_RESPONSE_SCHEMA],
-            "totalResults": total,
-            "startIndex": max(1, min(start_index, MAX_START_INDEX)),
-            "itemsPerPage": len(resources),
-            "Resources": resources,
-        })
+        return _response(
+            {
+                "schemas": [SCIM_LIST_RESPONSE_SCHEMA],
+                "totalResults": total,
+                "startIndex": max(1, min(start_index, MAX_START_INDEX)),
+                "itemsPerPage": len(resources),
+                "Resources": resources,
+            }
+        )
 
     async def group_item(request: Request) -> JSONResponse:
         result = await _authenticate(request, session_factory, auth_rate_limiter, trusted_proxy_hops)

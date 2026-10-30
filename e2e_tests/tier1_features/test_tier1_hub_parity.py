@@ -48,7 +48,10 @@ async def test_t1_hub_contribute_with_scopes_and_validity(hub_session):
     limiter = RateLimiter(per_minute=1000, burst=1000)
 
     res = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Payment webhook retry policy",
         context_text="Handling 500 errors from stripe webhooks",
         solution_text="Retry with exponential backoff up to 5 attempts",
@@ -68,7 +71,10 @@ async def test_t1_hub_scoped_search_containment(hub_session):
     limiter = RateLimiter(per_minute=1000, burst=1000)
 
     t_infra = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Infra Terraform state lock",
         context_text="Terraform lock expired in S3",
         solution_text="Force release DynamoDB lock",
@@ -77,7 +83,10 @@ async def test_t1_hub_scoped_search_containment(hub_session):
     )
 
     t_front = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Frontend Vite bundling error",
         context_text="Vite build chunk size exceeded",
         solution_text="Split chunks in vite.config.ts",
@@ -86,7 +95,10 @@ async def test_t1_hub_scoped_search_containment(hub_session):
     )
 
     t_global = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="Global git pre-commit hook",
         context_text="Format staged files before commit",
         solution_text="Run prettier and black",
@@ -108,7 +120,10 @@ async def test_t1_hub_bitemporal_as_of_filtering(hub_session):
     limiter = RateLimiter(per_minute=1000, burst=1000)
 
     t_2025 = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="2025 Python 3.9 migration",
         context_text="Upgrading services to Python 3.9",
         solution_text="Update Dockerfile base image",
@@ -118,7 +133,10 @@ async def test_t1_hub_bitemporal_as_of_filtering(hub_session):
     )
 
     t_2026 = await crud.contribute_trace(
-        session, org_id, config, limiter,
+        session,
+        org_id,
+        config,
+        limiter,
         title="2026 Python 3.12 migration",
         context_text="Upgrading services to Python 3.12",
         solution_text="Use modern syntax and pyproject.toml",

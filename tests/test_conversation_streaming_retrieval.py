@@ -1,4 +1,5 @@
 """Independent scoring oracle and durable pagination regression coverage."""
+
 import math
 import random
 import re
@@ -10,9 +11,9 @@ from unimem.conversation import store as storage
 
 def _reference_bm25(units, query, limit):
     """Pre-streaming list/count scorer, intentionally independent of Counters."""
+
     def terms(text):
-        return [stem(t) for t in re.findall(r"[a-z0-9]+", text.lower())
-                if t not in profile.STOPWORDS]
+        return [stem(t) for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in profile.STOPWORDS]
 
     q = set(terms(query))
     docs = [(uid, terms(body)) for uid, _turn, body, _hash in units]
@@ -27,8 +28,7 @@ def _reference_bm25(units, query, limit):
             frequency = doc.count(term)
             if frequency:
                 idf = math.log(1 + (len(docs) - df[term] + 0.5) / (df[term] + 0.5))
-                score += idf * frequency * 2.2 / (
-                    frequency + 1.2 * (0.25 + 0.75 * len(doc) / avg))
+                score += idf * frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * len(doc) / avg))
         if score > 0:
             scores.append((uid, storage.sigmoid_bm25(score, len(q))))
     return sorted(scores, key=lambda item: -item[1])[:limit]
@@ -38,8 +38,10 @@ def test_streamed_bm25_matches_materialized_scoring_and_stable_ties():
     rng = random.Random(923)
     vocabulary = ["cat", "cats", "go", "paris", "london", "the", "", "123"]
     for _case in range(80):
-        units = [(uid, uid, " ".join(rng.choices(vocabulary, k=rng.randrange(30))), str(uid))
-                 for uid in range(rng.randrange(60))]
+        units = [
+            (uid, uid, " ".join(rng.choices(vocabulary, k=rng.randrange(30))), str(uid))
+            for uid in range(rng.randrange(60))
+        ]
         query = " ".join(rng.choices(vocabulary, k=rng.randrange(10)))
         limit = rng.randrange(20)
         assert storage._python_bm25(iter(units), query, limit) == _reference_bm25(units, query, limit)
@@ -67,8 +69,12 @@ def test_scoped_fallback_streams_only_eligible_units(tmp_path, monkeypatch):
 def test_unit_and_timeline_keyset_pages_preserve_order_and_gaps(tmp_path):
     with storage.Store(str(tmp_path), "pages") as store:
         for index in range(7):
-            store.add(f"session-{index}", [{"role": "user", "content": f"Travel event {index}"}],
-                      session_at=f"2024-01-{7 - index:02d}", extract_profile=False)
+            store.add(
+                f"session-{index}",
+                [{"role": "user", "content": f"Travel event {index}"}],
+                session_at=f"2024-01-{7 - index:02d}",
+                extract_profile=False,
+            )
         # Gapped IDs distinguish a keyset cursor from an offset.
         store.db.execute("DELETE FROM units WHERE id IN (2, 5)")
         store.db.commit()

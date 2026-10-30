@@ -1,4 +1,5 @@
 """Blocking document and SQL reads retain scope and leave MCP responsive."""
+
 import asyncio
 import json
 import threading
@@ -71,8 +72,16 @@ def test_sql_scope_is_checked_before_worker_executes(tmp_path, monkeypatch):
     root = tmp_path / "store"
     root.mkdir()
     server = mcp_server.build_server(str(root))
-    result = _payload(asyncio.run(server.call_tool("sql_guarded_query", {
-        "db_path": str(tmp_path / "outside.sqlite"), "sql": "SELECT 1",
-    })))
+    result = _payload(
+        asyncio.run(
+            server.call_tool(
+                "sql_guarded_query",
+                {
+                    "db_path": str(tmp_path / "outside.sqlite"),
+                    "sql": "SELECT 1",
+                },
+            )
+        )
+    )
     assert result["ok"] is False
     assert result["code"] == "scope_error"

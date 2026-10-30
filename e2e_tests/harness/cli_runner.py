@@ -94,20 +94,13 @@ def is_milestone_implemented(milestone: str) -> bool:
             and importlib.util.find_spec("unimem.memory_blocks")
         )
     elif m == "M2":
-        return bool(
-            importlib.util.find_spec("unimem.ingest")
-            or importlib.util.find_spec("unimem.commands.ingest_cmd")
-        )
+        return bool(importlib.util.find_spec("unimem.ingest") or importlib.util.find_spec("unimem.commands.ingest_cmd"))
     elif m == "M3":
         return bool(
-            importlib.util.find_spec("unimem.agent_loop")
-            or importlib.util.find_spec("unimem.commands.agent_cmd")
+            importlib.util.find_spec("unimem.agent_loop") or importlib.util.find_spec("unimem.commands.agent_cmd")
         )
     elif m == "M4":
-        return bool(
-            importlib.util.find_spec("hub.crud")
-            and importlib.util.find_spec("hub.rest")
-        )
+        return bool(importlib.util.find_spec("hub.crud") and importlib.util.find_spec("hub.rest"))
     return False
 
 

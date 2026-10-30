@@ -76,6 +76,7 @@ def extract(
             )
         if existing is not None:
             local = True
+    items: list
     if local:
         # Explicit assertion mode, no LLM. Never label a heuristic as inference.
         items = [{"statement": text.strip()}]
@@ -91,9 +92,10 @@ def extract(
             )
         calls = 1
         payload = llm._extract_json_object(output)
-        items = payload.get("facts")
-        if not isinstance(items, list) or len(items) > 200:
+        raw_items = payload.get("facts")
+        if not isinstance(raw_items, list) or len(raw_items) > 200:
             raise ValueError("extraction must return at most 200 facts")
+        items = raw_items
     facts = []
     entities = []
     from unimem import ttl
@@ -106,7 +108,7 @@ def extract(
                 item = {**item, "statement": "The assistant stated that " + item["statement"]}
             elif speaker == "tool":
                 item = {**item, "statement": "Tool output: " + item["statement"]}
-        fact = {**item, "scopes": scopes or [], "source_trace_id": source_trace_id, "memory_type": memory_type}
+        fact: dict = {**item, "scopes": scopes or [], "source_trace_id": source_trace_id, "memory_type": memory_type}
         if not fact.get("expires_at"):
             fact["expires_at"] = ttl.expiry_for_type(memory_type, valid_from=fact.get("valid_from"))
         facts.append(fact)

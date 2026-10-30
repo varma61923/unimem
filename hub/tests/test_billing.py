@@ -47,12 +47,15 @@ class TestWebhookSignatureVerification:
     async def test_no_signature_header_is_rejected(self):
         assert billing.verify_webhook_signature(b"{}", "", WEBHOOK_SECRET) is False
 
-    @pytest.mark.parametrize("header", [
-        "not-a-signature-header",
-        "t=12345",
-        "v1=deadbeef",
-        "t=not-a-number,v1=deadbeef",
-    ])
+    @pytest.mark.parametrize(
+        "header",
+        [
+            "not-a-signature-header",
+            "t=12345",
+            "v1=deadbeef",
+            "t=not-a-number,v1=deadbeef",
+        ],
+    )
     async def test_a_malformed_header_is_rejected(self, header):
         assert billing.verify_webhook_signature(b"{}", header, WEBHOOK_SECRET) is False
 
@@ -88,16 +91,18 @@ class TestStripeSettings:
     async def test_checkout_configured_needs_a_secret_key_and_at_least_one_price(self):
         assert StripeSettings().checkout_configured is False
         assert StripeSettings(secret_key="sk_test", webhook_secret="whsec").checkout_configured is False
-        assert StripeSettings(
-            secret_key="sk_test", webhook_secret="whsec", price_team="price_team"
-        ).checkout_configured is True
+        assert (
+            StripeSettings(secret_key="sk_test", webhook_secret="whsec", price_team="price_team").checkout_configured
+            is True
+        )
         assert StripeSettings(price_team="price_team").checkout_configured is False
 
     async def test_checkout_configured_also_needs_a_webhook_secret(self):
         assert StripeSettings(secret_key="sk_test", price_team="price_team").checkout_configured is False
-        assert StripeSettings(
-            secret_key="sk_test", webhook_secret="whsec", price_team="price_team"
-        ).checkout_configured is True
+        assert (
+            StripeSettings(secret_key="sk_test", webhook_secret="whsec", price_team="price_team").checkout_configured
+            is True
+        )
 
     async def test_price_for_plan_resolves_billable_plans_only(self):
         settings = StripeSettings(secret_key="sk", price_team="price_t", price_scale="price_s")
@@ -133,10 +138,15 @@ def _event(event_type: str, obj: dict) -> dict:
 class TestCheckoutSessionCompleted:
     async def test_it_sets_plan_customer_and_subscription(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_123", "subscription": "sub_123",
-            "metadata": {"org_id": org, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_123",
+                "subscription": "sub_123",
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "plan -> team" in outcome
@@ -148,10 +158,14 @@ class TestCheckoutSessionCompleted:
 
     async def test_metadata_org_id_is_a_fallback_for_client_reference_id(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_scale="price_s")
-        event = _event("checkout.session.completed", {
-            "customer": "cus_456", "subscription": "sub_456",
-            "metadata": {"org_id": org, "plan": "scale"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "customer": "cus_456",
+                "subscription": "sub_456",
+                "metadata": {"org_id": org, "plan": "scale"},
+            },
+        )
         async with session_scope(session_factory) as session:
             await billing.apply_webhook_event(session, settings, event)
         async with session_scope(session_factory) as session:
@@ -160,30 +174,42 @@ class TestCheckoutSessionCompleted:
     async def test_an_unknown_org_id_is_a_no_op(self, session_factory):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
         fake_org_id = "00000000-0000-0000-0000-000000000000"
-        event = _event("checkout.session.completed", {
-            "client_reference_id": fake_org_id, "customer": "cus_1",
-            "metadata": {"org_id": fake_org_id, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": fake_org_id,
+                "customer": "cus_1",
+                "metadata": {"org_id": fake_org_id, "plan": "team"},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "no such org" in outcome
 
     async def test_a_malformed_org_id_never_crashes_the_webhook(self, session_factory):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": "not-a-uuid-at-all", "customer": "cus_1",
-            "metadata": {"org_id": "not-a-uuid-at-all", "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": "not-a-uuid-at-all",
+                "customer": "cus_1",
+                "metadata": {"org_id": "not-a-uuid-at-all", "plan": "team"},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "ignored" in outcome
 
     async def test_a_non_billable_plan_in_metadata_is_ignored(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_1",
-            "metadata": {"org_id": org, "plan": "operator"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_1",
+                "metadata": {"org_id": org, "plan": "operator"},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "ignored" in outcome
@@ -192,9 +218,13 @@ class TestCheckoutSessionCompleted:
 
     async def test_a_missing_customer_id_is_ignored(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "metadata": {"org_id": org, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "ignored" in outcome
@@ -203,14 +233,17 @@ class TestCheckoutSessionCompleted:
 
 
 class TestEventIdempotency:
-    async def test_replaying_the_same_event_id_does_not_reapply_it(
-        self, session_factory, org
-    ):
+    async def test_replaying_the_same_event_id_does_not_reapply_it(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_replay", "subscription": "sub_replay",
-            "metadata": {"org_id": org, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_replay",
+                "subscription": "sub_replay",
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         event["id"] = "evt_replay_1"
 
         async with session_scope(session_factory) as session:
@@ -226,10 +259,15 @@ class TestEventIdempotency:
         from hub.models import ProcessedWebhookEvent
 
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_ledger", "subscription": "sub_ledger",
-            "metadata": {"org_id": org, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_ledger",
+                "subscription": "sub_ledger",
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         event["id"] = "evt_ledger_1"
 
         async with session_scope(session_factory) as session:
@@ -243,10 +281,15 @@ class TestEventIdempotency:
 
     async def test_different_event_ids_are_both_applied(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event_a = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_a", "subscription": "sub_a",
-            "metadata": {"org_id": org, "plan": "team"},
-        })
+        event_a = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_a",
+                "subscription": "sub_a",
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         event_a["id"] = "evt_a"
         event_b = dict(event_a)
         event_b["id"] = "evt_b"
@@ -258,14 +301,17 @@ class TestEventIdempotency:
         assert "already processed" not in outcome_a
         assert "already processed" not in outcome_b
 
-    async def test_an_event_with_no_id_is_applied_but_never_deduplicated(
-        self, session_factory, org
-    ):
+    async def test_an_event_with_no_id_is_applied_but_never_deduplicated(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
-        event = _event("checkout.session.completed", {
-            "client_reference_id": org, "customer": "cus_noid", "subscription": "sub_noid",
-            "metadata": {"org_id": org, "plan": "team"},
-        })
+        event = _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": org,
+                "customer": "cus_noid",
+                "subscription": "sub_noid",
+                "metadata": {"org_id": org, "plan": "team"},
+            },
+        )
         assert "id" not in event
 
         async with session_scope(session_factory) as session:
@@ -303,10 +349,15 @@ class TestSubscriptionLifecycle:
             o.stripe_customer_id = "cus_2"
             o.stripe_subscription_id = "sub_2"
 
-        event = _event("customer.subscription.updated", {
-            "customer": "cus_2", "id": "sub_2", "status": "active",
-            "items": {"data": [{"price": {"id": "price_s"}}]},
-        })
+        event = _event(
+            "customer.subscription.updated",
+            {
+                "customer": "cus_2",
+                "id": "sub_2",
+                "status": "active",
+                "items": {"data": [{"price": {"id": "price_s"}}]},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "plan -> scale" in outcome
@@ -321,10 +372,14 @@ class TestSubscriptionLifecycle:
             o.stripe_customer_id = "cus_3"
             o.stripe_subscription_id = "sub_3"
 
-        event = _event("customer.subscription.updated", {
-            "customer": "cus_3", "status": "canceled",
-            "items": {"data": [{"price": {"id": "price_t"}}]},
-        })
+        event = _event(
+            "customer.subscription.updated",
+            {
+                "customer": "cus_3",
+                "status": "canceled",
+                "items": {"data": [{"price": {"id": "price_t"}}]},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "plan -> free" in outcome
@@ -337,20 +392,27 @@ class TestSubscriptionLifecycle:
             o.stripe_customer_id = "cus_4"
             o.stripe_subscription_id = "sub_4"
 
-        event = _event("customer.subscription.updated", {
-            "customer": "cus_4", "status": "active",
-            "items": {"data": [{"price": {"id": "price_unmapped"}}]},
-        })
+        event = _event(
+            "customer.subscription.updated",
+            {
+                "customer": "cus_4",
+                "status": "active",
+                "items": {"data": [{"price": {"id": "price_unmapped"}}]},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "ignored" in outcome
         async with session_scope(session_factory) as session:
             assert (await session.get(Organization, org)).plan == "team"
 
-    @pytest.mark.parametrize("event_type,status", [
-        ("customer.subscription.deleted", "canceled"),
-        ("customer.subscription.updated", "canceled"),
-    ])
+    @pytest.mark.parametrize(
+        "event_type,status",
+        [
+            ("customer.subscription.deleted", "canceled"),
+            ("customer.subscription.updated", "canceled"),
+        ],
+    )
     async def test_the_end_of_a_superseded_subscription_does_not_downgrade(
         self, session_factory, org, event_type, status
     ):
@@ -361,10 +423,15 @@ class TestSubscriptionLifecycle:
             o.stripe_customer_id = "cus_5"
             o.stripe_subscription_id = "sub_new"
 
-        event = _event(event_type, {
-            "customer": "cus_5", "id": "sub_old", "status": status,
-            "items": {"data": [{"price": {"id": "price_t"}}]},
-        })
+        event = _event(
+            event_type,
+            {
+                "customer": "cus_5",
+                "id": "sub_old",
+                "status": status,
+                "items": {"data": [{"price": {"id": "price_t"}}]},
+            },
+        )
         async with session_scope(session_factory) as session:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "not the org's current subscription" in outcome
@@ -379,15 +446,23 @@ class TestSubscriptionLifecycle:
             outcome = await billing.apply_webhook_event(session, settings, event)
         assert "no org for customer" in outcome
 
-    @pytest.mark.parametrize("event", [
-        {"id": "evt_bad_data", "type": "checkout.session.completed", "data": ["not", "an", "object"]},
-        {"id": "evt_bad_meta", "type": "checkout.session.completed",
-         "data": {"object": {"metadata": "plan=team"}}},
-        {"id": "evt_bad_items", "type": "customer.subscription.updated",
-         "data": {"object": {"customer": "cus_x", "items": ["price_t"]}}},
-        {"id": "evt_bad_item", "type": "customer.subscription.updated",
-         "data": {"object": {"customer": "cus_x", "status": "active", "items": {"data": ["price_t"]}}}},
-    ])
+    @pytest.mark.parametrize(
+        "event",
+        [
+            {"id": "evt_bad_data", "type": "checkout.session.completed", "data": ["not", "an", "object"]},
+            {"id": "evt_bad_meta", "type": "checkout.session.completed", "data": {"object": {"metadata": "plan=team"}}},
+            {
+                "id": "evt_bad_items",
+                "type": "customer.subscription.updated",
+                "data": {"object": {"customer": "cus_x", "items": ["price_t"]}},
+            },
+            {
+                "id": "evt_bad_item",
+                "type": "customer.subscription.updated",
+                "data": {"object": {"customer": "cus_x", "status": "active", "items": {"data": ["price_t"]}}},
+            },
+        ],
+    )
     async def test_a_malformed_signed_event_is_ignored_not_a_500(self, session_factory, org, event):
         settings = StripeSettings(secret_key="sk", price_team="price_t")
         async with session_scope(session_factory) as session:
@@ -422,8 +497,11 @@ class TestCreateCheckoutSession:
         settings = StripeSettings(secret_key="sk_test", price_team="price_t")
         org = Organization(id="org-1", name="Northwind")
         url = await billing.create_checkout_session(
-            settings, org=org, plan="team",
-            success_url="https://example.test/app?upgraded=1", cancel_url="https://example.test/app",
+            settings,
+            org=org,
+            plan="team",
+            success_url="https://example.test/app?upgraded=1",
+            cancel_url="https://example.test/app",
         )
         assert url == "https://checkout.stripe.com/pay/cs_test_123"
         assert captured["path"] == "checkout/sessions"
@@ -447,7 +525,11 @@ class TestCreateCheckoutSession:
         settings = StripeSettings(secret_key="sk_test", price_team="price_t")
         org = Organization(id="org-2", name="Acme", stripe_customer_id="cus_existing")
         await billing.create_checkout_session(
-            settings, org=org, plan="team", success_url="https://x/success", cancel_url="https://x/cancel",
+            settings,
+            org=org,
+            plan="team",
+            success_url="https://x/success",
+            cancel_url="https://x/cancel",
         )
         assert captured["customer"] == "cus_existing"
 
@@ -460,7 +542,11 @@ class TestCreateCheckoutSession:
         org = Organization(id="org-3", name="Acme")
         with pytest.raises(ValueError, match="team"):
             await billing.create_checkout_session(
-                settings, org=org, plan="team", success_url="https://x", cancel_url="https://x",
+                settings,
+                org=org,
+                plan="team",
+                success_url="https://x",
+                cancel_url="https://x",
             )
 
 
@@ -476,7 +562,9 @@ class TestCreateBillingPortalSession:
         monkeypatch.setattr(billing, "_post", fake_post)
         settings = StripeSettings(secret_key="sk_test")
         url = await billing.create_billing_portal_session(
-            settings, customer_id="cus_1", return_url="https://example.test/app",
+            settings,
+            customer_id="cus_1",
+            return_url="https://example.test/app",
         )
         assert url == "https://billing.stripe.com/session/bps_test_1"
         assert captured["path"] == "billing_portal/sessions"
@@ -563,16 +651,23 @@ def _client(app: Starlette) -> httpx.AsyncClient:
 class TestWebhookRoute:
     async def test_a_validly_signed_delivery_updates_the_org(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", webhook_secret=WEBHOOK_SECRET, price_team="price_t")
-        body = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {
-                "client_reference_id": org, "customer": "cus_e2e", "subscription": "sub_e2e",
-                "metadata": {"org_id": org, "plan": "team"},
-            }},
-        }).encode()
+        body = json.dumps(
+            {
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": org,
+                        "customer": "cus_e2e",
+                        "subscription": "sub_e2e",
+                        "metadata": {"org_id": org, "plan": "team"},
+                    }
+                },
+            }
+        ).encode()
         async with _client(_app(settings, session_factory)) as client:
             response = await client.post(
-                "/billing/webhook", content=body,
+                "/billing/webhook",
+                content=body,
                 headers={"stripe-signature": _sign(body, secret=WEBHOOK_SECRET)},
             )
         assert response.status_code == 200
@@ -583,16 +678,22 @@ class TestWebhookRoute:
 
     async def test_an_invalid_signature_is_refused_and_changes_nothing(self, session_factory, org):
         settings = StripeSettings(secret_key="sk", webhook_secret=WEBHOOK_SECRET, price_team="price_t")
-        body = json.dumps({
-            "type": "checkout.session.completed",
-            "data": {"object": {
-                "client_reference_id": org, "customer": "cus_forged",
-                "metadata": {"org_id": org, "plan": "team"},
-            }},
-        }).encode()
+        body = json.dumps(
+            {
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": org,
+                        "customer": "cus_forged",
+                        "metadata": {"org_id": org, "plan": "team"},
+                    }
+                },
+            }
+        ).encode()
         async with _client(_app(settings, session_factory)) as client:
             response = await client.post(
-                "/billing/webhook", content=body,
+                "/billing/webhook",
+                content=body,
                 headers={"stripe-signature": "t=1,v1=0000000000000000000000000000000000000000000000000000000000000000"},
             )
         assert response.status_code == 400
@@ -610,16 +711,15 @@ class TestWebhookRoute:
         body = b"not json at all"
         async with _client(_app(settings, session_factory)) as client:
             response = await client.post(
-                "/billing/webhook", content=body,
+                "/billing/webhook",
+                content=body,
                 headers={"stripe-signature": _sign(body, secret=WEBHOOK_SECRET)},
             )
         assert response.status_code == 400
 
 
 class TestConcurrentReplay:
-    async def test_the_same_event_delivered_at_once_applies_once_and_never_errors(
-        self, session_factory, org
-    ):
+    async def test_the_same_event_delivered_at_once_applies_once_and_never_errors(self, session_factory, org):
         import asyncio
 
         from sqlalchemy import func, select
@@ -627,24 +727,33 @@ class TestConcurrentReplay:
         from hub.models import ProcessedWebhookEvent
 
         settings = StripeSettings(secret_key="sk", webhook_secret=WEBHOOK_SECRET, price_team="price_t")
-        body = json.dumps({
-            "id": "evt_race_1",
-            "type": "checkout.session.completed",
-            "data": {"object": {
-                "client_reference_id": org, "customer": "cus_race", "subscription": "sub_race",
-                "metadata": {"org_id": org, "plan": "team"},
-            }},
-        }).encode()
+        body = json.dumps(
+            {
+                "id": "evt_race_1",
+                "type": "checkout.session.completed",
+                "data": {
+                    "object": {
+                        "client_reference_id": org,
+                        "customer": "cus_race",
+                        "subscription": "sub_race",
+                        "metadata": {"org_id": org, "plan": "team"},
+                    }
+                },
+            }
+        ).encode()
         headers = {"stripe-signature": _sign(body, secret=WEBHOOK_SECRET)}
         async with _client(_app(settings, session_factory)) as client:
-            responses = await asyncio.gather(*[
-                client.post("/billing/webhook", content=body, headers=headers) for _ in range(8)
-            ])
+            responses = await asyncio.gather(
+                *[client.post("/billing/webhook", content=body, headers=headers) for _ in range(8)]
+            )
         assert [r.status_code for r in responses] == [200] * 8
         async with session_scope(session_factory) as session:
             assert (await session.get(Organization, org)).plan == "team"
-            count = (await session.execute(
-                select(func.count()).select_from(ProcessedWebhookEvent)
-                .where(ProcessedWebhookEvent.id == "evt_race_1")
-            )).scalar_one()
+            count = (
+                await session.execute(
+                    select(func.count())
+                    .select_from(ProcessedWebhookEvent)
+                    .where(ProcessedWebhookEvent.id == "evt_race_1")
+                )
+            ).scalar_one()
         assert count == 1

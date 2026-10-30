@@ -1,4 +1,5 @@
 """Operator incident evidence workflow."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,8 +7,13 @@ import json
 
 from unimem import incident, paths
 
-REGIMES = {"eu-ai-act": "eu-ai-act", "iso42001": "iso-42001", "nist": "nist-ai-rmf",
-           "gdpr22": "decision-rights", "pld": "product-liability"}
+REGIMES = {
+    "eu-ai-act": "eu-ai-act",
+    "iso42001": "iso-42001",
+    "nist": "nist-ai-rmf",
+    "gdpr22": "decision-rights",
+    "pld": "product-liability",
+}
 
 
 def add_parser(subparsers: argparse._SubParsersAction) -> None:

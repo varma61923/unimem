@@ -1,5 +1,6 @@
 """Conversation memory: sessions and turns in one SQLite file per space, each turn's
 relative dates grounded as it is written, searchable with FTS5 BM25."""
+
 from __future__ import annotations
 
 import contextlib
@@ -33,8 +34,19 @@ SCHEMA_VERSION = 3
 TURN_CACHE_SIZE = 2048
 TURN_CACHE_BYTES = 16 * 1024 * 1024
 UNIT_JOURNAL_LIMIT = 100_000
-FACT_KINDS = ("instruction", "preference", "dislike", "favorite", "identity", "habit", "plan", "possession",
-              "event", "fact", "relationship")
+FACT_KINDS = (
+    "instruction",
+    "preference",
+    "dislike",
+    "favorite",
+    "identity",
+    "habit",
+    "plan",
+    "possession",
+    "event",
+    "fact",
+    "relationship",
+)
 
 
 class ConversationError(ValueError):
@@ -55,15 +67,18 @@ def _safe_label(value: str, *, limit: int = 120) -> tuple[str, int]:
     count = len(secrets) + len(pii)
     if count:
         suffix = "#" + hashlib.sha256(value.lower().encode("utf-8")).hexdigest()[:16]
-        return clean[:max(0, limit - len(suffix))] + suffix, count
+        return clean[: max(0, limit - len(suffix))] + suffix, count
     return clean[:limit], 0
 
 
 def _validate_session_metadata(session: str) -> None:
     # Routing IDs are never rewritten: changing one would redirect operations
     # and break callers' idempotency. Reject sensitive/forged IDs instead.
-    if (memory_guard.scan_injection(session) or memory_guard.redact_secrets(session)[1]
-            or memory_guard.redact_pii(session)[1]):
+    if (
+        memory_guard.scan_injection(session)
+        or memory_guard.redact_secrets(session)[1]
+        or memory_guard.redact_pii(session)[1]
+    ):
         raise ConversationError("session id must not contain credentials, PII, or instruction delimiters")
 
 
@@ -174,10 +189,12 @@ def connect(path: str, setup: str = "", *, read_only: bool = False) -> sqlite3.C
     db.execute("PRAGMA temp_store=MEMORY")
     db.execute("PRAGMA cache_size=-8192")
     if setup:
+
         def _setup():
             with write_txn(db):
                 for statement in filter(str.strip, setup.split(";")):
                     db.execute(statement)
+
         _retry_locked(_setup, deadline)
     return db
 
@@ -217,9 +234,17 @@ class Turn:
 
     def evidence_hash(self) -> str:
         """Stable source identity, including content when SQLite recycles a turn id."""
-        evidence = [self.id, self.session, self.idx, _iso(self.at), self.speaker,
-                    self.role, self.text, self.ref,
-                    [[g.start, g.end, g.label, g.lo.isoformat(), g.hi.isoformat()] for g in self.dates]]
+        evidence = [
+            self.id,
+            self.session,
+            self.idx,
+            _iso(self.at),
+            self.speaker,
+            self.role,
+            self.text,
+            self.ref,
+            [[g.start, g.end, g.label, g.lo.isoformat(), g.hi.isoformat()] for g in self.dates],
+        ]
         return hashlib.sha256(json.dumps(evidence, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
@@ -263,8 +288,11 @@ def split_units(text: str, limit: int = UNIT_CHARS) -> list[str]:
         return [text]
     # A cheap forward-character search avoids the lookbehind/alternation scan
     # for flat paragraphs and machine-generated pastes with no separator.
-    sentences = re.split(r"(?<=[.!?])\s+|\n{2,}|\n(?=[-*\d])", text) \
-        if any(marker in text for marker in (".", "!", "?", "\n")) else [text]
+    sentences = (
+        re.split(r"(?<=[.!?])\s+|\n{2,}|\n(?=[-*\d])", text)
+        if any(marker in text for marker in (".", "!", "?", "\n"))
+        else [text]
+    )
     units, current = [], ""
     for sentence in sentences:
         sentence = sentence.strip()
@@ -350,7 +378,7 @@ class Store:
         self._turn_cache_bytes = 0
         self.cache_identity = object()
         self._snapshot_stamp: tuple[int, int] | None = None
-        self._read_stamp = None
+        self._read_stamp: tuple[int, int] | None = None
         self._embedders: dict = {}
         if read_only:
             # frozen memory: recall works, every write raises sqlite3.OperationalError
@@ -361,10 +389,14 @@ class Store:
                 self._inspect_schema()
             return
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        fts = ("CREATE VIRTUAL TABLE IF NOT EXISTS units_fts USING fts5(body, tokenize='porter unicode61');"
-               if FTS5 else "")
-        self.db = connect(self.path, _SCHEMA + fts +
-                          f"INSERT OR IGNORE INTO meta VALUES ('schema', '{SCHEMA_VERSION}')")
+        fts = (
+            "CREATE VIRTUAL TABLE IF NOT EXISTS units_fts USING fts5(body, tokenize='porter unicode61');"
+            if FTS5
+            else ""
+        )
+        self.db = connect(
+            self.path, _SCHEMA + fts + f"INSERT OR IGNORE INTO meta VALUES ('schema', '{SCHEMA_VERSION}')"
+        )
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys=ON")
         self._migrate()
@@ -374,8 +406,7 @@ class Store:
     def _inspect_schema(self) -> None:
         self._schema_version = self.db.execute("PRAGMA schema_version").fetchone()[0]
         self._fact_columns = {r[1] for r in self.db.execute("PRAGMA table_info(facts)")}
-        self._has_sources = bool(self.db.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='fact_sources'").fetchone())
+        self._has_sources = bool(self.db.execute("SELECT 1 FROM sqlite_master WHERE name='fact_sources'").fetchone())
         self._has_expiry = "expires" in {r[1] for r in self.db.execute("PRAGMA table_info(turns)")}
         self._units_identity = self.get_meta("units_identity")
         self._has_unit_journal = self.get_meta("unit_journal") == "1"
@@ -387,72 +418,96 @@ class Store:
         with self._lock, write_txn(self.db):
             if self.get_meta("unit_journal") == "1":
                 return
-            self.db.execute("CREATE TABLE IF NOT EXISTS unit_changes "
-                            "(revision INTEGER PRIMARY KEY, unit INTEGER NOT NULL)")
+            self.db.execute(
+                "CREATE TABLE IF NOT EXISTS unit_changes (revision INTEGER PRIMARY KEY, unit INTEGER NOT NULL)"
+            )
             revision = self.get_meta("units_revision") or "0"
             self.db.execute("INSERT OR REPLACE INTO meta VALUES ('unit_journal_floor', ?)", (revision,))
             for operation in ("INSERT", "UPDATE", "DELETE"):
                 reference = "old" if operation == "DELETE" else "new"
                 moved = (
-                    "UPDATE meta SET value=CAST(value AS INTEGER)+1 "
-                    "WHERE key='units_revision' AND old.id<>new.id; "
-                    "INSERT INTO unit_changes SELECT CAST(value AS INTEGER),old.id "
-                    "FROM meta WHERE key='units_revision' AND old.id<>new.id; "
-                ) if operation == "UPDATE" else ""
+                    (
+                        "UPDATE meta SET value=CAST(value AS INTEGER)+1 "
+                        "WHERE key='units_revision' AND old.id<>new.id; "
+                        "INSERT INTO unit_changes SELECT CAST(value AS INTEGER),old.id "
+                        "FROM meta WHERE key='units_revision' AND old.id<>new.id; "
+                    )
+                    if operation == "UPDATE"
+                    else ""
+                )
                 self.db.execute(f"DROP TRIGGER IF EXISTS units_revision_{operation.lower()}")
                 # Operations/references are fixed, and the retention literal is
                 # an internal integer constant. All source data stays bound.
                 self.db.execute(  # nosec B608
                     f"CREATE TRIGGER units_revision_{operation.lower()} AFTER {operation} ON units BEGIN "
-                    + moved +
-                    "UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='units_revision'; "  # nosec B608
+                    + moved
+                    + "UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='units_revision'; "  # nosec B608
                     f"INSERT INTO unit_changes SELECT CAST(value AS INTEGER), {reference}.id "
                     "FROM meta WHERE key='units_revision'; "
                     f"DELETE FROM unit_changes WHERE revision<=(SELECT CAST(value AS INTEGER)-{UNIT_JOURNAL_LIMIT} "
                     "FROM meta WHERE key='units_revision'); "
                     "UPDATE meta SET value=MAX(CAST(value AS INTEGER),"
                     f"(SELECT CAST(value AS INTEGER)-{UNIT_JOURNAL_LIMIT} "
-                    "FROM meta WHERE key='units_revision')) WHERE key='unit_journal_floor'; END")
+                    "FROM meta WHERE key='units_revision')) WHERE key='unit_journal_floor'; END"
+                )
             self.db.execute("INSERT OR REPLACE INTO meta VALUES ('unit_journal', '1')")
 
     def _migrate(self) -> None:
         """Bring a file written by an older version up to this schema, in place."""
-        wanted = {"turns": [("expires", "TEXT")],
-                  "facts": [("slot", "TEXT"), ("source", "TEXT NOT NULL DEFAULT 'rule'"),
-                            ("superseded_by", "INTEGER"), ("owner", "TEXT NOT NULL DEFAULT ''"),
-                            ("statement_hash", "TEXT")]}
-        missing = [(table, col, decl) for table, cols in wanted.items() for col, decl in cols
-                   if col not in {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}]
+        wanted = {
+            "turns": [("expires", "TEXT")],
+            "facts": [
+                ("slot", "TEXT"),
+                ("source", "TEXT NOT NULL DEFAULT 'rule'"),
+                ("superseded_by", "INTEGER"),
+                ("owner", "TEXT NOT NULL DEFAULT ''"),
+                ("statement_hash", "TEXT"),
+            ],
+        }
+        missing = [
+            (table, col, decl)
+            for table, cols in wanted.items()
+            for col, decl in cols
+            if col not in {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+        ]
         if self.get_meta("entities") != "1":
             with self._lock, write_txn(self.db):
                 if self.get_meta("entities") != "1":
                     for tid, text in self.db.execute("SELECT id, text FROM turns"):
-                        self.db.executemany("INSERT OR IGNORE INTO entities VALUES (?, ?)",
-                                            [(e, tid) for e in profile.entities(text)])
+                        self.db.executemany(
+                            "INSERT OR IGNORE INTO entities VALUES (?, ?)", [(e, tid) for e in profile.entities(text)]
+                        )
                     self.db.execute("INSERT OR REPLACE INTO meta VALUES ('entities', '1')")
-        if not missing and self.get_meta("belief_chains") == str(SCHEMA_VERSION) \
-                and self.get_meta("units_identity") is not None:
+        if (
+            not missing
+            and self.get_meta("belief_chains") == str(SCHEMA_VERSION)
+            and self.get_meta("units_identity") is not None
+        ):
             return
         with self._lock, write_txn(self.db):
             for table, col, decl in missing:
                 if col not in {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}:
                     self.db.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
             self.db.execute("UPDATE meta SET value=? WHERE key='schema'", (str(SCHEMA_VERSION),))
-            self.db.execute("CREATE INDEX IF NOT EXISTS facts_owner_slot_order "
-                            "ON facts (owner, slot, COALESCE(at, ''), id)")
+            self.db.execute(
+                "CREATE INDEX IF NOT EXISTS facts_owner_slot_order ON facts (owner, slot, COALESCE(at, ''), id)"
+            )
             self.db.execute("CREATE INDEX IF NOT EXISTS facts_kind_at ON facts (kind, at DESC, id DESC)")
             self.db.execute("CREATE INDEX IF NOT EXISTS facts_owner_hash ON facts (owner, statement_hash)")
             # Keyset batches bound legacy backfill memory even for a very large
             # profile. Finish each SELECT before updating its source table;
             # mutating a live SQLite cursor's result can skip or repeat rows.
-            rows = self.db.execute("SELECT id, statement FROM facts WHERE statement_hash IS NULL "
-                                   "ORDER BY id LIMIT 256").fetchall()
+            rows = self.db.execute(
+                "SELECT id, statement FROM facts WHERE statement_hash IS NULL ORDER BY id LIMIT 256"
+            ).fetchall()
             while rows:
-                self.db.executemany("UPDATE facts SET statement_hash=? WHERE id=?",
-                                    [(fact_hash(r[1]), r[0]) for r in rows])
+                self.db.executemany(
+                    "UPDATE facts SET statement_hash=? WHERE id=?", [(fact_hash(r[1]), r[0]) for r in rows]
+                )
                 rows = self.db.execute(
-                    "SELECT id, statement FROM facts WHERE statement_hash IS NULL AND id>? "
-                    "ORDER BY id LIMIT 256", (rows[-1][0],)).fetchall()
+                    "SELECT id, statement FROM facts WHERE statement_hash IS NULL AND id>? ORDER BY id LIMIT 256",
+                    (rows[-1][0],),
+                ).fetchall()
             self.db.execute("CREATE INDEX IF NOT EXISTS facts_turn ON facts (turn)")
             self.db.execute("CREATE INDEX IF NOT EXISTS turns_expires ON turns (expires) WHERE expires IS NOT NULL")
             self.db.execute("CREATE INDEX IF NOT EXISTS sessions_seq ON sessions (seq)")
@@ -461,36 +516,53 @@ class Store:
             self.db.execute("INSERT OR IGNORE INTO meta VALUES ('units_identity', ?)", (os.urandom(16).hex(),))
             self.db.execute("INSERT OR IGNORE INTO meta VALUES ('units_revision', '0')")
             for operation in ("INSERT", "UPDATE", "DELETE"):
-                self.db.execute(f"CREATE TRIGGER IF NOT EXISTS units_revision_{operation.lower()} "  # nosec B608 - fixed operations
-                                f"AFTER {operation} ON units BEGIN UPDATE meta SET value=CAST(value AS INTEGER)+1 "
-                                "WHERE key='units_revision'; END")
+                self.db.execute(
+                    f"CREATE TRIGGER IF NOT EXISTS units_revision_{operation.lower()} "  # nosec B608 - fixed operations
+                    f"AFTER {operation} ON units BEGIN UPDATE meta SET value=CAST(value AS INTEGER)+1 "
+                    "WHERE key='units_revision'; END"
+                )
             self.db.execute("INSERT OR IGNORE INTO fact_sources SELECT id, turn FROM facts")
-            self.db.execute("UPDATE facts SET owner=COALESCE((SELECT LOWER(speaker) FROM turns "
-                            "WHERE id=facts.turn), '') WHERE owner=''")
-            self.db.execute("CREATE TRIGGER IF NOT EXISTS remove_derived_facts BEFORE DELETE ON turns BEGIN "
-                            "DELETE FROM facts WHERE id IN (SELECT fact FROM fact_sources WHERE turn=old.id); END")
+            self.db.execute(
+                "UPDATE facts SET owner=COALESCE((SELECT LOWER(speaker) FROM turns "
+                "WHERE id=facts.turn), '') WHERE owner=''"
+            )
+            self.db.execute(
+                "CREATE TRIGGER IF NOT EXISTS remove_derived_facts BEFORE DELETE ON turns BEGIN "
+                "DELETE FROM facts WHERE id IN (SELECT fact FROM fact_sources WHERE turn=old.id); END"
+            )
             if FTS5:
-                self.db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(statement, "
-                                "content='facts', content_rowid='id', tokenize='porter unicode61')")
+                self.db.execute(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(statement, "
+                    "content='facts', content_rowid='id', tokenize='porter unicode61')"
+                )
                 self.db.execute("INSERT INTO facts_fts(facts_fts) VALUES ('rebuild')")
                 # Keep the derived index in the same transaction as its evidence.
-                self.db.execute("CREATE TRIGGER IF NOT EXISTS facts_fts_insert AFTER INSERT ON facts BEGIN "
-                                "INSERT INTO facts_fts(rowid, statement) VALUES (new.id, new.statement); END")
-                self.db.execute("CREATE TRIGGER IF NOT EXISTS facts_fts_delete AFTER DELETE ON facts BEGIN "
-                                "INSERT INTO facts_fts(facts_fts, rowid, statement) "
-                                "VALUES ('delete', old.id, old.statement); END")
-                self.db.execute("CREATE TRIGGER IF NOT EXISTS facts_fts_update "
-                                "AFTER UPDATE OF statement ON facts BEGIN "
-                                "INSERT INTO facts_fts(facts_fts, rowid, statement) "
-                                "VALUES ('delete', old.id, old.statement); "
-                                "INSERT INTO facts_fts(rowid, statement) VALUES (new.id, new.statement); END")
+                self.db.execute(
+                    "CREATE TRIGGER IF NOT EXISTS facts_fts_insert AFTER INSERT ON facts BEGIN "
+                    "INSERT INTO facts_fts(rowid, statement) VALUES (new.id, new.statement); END"
+                )
+                self.db.execute(
+                    "CREATE TRIGGER IF NOT EXISTS facts_fts_delete AFTER DELETE ON facts BEGIN "
+                    "INSERT INTO facts_fts(facts_fts, rowid, statement) "
+                    "VALUES ('delete', old.id, old.statement); END"
+                )
+                self.db.execute(
+                    "CREATE TRIGGER IF NOT EXISTS facts_fts_update "
+                    "AFTER UPDATE OF statement ON facts BEGIN "
+                    "INSERT INTO facts_fts(facts_fts, rowid, statement) "
+                    "VALUES ('delete', old.id, old.statement); "
+                    "INSERT INTO facts_fts(rowid, statement) VALUES (new.id, new.statement); END"
+                )
             self._reinstate()
             self.db.execute("INSERT OR REPLACE INTO meta VALUES ('belief_chains', ?)", (str(SCHEMA_VERSION),))
 
     def read_stamp(self) -> tuple[int, int]:
         """Detect local writes and commits by other connections, including deletions."""
-        version = self._snapshot_stamp[1] if self._snapshot_stamp is not None and self.db.in_transaction \
+        version = (
+            self._snapshot_stamp[1]
+            if self._snapshot_stamp is not None and self.db.in_transaction
             else self.db.execute("PRAGMA data_version").fetchone()[0]
+        )
         stamp = (self.db.total_changes, version)
         if stamp != self._read_stamp:
             self._turn_cache.clear()
@@ -510,9 +582,14 @@ class Store:
 
     def unit_changes(self, after_revision: int, through_revision: int, *, limit: int = 512) -> list[UnitChange]:
         """A bounded keyset page; call inside ``read_snapshot`` for target binding."""
-        if isinstance(after_revision, bool) or not isinstance(after_revision, int) or after_revision < 0 \
-                or isinstance(through_revision, bool) or not isinstance(through_revision, int) \
-                or through_revision < after_revision:
+        if (
+            isinstance(after_revision, bool)
+            or not isinstance(after_revision, int)
+            or after_revision < 0
+            or isinstance(through_revision, bool)
+            or not isinstance(through_revision, int)
+            or through_revision < after_revision
+        ):
             raise ValueError("journal cursors must be nonnegative ordered integers")
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10_000:
             raise ValueError("journal page limit must be an integer from 1 to 10000")
@@ -520,10 +597,14 @@ class Store:
             raise ConversationError("unit change journal has a retention gap; rebuild the vector snapshot")
         if not self._has_unit_journal:
             return []
-        return [UnitChange(int(row[0]), int(row[1]), row[2], row[3]) for row in self.db.execute(
-            "SELECT c.revision,c.unit,u.body,u.hash FROM unit_changes c LEFT JOIN units u ON u.id=c.unit "
-            "WHERE c.revision>? AND c.revision<=? ORDER BY c.revision LIMIT ?",
-            (after_revision, through_revision, limit))]
+        return [
+            UnitChange(int(row[0]), int(row[1]), row[2], row[3])
+            for row in self.db.execute(
+                "SELECT c.revision,c.unit,u.body,u.hash FROM unit_changes c LEFT JOIN units u ON u.id=c.unit "
+                "WHERE c.revision>? AND c.revision<=? ORDER BY c.revision LIMIT ?",
+                (after_revision, through_revision, limit),
+            )
+        ]
 
     @contextlib.contextmanager
     def read_snapshot(self):
@@ -568,9 +649,17 @@ class Store:
 
     # --- writing -----------------------------------------------------------------
 
-    def add(self, session: str, messages: Iterable[Mapping], *, session_at=None,
-            user_speakers: Iterable[str] = (), extract_profile: bool = True,
-            cache_vectors: bool = False, embedder: str | None = None) -> dict:
+    def add(
+        self,
+        session: str,
+        messages: Iterable[Mapping],
+        *,
+        session_at=None,
+        user_speakers: Iterable[str] = (),
+        extract_profile: bool = True,
+        cache_vectors: bool = False,
+        embedder: str | None = None,
+    ) -> dict:
         """Append messages; optionally prepare vectors after committing redacted evidence.
 
         Precomputation is explicit so capture does not silently run inference or
@@ -601,8 +690,9 @@ class Store:
                 self.db.execute("UPDATE sessions SET started_at=? WHERE id=?", (_iso(started), session))
             elif not started and row["started_at"]:
                 started = dt.datetime.fromisoformat(row["started_at"])
-            idx = self.db.execute("SELECT COALESCE(MAX(idx), -1) + 1 FROM turns WHERE session=?",
-                                  (session,)).fetchone()[0]
+            idx = self.db.execute(
+                "SELECT COALESCE(MAX(idx), -1) + 1 FROM turns WHERE session=?", (session,)
+            ).fetchone()[0]
             for message in messages:
                 text = str(message.get("text", message.get("content", "")) or "").strip()
                 if not text:
@@ -633,48 +723,78 @@ class Store:
                     redacted += ref_redacted
                 else:
                     ref = None
-                key = _hash("\x1f".join([session, "ref", key_ref]) if key_ref else
-                            "\x1f".join([session, raw_speaker[:120], _iso(at) or "", text]))
+                key = _hash(
+                    "\x1f".join([session, "ref", key_ref])
+                    if key_ref
+                    else "\x1f".join([session, raw_speaker[:120], _iso(at) or "", text])
+                )
                 if self.db.execute("SELECT 1 FROM turns WHERE key=?", (key,)).fetchone():
                     skipped += 1
                     continue
                 groundings = timeparse.ground(text, at)
-                dates = json.dumps([[g.start, g.end, g.label, g.lo.isoformat(), g.hi.isoformat()]
-                                    for g in groundings])
+                dates = json.dumps([[g.start, g.end, g.label, g.lo.isoformat(), g.hi.isoformat()] for g in groundings])
                 lo = min((g.lo for g in groundings), default=None)
                 hi = max((g.hi for g in groundings), default=None)
                 cur = self.db.execute(
                     "INSERT INTO turns (session, idx, at, speaker, role, text, dates, lo, hi, ref, key, expires) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (session, idx, _iso(at), speaker, role, text, dates,
-                     lo.isoformat() if lo else None, hi.isoformat() if hi else None, ref, key, _iso(expires)))
+                    (
+                        session,
+                        idx,
+                        _iso(at),
+                        speaker,
+                        role,
+                        text,
+                        dates,
+                        lo.isoformat() if lo else None,
+                        hi.isoformat() if hi else None,
+                        ref,
+                        key,
+                        _iso(expires),
+                    ),
+                )
                 turn_id = cur.lastrowid
-                self.db.executemany("INSERT OR IGNORE INTO entities VALUES (?, ?)",
-                                    [(e, turn_id) for e in profile.entities(text)])
+                if turn_id is None:
+                    raise ConversationError("turn insertion did not produce an identifier")
+                self.db.executemany(
+                    "INSERT OR IGNORE INTO entities VALUES (?, ?)", [(e, turn_id) for e in profile.entities(text)]
+                )
                 annotated = timeparse.annotate(text, groundings)
                 for part, unit in enumerate(split_units(annotated)):
                     body = f"{speaker}: {unit}"
-                    uid = self.db.execute("INSERT INTO units (turn, part, body, hash) VALUES (?, ?, ?, ?)",
-                                          (turn_id, part, body, _hash(body))).lastrowid
+                    uid = self.db.execute(
+                        "INSERT INTO units (turn, part, body, hash) VALUES (?, ?, ?, ?)",
+                        (turn_id, part, body, _hash(body)),
+                    ).lastrowid
                     if FTS5:
                         self.db.execute("INSERT INTO units_fts (rowid, body) VALUES (?, ?)", (uid, body))
                 if role == "user" and extract_profile:
                     for fact in profile.extract(text):
-                        self._insert_fact(turn_id, fact.kind, fact.subject, fact.statement, _iso(at),
-                                          fact.slot, "rule", speaker)
+                        self._insert_fact(
+                            turn_id, fact.kind, fact.subject, fact.statement, _iso(at), fact.slot, "rule", speaker
+                        )
                 idx += 1
                 added += 1
             if added:
                 self.db.execute("DELETE FROM summaries WHERE session=?", (session,))
-        result = {"space": self.space, "session": session, "added": added, "skipped": skipped,
-                  "secrets_redacted": redacted}
+        result = {
+            "space": self.space,
+            "session": session,
+            "added": added,
+            "skipped": skipped,
+            "secrets_redacted": redacted,
+        }
         if cache_vectors:
+            assert tag is not None  # validated before capturing any source message
             encoder = None
             try:
                 encoder = embed.Embedder(self.root, tag)
                 prepared = embed.prepare(self, encoder, sessions=(session,))
-                result["embedding_cache"] = {"ready": True, **prepared,
-                                             "revision": [int(value) for value in prepared["revision"]]}
+                result["embedding_cache"] = {
+                    "ready": True,
+                    **prepared,
+                    "revision": [int(value) for value in prepared["revision"]],
+                }
             except Exception as exc:  # noqa: BLE001 - durable source evidence remains available for sparse recall
                 result["embedding_cache"] = {"ready": False, "error_type": type(exc).__name__}
             finally:
@@ -685,8 +805,12 @@ class Store:
     def delete_session(self, session: str) -> int:
         with self._lock, write_txn(self.db):
             chains = self._chains_for_turns("t.session=?", (session,))
-            ids = [r[0] for r in self.db.execute(
-                "SELECT u.id FROM units u JOIN turns t ON t.id = u.turn WHERE t.session=?", (session,))]
+            ids = [
+                r[0]
+                for r in self.db.execute(
+                    "SELECT u.id FROM units u JOIN turns t ON t.id = u.turn WHERE t.session=?", (session,)
+                )
+            ]
             if FTS5:
                 self.db.executemany("DELETE FROM units_fts WHERE rowid=?", [(i,) for i in ids])
             n = self.db.execute("DELETE FROM turns WHERE session=?", (session,)).rowcount
@@ -698,10 +822,14 @@ class Store:
 
     def _chains_for_turns(self, where: str, params: Iterable) -> list[tuple[str, str]]:
         """Beliefs losing any premise, including a source other than their anchor."""
-        return [tuple(r) for r in self.db.execute(
-            "SELECT DISTINCT f.owner, f.slot FROM fact_sources s JOIN facts f ON f.id=s.fact "
-            "WHERE f.slot IS NOT NULL AND s.turn IN (SELECT id FROM turns t WHERE "
-            + where + ")", params)]  # nosec B608 - internal bound predicates
+        return [
+            tuple(r)
+            for r in self.db.execute(
+                "SELECT DISTINCT f.owner, f.slot FROM fact_sources s JOIN facts f ON f.id=s.fact "  # nosec B608
+                "WHERE f.slot IS NOT NULL AND s.turn IN (SELECT id FROM turns t WHERE " + where + ")",
+                tuple(params),
+            )
+        ]  # nosec B608 - internal bound predicates
 
     def _reinstate(self, chains: Iterable[tuple[str, str]] | None = None) -> None:
         """Repair affected chronological beliefs; migration rebuilds every chain.
@@ -710,37 +838,52 @@ class Store:
         unrelated owner's history. Restricting repair also avoids writing every
         fact (and growing the WAL) when a retention job deletes a small session.
         """
-        scope, params = "", ()
+        scope = ""
+        params: tuple[str, ...] = ()
         if chains is not None:
             pairs = list(dict.fromkeys(chains))
             if not pairs:
                 return
-            scope = ("WITH scope AS (SELECT json_extract(value, '$[0]') AS owner, "
-                     "json_extract(value, '$[1]') AS slot FROM json_each(?)) ")
+            scope = (
+                "WITH scope AS (SELECT json_extract(value, '$[0]') AS owner, "
+                "json_extract(value, '$[1]') AS slot FROM json_each(?)) "
+            )
             params = (json.dumps(pairs),)
         join = " JOIN scope ON scope.owner=f.owner AND scope.slot=f.slot" if scope else ""
         # Stage the complete window before modifying facts, without copying the
         # history into Python. Its primary key also guarantees indexed lookups
         # on older SQLite versions that scan a repeatedly referenced window CTE.
-        self.db.execute("CREATE TEMP TABLE unimem_belief_successors "
-                        "(id INTEGER PRIMARY KEY, successor INTEGER)")
+        self.db.execute("CREATE TEMP TABLE unimem_belief_successors (id INTEGER PRIMARY KEY, successor INTEGER)")
         try:
             self.db.execute(
                 scope + "INSERT INTO unimem_belief_successors "  # nosec B608 - fixed scope query
                 "SELECT f.id, LEAD(f.id) OVER (PARTITION BY f.owner, f.slot "
                 "ORDER BY COALESCE(f.at, ''), f.id) FROM facts f "
-                "JOIN turns t ON t.id=f.turn" + join + " WHERE f.slot IS NOT NULL", params)
+                "JOIN turns t ON t.id=f.turn" + join + " WHERE f.slot IS NOT NULL",
+                params,
+            )
             self.db.execute(
                 "UPDATE facts SET superseded_by=(SELECT successor FROM unimem_belief_successors "
                 "WHERE id=facts.id) WHERE id IN (SELECT id FROM unimem_belief_successors) "
-                "AND superseded_by IS NOT (SELECT successor FROM unimem_belief_successors WHERE id=facts.id)")
+                "AND superseded_by IS NOT (SELECT successor FROM unimem_belief_successors WHERE id=facts.id)"
+            )
         finally:
             self.db.execute("DROP TABLE unimem_belief_successors")
 
-    def _insert_fact(self, turn: int, kind: str, subject: str, statement: str, at: str | None,
-                     slot: str | None, source: str, owner: str | None = None) -> int:
-        owner = (owner or self.db.execute("SELECT speaker FROM turns WHERE id=?", (turn,)).fetchone()[0]) \
-            .strip().lower()
+    def _insert_fact(
+        self,
+        turn: int,
+        kind: str,
+        subject: str,
+        statement: str,
+        at: str | None,
+        slot: str | None,
+        source: str,
+        owner: str | None = None,
+    ) -> int:
+        owner = (
+            (owner or self.db.execute("SELECT speaker FROM turns WHERE id=?", (turn,)).fetchone()[0]).strip().lower()
+        )
         predecessor = None
         successor_id = None
         if slot:
@@ -750,19 +893,24 @@ class Store:
             predecessor = self.db.execute(
                 "SELECT id, superseded_by FROM facts WHERE slot=? AND owner=? "
                 "AND COALESCE(at, '') <= ? ORDER BY COALESCE(at, '') DESC, id DESC LIMIT 1",
-                (slot, owner, at or "")).fetchone()
+                (slot, owner, at or ""),
+            ).fetchone()
             if predecessor:
                 successor_id = predecessor["superseded_by"]
             else:
                 successor = self.db.execute(
                     "SELECT id FROM facts WHERE slot=? AND owner=? "
                     "AND COALESCE(at, '') > ? ORDER BY COALESCE(at, ''), id LIMIT 1",
-                    (slot, owner, at or "")).fetchone()
+                    (slot, owner, at or ""),
+                ).fetchone()
                 successor_id = successor[0] if successor else None
         fid = self.db.execute(
             "INSERT INTO facts (turn, kind, subject, statement, at, slot, source, owner, statement_hash) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (turn, kind, subject, statement, at, slot, source, owner, fact_hash(statement))).lastrowid
+            (turn, kind, subject, statement, at, slot, source, owner, fact_hash(statement)),
+        ).lastrowid
+        if fid is None:
+            raise ConversationError("fact insertion did not produce an identifier")
         self.db.execute("INSERT INTO fact_sources VALUES (?, ?)", (fid, turn))
         if slot:
             if successor_id is not None:
@@ -771,9 +919,15 @@ class Store:
                 self.db.execute("UPDATE facts SET superseded_by=? WHERE id=?", (fid, predecessor[0]))
         return fid
 
-    def add_memories(self, session: str, memories: Iterable[Mapping], *, source: str,
-                     extracted_through: int | None = None,
-                     expected_sources: Mapping[int, str] | None = None) -> int:
+    def add_memories(
+        self,
+        session: str,
+        memories: Iterable[Mapping],
+        *,
+        source: str,
+        extracted_through: int | None = None,
+        expected_sources: Mapping[int, str] | None = None,
+    ) -> int:
         """Store derived memories with optional owner and exact source_turn_ids.
 
         Omitted sources default to the latest user turn. Deleting any supporting
@@ -784,31 +938,44 @@ class Store:
         added = 0
         with self._lock, write_txn(self.db):
             if expected_sources is not None:
-                if not isinstance(expected_sources, Mapping) or not expected_sources or any(
+                if (
+                    not isinstance(expected_sources, Mapping)
+                    or not expected_sources
+                    or any(
                         not isinstance(tid, int) or isinstance(tid, bool) or not isinstance(proof, str)
-                        for tid, proof in expected_sources.items()):
+                        for tid, proof in expected_sources.items()
+                    )
+                ):
                     raise ConversationError("expected_sources must map turn ids to evidence hashes")
                 rows = self.db.execute(
                     "SELECT * FROM turns WHERE session=? AND id IN (SELECT value FROM json_each(?))",
-                    (session, json.dumps(list(expected_sources)))).fetchall()
+                    (session, json.dumps(list(expected_sources))),
+                ).fetchall()
                 if len(rows) != len(expected_sources) or any(
-                        self._row_turn(r).evidence_hash() != expected_sources[r["id"]] for r in rows):
+                    self._row_turn(r).evidence_hash() != expected_sources[r["id"]] for r in rows
+                ):
                     raise ConversationError("source evidence changed during extraction; retry")
             if extracted_through is not None:
                 checkpoint = f"extracted:{session}"
                 done = self.get_meta(checkpoint)
                 if done is not None and int(done) >= extracted_through:
                     return 0
-            row = self.db.execute("SELECT id, at, speaker FROM turns WHERE session=? ORDER BY idx DESC LIMIT 1",
-                                  (session,)).fetchone()
+            row = self.db.execute(
+                "SELECT id, at, speaker FROM turns WHERE session=? ORDER BY idx DESC LIMIT 1", (session,)
+            ).fetchone()
             if row is None:
                 raise ConversationError(f"no session {session!r} in space {self.space!r}")
             # A profile extracted from a user/assistant session belongs to the
             # user, even when the last message was the assistant's reply.
-            row = self.db.execute("SELECT id, at, speaker FROM turns WHERE session=? AND role='user' "
-                                  "ORDER BY idx DESC LIMIT 1", (session,)).fetchone() or row
+            row = (
+                self.db.execute(
+                    "SELECT id, at, speaker FROM turns WHERE session=? AND role='user' ORDER BY idx DESC LIMIT 1",
+                    (session,),
+                ).fetchone()
+                or row
+            )
             for m in memories:
-                raw = str(m.get("text") or "").strip()[:profile.MAX_STATEMENT]
+                raw = str(m.get("text") or "").strip()[: profile.MAX_STATEMENT]
                 text, _found = memory_guard.redact_secrets(raw)
                 pii_text, _pii = memory_guard.redact_pii(text)
                 text = pii_text
@@ -817,14 +984,18 @@ class Store:
                     continue
                 source_ids = m.get("source_turn_ids")
                 if source_ids is not None:
-                    if not isinstance(source_ids, (list, tuple)) or not source_ids \
-                            or any(not isinstance(tid, int) or isinstance(tid, bool) for tid in source_ids):
+                    if (
+                        not isinstance(source_ids, (list, tuple))
+                        or not source_ids
+                        or any(not isinstance(tid, int) or isinstance(tid, bool) for tid in source_ids)
+                    ):
                         raise ConversationError("source_turn_ids must be a non-empty list of turn ids")
                     source_ids = list(dict.fromkeys(source_ids))
                     sources = self.db.execute(
                         "SELECT id, at FROM turns WHERE session=? "
                         "AND id IN (SELECT value FROM json_each(?)) ORDER BY COALESCE(at, ''), idx",
-                        (session, json.dumps(source_ids))).fetchall()
+                        (session, json.dumps(source_ids)),
+                    ).fetchall()
                     if len(sources) != len(source_ids):
                         raise ConversationError("every source turn must exist in the memory's session")
                     anchor = sources[-1]
@@ -835,19 +1006,26 @@ class Store:
                 # Deduplicate within an owner's live beliefs. A repeated old
                 # statement after an update is a reversion, not a duplicate.
                 if self.db.execute(
-                        "SELECT 1 FROM facts WHERE owner=? AND statement_hash=? "
-                        "AND (? IS NULL OR slot IS NULL OR superseded_by IS NULL) LIMIT 1",
-                        (owner, fact_hash(text), slot)).fetchone():
+                    "SELECT 1 FROM facts WHERE owner=? AND statement_hash=? "
+                    "AND (? IS NULL OR slot IS NULL OR superseded_by IS NULL) LIMIT 1",
+                    (owner, fact_hash(text), slot),
+                ).fetchone():
                     continue
-                fid = self._insert_fact(anchor["id"], kind, profile.subject_of(text), text,
-                                        _iso(_moment(m.get("at"))) if m.get("at") else anchor["at"], slot, source,
-                                        owner)
+                fid = self._insert_fact(
+                    anchor["id"],
+                    kind,
+                    profile.subject_of(text),
+                    text,
+                    _iso(_moment(m.get("at"))) if m.get("at") else anchor["at"],
+                    slot,
+                    source,
+                    owner,
+                )
                 self.db.execute("DELETE FROM fact_sources WHERE fact=?", (fid,))
                 self.db.executemany("INSERT INTO fact_sources VALUES (?, ?)", [(fid, tid) for tid in source_ids])
                 added += 1
             if extracted_through is not None:
-                self.db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)",
-                                (checkpoint, str(extracted_through)))
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (checkpoint, str(extracted_through)))
         return added
 
     def set_summary(self, session: str, text: str, method: str, *, expected_revision=None) -> None:
@@ -859,8 +1037,10 @@ class Store:
             n = self.db.execute("SELECT COUNT(*) FROM turns WHERE session=?", (session,)).fetchone()[0]
             if not n:
                 raise ConversationError(f"no session {session!r} in space {self.space!r}")
-            self.db.execute("INSERT OR REPLACE INTO summaries VALUES (?, ?, ?, ?, ?)",
-                            (session, text, method, n, _iso(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))))
+            self.db.execute(
+                "INSERT OR REPLACE INTO summaries VALUES (?, ?, ?, ?, ?)",
+                (session, text, method, n, _iso(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))),
+            )
 
     def get_meta(self, key: str) -> str | None:
         row = self.db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
@@ -884,15 +1064,27 @@ class Store:
         where = " OR ".join(clauses)
         with self._lock, write_txn(self.db):
             chains = self._chains_for_turns("(" + where + ")", args)
-            affected_sessions = [r[0] for r in self.db.execute(
-                "SELECT DISTINCT session FROM turns WHERE " + where, args)]  # nosec B608 - fixed clauses
-            ids = [r[0] for r in self.db.execute(
-                f"SELECT u.id FROM units u JOIN turns t ON t.id = u.turn WHERE {where}", args)]  # nosec B608
+            affected_sessions = [
+                r[0]
+                for r in self.db.execute(  # nosec B608
+                    "SELECT DISTINCT session FROM turns WHERE " + where,  # nosec B608
+                    args,
+                )
+            ]  # nosec B608 - fixed clauses
+            ids = [
+                r[0]
+                for r in self.db.execute(  # nosec B608
+                    f"SELECT u.id FROM units u JOIN turns t ON t.id = u.turn WHERE {where}",  # nosec B608
+                    args,
+                )
+            ]  # nosec B608
             if FTS5:
                 self.db.executemany("DELETE FROM units_fts WHERE rowid=?", [(i,) for i in ids])
             n = self.db.execute(f"DELETE FROM turns WHERE {where}", args).rowcount  # nosec B608
-            self.db.execute("DELETE FROM meta WHERE key IN (SELECT 'extracted:' || id FROM sessions "
-                            "WHERE id NOT IN (SELECT DISTINCT session FROM turns))")
+            self.db.execute(
+                "DELETE FROM meta WHERE key IN (SELECT 'extracted:' || id FROM sessions "
+                "WHERE id NOT IN (SELECT DISTINCT session FROM turns))"
+            )
             # Purging a session's tail allows later appends to reuse its turn
             # indices. Rewind only past the surviving high-water mark, so the
             # next extraction cannot skip those newly appended messages.
@@ -900,7 +1092,8 @@ class Store:
                 "UPDATE meta SET value=CAST(MIN(CAST(value AS INTEGER), "
                 "(SELECT MAX(idx) FROM turns WHERE session=?)) AS TEXT) WHERE key=? "
                 "AND CAST(value AS INTEGER)>(SELECT MAX(idx) FROM turns WHERE session=?)",
-                [(session, f"extracted:{session}", session) for session in affected_sessions])
+                [(session, f"extracted:{session}", session) for session in affected_sessions],
+            )
             self.db.execute("DELETE FROM sessions WHERE id NOT IN (SELECT DISTINCT session FROM turns)")
             self._reinstate(chains)
         self._turn_cache.clear()
@@ -910,27 +1103,47 @@ class Store:
 
     def stats(self) -> dict:
         one = lambda sql: self.db.execute(sql).fetchone()[0]  # noqa: E731
-        return {"space": self.space, "sessions": one("SELECT COUNT(*) FROM sessions"),
-                "turns": one("SELECT COUNT(*) FROM turns"), "units": one("SELECT COUNT(*) FROM units"),
-                "facts": one("SELECT COUNT(*) FROM facts WHERE superseded_by IS NULL"),
-                "summaries": one("SELECT COUNT(*) FROM summaries"),
-                "entities": one("SELECT COUNT(DISTINCT name) FROM entities"),
-                "first": one("SELECT MIN(at) FROM turns"), "last": one("SELECT MAX(at) FROM turns")}
+        return {
+            "space": self.space,
+            "sessions": one("SELECT COUNT(*) FROM sessions"),
+            "turns": one("SELECT COUNT(*) FROM turns"),
+            "units": one("SELECT COUNT(*) FROM units"),
+            "facts": one("SELECT COUNT(*) FROM facts WHERE superseded_by IS NULL"),
+            "summaries": one("SELECT COUNT(*) FROM summaries"),
+            "entities": one("SELECT COUNT(DISTINCT name) FROM entities"),
+            "first": one("SELECT MIN(at) FROM turns"),
+            "last": one("SELECT MAX(at) FROM turns"),
+        }
 
     def sessions(self) -> list[dict]:
-        return [dict(r) for r in self.db.execute(
-            "SELECT s.id, s.started_at, COUNT(t.id) AS turns FROM sessions s "
-            "LEFT JOIN turns t ON t.session = s.id GROUP BY s.id ORDER BY s.seq")]
+        return [
+            dict(r)
+            for r in self.db.execute(
+                "SELECT s.id, s.started_at, COUNT(t.id) AS turns FROM sessions s "
+                "LEFT JOIN turns t ON t.session = s.id GROUP BY s.id ORDER BY s.seq"
+            )
+        ]
 
     def latest_moment(self) -> dt.datetime | None:
         value = self.db.execute("SELECT MAX(at) FROM turns").fetchone()[0]
         return dt.datetime.fromisoformat(value) if value else None
 
     def _row_turn(self, r) -> Turn:
-        dates = tuple(timeparse.Grounding(s, e, "", lab, dt.date.fromisoformat(lo), dt.date.fromisoformat(hi))
-                      for s, e, lab, lo, hi in json.loads(r["dates"]))
-        return Turn(r["id"], r["session"], r["idx"], dt.datetime.fromisoformat(r["at"]) if r["at"] else None,
-                    r["speaker"], r["role"], r["text"], dates, r["ref"])
+        dates = tuple(
+            timeparse.Grounding(s, e, "", lab, dt.date.fromisoformat(lo), dt.date.fromisoformat(hi))
+            for s, e, lab, lo, hi in json.loads(r["dates"])
+        )
+        return Turn(
+            r["id"],
+            r["session"],
+            r["idx"],
+            dt.datetime.fromisoformat(r["at"]) if r["at"] else None,
+            r["speaker"],
+            r["role"],
+            r["text"],
+            dates,
+            r["ref"],
+        )
 
     def turns(self, ids: Iterable[int]) -> dict[int, Turn]:
         self.read_stamp()
@@ -938,8 +1151,9 @@ class Store:
         result = {i: self._turn_cache[i] for i in ids if i in self._turn_cache}
         missing = [i for i in ids if i not in self._turn_cache]
         if missing:
-            for r in self.db.execute("SELECT * FROM turns WHERE id IN (SELECT value FROM json_each(?))",
-                                     (json.dumps(missing),)):
+            for r in self.db.execute(
+                "SELECT * FROM turns WHERE id IN (SELECT value FROM json_each(?))", (json.dumps(missing),)
+            ):
                 result[r["id"]] = self._row_turn(r)
         for i in ids:
             if i in result:
@@ -957,9 +1171,13 @@ class Store:
         return sys.getsizeof(turn.text) + 512 + len(turn.dates) * 128
 
     def neighbours(self, turn: Turn, before: int, after: int) -> list[int]:
-        return [r[0] for r in self.db.execute(
-            "SELECT id FROM turns WHERE session=? AND idx BETWEEN ? AND ? AND idx != ? ORDER BY idx",
-            (turn.session, turn.idx - before, turn.idx + after, turn.idx))]
+        return [
+            r[0]
+            for r in self.db.execute(
+                "SELECT id FROM turns WHERE session=? AND idx BETWEEN ? AND ? AND idx != ? ORDER BY idx",
+                (turn.session, turn.idx - before, turn.idx + after, turn.idx),
+            )
+        ]
 
     def units(self, *, after_id: int | None = None, limit: int | None = None) -> list[tuple[int, int, str, str]]:
         """Retrieval passages, optionally bounded by a stable unit-ID cursor.
@@ -977,14 +1195,14 @@ class Store:
                 raise ValueError("unit limit must be a nonnegative integer")
             query += " LIMIT ?"
             params.append(limit)
-        return [tuple(r) for r in self.db.execute(query, params)]
+        return [tuple(r) for r in self.db.execute(query, tuple(params))]
 
     def unit_batches(self, size: int = 1024, *, allowed: set[int] | None = None):
         """Stream eligible passages without materialising the interaction log."""
         if size <= 0:
             raise ValueError("batch size must be positive")
         query = "SELECT id, turn, body, hash FROM units"
-        params = ()
+        params: tuple[str, ...] = ()
         if allowed is not None:
             query += " WHERE turn IN (SELECT value FROM json_each(?))"
             params = (json.dumps(sorted(allowed)),)
@@ -999,8 +1217,11 @@ class Store:
         ids = list(unit_ids)
         if not ids:
             return {}
-        return dict(self.db.execute("SELECT id, turn FROM units WHERE id IN (SELECT value FROM json_each(?))",
-                                    (json.dumps(ids),)).fetchall())
+        return dict(
+            self.db.execute(
+                "SELECT id, turn FROM units WHERE id IN (SELECT value FROM json_each(?))", (json.dumps(ids),)
+            ).fetchall()
+        )
 
     def prepare_lexical(self, query: str) -> None:
         """Refresh derived Unicode postings before opening a recall snapshot.
@@ -1065,31 +1286,49 @@ class Store:
                 fetch = limit * 4
                 rows = self.db.execute(
                     "SELECT rowid, bm25(units_fts) FROM units_fts WHERE units_fts MATCH ? "
-                    "ORDER BY bm25(units_fts), rowid LIMIT ?", (match, fetch)).fetchall()
+                    "ORDER BY bm25(units_fts), rowid LIMIT ?",
+                    (match, fetch),
+                ).fetchall()
                 owner = self.unit_turns([r[0] for r in rows])
                 kept = [(r[0], sigmoid_bm25(-r[1], n_terms)) for r in rows if owner.get(r[0]) in allowed]
                 if len(kept) >= limit or len(rows) < fetch:
                     return kept[:limit]
-            eligible = (" AND rowid IN (SELECT id FROM units WHERE turn IN "
-                        "(SELECT value FROM json_each(?)))") if allowed is not None else ""
+            eligible = (
+                (" AND rowid IN (SELECT id FROM units WHERE turn IN (SELECT value FROM json_each(?)))")
+                if allowed is not None
+                else ""
+            )
             params = (match, json.dumps(sorted(allowed)), limit) if allowed is not None else (match, limit)
-            rows = self.db.execute(
+            ranked_rows = self.db.execute(
                 "SELECT rowid, bm25(units_fts) FROM units_fts WHERE units_fts MATCH ? "  # nosec B608 - fixed eligibility SQL
-                + eligible + " ORDER BY bm25(units_fts), rowid LIMIT ?", params)
-            return [(r[0], sigmoid_bm25(-r[1], n_terms)) for r in rows]
+                + eligible
+                + " ORDER BY bm25(units_fts), rowid LIMIT ?",
+                params,
+            )
+            return [(r[0], sigmoid_bm25(-r[1], n_terms)) for r in ranked_rows]
         units = (unit for batch in self.unit_batches(allowed=allowed) for unit in batch)
         return _python_bm25(units, query, limit)
 
     def in_window(self, lo: dt.date, hi: dt.date) -> set[int]:
         """Turns said within [lo, hi], or whose grounded dates overlap it."""
         lo_s, hi_s = lo.isoformat(), (hi + dt.timedelta(days=1)).isoformat()
-        return {r[0] for r in self.db.execute(
-            "SELECT id FROM turns WHERE (at >= ? AND at < ?) OR (lo IS NOT NULL AND lo < ? AND hi >= ?)",
-            (lo_s, hi_s, hi_s, lo.isoformat()))}
+        return {
+            r[0]
+            for r in self.db.execute(
+                "SELECT id FROM turns WHERE (at >= ? AND at < ?) OR (lo IS NOT NULL AND lo < ? AND hi >= ?)",
+                (lo_s, hi_s, hi_s, lo.isoformat()),
+            )
+        }
 
-    def _fact_conditions(self, kinds: Iterable[str] = (), *, history: bool = False,
-                         as_of=None, allowed: set[int] | None = None,
-                         candidates: Iterable[int] | None = None) -> tuple[str, list]:
+    def _fact_conditions(
+        self,
+        kinds: Iterable[str] = (),
+        *,
+        history: bool = False,
+        as_of=None,
+        allowed: set[int] | None = None,
+        candidates: Iterable[int] | None = None,
+    ) -> tuple[str, list]:
         """Shared evidence and belief eligibility for profile reads and candidate search."""
         kinds = list(kinds)
         moment = _iso(_moment(as_of)) if as_of is not None else None
@@ -1113,8 +1352,10 @@ class Store:
                 excluded.append("st.id NOT IN (SELECT value FROM json_each(?))")
                 source_values.append(json.dumps(sorted(allowed)))
             if excluded and self._has_sources:
-                conditions.append(f"NOT EXISTS (SELECT 1 FROM fact_sources fs JOIN turns st ON st.id=fs.turn "  # nosec B608 - fixed aliases
-                                  f"WHERE fs.fact={f}.id AND (" + " OR ".join(excluded) + "))")
+                conditions.append(
+                    f"NOT EXISTS (SELECT 1 FROM fact_sources fs JOIN turns st ON st.id=fs.turn "  # nosec B608 - fixed aliases
+                    f"WHERE fs.fact={f}.id AND (" + " OR ".join(excluded) + "))"
+                )
                 values.extend(source_values)
             return conditions, values
 
@@ -1134,37 +1375,64 @@ class Store:
                 "(f.slot IS NULL OR NOT EXISTS (SELECT 1 FROM facts g JOIN turns u ON u.id=g.turn "  # nosec B608 - fixed clauses
                 "WHERE g.slot=f.slot AND " + same_owner + " "
                 "AND (COALESCE(g.at, ''), g.id) > (COALESCE(f.at, ''), f.id)"
-                + (" AND " + " AND ".join(newer) if newer else "") + "))")
+                + (" AND " + " AND ".join(newer) if newer else "")
+                + "))"
+            )
             params.extend(values)
         return " AND ".join(clauses) or "1", params
 
-    def facts(self, kinds: Iterable[str] = (), *, history: bool = False,
-              as_of=None, allowed: set[int] | None = None,
-              candidates: Iterable[int] | None = None) -> list[dict]:
+    def facts(
+        self,
+        kinds: Iterable[str] = (),
+        *,
+        history: bool = False,
+        as_of=None,
+        allowed: set[int] | None = None,
+        candidates: Iterable[int] | None = None,
+    ) -> list[dict]:
         """Current beliefs, oldest first. `history` includes superseded statements;
         `as_of` and `allowed` restrict every supporting source before belief selection."""
-        where, params = self._fact_conditions(kinds, history=history, as_of=as_of,
-                                             allowed=allowed, candidates=candidates)
-        legacy = "".join(", " + expr + " AS " + name for name, expr in {
-            "owner": "LOWER(t.speaker)", "slot": "NULL", "source": "'rule'", "superseded_by": "NULL"
-        }.items() if name not in self._fact_columns)
+        where, params = self._fact_conditions(
+            kinds, history=history, as_of=as_of, allowed=allowed, candidates=candidates
+        )
+        legacy = "".join(
+            ", " + expr + " AS " + name
+            for name, expr in {
+                "owner": "LOWER(t.speaker)",
+                "slot": "NULL",
+                "source": "'rule'",
+                "superseded_by": "NULL",
+            }.items()
+            if name not in self._fact_columns
+        )
         successor = " LEFT JOIN facts n ON n.id=f.superseded_by" if "superseded_by" in self._fact_columns else ""
         validity = "n.at" if successor else "NULL"
-        return [dict(r) for r in self.db.execute(
-            "SELECT f.*, t.session, t.speaker, " + validity + " AS valid_until" + legacy + " FROM facts f "  # nosec B608 - fixed schema expressions
-            "JOIN turns t ON t.id=f.turn" + successor + " WHERE "
-            + where + " ORDER BY f.at, f.id", params)]
+        return [
+            dict(r)
+            for r in self.db.execute(
+                "SELECT f.*, t.session, t.speaker, " + validity + " AS valid_until" + legacy + " FROM facts f "  # nosec B608 - fixed schema expressions
+                "JOIN turns t ON t.id=f.turn" + successor + " WHERE " + where + " ORDER BY f.at, f.id",
+                params,
+            )
+        ]
 
-    def recall_facts(self, query: str, *, as_of=None, allowed: set[int] | None = None,
-                     instructions: bool = True, profile_facts: bool = True, limit: int = 128) -> list[dict]:
+    def recall_facts(
+        self,
+        query: str,
+        *,
+        as_of=None,
+        allowed: set[int] | None = None,
+        instructions: bool = True,
+        profile_facts: bool = True,
+        limit: int = 128,
+    ) -> list[dict]:
         """Bounded profile candidates from a separate sparse index and standing rules.
 
         Recall does not load the entire profile on every question. The normal
         `facts` method remains the exhaustive, inspectable history interface.
         """
         match = _fts_query(query)
-        if not FTS5 or not self.db.execute(
-                "SELECT 1 FROM sqlite_master WHERE name='facts_fts'").fetchone():
+        if not FTS5 or not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='facts_fts'").fetchone():
             return self.facts(as_of=as_of, allowed=allowed)
         ids: set[int] = set()
         condition, params = self._fact_conditions(as_of=as_of, allowed=allowed)
@@ -1174,28 +1442,44 @@ class Store:
             # cap. Bounded prefix matching also finds ordinary inflections such
             # as implement/implementation and HTML/HTML5 without loading all
             # standing rules. The same scope/time conditions remain mandatory.
-            terms = [term for term in dict.fromkeys(re.findall(r"[A-Za-z0-9]+", query.lower()))
-                     if term not in profile.STOPWORDS][:64]
-            instruction_match = " OR ".join(f'"{term[:5]}"*' if len(term) >= 3 else f'"{term}"'
-                                             for term in terms)
-            ids.update(r[0] for r in self.db.execute(
-                "SELECT f.id FROM facts_fts JOIN facts f ON f.id=facts_fts.rowid JOIN turns t ON t.id=f.turn "  # nosec B608
-                "WHERE facts_fts MATCH ? AND f.kind='instruction'" + suffix + " ORDER BY bm25(facts_fts) LIMIT ?",
-                [instruction_match, *params, limit]))
+            terms = [
+                term
+                for term in dict.fromkeys(re.findall(r"[A-Za-z0-9]+", query.lower()))
+                if term not in profile.STOPWORDS
+            ][:64]
+            instruction_match = " OR ".join(f'"{term[:5]}"*' if len(term) >= 3 else f'"{term}"' for term in terms)
+            ids.update(
+                r[0]
+                for r in self.db.execute(
+                    "SELECT f.id FROM facts_fts JOIN facts f ON f.id=facts_fts.rowid JOIN turns t ON t.id=f.turn "  # nosec B608
+                    "WHERE facts_fts MATCH ? AND f.kind='instruction'" + suffix + " ORDER BY bm25(facts_fts) LIMIT ?",
+                    [instruction_match, *params, limit],
+                )
+            )
         if profile_facts and match:
-            ids.update(r[0] for r in self.db.execute(
-                "SELECT f.id FROM facts_fts JOIN facts f ON f.id=facts_fts.rowid JOIN turns t ON t.id=f.turn "  # nosec B608 - fixed conditions
-                "WHERE facts_fts MATCH ?" + suffix + " ORDER BY bm25(facts_fts) LIMIT ?",
-                [match, *params, limit]))
+            ids.update(
+                r[0]
+                for r in self.db.execute(
+                    "SELECT f.id FROM facts_fts JOIN facts f ON f.id=facts_fts.rowid JOIN turns t ON t.id=f.turn "  # nosec B608 - fixed conditions
+                    "WHERE facts_fts MATCH ?" + suffix + " ORDER BY bm25(facts_fts) LIMIT ?",
+                    [match, *params, limit],
+                )
+            )
         # Rules about answer format can be unrelated to the query. The kind
         # index supplies them, and a small recent profile supports advice.
         kinds = (["instruction"] if instructions else []) + (
-            ["preference", "dislike", "favorite", "identity", "habit"] if profile_facts else [])
+            ["preference", "dislike", "favorite", "identity", "habit"] if profile_facts else []
+        )
         for kind in kinds:
-            ids.update(r[0] for r in self.db.execute(
-                "SELECT f.id FROM facts f JOIN turns t ON t.id=f.turn WHERE f.kind=?"  # nosec B608 - bound kind and metadata
-                + suffix + " ORDER BY f.at DESC, f.id DESC LIMIT ?",
-                [kind, *params, limit if kind == "instruction" else 16]))
+            ids.update(
+                r[0]
+                for r in self.db.execute(
+                    "SELECT f.id FROM facts f JOIN turns t ON t.id=f.turn WHERE f.kind=?"  # nosec B608 - bound kind and metadata
+                    + suffix
+                    + " ORDER BY f.at DESC, f.id DESC LIMIT ?",
+                    [kind, *params, limit if kind == "instruction" else 16],
+                )
+            )
         return self.facts(as_of=as_of, allowed=allowed, candidates=ids)
 
     def entity_turns(self, names: Iterable[str], *, max_matches: int | None = None) -> dict[str, list[int]]:
@@ -1210,48 +1494,71 @@ class Store:
         if max_matches is not None:
             # A ubiquitous speaker/entity contributes almost no information.
             # Count using indexes instead of materialising its whole history.
-            names = [n for n in names if self.db.execute(
-                "SELECT (SELECT COUNT(*) FROM (SELECT 1 FROM entities WHERE name=? LIMIT ?)) "
-                "+ (SELECT COUNT(*) FROM (SELECT 1 FROM turns WHERE LOWER(speaker)=? LIMIT ?))",
-                (n, max_matches + 1, n, max_matches + 1)).fetchone()[0] <= max_matches]
+            names = [
+                n
+                for n in names
+                if self.db.execute(
+                    "SELECT (SELECT COUNT(*) FROM (SELECT 1 FROM entities WHERE name=? LIMIT ?)) "
+                    "+ (SELECT COUNT(*) FROM (SELECT 1 FROM turns WHERE LOWER(speaker)=? LIMIT ?))",
+                    (n, max_matches + 1, n, max_matches + 1),
+                ).fetchone()[0]
+                <= max_matches
+            ]
             if not names:
                 return {}
         out: dict[str, list[int]] = {name: [] for name in names}
         placeholders = ",".join("?" for _ in names)
         for found, turn in self.db.execute(
-                f"SELECT name, turn FROM entities WHERE name IN ({placeholders})",  # nosec B608 - placeholders only
-                names):
+            f"SELECT name, turn FROM entities WHERE name IN ({placeholders})",  # nosec B608 - placeholders only
+            names,
+        ):
             out[found].append(turn)
         seen = {n: set(turns) for n, turns in out.items()}
         for speaker, turn in self.db.execute(
-                f"SELECT LOWER(speaker), id FROM turns WHERE LOWER(speaker) IN ({placeholders})",  # nosec B608
-                names):
+            f"SELECT LOWER(speaker), id FROM turns WHERE LOWER(speaker) IN ({placeholders})",  # nosec B608
+            names,
+        ):
             if turn not in seen[speaker]:
                 out[speaker].append(turn)
                 seen[speaker].add(turn)
         return out
 
     def summaries(self) -> dict[str, dict]:
-        return {r["session"]: dict(r) for r in self.db.execute(
-            "SELECT s.* FROM summaries s WHERE s.turns=(SELECT COUNT(*) FROM turns t WHERE t.session=s.session)")}
+        return {
+            r["session"]: dict(r)
+            for r in self.db.execute(
+                "SELECT s.* FROM summaries s WHERE s.turns=(SELECT COUNT(*) FROM turns t WHERE t.session=s.session)"
+            )
+        }
 
     def fact_evidence(self, fact_id: int) -> list[dict]:
         """The exact stored source messages supporting a derived memory."""
         if not self._has_sources:
-            return [dict(r) for r in self.db.execute(
-                "SELECT t.id, t.ref, t.session, t.at, t.speaker, t.role, t.text FROM facts f "
-                "JOIN turns t ON t.id=f.turn WHERE f.id=?", (fact_id,))]
-        return [dict(r) for r in self.db.execute(
-            "SELECT t.id, t.ref, t.session, t.at, t.speaker, t.role, t.text FROM fact_sources s "
-            "JOIN turns t ON t.id=s.turn WHERE s.fact=? ORDER BY COALESCE(t.at, ''), t.id", (fact_id,))]
+            return [
+                dict(r)
+                for r in self.db.execute(
+                    "SELECT t.id, t.ref, t.session, t.at, t.speaker, t.role, t.text FROM facts f "
+                    "JOIN turns t ON t.id=f.turn WHERE f.id=?",
+                    (fact_id,),
+                )
+            ]
+        return [
+            dict(r)
+            for r in self.db.execute(
+                "SELECT t.id, t.ref, t.session, t.at, t.speaker, t.role, t.text FROM fact_sources s "
+                "JOIN turns t ON t.id=s.turn WHERE s.fact=? ORDER BY COALESCE(t.at, ''), t.id",
+                (fact_id,),
+            )
+        ]
 
     def fact_source_ids(self, fact_ids: Iterable[int]) -> dict[int, list[int]]:
         ids = list(fact_ids)
         table, fact, turn = ("fact_sources", "fact", "turn") if self._has_sources else ("facts", "id", "turn")
         out: dict[int, list[int]] = {}
         for fid, tid in self.db.execute(
-                f"SELECT {fact}, {turn} FROM {table} WHERE {fact} IN (SELECT value FROM json_each(?))",  # nosec B608 - fixed schema names
-                (json.dumps(ids),)):
+            f"SELECT {fact}, {turn} FROM {table} WHERE {fact} IN (SELECT value FROM json_each(?))",  # nosec B608 - fixed schema names
+            (json.dumps(ids),),
+        ):
             out.setdefault(fid, []).append(tid)
         return out
 
@@ -1277,8 +1584,9 @@ class Store:
         rows = self.db.execute(query, (after_seq, after_seq, limit)).fetchall()
         return [dict(r) for r in rows]
 
-    def session_turns(self, session: str, *, after_idx: int = -1,
-                      through_idx: int | None = None, limit: int | None = None) -> list[Turn]:
+    def session_turns(
+        self, session: str, *, after_idx: int = -1, through_idx: int | None = None, limit: int | None = None
+    ) -> list[Turn]:
         """Ordered source messages, optionally a bounded checkpoint batch."""
         query, params = "SELECT * FROM turns WHERE session=? AND idx>?", [session, after_idx]
         if through_idx is not None:
@@ -1290,14 +1598,22 @@ class Store:
                 raise ValueError("turn limit must be non-negative")
             query += " LIMIT ?"
             params.append(limit)
-        rows = self.db.execute(query, params).fetchall()
+        rows = self.db.execute(query, tuple(params)).fetchall()
         return [self._row_turn(r) for r in rows]
 
-    def allowed(self, *, sessions: Iterable[str] = (), speakers: Iterable[str] = (), since=None, until=None,
-                now: dt.datetime | None = None) -> set[int] | None:
+    def allowed(
+        self,
+        *,
+        sessions: Iterable[str] = (),
+        speakers: Iterable[str] = (),
+        since=None,
+        until=None,
+        now: dt.datetime | None = None,
+    ) -> set[int] | None:
         """The turns a filtered recall may use, or None when nothing is filtered out."""
         sessions, speakers = list(sessions), [_safe_label(str(s).strip())[0].lower() for s in speakers]
-        clauses, args = [], []
+        clauses: list[str] = []
+        args: list[str | None] = []
         if sessions:
             clauses.append("session IN (SELECT value FROM json_each(?))")
             args.append(json.dumps(sessions))
@@ -1311,15 +1627,19 @@ class Store:
             clauses.append("at <= ?")
             args.append(_iso(_moment(until)))
         moment = _iso(now) if now else _iso(dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
-        expired = self.db.execute("SELECT 1 FROM turns WHERE expires IS NOT NULL AND expires <= ? LIMIT 1",
-                                  (moment,)).fetchone() if self._has_expiry else None
+        expired = (
+            self.db.execute(
+                "SELECT 1 FROM turns WHERE expires IS NOT NULL AND expires <= ? LIMIT 1", (moment,)
+            ).fetchone()
+            if self._has_expiry
+            else None
+        )
         if expired:
             clauses.append("(expires IS NULL OR expires > ?)")
             args.append(moment)
         if not clauses:
             return None
-        return {r[0] for r in self.db.execute(
-            "SELECT id FROM turns WHERE " + " AND ".join(clauses), args)}  # nosec B608 - fixed clauses
+        return {r[0] for r in self.db.execute("SELECT id FROM turns WHERE " + " AND ".join(clauses), args)}  # nosec B608 - fixed clauses
 
     def promote(self, *, scope: str = "") -> dict:
         """Copy the current profile into the store's atomic facts, so every surface that
@@ -1327,13 +1647,21 @@ class Store:
         from unimem import hierarchical
 
         category = {"preference": "preference", "dislike": "preference", "favorite": "preference"}
-        items = [{"statement": f["statement"], "category": category.get(f["kind"], "general"),
-                  "scopes": [scope] if scope else [f"conversation:{self.space}"],
-                  "valid_from": f["at"][:10] if f["at"] else None}
-                 for f in self.facts()]
+        items = [
+            {
+                "statement": f["statement"],
+                "category": category.get(f["kind"], "general"),
+                "scopes": [scope] if scope else [f"conversation:{self.space}"],
+                "valid_from": f["at"][:10] if f["at"] else None,
+            }
+            for f in self.facts()
+        ]
         results = hierarchical.add_facts(self.root, items) if items else []
-        return {"space": self.space, "promoted": sum(1 for _f, action in results if action == "ADD"),
-                "reinforced": sum(1 for _f, action in results if action != "ADD")}
+        return {
+            "space": self.space,
+            "promoted": sum(1 for _f, action in results if action == "ADD"),
+            "reinforced": sum(1 for _f, action in results if action != "ADD"),
+        }
 
     def export(self):
         """Versioned JSONL sessions including beliefs, provenance and checkpoints."""
@@ -1350,17 +1678,19 @@ class Store:
 
 def _python_bm25(units, query: str, limit: int) -> list[tuple[int, float]]:
     def terms(text):
-        return (stem(m.group()) for m in _BM25_WORD_RE.finditer(text.lower())
-                if m.group() not in profile.STOPWORDS)
+        return (stem(m.group()) for m in _BM25_WORD_RE.finditer(text.lower()) if m.group() not in profile.STOPWORDS)
 
     q = set(terms(query))
     if not q or limit <= 0:
         return []
     # Keep only query-term frequencies and document lengths. Source bodies are
     # streamed by the store, rather than copied into a second full corpus.
-    docs, df, total_length = [], Counter(), 0
+    docs: list[tuple[int, int, Counter[str]]] = []
+    df: Counter[str] = Counter()
+    total_length = 0
     for uid, _turn, body, _h in units:
-        counts, length = Counter(), 0
+        counts: Counter[str] = Counter()
+        length = 0
         for term in terms(body):
             length += 1
             if term in q:

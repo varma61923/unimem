@@ -4,6 +4,7 @@ Candidates remain unverified data. The caller must deliver the returned arm,
 execute edits only in its own sandbox, and resolve every assigned outcome.
 Vendor validation scores never enter the estimator, gate or frontier.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -18,11 +19,21 @@ from unimem import unit_trials as trials
 KIND = "optimizer-candidates"
 
 
-def intake(root: str, proposal: dict[str, Any], *, format: str = "generic", context: Sequence[str] = (),
-           source_ids: Sequence[str] = (), alpha: float = .05, rate: float = .5,
-           training_size: int = 100, minimum_support: int = 10,
-           segments: Sequence[str] = ("default",), harm_score: float = 1,
-           harm_scorer: str = "unimem-delta") -> dict[str, Any]:
+def intake(
+    root: str,
+    proposal: dict[str, Any],
+    *,
+    format: str = "generic",
+    context: Sequence[str] = (),
+    source_ids: Sequence[str] = (),
+    alpha: float = 0.05,
+    rate: float = 0.5,
+    training_size: int = 100,
+    minimum_support: int = 10,
+    segments: Sequence[str] = ("default",),
+    harm_score: float = 1,
+    harm_scorer: str = "unimem-delta",
+) -> dict[str, Any]:
     store.operator()
     fp.wire(proposal)
     values = pure.adapt(format, proposal)
@@ -47,17 +58,39 @@ def intake(root: str, proposal: dict[str, Any], *, format: str = "generic", cont
         safety.assert_mutable(root, [value["base_artifact"]])
         if memory_guard.scan_fields({"optimizer_delta": value["delta"]}).should_block:
             raise PermissionError("UniMem optimizer proposal failed the content-safety screen")
-        data = {**value, "scopes": sorted(set(context)), "segments": strata,
-                "gate_hash": fp.digest(gate), "harm_score": harm_score, "harm_scorer": harm_scorer,
-                "source_digests": {identity: fp.digest(row) for identity, row in sources.items()}}
+        data = {
+            **value,
+            "scopes": sorted(set(context)),
+            "segments": strata,
+            "gate_hash": fp.digest(gate),
+            "harm_score": harm_score,
+            "harm_scorer": harm_scorer,
+            "source_digests": {identity: fp.digest(row) for identity, row in sources.items()},
+        }
         store.put(root, KIND, value["id"], data, scopes=context, sources=source_ids, immutable=True)
-        trial = trials.register(root, value["id"], value["artifact_hash"], alpha=alpha, rate=rate,
-                                training_size=training_size, minimum_support=minimum_support)
-        result.append({"id": value["id"], "unit_kind": value.get("unit_kind", "candidate"),
-                       "format_status": value["format_status"], "schedule": trial["schedule"]})
-    return {"candidates": result, "classification": "unverified proposal",
-            "trial_design": "independent typed delta factors; joint delivery records every interaction",
-            "execution": "caller-controlled sandbox; no proposed code executed by UniMem"}
+        trial = trials.register(
+            root,
+            value["id"],
+            value["artifact_hash"],
+            alpha=alpha,
+            rate=rate,
+            training_size=training_size,
+            minimum_support=minimum_support,
+        )
+        result.append(
+            {
+                "id": value["id"],
+                "unit_kind": value.get("unit_kind", "candidate"),
+                "format_status": value["format_status"],
+                "schedule": trial["schedule"],
+            }
+        )
+    return {
+        "candidates": result,
+        "classification": "unverified proposal",
+        "trial_design": "independent typed delta factors; joint delivery records every interaction",
+        "execution": "caller-controlled sandbox; no proposed code executed by UniMem",
+    }
 
 
 def _load(root: str, identity: str, context: Sequence[str]) -> dict[str, Any]:
@@ -67,23 +100,24 @@ def _load(root: str, identity: str, context: Sequence[str]) -> dict[str, Any]:
     if not capability_io.permits(root, {"kind": "optimizer-delta", "scopes": value["scopes"]}, namespace=KIND):
         raise PermissionError("UniMem optimizer candidate exceeds the leaf capability")
     sources = store.admit(root, list(value["source_digests"]), context=context)
-    if any(i not in sources or fp.digest(sources[i]) != digest
-           for i, digest in value["source_digests"].items()):
+    if any(i not in sources or fp.digest(sources[i]) != digest for i, digest in value["source_digests"].items()):
         raise PermissionError("UniMem optimizer source is unavailable or changed")
     if memory_guard.scan_fields({"optimizer_delta": value["delta"]}).should_block:
         raise PermissionError("UniMem optimizer candidate is no longer eligible for trial delivery")
     return value
 
 
-def expose(root: str, identities: Sequence[str], occasion: str, *, context: Sequence[str] = (),
-           segment: str = "default") -> dict[str, Any]:
+def expose(
+    root: str, identities: Sequence[str], occasion: str, *, context: Sequence[str] = (), segment: str = "default"
+) -> dict[str, Any]:
     """Return the actual candidate/bullet catalog for this factorial occasion."""
     with _jsonl.locked(fp.filename(root, "optimizer-delivery.lock")):
         return _expose(root, identities, occasion, context=context, segment=segment)
 
 
-def _expose(root: str, identities: Sequence[str], occasion: str, *, context: Sequence[str],
-            segment: str) -> dict[str, Any]:
+def _expose(
+    root: str, identities: Sequence[str], occasion: str, *, context: Sequence[str], segment: str
+) -> dict[str, Any]:
     fp.count(len(identities), 1, 64)
     if len(set(identities)) != len(identities):
         raise ValueError("UniMem optimizer catalog IDs must be unique")
@@ -94,8 +128,11 @@ def _expose(root: str, identities: Sequence[str], occasion: str, *, context: Seq
     delivery_id = fp.digest(occasion)
     if delivery_id in store.latest(root, "optimizer-delivery"):
         prior = store.get(root, "optimizer-delivery", delivery_id, context=context)
-        if (prior["identities"] != sorted(identities) or prior["segment"] != segment
-                or prior["gate_hash"] != fp.digest(gate)):
+        if (
+            prior["identities"] != sorted(identities)
+            or prior["segment"] != segment
+            or prior["gate_hash"] != fp.digest(gate)
+        ):
             raise ValueError("UniMem retry must match the originally delivered factorial catalog")
     prepared = []
     for identity in sorted(identities):
@@ -120,15 +157,34 @@ def _expose(root: str, identities: Sequence[str], occasion: str, *, context: Seq
                 trials.excluded(root, identity, occasion, reason, parent="harm-gate")
             continue
         arm = trials.assign(root, identity, occasion, context=segment)
-        design.append({"unit": identity, "injected": arm["injected"], "segment": segment,
-                       "propensity": 1 - trials.trial(root, identity)["design"]["rate"]})
+        design.append(
+            {
+                "unit": identity,
+                "injected": arm["injected"],
+                "segment": segment,
+                "propensity": 1 - trials.trial(root, identity)["design"]["rate"],
+            }
+        )
         if arm["injected"]:
-            catalog.append({"id": identity, "delta": value["delta"], "base_artifact": value["base_artifact"],
-                            "presentation": "unverified proposal", "unit_kind": value.get("unit_kind", "candidate")})
+            catalog.append(
+                {
+                    "id": identity,
+                    "delta": value["delta"],
+                    "base_artifact": value["base_artifact"],
+                    "presentation": "unverified proposal",
+                    "unit_kind": value.get("unit_kind", "candidate"),
+                }
+            )
     # One immutable delivered catalog names all crossed delta factors. A retry
     # must honor this same exact set, not remove a bullet after seeing outcomes.
-    record = {"occasion": occasion, "segment": segment, "identities": sorted(identities), "factors": design,
-              "interaction": "factorial", "gate_hash": fp.digest(gate)}
+    record = {
+        "occasion": occasion,
+        "segment": segment,
+        "identities": sorted(identities),
+        "factors": design,
+        "interaction": "factorial",
+        "gate_hash": fp.digest(gate),
+    }
     if prior is not None and prior != record:
         raise PermissionError("UniMem retry would change the original delivered treatment")
     store.put(root, "optimizer-delivery", delivery_id, record, scopes=context, immutable=True)
@@ -137,17 +193,38 @@ def _expose(root: str, identities: Sequence[str], occasion: str, *, context: Seq
         if current["source_digests"]:
             from unimem import contagion, memory_authority
 
-            contagion.record_read(root, list(current["source_digests"]), memory_authority.bound_writer()[0],
-                                  occasion, store.reference(KIND, item["id"]), context=context)
-    return {"catalog": catalog, "design": record, "classification": "randomized delivery",
-            "assumptions": ["delivered catalog is the treatment", "complete outcomes",
-                            "matched frozen harm calibration", "no cross-episode interference"]}
+            contagion.record_read(
+                root,
+                list(current["source_digests"]),
+                memory_authority.bound_writer()[0],
+                occasion,
+                store.reference(KIND, item["id"]),
+                context=context,
+            )
+    return {
+        "catalog": catalog,
+        "design": record,
+        "classification": "randomized delivery",
+        "assumptions": [
+            "delivered catalog is the treatment",
+            "complete outcomes",
+            "matched frozen harm calibration",
+            "no cross-episode interference",
+        ],
+    }
 
 
 def _evaluate(rows: Sequence[dict[str, Any]], design: dict[str, Any]) -> dict[str, Any]:
-    return promotion.evaluate(rows, {"default": 1}, {"default": 0}, alpha=design["alpha"],
-                              training_size=design["training_size"], minimum_support=design["minimum_support"],
-                              propensity_floor=min(design["rate"], 1-design["rate"]), margin=design["margin"])
+    return promotion.evaluate(
+        rows,
+        {"default": 1},
+        {"default": 0},
+        alpha=design["alpha"],
+        training_size=design["training_size"],
+        minimum_support=design["minimum_support"],
+        propensity_floor=min(design["rate"], 1 - design["rate"]),
+        margin=design["margin"],
+    )
 
 
 def _report(root: str, identity: str, segment: str | None = None) -> dict[str, Any]:
@@ -162,14 +239,20 @@ def _report(root: str, identity: str, segment: str | None = None) -> dict[str, A
     # E-process monitor and approximation-only MDE stay canonical; segment
     # summaries are estimates, not a new family-wise promotion certificate.
     canonical = trials.report(root, identity)
-    return {**canonical, **result, "complete": complete, "segment": segment or "all",
-            "promote": bool(complete and result["promote"]),
-            "verdict": "POSITIVE_BOUND" if complete and result["promote"] else "UNDERPOWERED",
-            "classification": "estimate"}
+    return {
+        **canonical,
+        **result,
+        "complete": complete,
+        "segment": segment or "all",
+        "promote": bool(complete and result["promote"]),
+        "verdict": "POSITIVE_BOUND" if complete and result["promote"] else "UNDERPOWERED",
+        "classification": "estimate",
+    }
 
 
-def status(root: str, identity: str, *, context: Sequence[str] = (), certify: bool = False,
-           pooled: bool = False) -> dict[str, Any]:
+def status(
+    root: str, identity: str, *, context: Sequence[str] = (), certify: bool = False, pooled: bool = False
+) -> dict[str, Any]:
     if type(certify) is not bool or type(pooled) is not bool:
         raise ValueError("UniMem optimizer certify must be boolean")
     value = _load(root, identity, context)
@@ -178,15 +261,19 @@ def status(root: str, identity: str, *, context: Sequence[str] = (), certify: bo
         from unimem import pooled_io
 
         result["pooled"] = pooled_io.report(root, value["content_hash"])
-    hurt = result["harm_e_value"] >= 1/result["alpha"]
+    hurt = result["harm_e_value"] >= 1 / result["alpha"]
     verdict = "harmful" if hurt else "positive_bound" if result["promote"] else "insufficient_evidence"
     gate = conformal_gate.current(root)
     rows = trials.rows(root, identity)
-    result["harm_budget"] = {"alpha": gate.get("alpha"), "calibration_hash": value["gate_hash"],
+    result["harm_budget"] = {
+        "alpha": gate.get("alpha"),
+        "calibration_hash": value["gate_hash"],
         "calibration_current": fp.digest(gate) == value["gate_hash"],
-        "observed_ipw_failure": sum((1-row["outcome"])/(1-row["rate"])
-                                    for row in rows if row["injected"]) / max(1, len(rows)),
-        "classification": "estimate", "assumptions": ["matched frozen harm calibration and live traffic"]}
+        "observed_ipw_failure": sum((1 - row["outcome"]) / (1 - row["rate"]) for row in rows if row["injected"])
+        / max(1, len(rows)),
+        "classification": "estimate",
+        "assumptions": ["matched frozen harm calibration and live traffic"],
+    }
     certificate = None
     if certify:
         store.operator()
@@ -195,12 +282,21 @@ def status(root: str, identity: str, *, context: Sequence[str] = (), certify: bo
         if hurt or not result["promote"]:
             raise PermissionError("UniMem optimizer candidate has not cleared canonical promotion")
         certificate = trials.certify(root, identity)
-    return {"candidate": value, "evidence": result, "certificate": certificate,
-            "feedback": {"version": 1, "optimizer": value["optimizer"], "candidate": identity,
-                         "decision": verdict, "negative_evidence": hurt,
-                         "reason": "canonical randomized evidence; claimed validation score excluded",
-                         "suggestion": "revise or remove the delta" if hurt else "continue a preregistered trial",
-                         "prune_bullet": hurt and value.get("unit_kind") == "bullet"}}
+    return {
+        "candidate": value,
+        "evidence": result,
+        "certificate": certificate,
+        "feedback": {
+            "version": 1,
+            "optimizer": value["optimizer"],
+            "candidate": identity,
+            "decision": verdict,
+            "negative_evidence": hurt,
+            "reason": "canonical randomized evidence; claimed validation score excluded",
+            "suggestion": "revise or remove the delta" if hurt else "continue a preregistered trial",
+            "prune_bullet": hurt and value.get("unit_kind") == "bullet",
+        },
+    }
 
 
 def frontier(root: str, *, context: Sequence[str] = (), segment: str = "default") -> dict[str, Any]:
@@ -218,11 +314,21 @@ def frontier(root: str, *, context: Sequence[str] = (), segment: str = "default"
         low, high = result["confidence_sequence"]
         # Projection into the binary-effect parameter space is explicit;
         # the original estimate and interval remain available in reports.
-        points.append({"id": identity, "effect": max(-1.0, min(1.0, result["estimate"])),
-                       "harm": max(0.0, min(1.0, -low)),
-                       "supported": result["complete"] and result["n"] > 0 and result["support_coverage"] == 1})
+        points.append(
+            {
+                "id": identity,
+                "effect": max(-1.0, min(1.0, result["estimate"])),
+                "harm": max(0.0, min(1.0, -low)),
+                "supported": result["complete"] and result["n"] > 0 and result["support_coverage"] == 1,
+            }
+        )
         reports.append({"id": identity, "report": result})
-    return {"frontier": pure.pareto(points), "points": points, "reports": reports,
-            "segment": segment, "classification": "estimated frontier",
-            "assumptions": ["complete canonical outcomes", "pre-treatment segment", "fixed trial criteria"],
-            "limitations": ["frontier selection is exploratory; promotion still requires its canonical certificate"]}
+    return {
+        "frontier": pure.pareto(points),
+        "points": points,
+        "reports": reports,
+        "segment": segment,
+        "classification": "estimated frontier",
+        "assumptions": ["complete canonical outcomes", "pre-treatment segment", "fixed trial criteria"],
+        "limitations": ["frontier selection is exploratory; promotion still requires its canonical certificate"],
+    }

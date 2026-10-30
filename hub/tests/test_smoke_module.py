@@ -38,9 +38,11 @@ class TestPreflightDiagnosis:
             monkeypatch.setattr(smoke, "_preflight_post", _post, raising=False)
             import sys
             import types
+
             stub = types.ModuleType("httpx")
             stub.post = _post
             monkeypatch.setitem(sys.modules, "httpx", stub)
+
         return install
 
     def test_unreachable_server_names_the_url_and_readyz(self, fake_post):
@@ -94,9 +96,11 @@ class TestRejectsBadCredentials:
 
             import sys
             import types
+
             stub = types.ModuleType("httpx")
             stub.post = _post
             monkeypatch.setitem(sys.modules, "httpx", stub)
+
         return install
 
     async def test_a_genuine_401_is_a_pass(self, fake_post):
@@ -129,9 +133,7 @@ class TestRejectsBadCredentials:
         await smoke._rejects_bad_credentials("http://up.example/mcp", report)
         assert report.failures != []
 
-    async def test_a_429_probing_the_bogus_key_is_a_fail_but_not_misreported_as_accepted(
-        self, fake_post, capsys
-    ):
+    async def test_a_429_probing_the_bogus_key_is_a_fail_but_not_misreported_as_accepted(self, fake_post, capsys):
         fake_post(status_code=429)
         report = smoke.Reporter()
         await smoke._rejects_bad_credentials("http://up.example/mcp", report)
@@ -159,6 +161,7 @@ class TestContentDecoding:
         class _Result:
             structured_content = {"id": "abc"}
             content = []
+
         assert smoke._content(_Result()) == {"id": "abc"}
 
     def test_a_single_json_text_block_is_parsed(self):
@@ -168,6 +171,7 @@ class TestContentDecoding:
         class _Result:
             structured_content = None
             content = [_Block()]
+
         assert smoke._content(_Result()) == {"id": "abc"}
 
     def test_non_json_text_is_returned_as_is(self):
@@ -177,6 +181,7 @@ class TestContentDecoding:
         class _Result:
             structured_content = None
             content = [_Block()]
+
         assert smoke._content(_Result()) == "not json"
 
 
@@ -184,6 +189,7 @@ def test_run_stops_before_writing_anything_when_preflight_fails(monkeypatch, cap
     monkeypatch.setattr(smoke, "_preflight", lambda url, key: "server is down")
     args = argparse.Namespace(url="http://x/mcp", api_key="k", other_api_key=None)
     import asyncio
+
     assert asyncio.run(smoke.run(args)) == 1
     assert "server is down" in capsys.readouterr().err
 
@@ -191,9 +197,12 @@ def test_run_stops_before_writing_anything_when_preflight_fails(monkeypatch, cap
 class TestPassingChecksNeverPrintFailureWording:
     def test_a_pass_prints_the_pass_detail(self, capsys):
         report = smoke.Reporter()
-        report.check("isolation holds", True,
-                     detail="the other org did not receive it",
-                     fail_detail="the other org's commons_overlap returned our trace")
+        report.check(
+            "isolation holds",
+            True,
+            detail="the other org did not receive it",
+            fail_detail="the other org's commons_overlap returned our trace",
+        )
         out = capsys.readouterr().out
         assert "[PASS]" in out
         assert "did not receive it" in out
@@ -201,9 +210,12 @@ class TestPassingChecksNeverPrintFailureWording:
 
     def test_a_fail_prints_the_fail_detail(self, capsys):
         report = smoke.Reporter()
-        report.check("isolation holds", False,
-                     detail="the other org did not receive it",
-                     fail_detail="the other org's commons_overlap returned our trace")
+        report.check(
+            "isolation holds",
+            False,
+            detail="the other org did not receive it",
+            fail_detail="the other org's commons_overlap returned our trace",
+        )
         captured = capsys.readouterr()
         assert "[FAIL]" in captured.err
         assert "returned our trace" in captured.err

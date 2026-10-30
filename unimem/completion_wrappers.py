@@ -1,4 +1,5 @@
 """Recall/capture wrappers using provider public completion callables, without SDK imports."""
+
 from __future__ import annotations
 
 from unimem.client import MemoryClient, wrap
@@ -13,6 +14,7 @@ def wrap_openai(client, **options):
         if kwargs.get("stream"):
             raise ValueError("memory capture requires a completed response; streaming is not supported")
         return remembered(*args, **kwargs)
+
     return complete
 
 
@@ -32,8 +34,10 @@ def wrap_anthropic(client, *, root=".", budget=600, agent_id="", prices=None):
     def complete(*args, messages, occasion_id=None, **kwargs):
         if kwargs.get("stream"):
             raise ValueError("memory capture requires a completed response; streaming is not supported")
-        query = next((m["content"] for m in reversed(messages)
-                      if m.get("role") == "user" and isinstance(m.get("content"), str)), "")
+        query = next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "user" and isinstance(m.get("content"), str)),
+            "",
+        )
         recalled = memory.reflect(query, budget=budget, occasion_id=occasion_id)
         augmented = [dict(m) for m in messages]
         if recalled["context"]:
@@ -53,18 +57,32 @@ def wrap_anthropic(client, *, root=".", budget=600, agent_id="", prices=None):
 
         started = time.monotonic()
         response = completion(*args, messages=augmented, **kwargs)
-        assurance.usage(root, recalled["occasion_id"], response, seconds=time.monotonic()-started,
-                        provider="anthropic", prices=prices)
+        assurance.usage(
+            root,
+            recalled["occasion_id"],
+            response,
+            seconds=time.monotonic() - started,
+            provider="anthropic",
+            prices=prices,
+        )
         blocks = response.get("content", []) if isinstance(response, dict) else getattr(response, "content", [])
-        answer = "\n".join((b.get("text", "") if isinstance(b, dict) else getattr(b, "text", ""))
-                           for b in blocks)
+        answer = "\n".join((b.get("text", "") if isinstance(b, dict) else getattr(b, "text", "")) for b in blocks)
         if query and answer:
             from unimem import memory_authority, trace_io
 
             with memory_authority.restricted_writer(agent_id or "completion", "agent"):
-                trace_io.write_new(root, title=query[:200], context=query, solution=answer,
-                                   tags=["completion"], extra={"scopes": memory.context,
-                                   "source_traces": recalled["authority_sources"],
-                                   "extensions": {"profile": {"occasion_id": recalled["occasion_id"]}}})
+                trace_io.write_new(
+                    root,
+                    title=query[:200],
+                    context=query,
+                    solution=answer,
+                    tags=["completion"],
+                    extra={
+                        "scopes": memory.context,
+                        "source_traces": recalled["authority_sources"],
+                        "extensions": {"profile": {"occasion_id": recalled["occasion_id"]}},
+                    },
+                )
         return response
+
     return complete

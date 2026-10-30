@@ -9,10 +9,15 @@ from unimem import hierarchical
 
 def test_t1_fact_add_and_metadata(isolated_store: str):
     res_add = run_cli(
-        "fact", "add", "PostgreSQL database connection pool size must be 20.",
-        "--category", "constraint",
-        "--scope", "backend",
-        "--confidence", "0.85",
+        "fact",
+        "add",
+        "PostgreSQL database connection pool size must be 20.",
+        "--category",
+        "constraint",
+        "--scope",
+        "backend",
+        "--confidence",
+        "0.85",
         dest=isolated_store,
     )
     res_add.assert_success()
@@ -20,8 +25,9 @@ def test_t1_fact_add_and_metadata(isolated_store: str):
 
     # New stores keep facts in SQLite; older ones in facts.jsonl. Either is durable on disk.
     facts_dir = os.path.join(isolated_store, "memory", "facts")
-    assert any(os.path.exists(os.path.join(facts_dir, name)) for name in ("facts.sqlite3", "facts.jsonl")), \
+    assert any(os.path.exists(os.path.join(facts_dir, name)) for name in ("facts.sqlite3", "facts.jsonl")), (
         "the fact store must exist on disk"
+    )
 
     facts = [f.to_dict() for f in hierarchical.load_facts(isolated_store).values()]
     assert len(facts) >= 1
@@ -61,7 +67,9 @@ def test_t1_fact_supersede_lifecycle(isolated_store: str):
     assert f1.valid_until is None
 
     res_super = run_cli(
-        "fact", "supersede", f1.id,
+        "fact",
+        "supersede",
+        f1.id,
         "Node.js runtime target is Node 20 LTS.",
         dest=isolated_store,
     )

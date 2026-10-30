@@ -34,6 +34,7 @@ strength of this file.
 
 Run:  python commons/eval/run.py
 """
+
 from __future__ import annotations
 
 import argparse
@@ -67,26 +68,24 @@ def evaluate(threshold: float | None = None, probes_path: Path | None = None) ->
     probes = _load(probes_path)
 
     corpus_titles = [r["title"] for r in corpus]
-    corpus_sigs = [
-        commons.signature_for(r["title"], r.get("context_text", ""), r.get("tags") or [])
-        for r in corpus
-    ]
+    corpus_sigs = [commons.signature_for(r["title"], r.get("context_text", ""), r.get("tags") or []) for r in corpus]
     submitted = [
-        (p["label"], commons.signature_for(p["label"], p.get("text", ""), p.get("tags") or []))
-        for p in probes
+        (p["label"], commons.signature_for(p["label"], p.get("text", ""), p.get("tags") or [])) for p in probes
     ]
 
     results = []
     for probe, (idx, sim) in zip(probes, commons.best_matches(submitted, corpus_sigs)):
         matched = sim >= threshold and idx >= 0
-        results.append({
-            "label": probe["label"],
-            "expect": probe["expect"],
-            "target": probe.get("target"),
-            "matched": matched,
-            "matched_title": corpus_titles[idx] if idx >= 0 else None,
-            "similarity": round(sim, 4),
-        })
+        results.append(
+            {
+                "label": probe["label"],
+                "expect": probe["expect"],
+                "target": probe.get("target"),
+                "matched": matched,
+                "matched_title": corpus_titles[idx] if idx >= 0 else None,
+                "similarity": round(sim, 4),
+            }
+        )
 
     pos = [r for r in results if r["expect"] == "covered"]
     neg = [r for r in results if r["expect"] == "uncovered"]
@@ -109,7 +108,9 @@ def evaluate(threshold: float | None = None, probes_path: Path | None = None) ->
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument(
-        "--probes", choices=sorted(PROBE_SETS), default="v1",
+        "--probes",
+        choices=sorted(PROBE_SETS),
+        default="v1",
         help="Probe set to evaluate against: v1 (dev set, written alongside the "
         "corpus) or v2 (held-out, written after the corpus was frozen). Default: v1.",
     )
@@ -118,18 +119,20 @@ def main() -> int:
 
     r = evaluate(probes_path=probes_path)
     print(f"corpus:    {r['n_corpus']} records (commons/seed/substrate-v1.jsonl)")
-    print(f"probes:    {r['n_positive']} held-out positives, {r['n_negative']} negative controls "
-          f"({probes_path.name})")
+    print(f"probes:    {r['n_positive']} held-out positives, {r['n_negative']} negative controls ({probes_path.name})")
     print(f"threshold: {r['threshold']} (the shipped default, unmodified)")
     print()
-    print(f"recall on positives:      {r['recall']:.1%}  "
-          f"({sum(1 for x in r['results'] if x['expect'] == 'covered' and x['matched'])}"
-          f"/{r['n_positive']} paraphrased failures matched)")
-    print(f"  of those, right record: {r['right_row_rate']:.1%}  "
-          "(matched the record the probe was written against)")
-    print(f"false positives on controls: {r['false_positive_rate']:.1%}  "
-          f"({sum(1 for x in r['results'] if x['expect'] == 'uncovered' and x['matched'])}"
-          f"/{r['n_negative']} absent failures wrongly reported as covered)")
+    print(
+        f"recall on positives:      {r['recall']:.1%}  "
+        f"({sum(1 for x in r['results'] if x['expect'] == 'covered' and x['matched'])}"
+        f"/{r['n_positive']} paraphrased failures matched)"
+    )
+    print(f"  of those, right record: {r['right_row_rate']:.1%}  (matched the record the probe was written against)")
+    print(
+        f"false positives on controls: {r['false_positive_rate']:.1%}  "
+        f"({sum(1 for x in r['results'] if x['expect'] == 'uncovered' and x['matched'])}"
+        f"/{r['n_negative']} absent failures wrongly reported as covered)"
+    )
     print()
 
     print("sensitivity (informational -- the shipped threshold is not chosen from this):")
@@ -142,16 +145,14 @@ def main() -> int:
 
     missed = [x for x in r["results"] if x["expect"] == "covered" and not x["matched"]]
     if missed:
-        print(f"missed positives ({len(missed)}) -- the corpus has the knowledge, "
-              "the matcher did not find it:")
+        print(f"missed positives ({len(missed)}) -- the corpus has the knowledge, the matcher did not find it:")
         for x in sorted(missed, key=lambda x: -x["similarity"])[:10]:
             print(f"  {x['similarity']:.3f}  {x['label']}")
         if len(missed) > 10:
             print(f"  ... and {len(missed) - 10} more")
         print()
 
-    wrong = [x for x in r["results"]
-             if x["expect"] == "uncovered" and x["matched"]]
+    wrong = [x for x in r["results"] if x["expect"] == "uncovered" and x["matched"]]
     if wrong:
         print("false positives -- reported as covered but the corpus does not contain it:")
         for x in wrong:

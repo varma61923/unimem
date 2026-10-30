@@ -6,6 +6,7 @@ against the Official Journal. Retention floors are 366 days for decisions and
 5*366 days for interventions/version tracing. A correction is always appendable.
 Hazards are never eligible for randomized removal or unattended lifecycle edits.
 """
+
 from __future__ import annotations
 
 import copy
@@ -36,21 +37,34 @@ def _content(root: str, identity: str) -> dict[str, Any]:
 def review(root: str, identity: str, *, reviewer: str, reason: str) -> dict[str, Any]:
     if not memory_authority.is_operator():
         raise PermissionError("hazard review requires operator authority")
-    return fp.sign(root, {"kind": "hazard-review", "id": fp.text(identity), "reviewer": fp.text(reviewer),
-                          "reason": fp.text(reason), "content_hash": fp.digest(_content(root, identity)),
-                          "reviewed_at": fp.now()})
+    return fp.sign(
+        root,
+        {
+            "kind": "hazard-review",
+            "id": fp.text(identity),
+            "reviewer": fp.text(reviewer),
+            "reason": fp.text(reason),
+            "content_hash": fp.digest(_content(root, identity)),
+            "reviewed_at": fp.now(),
+        },
+    )
 
 
-def mark(root: str, identity: str, hazard_class: str, receipt: dict[str, Any], *,
-         site: str = "", robot: str = "") -> dict[str, Any]:
+def mark(
+    root: str, identity: str, hazard_class: str, receipt: dict[str, Any], *, site: str = "", robot: str = ""
+) -> dict[str, Any]:
     if not memory_authority.is_operator():
         raise PermissionError("only an operator can protect a hazard")
     if hazard_class not in CLASSES:
         raise ValueError("unknown hazard class")
     expected = fp.digest(_content(root, identity))
     body = receipt.get("record", {})
-    if (not fp.verify(root, receipt) or body.get("kind") != "hazard-review"
-            or body.get("id") != identity or body.get("content_hash") != expected):
+    if (
+        not fp.verify(root, receipt)
+        or body.get("kind") != "hazard-review"
+        or body.get("id") != identity
+        or body.get("content_hash") != expected
+    ):
         raise PermissionError("hazard marking needs a current content-bound review receipt")
     if len(site) > 128 or len(robot) > 128:
         raise ValueError("site and robot labels exceed 128 characters")
@@ -70,8 +84,11 @@ def mark(root: str, identity: str, hazard_class: str, receipt: dict[str, Any], *
         fact = hierarchical.load_facts(root)[identity]
         if fact.expires_at or fact.valid_until or fact.status != "active":
             raise ValueError("hazard fact must be active without an automatic expiry or closed validity window")
-    result = fp.append(root, REGISTRY, {"kind": "mark", "id": identity,
-                       "hazard_class": hazard_class, "review": receipt, "site": site, "robot": robot})
+    result = fp.append(
+        root,
+        REGISTRY,
+        {"kind": "mark", "id": identity, "hazard_class": hazard_class, "review": receipt, "site": site, "robot": robot},
+    )
     log.append(root, "hazard-protected", {"id": identity, "review_digest": fp.digest(receipt)})
     return result
 
@@ -126,8 +143,11 @@ def release(root: str, identity: str, receipt: dict[str, Any]) -> None:
     if not memory_authority.is_operator() or not fp.verify(root, receipt):
         raise PermissionError("operator review receipt required to release hazard protection")
     body = receipt["record"]
-    if body.get("kind") != "hazard-review" or body.get("id") != identity \
-            or body.get("content_hash") != fp.digest(_content(root, identity)):
+    if (
+        body.get("kind") != "hazard-review"
+        or body.get("id") != identity
+        or body.get("content_hash") != fp.digest(_content(root, identity))
+    ):
         raise PermissionError("stale or unrelated hazard review")
     fp.append(root, REGISTRY, {"kind": "release", "id": identity, "review": receipt})
     log.append(root, "hazard-review-release", {"id": identity, "review_digest": fp.digest(receipt)})
@@ -140,8 +160,9 @@ def context(root: str, site: str = "", robot: str = "") -> dict[str, Any]:
         if label:
             fp.text(label, "site/robot", 128)
     hazards = protected(root)
-    identities = [identity for identity, row in hazards.items()
-                  if row["site"] in ("", site) and row["robot"] in ("", robot)]
+    identities = [
+        identity for identity, row in hazards.items() if row["site"] in ("", site) and row["robot"] in ("", robot)
+    ]
     fp.count(len(identities), 0, 512, "hazard context size")
     # Scope admission occurs before content is read or exposed.
     scopes = [label for label in ("site:" + site if site else "", "robot:" + robot if robot else "") if label]
@@ -153,25 +174,37 @@ def context(root: str, site: str = "", robot: str = "") -> dict[str, Any]:
             from unimem import lesson_cache, memory_control
 
             fm, body = frontmatter.read(path)
-            if lesson_cache.fresh_eligible(path, fm, identity, body=body, root=root) \
-                    and memory_control.matches(fm.get("scopes", []), scopes):
+            if lesson_cache.fresh_eligible(path, fm, identity, body=body, root=root) and memory_control.matches(
+                fm.get("scopes", []), scopes
+            ):
                 items.append({"id": identity, "text": body, "hazard": True})
-    return {"site": site, "robot": robot, "memories": items,
-            "notice": "Reviewed hazard context; fresh sensors and the planner remain responsible for motion safety."}
+    return {
+        "site": site,
+        "robot": robot,
+        "memories": items,
+        "notice": "Reviewed hazard context; fresh sensors and the planner remain responsible for motion safety.",
+    }
 
 
-def record(root: str, *, robot: str, decision: str, version: str, intervention: bool = False,
-           correction_of: str = "") -> dict[str, Any]:
+def record(
+    root: str, *, robot: str, decision: str, version: str, intervention: bool = False, correction_of: str = ""
+) -> dict[str, Any]:
     if type(intervention) is not bool:
         raise ValueError("intervention must be binary")
     if correction_of and not any(r["id"] == correction_of for r in fp.journal(root, "safety-recorder.jsonl")):
         raise ValueError("correction target is not in the safety recorder")
     identity = "decision-" + fp.digest({"robot": robot, "decision": decision, "at": fp.now()})[:24]
     keep = datetime.now(timezone.utc) + timedelta(days=5 * 366 if intervention else 366)
-    body = {"id": identity, "robot": fp.text(robot), "decision": fp.text(decision, maximum=8192),
-            "version": fp.text(version), "intervention": intervention, "correction_of": correction_of,
-            "retain_until": keep.isoformat(), "trace_retain_until":
-            (datetime.now(timezone.utc) + timedelta(days=5 * 366)).isoformat()}
+    body = {
+        "id": identity,
+        "robot": fp.text(robot),
+        "decision": fp.text(decision, maximum=8192),
+        "version": fp.text(version),
+        "intervention": intervention,
+        "correction_of": correction_of,
+        "retain_until": keep.isoformat(),
+        "trace_retain_until": (datetime.now(timezone.utc) + timedelta(days=5 * 366)).isoformat(),
+    }
     signed = fp.append(root, "safety-recorder.jsonl", body)
     log.append(root, "safety-decision", {"id": identity, "digest": fp.digest(signed)})
     return signed
@@ -189,12 +222,24 @@ def spi(episodes: Sequence[dict[str, Any]]) -> dict[str, Any]:
         row["hours"] += hours
         row["near_misses"] += near
         row["interventions"] += interventions
-    return {"series": [{"date": day, **row, "interventions_per_hour":
-                        row["interventions"] / row["hours"] if row["hours"] else None}
-                       for day, row in sorted(series.items())], "kind": "descriptive leading indicators"}
+    return {
+        "series": [
+            {
+                "date": day,
+                **row,
+                "interventions_per_hour": row["interventions"] / row["hours"] if row["hours"] else None,
+            }
+            for day, row in sorted(series.items())
+        ],
+        "kind": "descriptive leading indicators",
+    }
 
 
 def export(root: str) -> dict[str, Any]:
-    body = {"hazards": protected(root), "decisions": fp.journal(root, "safety-recorder.jsonl"),
-            "tree_head": log.head(root), "exported_at": fp.now()}
+    body = {
+        "hazards": protected(root),
+        "decisions": fp.journal(root, "safety-recorder.jsonl"),
+        "tree_head": log.head(root),
+        "exported_at": fp.now(),
+    }
     return {"record": body, "signature": fp.sign(root, {"digest": fp.digest(body)})}

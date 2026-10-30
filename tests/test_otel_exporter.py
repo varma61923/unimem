@@ -4,9 +4,7 @@ import os
 
 import pytest
 
-pytest.importorskip(
-    "opentelemetry.sdk", reason="needs the OpenTelemetry SDK: pip install 'unimem[otel]'"
-)
+pytest.importorskip("opentelemetry.sdk", reason="needs the OpenTelemetry SDK: pip install 'unimem[otel]'")
 
 from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
@@ -108,7 +106,8 @@ class TestEndToEndThroughARealTracerProvider:
 class TestWriteTraceFromRow:
     def test_a_row_with_no_attributes_is_skipped(self, tmp_path):
         result = otel_exporter.write_trace_from_row(
-            str(tmp_path), {"name": "span", "attributes": {}, "status": {}},
+            str(tmp_path),
+            {"name": "span", "attributes": {}, "status": {}},
             agent_type="support",
         )
         assert result is None
@@ -165,8 +164,7 @@ def test_importing_the_module_never_requires_the_sdk():
     import sys
 
     real_modules = {
-        name: mod for name, mod in sys.modules.items()
-        if name == "opentelemetry" or name.startswith("opentelemetry.")
+        name: mod for name, mod in sys.modules.items() if name == "opentelemetry" or name.startswith("opentelemetry.")
     }
     for name in real_modules:
         del sys.modules[name]
@@ -183,8 +181,12 @@ def test_a_span_with_an_occasion_and_an_explicit_outcome_closes_it_locally(tmp_p
     from unimem import holdout_io, otel_exporter
 
     root = str(tmp_path)
-    row = {"name": "done", "status": {"code": "UNSET"}, "spanId": "s1",
-           "attributes": {"session.id": "ep-9", "unimem.occasion.succeeded": False}}
+    row = {
+        "name": "done",
+        "status": {"code": "UNSET"},
+        "spanId": "s1",
+        "attributes": {"session.id": "ep-9", "unimem.occasion.succeeded": False},
+    }
     assert otel_exporter.record_occasion_from_row(root, row) is True
     assert holdout_io.read_outcomes(root) == {"ep-9": False}
     flipped = dict(row, attributes={"session.id": "ep-9", "unimem.occasion.succeeded": True})

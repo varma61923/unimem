@@ -4,6 +4,7 @@ Signatures authenticate an operator, not truth. HMAC is a shared-secret MAC,
 explicitly labelled, and must not be presented as public-key non-repudiation.
 Existing UniMem canonical records and hashes are deliberately untouched.
 """
+
 from __future__ import annotations
 
 import copy
@@ -56,8 +57,10 @@ def _stamp(path: str) -> Stamp:
 
 
 def _pins(root: str) -> tuple[Stamp, ...]:
-    return tuple(_stamp(os.path.join(paths.memory_dir(root), name)) for name in
-                 (".origin-key", ".origin-ed25519-key", "origin-signing.json"))
+    return tuple(
+        _stamp(os.path.join(paths.memory_dir(root), name))
+        for name in (".origin-key", ".origin-ed25519-key", "origin-signing.json")
+    )
 
 
 def _remember(path: str, state: _Journal) -> None:
@@ -79,8 +82,7 @@ def _state(root: str, name: str) -> _Journal:
     previous = ""
     for index, signed in enumerate(signed_rows):
         record = signed.get("record", {})
-        if (not verify(root, signed) or record.get("sequence") != index
-                or record.get("previous") != previous):
+        if not verify(root, signed) or record.get("sequence") != index or record.get("previous") != previous:
             raise ValueError(f"invalid {name} chain at row {index}")
         previous = digest(signed)
     if _stamp(path) != stamp or _pins(root) != pins:
@@ -95,12 +97,10 @@ def _state(root: str, name: str) -> _Journal:
             and isinstance(link.get("previous_tip"), str)
             and bool(link["previous_tip"])
         )
-        anchored = (len(signed_rows) >= len(cached.signed)
-                    and digest(signed_rows[len(cached.signed) - 1]) == cached.tip)
+        anchored = len(signed_rows) >= len(cached.signed) and digest(signed_rows[len(cached.signed) - 1]) == cached.tip
         if not rotation_accepted and not anchored:
             raise ValueError("journal was truncated or rewritten against a retained checkpoint")
-    state = _Journal(stamp, pins, signed_rows, previous,
-                     frontmatter._retained_size(signed_rows, set()))
+    state = _Journal(stamp, pins, signed_rows, previous, frontmatter._retained_size(signed_rows, set()))
     _remember(path, state)
     return state
 
@@ -178,8 +178,9 @@ def loads(raw: bytes | str) -> Any:
 def wire(value: Any) -> bytes:
     validate_json_tree(value)
     try:
-        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
-                             allow_nan=False).encode("utf-8")
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode(
+            "utf-8"
+        )
     except (RecursionError, TypeError, ValueError) as exc:
         raise ValueError("expected finite JSON data") from exc
     if len(encoded) > MAX_BYTES:
@@ -192,15 +193,23 @@ def digest(value: Any) -> str:
 
 
 def text(value: str, label: str = "identifier", maximum: int = 512) -> str:
-    if (not isinstance(value, str) or not value or len(value) > maximum
-            or len(value.encode()) > maximum or "\x00" in value):
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > maximum
+        or len(value.encode()) > maximum
+        or "\x00" in value
+    ):
         raise ValueError(f"invalid {label} (1..{maximum} bytes)")
     return value
 
 
 def number(value: float, low: float, high: float, label: str = "number") -> float:
-    if (isinstance(value, bool) or not isinstance(value, (int, float))
-            or (isinstance(value, float) and not math.isfinite(value))):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or (isinstance(value, float) and not math.isfinite(value))
+    ):
         raise ValueError(f"{label} must be finite")
     if not low <= value <= high:
         raise ValueError(f"{label} must be in [{low}, {high}]")
@@ -288,8 +297,9 @@ def sign(root: str, record: dict[str, Any], *, durable: bool = True) -> dict[str
     if key is None:
         raise PermissionError("store signing key is unavailable")
     principal, authority = memory_authority.bound_writer()
-    return origin.bind(_json_copy(record), origin.Principal(principal, "local-store", authority, key, algorithm),
-                       _detached=True)
+    return origin.bind(
+        _json_copy(record), origin.Principal(principal, "local-store", authority, key, algorithm), _detached=True
+    )
 
 
 def verify(root: str, signed: dict[str, Any]) -> bool:
@@ -301,8 +311,7 @@ def append(root: str, name: str, record: dict[str, Any], *, durable: bool = True
     with _jsonl.locked(path), _GUARD:
         state = _state(root, name)
         count(len(state.signed), 0, MAX_ROWS - 1)
-        body = {**record, "sequence": len(state.signed), "previous": state.tip,
-                "recorded_at": now()}
+        body = {**record, "sequence": len(state.signed), "previous": state.tip, "recorded_at": now()}
         signed = sign(root, body, durable=durable)
         wire(signed)
         encoded = json.dumps(signed, ensure_ascii=False, allow_nan=False).encode()
@@ -341,8 +350,9 @@ def rotate(root: str, name: str, carry: list[dict[str, Any]], *, durable: bool =
                 previous_count += prior_link["previous_count"]
         link = {"kind": "rotation", "previous_tip": state.tip, "previous_count": previous_count}
         for index, record in enumerate([link, *carry]):
-            signed = sign(root, {**record, "sequence": index, "previous": previous, "recorded_at": now()},
-                          durable=durable)
+            signed = sign(
+                root, {**record, "sequence": index, "previous": previous, "recorded_at": now()}, durable=durable
+            )
             wire(signed)
             size = len(json.dumps(signed, ensure_ascii=False, allow_nan=False).encode("utf-8"))
             if size > MAX_BYTES:

@@ -235,8 +235,14 @@ class TestAlerts:
             "implicit_retrieval": {"strict": ir_strict, "permissive": ir_strict, "n": 1},
             "transfer_gap": {"value": 0.0, "n": 1, "untraceable": 0},
             "n_lessons": n_lessons,
-            "extras": {"never_hit": never_hit, "top5": [], "proposed_not_validated": [],
-                        "importance_lessons": {}, "importance_episodes": {}, "domain_coverage": {}},
+            "extras": {
+                "never_hit": never_hit,
+                "top5": [],
+                "proposed_not_validated": [],
+                "importance_lessons": {},
+                "importance_episodes": {},
+                "domain_coverage": {},
+            },
         }
 
     def test_no_alerts_when_all_healthy(self):
@@ -365,7 +371,6 @@ class TestIntegrationExamples:
     def teardown_method(self):
         bm.BASE_DIR = self._old_base
 
-
     def test_example_episode_verdict_conform(self):
         episodes, _skipped = bm.load_episodes()
         for ep in episodes:
@@ -373,7 +378,6 @@ class TestIntegrationExamples:
                 f"Unexpected verdict '{ep.get('verdict')}' in episode '{ep.get('name')}'. "
                 "Expected CONFORM | ARBITRATION | ABANDON."
             )
-
 
     def test_example_lesson_importance_valid(self):
         lessons, _skipped = bm.load_lessons()

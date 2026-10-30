@@ -65,14 +65,15 @@ class TestTwoPersonApproval:
         assert _approve(tmp_path, "theirs") == 0
         assert frontmatter.read(path)[0]["status"] == "active"
 
-    def test_every_editor_counts_as_an_author_not_just_the_first(
-        self, tmp_path, monkeypatch
-    ):
+    def test_every_editor_counts_as_an_author_not_just_the_first(self, tmp_path, monkeypatch):
         _write_policy(tmp_path, self.POLICY)
         _draft(tmp_path, "shared", actor="cli:alice")
-        _draft(tmp_path, "shared", actor="cli:bob",
-               body="## Rule\nDifferent rule entirely.\n## Why\nw\n"
-                    "## How to apply\nh\n## Counter-examples\nc\n")
+        _draft(
+            tmp_path,
+            "shared",
+            actor="cli:bob",
+            body="## Rule\nDifferent rule entirely.\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+        )
         monkeypatch.setattr(lesson_cmd, "_actor", lambda: "cli:bob")
         assert _approve(tmp_path, "shared") == 1
 
@@ -139,9 +140,12 @@ class TestThePolicyFileItself:
 class TestAuthorsOf:
     def test_authors_come_from_the_revision_journal_oldest_first(self, tmp_path):
         _draft(tmp_path, "hist", actor="cli:alice")
-        _draft(tmp_path, "hist", actor="mcp:agent",
-               body="## Rule\nchanged\n## Why\nw\n## How to apply\nh\n"
-                    "## Counter-examples\nc\n")
+        _draft(
+            tmp_path,
+            "hist",
+            actor="mcp:agent",
+            body="## Rule\nchanged\n## Why\nw\n## How to apply\nh\n## Counter-examples\nc\n",
+        )
         assert approval.authors_of(str(tmp_path), "hist") == ("cli:alice", "mcp:agent")
 
     def test_unknown_actors_are_not_counted_as_authors(self, tmp_path):

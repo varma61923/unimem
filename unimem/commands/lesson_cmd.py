@@ -44,9 +44,11 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     new.add_argument("--slug", required=True, help="e.g. lesson_my_rule")
     new.add_argument("--description", required=True)
     new.add_argument(
-        "--agent-type", type=_validators.agent_type, default=None,
+        "--agent-type",
+        type=_validators.agent_type,
+        default=None,
         help="Any lowercase slug (the taxonomy is open -- e.g. code, hr, robotics, "
-             "legal). Defaults to the agent_type this store was initialized with.",
+        "legal). Defaults to the agent_type this store was initialized with.",
     )
     new.add_argument("--domain", required=True)
     new.add_argument("--tags", default="")
@@ -56,7 +58,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     new.add_argument("--importance-rationale", default="")
     new.add_argument("--source-traces", default="", help="Comma-separated trace ids/slugs")
     new.add_argument(
-        "--scopes", default="",
+        "--scopes",
+        default="",
         help="Comma-separated project/team scopes. Unscoped lessons remain global.",
     )
     new.add_argument("--valid-from", default="", help="First valid instant (YYYY-MM-DD or ISO 8601).")
@@ -74,9 +77,10 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     ls.add_argument("--status", default=None)
     ls.add_argument("--scope", default="", help="Include global lessons and lessons in this scope.")
     ls.add_argument(
-        "--json", action="store_true",
+        "--json",
+        action="store_true",
         help="Print one JSON array of lessons (name, agent_type, importance, status, "
-             "description, domain, scopes, validity, path) for scripts.",
+        "description, domain, scopes, validity, path) for scripts.",
     )
     ls.add_argument("--dest", default=None)
     ls.set_defaults(func=run_list)
@@ -91,8 +95,8 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         "--force",
         action="store_true",
         help="Approve even if the lesson still contains unedited 'TODO:' scaffolding, "
-             "or a high-confidence secret/prompt-injection pattern the content-safety scan "
-             "flagged. Refused by default -- an active lesson is injected into agents verbatim.",
+        "or a high-confidence secret/prompt-injection pattern the content-safety scan "
+        "flagged. Refused by default -- an active lesson is injected into agents verbatim.",
     )
     ap.add_argument("--dest", default=None)
     ap.set_defaults(func=run_approve)
@@ -108,8 +112,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Edit a lesson's Markdown in $VISUAL/$EDITOR; the change is validated, screened and journaled.",
     )
     ed.add_argument("slug")
-    ed.add_argument("--editor", default=None,
-                    help="Editor command (default: $VISUAL, then $EDITOR, then vi).")
+    ed.add_argument("--editor", default=None, help="Editor command (default: $VISUAL, then $EDITOR, then vi).")
     ed.add_argument("--reason", default="edited by hand", help="Recorded in the revision journal.")
     ed.add_argument("--dest", default=None)
     ed.set_defaults(func=run_edit)
@@ -126,16 +129,17 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     sr = sub.add_parser(
         "suggest-revision",
         help="Draft a tightened activation condition for a MISCALIBRATED lesson, "
-             "from its own retrieval evidence. Writes a new review-status lesson; "
-             "changes nothing about the original until you approve the draft.",
+        "from its own retrieval evidence. Writes a new review-status lesson; "
+        "changes nothing about the original until you approve the draft.",
     )
     sr.add_argument("slug")
     sr.add_argument(
-        "--draft", action="store_true",
+        "--draft",
+        action="store_true",
         help="Ask a configured LLM (UNIMEM_LLM_API_KEY) to tighten "
-             "applies_when/do_not_apply_when from the same evidence, instead of a "
-             "'TODO: tighten' placeholder. Falls back to the placeholder, with a "
-             "stated reason, if no provider is configured or it refuses.",
+        "applies_when/do_not_apply_when from the same evidence, instead of a "
+        "'TODO: tighten' placeholder. Falls back to the placeholder, with a "
+        "stated reason, if no provider is configured or it refuses.",
     )
     sr.add_argument("--dest", default=None)
     sr.set_defaults(func=run_suggest_revision)
@@ -143,9 +147,9 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     srw = sub.add_parser(
         "suggest-rewrite",
         help="Draft a full rewrite for a HARMFUL lesson (its rule, not just when it "
-             "fires, may be wrong). Requires an LLM -- there is no honest heuristic "
-             "placeholder for 'what should this rule actually say'. Writes a new "
-             "review-status lesson; changes nothing about the original.",
+        "fires, may be wrong). Requires an LLM -- there is no honest heuristic "
+        "placeholder for 'what should this rule actually say'. Writes a new "
+        "review-status lesson; changes nothing about the original.",
     )
     srw.add_argument("slug")
     srw.add_argument("--dest", default=None)
@@ -154,7 +158,7 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     aa = sub.add_parser(
         "auto-approve",
         help="Activate LLM-drafted review lessons that pass every approval gate. Requires "
-             "`auto_approve_drafts: true` in memory/approval-policy.yaml and a started holdout.",
+        "`auto_approve_drafts: true` in memory/approval-policy.yaml and a started holdout.",
     )
     aa.add_argument("--dest", default=None)
     aa.set_defaults(func=run_auto_approve)
@@ -171,12 +175,14 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     hist.add_argument("slug", help="Lesson slug (e.g. lesson_retry_backoff)")
     hist.add_argument(
-        "--as-of", default=None, metavar="DATE",
+        "--as-of",
+        default=None,
+        metavar="DATE",
         help="Print what this lesson actually SAID at this point in time (YYYY-MM-DD "
-             "or full ISO 8601), reconstructed from the revision journal, instead of "
-             "the list of changes. What environments.py calls 'which release is "
-             "current' upgraded to 'what did this environment actually serve on any "
-             "past date' -- see unimem/lesson_io.py's content_as_of.",
+        "or full ISO 8601), reconstructed from the revision journal, instead of "
+        "the list of changes. What environments.py calls 'which release is "
+        "current' upgraded to 'what did this environment actually serve on any "
+        "past date' -- see unimem/lesson_io.py's content_as_of.",
     )
     hist.add_argument("--dest", default=None)
     hist.set_defaults(func=run_history)
@@ -207,9 +213,12 @@ def run_new(args: argparse.Namespace) -> int:
     ldir = paths.lessons_dir(root)
     paths.warn_if_implicit_cwd_store(args.dest)
     if not _validators.check_text_size(
-        {"description": args.description, "applies_when": args.applies_when,
-         "do_not_apply_when": args.do_not_apply_when,
-         "importance_rationale": args.importance_rationale},
+        {
+            "description": args.description,
+            "applies_when": args.applies_when,
+            "do_not_apply_when": args.do_not_apply_when,
+            "importance_rationale": args.importance_rationale,
+        },
         what="lesson",
     ):
         return 1
@@ -237,8 +246,9 @@ def run_new(args: argparse.Namespace) -> int:
             valid_from=valid_from_arg,
             valid_until=valid_until_arg,
         )
-        lesson_io.write_lesson(out_path, fm, templates.lesson_body(), root=root,
-                               actor=_actor(), reason="scaffolded by `lesson new`")
+        lesson_io.write_lesson(
+            out_path, fm, templates.lesson_body(), root=root, actor=_actor(), reason="scaffolded by `lesson new`"
+        )
     print(f"[unimem] created {out_path}")
     print(
         f"  Written at status=review. Fill in the Rule/Why/How-to-apply sections, then:\n"
@@ -272,7 +282,9 @@ def _active_lesson_texts(root: str, *, exclude: str = "", scope: str = "") -> li
         scopes = (
             {str(item).strip() for item in raw_scopes}
             if isinstance(raw_scopes, (list, tuple, set))
-            else {str(raw_scopes).strip()} if raw_scopes else set()
+            else {str(raw_scopes).strip()}
+            if raw_scopes
+            else set()
         )
         if scope and scopes and scope not in scopes:
             continue
@@ -390,7 +402,9 @@ def run_approve(args: argparse.Namespace) -> int:
         try:
             policy = approval.load_policy(root)
             approval.check(
-                policy, slug=args.slug, approver=approver,
+                policy,
+                slug=args.slug,
+                approver=approver,
                 authors=approval.authors_of(root, args.slug),
             )
         except (approval.ApprovalDenied, approval.PolicyError) as exc:
@@ -442,8 +456,7 @@ def run_approve(args: argparse.Namespace) -> int:
         except (lesson_admission.AdmissionError, OSError) as exc:
             print(f"[unimem] approval receipt could not be recorded: {type(exc).__name__}.", file=sys.stderr)
             return 1
-        lesson_io.write_lesson(path, fm, body, root=root, actor=approver,
-                               reason=args.rationale or "approved")
+        lesson_io.write_lesson(path, fm, body, root=root, actor=approver, reason=args.rationale or "approved")
     if unfilled:
         print(
             f"[unimem] warning: approved {args.slug} with --force while "
@@ -522,16 +535,18 @@ def run_auto_approve(args: argparse.Namespace) -> int:
         if fm.get("status") != "review" or "llm_draft" not in fm:
             continue
         slug = str(fm.get("name") or "")
-        rc = run_approve(argparse.Namespace(
-            slug=slug, force=False, dest=args.dest,
-            rationale=f"auto-approved with a {config.rate:.0%} holdout running",
-            approver=approval.AUTO_APPROVER, extra_frontmatter={"auto_approved": True},
-        ))
+        rc = run_approve(
+            argparse.Namespace(
+                slug=slug,
+                force=False,
+                dest=args.dest,
+                rationale=f"auto-approved with a {config.rate:.0%} holdout running",
+                approver=approval.AUTO_APPROVER,
+                extra_frontmatter={"auto_approved": True},
+            )
+        )
         (approved if rc == 0 else refused).append(slug)
-    print(
-        f"[unimem] auto-approve: {len(approved)} activated, "
-        f"{len(refused)} refused by the approval gates."
-    )
+    print(f"[unimem] auto-approve: {len(approved)} activated, {len(refused)} refused by the approval gates.")
     return 0
 
 
@@ -557,8 +572,7 @@ def run_reject(args: argparse.Namespace) -> int:
 
         fm["status"] = "archived"
         body = _append_body_note(body, "Rejected", args.reason)
-        lesson_io.write_lesson(path, fm, body, root=root, actor=_actor(),
-                               reason=args.reason)
+        lesson_io.write_lesson(path, fm, body, root=root, actor=_actor(), reason=args.reason)
     print(f"[unimem] rejected {args.slug} (status: review -> archived)")
     return 0
 
@@ -609,13 +623,16 @@ def _evidence_sections(hit_occasions: list, miss_occasions: list, labels: dict) 
         if not occasions:
             lines.append("(none)")
         if len(occasions) > EVIDENCE_PER_SECTION:
-            lines.append(f"({len(occasions)} occasions; the {EVIDENCE_PER_SECTION} most recent are listed. "
-                         "`unimem reliability` has the rest.)")
+            lines.append(
+                f"({len(occasions)} occasions; the {EVIDENCE_PER_SECTION} most recent are listed. "
+                "`unimem reliability` has the rest.)"
+            )
             occasions = occasions[-EVIDENCE_PER_SECTION:]
         for ev in occasions:
             label = labels.get(ev.occasion_id)
             lines.append(f"- `{ev.occasion_id}`" + (f": {label}" if label else ""))
         return lines
+
     return [*_section("Fired and helped", hit_occasions), "", *_section("Fired but did not help", miss_occasions)]
 
 
@@ -638,8 +655,7 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
     if verdict_row is None or verdict_row.verdict != reliability.VERDICT_MISCALIBRATED:
         current = verdict_row.verdict if verdict_row else "no evidence yet"
         print(
-            f"[unimem] '{slug}' is not MISCALIBRATED (currently: {current}) -- "
-            "refusing to draft a revision.",
+            f"[unimem] '{slug}' is not MISCALIBRATED (currently: {current}) -- refusing to draft a revision.",
             file=sys.stderr,
         )
         if verdict_row is not None and verdict_row.verdict == reliability.VERDICT_HARMFUL:
@@ -656,12 +672,12 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
     hit_occasions = [ev for ev in evidence if slug in ev.retrieved and slug in ev.hit]
     miss_occasions = [ev for ev in evidence if slug in ev.retrieved and slug not in ev.hit]
     labels = _occasion_labels(
-        root, _listed_ids(hit_occasions, miss_occasions),
+        root,
+        _listed_ids(hit_occasions, miss_occasions),
     )
 
     evidence_lines = [
-        f"Reliability verdict at the time this draft was written: MISCALIBRATED "
-        f"-- {verdict_row.rationale}",
+        f"Reliability verdict at the time this draft was written: MISCALIBRATED -- {verdict_row.rationale}",
         "",
         *_evidence_sections(hit_occasions, miss_occasions, labels),
     ]
@@ -676,8 +692,11 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
                 "helps. Do not change the rule itself -- echo the current rule text "
                 "back unchanged in your 'rule' field."
             ),
-            slug=slug, current_rule_text=body, applies_when=str(fm.get("applies_when", "")),
-            do_not_apply_when=str(fm.get("do_not_apply_when", "")), evidence_lines=evidence_lines,
+            slug=slug,
+            current_rule_text=body,
+            applies_when=str(fm.get("applies_when", "")),
+            do_not_apply_when=str(fm.get("do_not_apply_when", "")),
+            evidence_lines=evidence_lines,
             allowed_evidence_ids=_listed_ids(hit_occasions, miss_occasions),
         )
 
@@ -705,13 +724,11 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
                 llm_draft.applies_when if llm_draft else f"TODO: tighten -- was: {fm.get('applies_when', '')}"
             ),
             do_not_apply_when=(
-                llm_draft.do_not_apply_when if llm_draft
-                else f"TODO: tighten -- was: {fm.get('do_not_apply_when', '')}"
+                llm_draft.do_not_apply_when if llm_draft else f"TODO: tighten -- was: {fm.get('do_not_apply_when', '')}"
             ),
             importance=int(fm.get("importance") or 3),
             importance_rationale=(
-                f"Drafted from {slug}'s own MISCALIBRATED evidence "
-                f"({verdict_row.n_hit}/{verdict_row.n_retrieved})."
+                f"Drafted from {slug}'s own MISCALIBRATED evidence ({verdict_row.n_hit}/{verdict_row.n_retrieved})."
             ),
             source_traces=[],
             status="review",
@@ -728,7 +745,11 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
             )
         draft_body = body.rstrip("\n") + "\n\n## Evidence for revision\n" + "\n".join(evidence_lines) + "\n"
         lesson_io.write_lesson(
-            out_path, draft_fm, draft_body, root=root, actor=_actor(),
+            out_path,
+            draft_fm,
+            draft_body,
+            root=root,
+            actor=_actor(),
             reason=f"suggest-revision draft of {slug}" + (" (LLM-assisted)" if llm_draft else ""),
         )
     print(f"[unimem] drafted {out_path}" + (" (LLM-assisted)" if llm_draft else ""))
@@ -736,7 +757,7 @@ def run_suggest_revision(args: argparse.Namespace) -> int:
         f"  Nothing changed for '{slug}' yet -- this is a new, separate draft.\n"
         "  Read the evidence, rewrite applies_when/do_not_apply_when, then:\n"
         f"    unimem lesson approve {draft_slug}\n"
-        f"    unimem lesson reject {slug} --reason \"superseded by {draft_slug}\""
+        f'    unimem lesson reject {slug} --reason "superseded by {draft_slug}"'
         "   # once you're satisfied"
     )
     return 0
@@ -760,8 +781,7 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
     if verdict_row is None or verdict_row.verdict != reliability.VERDICT_HARMFUL:
         current = verdict_row.verdict if verdict_row else "no evidence yet"
         print(
-            f"[unimem] '{slug}' is not HARMFUL (currently: {current}) -- "
-            "refusing to draft a rewrite.",
+            f"[unimem] '{slug}' is not HARMFUL (currently: {current}) -- refusing to draft a rewrite.",
             file=sys.stderr,
         )
         if verdict_row is not None and verdict_row.verdict == reliability.VERDICT_MISCALIBRATED:
@@ -774,8 +794,7 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
     miss_occasions = [ev for ev in evidence if slug in ev.retrieved and slug not in ev.hit]
     labels = _occasion_labels(root, _listed_ids(hit_occasions, miss_occasions))
     evidence_lines = [
-        f"Reliability verdict at the time this draft was written: HARMFUL "
-        f"-- {verdict_row.rationale}",
+        f"Reliability verdict at the time this draft was written: HARMFUL -- {verdict_row.rationale}",
         "",
         *_evidence_sections(hit_occasions, miss_occasions, labels),
     ]
@@ -786,8 +805,11 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
             "over-broad. Propose a corrected rule, and the activation condition "
             "under which the CORRECTED rule should fire."
         ),
-        slug=slug, current_rule_text=body, applies_when=str(fm.get("applies_when", "")),
-        do_not_apply_when=str(fm.get("do_not_apply_when", "")), evidence_lines=evidence_lines,
+        slug=slug,
+        current_rule_text=body,
+        applies_when=str(fm.get("applies_when", "")),
+        do_not_apply_when=str(fm.get("do_not_apply_when", "")),
+        evidence_lines=evidence_lines,
         allowed_evidence_ids=_listed_ids(hit_occasions, miss_occasions),
     )
 
@@ -812,17 +834,14 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
             domain=str(fm.get("domain") or ""),
             tags=list(fm.get("tags") or []),
             applies_when=(
-                llm_draft.applies_when if llm_draft
-                else f"TODO: rewrite -- was: {fm.get('applies_when', '')}"
+                llm_draft.applies_when if llm_draft else f"TODO: rewrite -- was: {fm.get('applies_when', '')}"
             ),
             do_not_apply_when=(
-                llm_draft.do_not_apply_when if llm_draft
-                else f"TODO: rewrite -- was: {fm.get('do_not_apply_when', '')}"
+                llm_draft.do_not_apply_when if llm_draft else f"TODO: rewrite -- was: {fm.get('do_not_apply_when', '')}"
             ),
             importance=int(fm.get("importance") or 3),
             importance_rationale=(
-                f"Drafted from {slug}'s own HARMFUL evidence "
-                f"({verdict_row.n_hit}/{verdict_row.n_retrieved})."
+                f"Drafted from {slug}'s own HARMFUL evidence ({verdict_row.n_hit}/{verdict_row.n_retrieved})."
             ),
             source_traces=[],
             status="review",
@@ -837,8 +856,10 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
                 cited_evidence=llm_draft.evidence,
                 unverifiable_evidence=llm_draft.unverifiable_evidence,
             )
-        rule_text = llm_draft.rule if llm_draft else (
-            f"TODO: rewrite this rule -- the original was judged HARMFUL: {verdict_row.rationale}"
+        rule_text = (
+            llm_draft.rule
+            if llm_draft
+            else (f"TODO: rewrite this rule -- the original was judged HARMFUL: {verdict_row.rationale}")
         )
         draft_body = (
             f"## Rule\n{rule_text}\n\n"
@@ -848,10 +869,16 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
             + (llm_draft.applies_when if llm_draft else "TODO: when to invoke it, how to use it concretely.")
             + "\n\n## Counter-examples\n"
             + (llm_draft.do_not_apply_when if llm_draft else "TODO: cases where the rule does NOT apply.")
-            + "\n\n## Evidence for rewrite\n" + "\n".join(evidence_lines) + "\n"
+            + "\n\n## Evidence for rewrite\n"
+            + "\n".join(evidence_lines)
+            + "\n"
         )
         lesson_io.write_lesson(
-            out_path, draft_fm, draft_body, root=root, actor=_actor(),
+            out_path,
+            draft_fm,
+            draft_body,
+            root=root,
+            actor=_actor(),
             reason=f"suggest-rewrite draft of {slug}" + (" (LLM-assisted)" if llm_draft else ""),
         )
     if llm_draft is None:
@@ -866,7 +893,7 @@ def run_suggest_rewrite(args: argparse.Namespace) -> int:
         f"  Nothing changed for '{slug}' yet -- this is a new, separate draft.\n"
         "  Read the evidence, review/rewrite the rule and activation condition, then:\n"
         f"    unimem lesson approve {draft_slug}\n"
-        f"    unimem lesson reject {slug} --reason \"superseded by {draft_slug}\""
+        f'    unimem lesson reject {slug} --reason "superseded by {draft_slug}"'
         "   # once you're satisfied"
     )
     return 0
@@ -890,15 +917,20 @@ def run_list(args: argparse.Namespace) -> int:
         if scope and lesson_scopes and scope not in lesson_scopes:
             continue
         if as_json:
-            rows.append({
-                "name": fm.get("name"), "agent_type": fm.get("agent_type"),
-                "importance": fm.get("importance"), "status": fm.get("status"),
-                "description": fm.get("description") or "", "domain": fm.get("domain"),
-                "scopes": fm.get("scopes") or [],
-                "valid_from": fm.get("valid_from") or "",
-                "valid_until": fm.get("valid_until") or "",
-                "path": path,
-            })
+            rows.append(
+                {
+                    "name": fm.get("name"),
+                    "agent_type": fm.get("agent_type"),
+                    "importance": fm.get("importance"),
+                    "status": fm.get("status"),
+                    "description": fm.get("description") or "",
+                    "domain": fm.get("domain"),
+                    "scopes": fm.get("scopes") or [],
+                    "valid_from": fm.get("valid_from") or "",
+                    "valid_until": fm.get("valid_until") or "",
+                    "path": path,
+                }
+            )
             continue
         print(
             f"{cell(fm.get('name')):45s} "
@@ -938,8 +970,10 @@ def run_history(args: argparse.Namespace) -> int:
             print(f"[unimem] no lesson found for slug '{args.slug}'.", file=sys.stderr)
             return 1
         print(f"[unimem] {args.slug} is at revision {now}, with no recorded history.")
-        print("  Changes are journaled from the first write through `lesson new`, "
-              "`lesson approve`, `distill` or the MCP tools.")
+        print(
+            "  Changes are journaled from the first write through `lesson new`, "
+            "`lesson approve`, `distill` or the MCP tools."
+        )
         return 0
 
     print(f"# {args.slug}")
@@ -949,15 +983,19 @@ def run_history(args: argparse.Namespace) -> int:
     for record in records:
         arrow = f"{record.get('from') or '(new)'} -> {record.get('to')}"
         print(f"- `{arrow}`  {record.get('at', '')}")
-        print(f"    by {record.get('actor', 'unknown')}"
-              + (f", status {record['status']}" if record.get("status") else ""))
+        print(
+            f"    by {record.get('actor', 'unknown')}"
+            + (f", status {record['status']}" if record.get("status") else "")
+        )
         if record.get("reason"):
             print(f"    {record['reason']}")
     print()
-    print("_An effect size from `unimem experiment` is about the revision that was "
-          "on disk while the assignments were made, not about the slug. A lesson edited "
-          "during a run makes the two arms measure different treatments, which the "
-          "validity section of that report calls out._")
+    print(
+        "_An effect size from `unimem experiment` is about the revision that was "
+        "on disk while the assignments were made, not about the slug. A lesson edited "
+        "during a run makes the two arms measure different treatments, which the "
+        "validity section of that report calls out._"
+    )
     return 0
 
 
@@ -1003,13 +1041,16 @@ def run_edit(args: argparse.Namespace) -> int:
         try:
             fm, body = frontmatter.read(draft)
         except (frontmatter.FrontmatterError, OSError, UnicodeDecodeError) as exc:
-            print(f"[unimem] The edited file does not parse ({exc}); the lesson is unchanged.",
-                  file=sys.stderr)
+            print(f"[unimem] The edited file does not parse ({exc}); the lesson is unchanged.", file=sys.stderr)
             return 1
         changed_governed = [k for k in _GOVERNED_KEYS if fm.get(k) != before_fm.get(k)]
         if changed_governed:
-            print("[unimem] Refused: a hand edit cannot change " + ", ".join(changed_governed)
-                  + ". Use `unimem lesson approve|reject|revoke`.", file=sys.stderr)
+            print(
+                "[unimem] Refused: a hand edit cannot change "
+                + ", ".join(changed_governed)
+                + ". Use `unimem lesson approve|reject|revoke`.",
+                file=sys.stderr,
+            )
             return 1
         errors = validate.validate(fm, validate.load_schema("lesson.schema.json"))
         if errors:
@@ -1017,11 +1058,12 @@ def run_edit(args: argparse.Namespace) -> int:
             for error in errors:
                 print(f"  - {error}", file=sys.stderr)
             return 1
-        report = memory_guard.scan_fields({**{k: v for k, v in fm.items() if isinstance(v, (str, list))},
-                                           "body": body})
+        report = memory_guard.scan_fields({**{k: v for k, v in fm.items() if isinstance(v, (str, list))}, "body": body})
         if report.should_block:
-            print("[unimem] Refused: the edit carries a secret or an injection payload ("
-                  + report.summary() + ").", file=sys.stderr)
+            print(
+                "[unimem] Refused: the edit carries a secret or an injection payload (" + report.summary() + ").",
+                file=sys.stderr,
+            )
             return 1
         if revision.revision_of(fm, body) == revision.revision_of(before_fm, before_body):
             print("[unimem] No content change; nothing written.")
@@ -1031,8 +1073,10 @@ def run_edit(args: argparse.Namespace) -> int:
             fm = {**fm, "status": "review"}
         lesson_io.write_lesson(path, fm, body, root=root, actor=_actor(), reason=args.reason)
         if demoted:
-            print(f"[unimem] Saved. {args.slug} was active and its text changed, so it is back in "
-                  f"review: `unimem lesson approve {args.slug}` re-activates it.")
+            print(
+                f"[unimem] Saved. {args.slug} was active and its text changed, so it is back in "
+                f"review: `unimem lesson approve {args.slug}` re-activates it."
+            )
         else:
             print(f"[unimem] Saved {args.slug}; the change is in the revision journal.")
         return 0

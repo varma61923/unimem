@@ -24,6 +24,7 @@ Model access is OpenAI-compatible chat completions (OpenAI, Azure OpenAI, OpenRo
 vLLM, ...) or the Anthropic Messages API; credentials come from the environment
 variable named in `api_key_env`, never from the options file.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -36,29 +37,31 @@ import urllib.request
 from pathlib import Path
 
 DEFAULT_OPTIONS = {
-    "provider": "openai",             # openai | azure | anthropic
-    "model": "",                      # required
+    "provider": "openai",  # openai | azure | anthropic
+    "model": "",  # required
     "base_url": "https://api.openai.com/v1",
     "api_key_env": "OPENAI_API_KEY",
     "azure_api_version": "2025-04-01-preview",
-    "temperature": None,              # omitted unless set (some reasoning models refuse it)
+    "temperature": None,  # omitted unless set (some reasoning models refuse it)
     "reasoning_effort": None,
     "max_tokens": 4096,
     "ingest_max_tokens": 16,
     "max_steps": 16,
-    "context_budget": 2500,           # tokens of memory recalled up front
-    "search_budget": 1200,            # tokens returned by each search_memory call
-    "embedder": "arctic-m",           # arctic-m | minilm | none
+    "context_budget": 2500,  # tokens of memory recalled up front
+    "search_budget": 1200,  # tokens returned by each search_memory call
+    "embedder": "arctic-m",  # arctic-m | minilm | none
     "rerank": "auto",
-    "prices": None,                   # {"input": $/Mtok, "output": $/Mtok, "cached_input": $/Mtok}
-    "store": None,                    # default: <work_dir>/unimem
+    "prices": None,  # {"input": $/Mtok, "output": $/Mtok, "cached_input": $/Mtok}
+    "store": None,  # default: <work_dir>/unimem
     "names": {"alex": "Alex Valdez", "morgan": "Morgan Chen", "riley": "Riley Tanaka"},
     "timeout": 300,
     "retries": 4,
 }
 
-INGEST_SYSTEM = ("You are {name}'s personal assistant. {name} is telling you about their day; it is "
-                 "saved to your long-term memory automatically. Reply with a brief acknowledgement only.")
+INGEST_SYSTEM = (
+    "You are {name}'s personal assistant. {name} is telling you about their day; it is "
+    "saved to your long-term memory automatically. Reply with a brief acknowledgement only."
+)
 
 TEST_SYSTEM = """You are {name}'s personal assistant and act on their behalf through the app tools provided.
 Today is {today}.
@@ -78,8 +81,10 @@ reply with a one-line summary of what you did."""
 
 SEARCH_TOOL = {
     "name": "search_memory",
-    "description": ("Search your long-term memory of everything the user has told you. Use short, specific "
-                    "queries: a person, project, place, preference or rule. Returns dated excerpts."),
+    "description": (
+        "Search your long-term memory of everything the user has told you. Use short, specific "
+        "queries: a person, project, place, preference or rule. Returns dated excerpts."
+    ),
     "parameters": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
 }
 
@@ -89,6 +94,7 @@ class HarnessError(RuntimeError):
 
 
 # --- model clients ---------------------------------------------------------------------
+
 
 def _post(url: str, headers: dict, body: dict, timeout: float, retries: int) -> dict:
     data = json.dumps(body).encode("utf-8")
@@ -149,9 +155,14 @@ class ChatModel:
             if m["role"] == "assistant":
                 entry = {"role": "assistant", "content": m.get("content") or None}
                 if m.get("tool_calls"):
-                    entry["tool_calls"] = [{"id": c["id"], "type": "function",
-                                            "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])}}
-                                           for c in m["tool_calls"]]
+                    entry["tool_calls"] = [
+                        {
+                            "id": c["id"],
+                            "type": "function",
+                            "function": {"name": c["name"], "arguments": json.dumps(c["arguments"])},
+                        }
+                        for c in m["tool_calls"]
+                    ]
                 wire.append(entry)
             elif m["role"] == "tool":
                 wire.append({"role": "tool", "tool_call_id": m["tool_call_id"], "content": m["content"]})
@@ -165,8 +176,7 @@ class ChatModel:
         if self.o.get("reasoning_effort"):
             body["reasoning_effort"] = self.o["reasoning_effort"]
         if self.o["provider"] == "azure":
-            url = (self.o["base_url"].rstrip("/") + "/chat/completions?api-version="
-                   + self.o["azure_api_version"])
+            url = self.o["base_url"].rstrip("/") + "/chat/completions?api-version=" + self.o["azure_api_version"]
             headers = {"api-key": self._key()}
         else:
             url = self.o["base_url"].rstrip("/") + "/chat/completions"
@@ -179,8 +189,13 @@ class ChatModel:
                 args = json.loads(c["function"].get("arguments") or "{}")
             except ValueError:
                 args = {"_unparsed": c["function"].get("arguments")}
-            calls.append({"id": c["id"], "name": c["function"]["name"],
-                          "arguments": args if isinstance(args, dict) else {"value": args}})
+            calls.append(
+                {
+                    "id": c["id"],
+                    "name": c["function"]["name"],
+                    "arguments": args if isinstance(args, dict) else {"value": args},
+                }
+            )
         message = {"role": "assistant", "content": choice.get("content") or ""}
         if calls:
             message["tool_calls"] = calls
@@ -194,8 +209,10 @@ class ChatModel:
                 continue
             if m["role"] == "assistant":
                 blocks = [{"type": "text", "text": m["content"]}] if m.get("content") else []
-                blocks += [{"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["arguments"]}
-                           for c in m.get("tool_calls") or []]
+                blocks += [
+                    {"type": "tool_use", "id": c["id"], "name": c["name"], "input": c["arguments"]}
+                    for c in m.get("tool_calls") or []
+                ]
                 wire.append({"role": "assistant", "content": blocks})
             elif m["role"] == "tool":
                 block = {"type": "tool_result", "tool_use_id": m["tool_call_id"], "content": m["content"]}
@@ -207,19 +224,28 @@ class ChatModel:
                 wire.append({"role": "user", "content": m["content"]})
         body = {"model": self.o["model"], "system": system, "messages": wire, "max_tokens": max_tokens}
         if tools:
-            body["tools"] = [{"name": t["name"], "description": t.get("description", ""),
-                              "input_schema": t["parameters"]} for t in tools]
+            body["tools"] = [
+                {"name": t["name"], "description": t.get("description", ""), "input_schema": t["parameters"]}
+                for t in tools
+            ]
         if self.o.get("temperature") is not None:
             body["temperature"] = float(self.o["temperature"])
         url = self.o.get("base_url") or "https://api.anthropic.com/v1"
         if "openai.com" in url:
             url = "https://api.anthropic.com/v1"
-        data = _post(url.rstrip("/") + "/messages",
-                     {"x-api-key": self._key(), "anthropic-version": "2023-06-01"},
-                     body, self.o["timeout"], self.o["retries"])
+        data = _post(
+            url.rstrip("/") + "/messages",
+            {"x-api-key": self._key(), "anthropic-version": "2023-06-01"},
+            body,
+            self.o["timeout"],
+            self.o["retries"],
+        )
         text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
-        calls = [{"id": b["id"], "name": b["name"], "arguments": b.get("input") or {}}
-                 for b in data.get("content", []) if b.get("type") == "tool_use"]
+        calls = [
+            {"id": b["id"], "name": b["name"], "arguments": b.get("input") or {}}
+            for b in data.get("content", [])
+            if b.get("type") == "tool_use"
+        ]
         message = {"role": "assistant", "content": text}
         if calls:
             message["tool_calls"] = calls
@@ -253,11 +279,15 @@ def _usage_cost(usage: dict, prices: dict) -> float:
         cached = int(usage.get("cache_read_input_tokens") or 0)
         fresh = int(usage.get("input_tokens") or 0) + int(usage.get("cache_creation_input_tokens") or 0)
         output = int(usage.get("output_tokens") or 0)
-    return (fresh * float(prices["input"]) + cached * float(prices.get("cached_input", prices["input"]))
-            + output * float(prices["output"])) / 1_000_000
+    return (
+        fresh * float(prices["input"])
+        + cached * float(prices.get("cached_input", prices["input"]))
+        + output * float(prices["output"])
+    ) / 1_000_000
 
 
 # --- the harness -------------------------------------------------------------------------
+
 
 class BenchmarkHarness:
     def __init__(self, options, work_dir):
@@ -273,10 +303,14 @@ class BenchmarkHarness:
         import unimem
 
         safe = {k: v for k, v in self.options.items() if k not in ("api_key_env",)}
-        return {"harness": "unimem", "unimem_version": unimem.__version__,
-                "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                "options": safe, "memory": "unimem conversation memory (SQLite, FTS5 BM25 + dense "
-                                           "embeddings + cross-encoder rerank; read-only at test time)"}
+        return {
+            "harness": "unimem",
+            "unimem_version": unimem.__version__,
+            "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "options": safe,
+            "memory": "unimem conversation memory (SQLite, FTS5 BM25 + dense "
+            "embeddings + cross-encoder rerank; read-only at test time)",
+        }
 
     def _root(self, persona: str) -> str:
         return os.path.join(self.store_root, persona)
@@ -290,8 +324,9 @@ class BenchmarkHarness:
 
     def _record_usage(self, phase: str, persona: str, interaction: str, usage: dict) -> None:
         with open(self._usage_log(phase), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps({"persona": persona, "interaction": interaction, "usage": usage,
-                                 "at": time.time()}) + "\n")
+            fh.write(
+                json.dumps({"persona": persona, "interaction": interaction, "usage": usage, "at": time.time()}) + "\n"
+            )
 
     # interactions ------------------------------------------------------------------------
     def run_interaction(self, request):
@@ -306,8 +341,18 @@ class BenchmarkHarness:
 
         day = str(request.narrative_time)[:10]
         with Store(self._root(request.persona), "history") as store:
-            store.add(day, [{"id": request.interaction_id, "speaker": self._name(request.persona),
-                             "role": "user", "text": request.message, "at": request.narrative_time}])
+            store.add(
+                day,
+                [
+                    {
+                        "id": request.interaction_id,
+                        "speaker": self._name(request.persona),
+                        "role": "user",
+                        "text": request.message,
+                        "at": request.narrative_time,
+                    }
+                ],
+            )
         model = ChatModel(self.options)
         system = INGEST_SYSTEM.format(name=self._name(request.persona))
         user = {"role": "user", "content": request.dated_message}
@@ -316,14 +361,19 @@ class BenchmarkHarness:
         self._record_usage("ingestion", request.persona, request.interaction_id, usage)
         reply["usage"] = usage
         reply["duration_ms"] = round((time.time() - started) * 1000, 1)
-        return InteractionRecord(model.settings(system, [], self.options["ingest_max_tokens"]),
-                                 [{"role": "system", "content": system}, user, reply])
+        return InteractionRecord(
+            model.settings(system, [], self.options["ingest_max_tokens"]),
+            [{"role": "system", "content": system}, user, reply],
+        )
 
     def _recall(self, store, query: str, today: str, budget: int) -> str:
         from unimem.conversation import Options, recall
 
-        opts = Options(budget=budget, embedder=None if self.options["embedder"] == "none" else self.options["embedder"],
-                       rerank=None if self.options["rerank"] == "none" else self.options["rerank"])
+        opts = Options(
+            budget=budget,
+            embedder=None if self.options["embedder"] == "none" else self.options["embedder"],
+            rerank=None if self.options["rerank"] == "none" else self.options["rerank"],
+        )
         return recall(store, query, now=today, options=opts).context or "(nothing relevant found)"
 
     async def _run_test(self, request):
@@ -340,8 +390,14 @@ class BenchmarkHarness:
 
         today = str(request.narrative_time)[:10]
         name = self._name(request.persona)
-        app_tools = [{"name": t.name, "description": t.description or "",
-                      "parameters": t.inputSchema or {"type": "object", "properties": {}}} for t in tools]
+        app_tools = [
+            {
+                "name": t.name,
+                "description": t.description or "",
+                "parameters": t.inputSchema or {"type": "object", "properties": {}},
+            }
+            for t in tools
+        ]
         all_tools = [SEARCH_TOOL] + app_tools
         store = Store(self._root(request.persona), "history", read_only=True)
         try:
@@ -361,8 +417,9 @@ class BenchmarkHarness:
                     break
                 for call in reply["tool_calls"]:
                     if call["name"] == "search_memory":
-                        text = self._recall(store, str(call["arguments"].get("query", "")), today,
-                                            self.options["search_budget"])
+                        text = self._recall(
+                            store, str(call["arguments"].get("query", "")), today, self.options["search_budget"]
+                        )
                     else:
                         try:
                             text = _tool_text(await call_app(call["name"], call["arguments"]))
@@ -370,14 +427,18 @@ class BenchmarkHarness:
                             text = f"tool error: {type(exc).__name__}: {exc}"
                     transcript.append({"role": "tool", "tool_call_id": call["id"], "content": text})
             if transcript[-1]["role"] != "assistant" or transcript[-1].get("tool_calls"):
-                reply, usage = model.complete(system + "\nYou are out of steps: summarise what you did.",
-                                              transcript, [], 512)
+                reply, usage = model.complete(
+                    system + "\nYou are out of steps: summarise what you did.", transcript, [], 512
+                )
                 self._record_usage("tests", request.persona, request.interaction_id, usage)
                 reply["usage"] = usage
                 transcript.append(reply)
             settings = model.settings(system, all_tools, self.options["max_tokens"])
-            return InteractionRecord(settings, [{"role": "system", "content": system}] + transcript,
-                                     duration_ms=round((time.time() - started) * 1000, 1))
+            return InteractionRecord(
+                settings,
+                [{"role": "system", "content": system}] + transcript,
+                duration_ms=round((time.time() - started) * 1000, 1),
+            )
         finally:
             store.close()
 
@@ -407,8 +468,7 @@ class BenchmarkHarness:
         return {"persona": persona, "files": digests, "turns": stats.get("turns"), "units": stats.get("units")}
 
     def verify_checkpoint(self, persona, checkpoint):
-        current = {os.path.basename(p): hashlib.sha256(Path(p).read_bytes()).hexdigest()
-                   for p in self._files(persona)}
+        current = {os.path.basename(p): hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in self._files(persona)}
         if current != checkpoint.get("files"):
             raise HarnessError(f"{persona}: stored memory differs from its checkpoint")
 

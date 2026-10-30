@@ -340,35 +340,55 @@ def test_end_to_end_capture_distill_approve_query_pipeline(
     cli_runner: Callable[..., CLIResult],
     isolated_store: Path,
 ) -> None:
-    res1 = cli_runner([
-        "capture",
-        "--title", "Database Deadlock Issue",
-        "--context", "Concurrent transactions caused postgres deadlock",
-        "--solution", "Order table lock acquisition alphabetically",
-        "--dest", str(isolated_store),
-    ])
+    res1 = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Database Deadlock Issue",
+            "--context",
+            "Concurrent transactions caused postgres deadlock",
+            "--solution",
+            "Order table lock acquisition alphabetically",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res1.exit_code == 0
 
-    res2 = cli_runner([
-        "capture",
-        "--title", "Database Deadlock Recurrence",
-        "--context", "Another deadlock occurred on concurrent batch update",
-        "--solution", "Order table locks consistently across all services",
-        "--dest", str(isolated_store),
-    ])
+    res2 = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Database Deadlock Recurrence",
+            "--context",
+            "Another deadlock occurred on concurrent batch update",
+            "--solution",
+            "Order table locks consistently across all services",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res2.exit_code == 0
 
     res_distill = cli_runner(["distill", "--dest", str(isolated_store)])
     assert res_distill.exit_code == 0
 
-    res_new = cli_runner([
-        "lesson", "new",
-        "--slug", "lesson_deadlock_order",
-        "--description", "Acquire table locks in strict alphabetical order",
-        "--domain", "testing",
-        "--applies-when", "Running concurrent database updates",
-        "--dest", str(isolated_store),
-    ])
+    res_new = cli_runner(
+        [
+            "lesson",
+            "new",
+            "--slug",
+            "lesson_deadlock_order",
+            "--description",
+            "Acquire table locks in strict alphabetical order",
+            "--domain",
+            "testing",
+            "--applies-when",
+            "Running concurrent database updates",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res_new.exit_code == 0
 
     res_app = cli_runner(["lesson", "approve", "lesson_deadlock_order", "--force", "--dest", str(isolated_store)])
@@ -412,24 +432,36 @@ def test_end_to_end_experiment_holdout_flow(
     lesson_factory(isolated_store, slug="lesson_exp_target", description="Target rule for experiment")
 
     occasion = "occ_e2e_001"
-    res_q = cli_runner([
-        "query", "--lexical",
-        "--experiment",
-        "--occasion-id", occasion,
-        "--dest", str(isolated_store),
-        "Target rule",
-    ])
+    res_q = cli_runner(
+        [
+            "query",
+            "--lexical",
+            "--experiment",
+            "--occasion-id",
+            occasion,
+            "--dest",
+            str(isolated_store),
+            "Target rule",
+        ]
+    )
     assert res_q.exit_code == 0
 
-    res_cap = cli_runner([
-        "capture",
-        "--title", "Experiment Outcome",
-        "--context", "Testing holdout assignment join",
-        "--solution", "Successfully verified outcome",
-        "--occasion-id", occasion,
-        "--resolved",
-        "--dest", str(isolated_store),
-    ])
+    res_cap = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Experiment Outcome",
+            "--context",
+            "Testing holdout assignment join",
+            "--solution",
+            "Successfully verified outcome",
+            "--occasion-id",
+            occasion,
+            "--resolved",
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res_cap.exit_code == 0
 
 
@@ -469,13 +501,19 @@ def test_special_characters_and_shell_injection_strings(
     ]
 
     for attack in injection_strings:
-        res = cli_runner([
-            "capture",
-            "--title", attack,
-            "--context", f"Context with injection: {attack}",
-            "--solution", f"Solution with injection: {attack}",
-            "--dest", str(isolated_store),
-        ])
+        res = cli_runner(
+            [
+                "capture",
+                "--title",
+                attack,
+                "--context",
+                f"Context with injection: {attack}",
+                "--solution",
+                f"Solution with injection: {attack}",
+                "--dest",
+                str(isolated_store),
+            ]
+        )
         assert res.exit_code == 0
         assert not Path("/tmp/hacked_file").exists()
 
@@ -542,12 +580,18 @@ def test_near_limit_boundary_payload(
     isolated_store: Path,
 ) -> None:
     large_payload = "A" * 50000
-    res = cli_runner([
-        "capture",
-        "--title", "Large Payload Trace",
-        "--context", large_payload,
-        "--solution", large_payload,
-        "--dest", str(isolated_store),
-    ])
+    res = cli_runner(
+        [
+            "capture",
+            "--title",
+            "Large Payload Trace",
+            "--context",
+            large_payload,
+            "--solution",
+            large_payload,
+            "--dest",
+            str(isolated_store),
+        ]
+    )
     assert res.exit_code == 0
     assert "captured trace" in res.output.lower()

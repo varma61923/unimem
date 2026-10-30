@@ -12,18 +12,23 @@ def test_seeded_randomized_utility_beats_judgment_only_budget():
     observations, features = [], []
     for i in range(1600):
         good = i % 2 == 0
-        action = rng.random() < .5
-        success = rng.random() < ((.9 if good else .1) if action else .5)
-        observations.append(aipw.Observation(action, success, .5, "good" if good else "harmful"))
+        action = rng.random() < 0.5
+        success = rng.random() < ((0.9 if good else 0.1) if action else 0.5)
+        observations.append(aipw.Observation(action, success, 0.5, "good" if good else "harmful"))
         features.append([1, 1 if good else -1])
     model = retention.fit(observations, features)
     good = model.predict([1, 1], local_n=800)
     bad = model.predict([1, -1], local_n=800)
-    assert good > .15 and bad < -.15
-    report = retention.dream_budget([
-        {"id": "good", "effect": good, "future_retrieval": .5, "tokens": 100},
-        {"id": "bad", "effect": bad, "future_retrieval": .9, "tokens": 100},
-        {"id": "hazard", "effect": 1, "future_retrieval": 1, "tokens": 1}], tokens=100, protected={"hazard"})
+    assert good > 0.15 and bad < -0.15
+    report = retention.dream_budget(
+        [
+            {"id": "good", "effect": good, "future_retrieval": 0.5, "tokens": 100},
+            {"id": "bad", "effect": bad, "future_retrieval": 0.9, "tokens": 100},
+            {"id": "hazard", "effect": 1, "future_retrieval": 1, "tokens": 1},
+        ],
+        tokens=100,
+        protected={"hazard"},
+    )
     assert report["changes"][0]["id"] == "good" and report["quarantine"] == ["bad"]
     assert good > bad  # A judgment-only policy choosing the frequent harmful item loses planted utility.
 
@@ -34,7 +39,7 @@ def test_rewrite_is_randomized_and_losing_rewrite_rolls_back(tmp_path):
 
     root = str(tmp_path)
     _write_lesson(root, "rule", body="Verify the account owner before resetting a password.")
-    holdout_io.configure(root, rate=.5, salt="rewrite-trial")
+    holdout_io.configure(root, rate=0.5, salt="rewrite-trial")
     proposal = retention.propose(root, "rule", "Skip account verification when resetting a password.", author="dreamer")
     identity = proposal["record"]["id"]
     retention.review(root, identity, reviewer="operator")
@@ -70,7 +75,7 @@ def test_retrieve_randomizes_reviewed_rewrites_and_replay_recovers_them(tmp_path
     root = str(tmp_path)
     original = "Verify the account owner before resetting a password."
     _write_lesson(root, "reset", body=original)
-    holdout_io.configure(root, rate=.01, salt="rewrites")
+    holdout_io.configure(root, rate=0.01, salt="rewrites")
     rewrite = "Before any password reset, confirm the account owner's identity with two factors."
     proposal = retention.propose(root, "reset", rewrite, author="dreamer")
     server = build_server(root)

@@ -47,9 +47,7 @@ class TestRunLoop:
         await stopper
         assert len(calls) >= 3
 
-    async def test_it_stops_promptly_instead_of_sleeping_out_the_interval(
-        self, session_factory, monkeypatch
-    ):
+    async def test_it_stops_promptly_instead_of_sleeping_out_the_interval(self, session_factory, monkeypatch):
         async def fake_check_rules(session, *args, **kwargs):
             return []
 
@@ -85,12 +83,23 @@ class TestSweepReachesRealAlertRules:
     async def test_a_due_rule_fires_through_a_real_sweep(self, session_factory, org):
         async with session_scope(session_factory) as session:
             await alerts.create_rule(
-                session, org, alerts.METRIC_QUARANTINE_RATE, alerts.COMPARATOR_GT, 0,
+                session,
+                org,
+                alerts.METRIC_QUARANTINE_RATE,
+                alerts.COMPARATOR_GT,
+                0,
             )
-            session.add(Trace(
-                org_id=org, title="t", context_text="c", solution_text="s",
-                tags=[], agent_type="code", quarantined=True,
-            ))
+            session.add(
+                Trace(
+                    org_id=org,
+                    title="t",
+                    context_text="c",
+                    solution_text="s",
+                    tags=[],
+                    agent_type="code",
+                    quarantined=True,
+                )
+            )
 
         stop_event = asyncio.Event()
 
@@ -123,17 +132,18 @@ class TestWebhookDeliveryRunLoop:
         stopper = asyncio.create_task(_run_until(stop_event, calls, 3))
         await asyncio.wait_for(
             scheduler.run_webhook_delivery(
-                session_factory, interval_seconds=0, stop_event=stop_event,
-                signing_key="test-key", cipher=NULL_CIPHER,
+                session_factory,
+                interval_seconds=0,
+                stop_event=stop_event,
+                signing_key="test-key",
+                cipher=NULL_CIPHER,
             ),
             timeout=5,
         )
         await stopper
         assert len(calls) >= 3
 
-    async def test_it_stops_promptly_instead_of_sleeping_out_the_interval(
-        self, session_factory, monkeypatch
-    ):
+    async def test_it_stops_promptly_instead_of_sleeping_out_the_interval(self, session_factory, monkeypatch):
         async def fake_deliver_pending(session, *args, **kwargs):
             return events.DeliveryResult()
 
@@ -142,8 +152,11 @@ class TestWebhookDeliveryRunLoop:
         stop_event.set()
         await asyncio.wait_for(
             scheduler.run_webhook_delivery(
-                session_factory, interval_seconds=3600, stop_event=stop_event,
-                signing_key="test-key", cipher=NULL_CIPHER,
+                session_factory,
+                interval_seconds=3600,
+                stop_event=stop_event,
+                signing_key="test-key",
+                cipher=NULL_CIPHER,
             ),
             timeout=2,
         )
@@ -162,8 +175,11 @@ class TestWebhookDeliveryRunLoop:
         stopper = asyncio.create_task(_run_until(stop_event, calls, 2))
         await asyncio.wait_for(
             scheduler.run_webhook_delivery(
-                session_factory, interval_seconds=0, stop_event=stop_event,
-                signing_key="test-key", cipher=NULL_CIPHER,
+                session_factory,
+                interval_seconds=0,
+                stop_event=stop_event,
+                signing_key="test-key",
+                cipher=NULL_CIPHER,
             ),
             timeout=5,
         )
@@ -172,13 +188,12 @@ class TestWebhookDeliveryRunLoop:
 
 
 class TestWebhookSweepReachesRealDeliveries:
-    async def test_a_pending_delivery_is_actually_attempted(
-        self, session_factory, org, monkeypatch
-    ):
+    async def test_a_pending_delivery_is_actually_attempted(self, session_factory, org, monkeypatch):
         from hub.models import WebhookDelivery
 
         async def fake_resolve(hostname):
             import socket
+
             return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("8.8.8.8", 0))]
 
         monkeypatch.setattr(events, "_default_resolve", fake_resolve)
@@ -192,11 +207,22 @@ class TestWebhookSweepReachesRealDeliveries:
 
         async with session_scope(session_factory) as session:
             await events.add_endpoint(
-                session, org, "https://example.invalid/hooks", signing_key="test-signing-key",
+                session,
+                org,
+                "https://example.invalid/hooks",
+                signing_key="test-signing-key",
             )
-            await events.emit(session, org, "trace.created", {
-                "trace_id": "t1", "agent_type": "code", "agent_id": "a1", "n_tags": 0,
-            })
+            await events.emit(
+                session,
+                org,
+                "trace.created",
+                {
+                    "trace_id": "t1",
+                    "agent_type": "code",
+                    "agent_id": "a1",
+                    "n_tags": 0,
+                },
+            )
 
         stop_event = asyncio.Event()
 
@@ -207,8 +233,11 @@ class TestWebhookSweepReachesRealDeliveries:
         stopper = asyncio.create_task(stop_soon())
         await asyncio.wait_for(
             scheduler.run_webhook_delivery(
-                session_factory, interval_seconds=0, stop_event=stop_event,
-                signing_key="test-signing-key", cipher=NULL_CIPHER,
+                session_factory,
+                interval_seconds=0,
+                stop_event=stop_event,
+                signing_key="test-signing-key",
+                cipher=NULL_CIPHER,
             ),
             timeout=5,
         )
@@ -217,7 +246,7 @@ class TestWebhookSweepReachesRealDeliveries:
         assert sent
         async with session_scope(session_factory) as session:
             deliveries = (
-                await session.execute(select(WebhookDelivery).where(WebhookDelivery.org_id == org))
-            ).scalars().all()
+                (await session.execute(select(WebhookDelivery).where(WebhookDelivery.org_id == org))).scalars().all()
+            )
         assert deliveries
         assert deliveries[0].status != events.STATUS_PENDING

@@ -1,4 +1,5 @@
 """How often does the outcome detector get the occasion right? Measured on a labelled sample."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -48,8 +49,12 @@ class Result:
 
     def to_dict(self) -> dict:
         out = dataclasses.asdict(self)
-        out.update(precision=self.precision, failure_precision=self.failure_precision,
-                   decided_share=self.decided_share, recall=self.recall)
+        out.update(
+            precision=self.precision,
+            failure_precision=self.failure_precision,
+            decided_share=self.decided_share,
+            recall=self.recall,
+        )
         return out
 
 
@@ -63,9 +68,9 @@ def read_sample(text: str) -> list[dict]:
         except ValueError as exc:
             raise SampleError(f"line {number}: not JSON ({exc})") from None
         if not isinstance(row, dict) or not isinstance(row.get("truth"), bool):
-            raise SampleError(f"line {number}: needs a boolean \"truth\"")
+            raise SampleError(f'line {number}: needs a boolean "truth"')
         if not isinstance(row.get("signals"), list) or not row["signals"]:
-            raise SampleError(f"line {number}: needs a non-empty \"signals\" list")
+            raise SampleError(f'line {number}: needs a non-empty "signals" list')
         rows.append(row)
     if not rows:
         raise SampleError("the sample is empty")

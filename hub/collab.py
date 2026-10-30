@@ -19,12 +19,10 @@ _MAX_COMMENT_CHARS = 4000
 MAX_NOTIFICATIONS = 200
 
 
-class CollabError(ValueError):
-    ...
+class CollabError(ValueError): ...
 
 
-class CollabNotFound(CollabError):
-    ...
+class CollabNotFound(CollabError): ...
 
 
 def _is_uuid(value: object) -> bool:
@@ -45,7 +43,11 @@ async def _get_trace_or_raise(session: AsyncSession, org_id: str, trace_id: str)
 
 
 async def add_comment(
-    session: AsyncSession, org_id: str, author, trace_id: str, body: str,
+    session: AsyncSession,
+    org_id: str,
+    author,
+    trace_id: str,
+    body: str,
 ) -> dict:
     """`author` is an `AuthenticatedUser` (hub/auth.py:get_current_user)."""
     body = body.strip()
@@ -61,8 +63,11 @@ async def add_comment(
     await _get_trace_or_raise(session, org_id, trace_id)
 
     comment = Comment(
-        org_id=org_id, target_type=TARGET_TRACE, target_id=trace_id,
-        author_user_id=author.id, body=body,
+        org_id=org_id,
+        target_type=TARGET_TRACE,
+        target_id=trace_id,
+        author_user_id=author.id,
+        body=body,
     )
     session.add(comment)
     await session.flush()
@@ -77,20 +82,32 @@ async def add_comment(
         )
     ).scalar_one_or_none()
     if assignment is not None and assignment.assignee_user_id != author.id:
-        session.add(Notification(
-            org_id=org_id, user_id=assignment.assignee_user_id,
-            kind="comment", target_type=TARGET_TRACE, target_id=trace_id,
-            summary=f"{author.email} commented on a trace assigned to you",
-        ))
+        session.add(
+            Notification(
+                org_id=org_id,
+                user_id=assignment.assignee_user_id,
+                kind="comment",
+                target_type=TARGET_TRACE,
+                target_id=trace_id,
+                summary=f"{author.email} commented on a trace assigned to you",
+            )
+        )
 
     await audit.record(
-        session, actor=f"user:{author.id}", action="comment.add",
-        org_id=org_id, target_type=TARGET_TRACE, target_id=trace_id,
+        session,
+        actor=f"user:{author.id}",
+        action="comment.add",
+        org_id=org_id,
+        target_type=TARGET_TRACE,
+        target_id=trace_id,
         summary=f"{len(body)} chars",
     )
     return {
-        "id": comment.id, "trace_id": trace_id, "author_email": author.email,
-        "body": comment.body, "created_at": comment.created_at.isoformat(),
+        "id": comment.id,
+        "trace_id": trace_id,
+        "author_email": author.email,
+        "body": comment.body,
+        "created_at": comment.created_at.isoformat(),
     }
 
 
@@ -110,7 +127,9 @@ async def list_comments(session: AsyncSession, org_id: str, trace_id: str) -> li
     ).all()
     return [
         {
-            "id": comment.id, "author_email": email, "body": comment.body,
+            "id": comment.id,
+            "author_email": email,
+            "body": comment.body,
             "created_at": comment.created_at.isoformat(),
         }
         for comment, email in rows
@@ -118,7 +137,11 @@ async def list_comments(session: AsyncSession, org_id: str, trace_id: str) -> li
 
 
 async def assign(
-    session: AsyncSession, org_id: str, assigner, trace_id: str, assignee_user_id: str,
+    session: AsyncSession,
+    org_id: str,
+    assigner,
+    trace_id: str,
+    assignee_user_id: str,
 ) -> dict:
     await _get_trace_or_raise(session, org_id, trace_id)
 
@@ -142,21 +165,35 @@ async def assign(
         existing.assigned_by_user_id = assigner.id
         existing.created_at = datetime.now(timezone.utc)
     else:
-        session.add(Assignment(
-            org_id=org_id, target_type=TARGET_TRACE, target_id=trace_id,
-            assignee_user_id=assignee_user_id, assigned_by_user_id=assigner.id,
-        ))
+        session.add(
+            Assignment(
+                org_id=org_id,
+                target_type=TARGET_TRACE,
+                target_id=trace_id,
+                assignee_user_id=assignee_user_id,
+                assigned_by_user_id=assigner.id,
+            )
+        )
 
     if assignee_user_id != assigner.id:
-        session.add(Notification(
-            org_id=org_id, user_id=assignee_user_id,
-            kind="assigned", target_type=TARGET_TRACE, target_id=trace_id,
-            summary=f"{assigner.email} assigned you a trace",
-        ))
+        session.add(
+            Notification(
+                org_id=org_id,
+                user_id=assignee_user_id,
+                kind="assigned",
+                target_type=TARGET_TRACE,
+                target_id=trace_id,
+                summary=f"{assigner.email} assigned you a trace",
+            )
+        )
 
     await audit.record(
-        session, actor=f"user:{assigner.id}", action="assignment.set",
-        org_id=org_id, target_type=TARGET_TRACE, target_id=trace_id,
+        session,
+        actor=f"user:{assigner.id}",
+        action="assignment.set",
+        org_id=org_id,
+        target_type=TARGET_TRACE,
+        target_id=trace_id,
         summary=f"assignee={assignee.email}",
     )
     return {"trace_id": trace_id, "assignee_email": assignee.email}
@@ -177,17 +214,26 @@ async def unassign(session: AsyncSession, org_id: str, actor, trace_id: str) -> 
         return False
     await session.delete(existing)
     await audit.record(
-        session, actor=f"user:{actor.id}", action="assignment.clear",
-        org_id=org_id, target_type=TARGET_TRACE, target_id=trace_id,
+        session,
+        actor=f"user:{actor.id}",
+        action="assignment.clear",
+        org_id=org_id,
+        target_type=TARGET_TRACE,
+        target_id=trace_id,
     )
     return True
 
 
 async def list_my_notifications(
-    session: AsyncSession, org_id: str, person, *, unread_only: bool = False,
+    session: AsyncSession,
+    org_id: str,
+    person,
+    *,
+    unread_only: bool = False,
 ) -> list[dict]:
     stmt = select(Notification).where(
-        Notification.org_id == org_id, Notification.user_id == person.id,
+        Notification.org_id == org_id,
+        Notification.user_id == person.id,
     )
     if unread_only:
         stmt = stmt.where(Notification.read_at.is_(None))
@@ -195,8 +241,11 @@ async def list_my_notifications(
     rows = (await session.execute(stmt)).scalars().all()
     return [
         {
-            "id": n.id, "kind": n.kind, "target_type": n.target_type,
-            "target_id": n.target_id, "summary": n.summary,
+            "id": n.id,
+            "kind": n.kind,
+            "target_type": n.target_type,
+            "target_id": n.target_id,
+            "summary": n.summary,
             "created_at": n.created_at.isoformat(),
             "read_at": n.read_at.isoformat() if n.read_at else None,
         }
@@ -205,16 +254,15 @@ async def list_my_notifications(
 
 
 async def mark_notification_read(
-    session: AsyncSession, org_id: str, person, notification_id: str,
+    session: AsyncSession,
+    org_id: str,
+    person,
+    notification_id: str,
 ) -> bool:
     if not _is_uuid(notification_id):
         return False
     notification = await session.get(Notification, notification_id)
-    if (
-        notification is None
-        or notification.org_id != org_id
-        or notification.user_id != person.id
-    ):
+    if notification is None or notification.org_id != org_id or notification.user_id != person.id:
         return False
     if notification.read_at is None:
         notification.read_at = datetime.now(timezone.utc)

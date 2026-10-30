@@ -46,7 +46,8 @@ def _eligible_lessons(lessons: list[dict]) -> list[dict]:
     `build_taxonomy` call instead of once per (pattern, lesson) pair.
     """
     return [
-        fm for fm in sorted(lessons, key=lambda lesson: str(lesson.get("name", "")))
+        fm
+        for fm in sorted(lessons, key=lambda lesson: str(lesson.get("name", "")))
         if fm.get("status") == "active"
         and not templates.unfilled_placeholders(fm, str(fm.get(templates.BODY_KEY) or ""))
     ]
@@ -172,21 +173,20 @@ def render_markdown(tax: Taxonomy) -> str:
         "# UniMem Taxonomy",
         "",
         "A structured map of the failure patterns UniMem can address, "
-        "built from recurring traces (the pilot design step 1: \"Map the issues\").",
+        'built from recurring traces (the pilot design step 1: "Map the issues").',
         "",
         f"- Traces considered: **{tax.n_traces_total}**",
         f"- Recurring patterns found: **{tax.n_patterns}**",
         f"- Already covered by an active lesson: **{tax.n_covered}**",
         f"- Gaps (recurring, no lesson yet): **{tax.n_gaps}**",
-        f"- Traces that did not cluster with any other (below the "
-        f"minimum pattern size): **{tax.n_unclustered}**",
+        f"- Traces that did not cluster with any other (below the minimum pattern size): **{tax.n_unclustered}**",
         "",
     ]
     if not tax.domains:
         out.append(
             "*No repeated pattern found yet -- either there aren't enough traces, "
             "or none share enough vocabulary to cluster. This is not the same as "
-            "\"no failures\"; see `unimem distill --similarity-threshold` to "
+            '"no failures"; see `unimem distill --similarity-threshold` to '
             "loosen the match.*"
         )
         return "\n".join(out)
@@ -216,23 +216,22 @@ def render_markdown(tax: Taxonomy) -> str:
 
 
 def render_html_fragment(tax: Taxonomy) -> str:
-    cards = "".join([
-        report_html.stat_card("Patterns found", str(tax.n_patterns)),
-        report_html.stat_card("Covered", str(tax.n_covered), "have an active lesson"),
-        report_html.stat_card("Gaps", str(tax.n_gaps), "recurring, no lesson yet"),
-    ])
+    cards = "".join(
+        [
+            report_html.stat_card("Patterns found", str(tax.n_patterns)),
+            report_html.stat_card("Covered", str(tax.n_covered), "have an active lesson"),
+            report_html.stat_card("Gaps", str(tax.n_gaps), "recurring, no lesson yet"),
+        ]
+    )
     rows = []
     for group in tax.domains:
-        rows.append(f'<h3>{html.escape(group.domain)} '
-                     f'<span class="meta">({group.n_traces} trace(s))</span></h3>')
-        rows.append(
-            "<table><tr><th>Pattern</th><th>Traces</th><th>Shared terms</th>"
-            "<th>Tags</th><th>Status</th></tr>"
-        )
+        rows.append(f'<h3>{html.escape(group.domain)} <span class="meta">({group.n_traces} trace(s))</span></h3>')
+        rows.append("<table><tr><th>Pattern</th><th>Traces</th><th>Shared terms</th><th>Tags</th><th>Status</th></tr>")
         for p in group.patterns:
             badge = (
                 f'<span class="badge badge-covered">covered · {html.escape(p.lesson_slug or "")}</span>'
-                if p.covered else '<span class="badge badge-gap">gap</span>'
+                if p.covered
+                else '<span class="badge badge-gap">gap</span>'
             )
             terms = html.escape(", ".join(p.shared_terms[:5]) or "—")
             tags = html.escape(", ".join(p.tags) or "—")

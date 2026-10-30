@@ -6,6 +6,7 @@ not causal confidence bounds. Rewrite promotion uses the existing experiment
 and integrity evidence of record. The original remains immutable while a
 reviewed overlay is trialled, so harmful or stale rewrites fall back immediately.
 """
+
 from __future__ import annotations
 
 import copy
@@ -13,9 +14,9 @@ import math
 import os
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Sequence, cast
+from typing import Any, Sequence
 
-from unimem import aipw, evidence, experiment, frontmatter, holdout_io, integrity, lesson_io, lineage, safety
+from unimem import aipw, evidence, experiment, frontmatter, holdout_io, lesson_io, lineage, safety
 from unimem import frontier_protocol as fp
 
 
@@ -36,8 +37,9 @@ class UtilityModel:
         return (local_n * fitted + 20 * self.pooled_effect) / (local_n + 20)
 
 
-def fit(observations: Sequence[aipw.Observation], features: Sequence[Sequence[float]], *,
-        epochs: int = 20) -> UtilityModel:
+def fit(
+    observations: Sequence[aipw.Observation], features: Sequence[Sequence[float]], *, epochs: int = 20
+) -> UtilityModel:
     fp.count(len(observations), 2, 10_000)
     fp.count(epochs, 1, 50)
     if len(features) != len(observations):
@@ -49,19 +51,19 @@ def fit(observations: Sequence[aipw.Observation], features: Sequence[Sequence[fl
         for x in vector:
             fp.number(x, -1, 1)
     for row in observations:
-        fp.number(row.rate, .01, .99, "randomized holdout rate")
+        fp.number(row.rate, 0.01, 0.99, "randomized holdout rate")
     scores = aipw.aipw_scores(list(observations))
     bound = max(1 / min(row.rate, 1 - row.rate) for row in observations)
     weights = [0.0] * dimensions
     # Bounded soft targets preserve the mean of the randomized pseudo-outcome.
     for epoch in range(epochs):
-        step = .1 / math.sqrt(epoch + 1)
+        step = 0.1 / math.sqrt(epoch + 1)
         for vector, score in zip(features, scores):
             linear = math.fsum(weight * x for weight, x in zip(weights, vector))
             predicted = 1 / (1 + math.exp(-max(-30, min(30, linear))))
             target = (score + bound) / (2 * bound)
             for j, x in enumerate(vector):
-                weights[j] -= step * ((predicted - target) * x + .001 * weights[j])
+                weights[j] -= step * ((predicted - target) * x + 0.001 * weights[j])
     return UtilityModel(tuple(weights), bound, max(-1, min(1, math.fsum(scores) / len(scores))), len(scores))
 
 
@@ -86,8 +88,12 @@ def dream_budget(items: Sequence[dict[str, Any]], *, tokens: int, protected: set
         if spent + cost <= tokens and utility > 0:
             selected.append({"id": identity, "tokens": cost, "predicted_utility": utility})
             spent += cost
-    return {"changes": selected, "quarantine": sorted(quarantined), "tokens": spent,
-            "kind": "utility heuristic; changes remain itemized and require randomized rewrite evidence"}
+    return {
+        "changes": selected,
+        "quarantine": sorted(quarantined),
+        "tokens": spent,
+        "kind": "utility heuristic; changes remain itemized and require randomized rewrite evidence",
+    }
 
 
 REWRITES = "dream-rewrites.jsonl"
@@ -173,9 +179,16 @@ def propose(root: str, slug: str, body: str, *, author: str) -> dict[str, Any]:
     identity = "rewrite-" + fp.digest({"slug": slug, "revision": revision, "body": body})[:24]
     if any(row.get("id") == identity for row in fp.journal(root, REWRITES)):
         raise ValueError("rewrite proposal already exists")
-    record = {"kind": "proposal", "id": identity, "slug": slug, "original_revision": revision,
-              "original_digest": _put_blob(root, original), "body_digest": _put_blob(root, body),
-              "author": fp.text(author), "sources": [slug]}
+    record = {
+        "kind": "proposal",
+        "id": identity,
+        "slug": slug,
+        "original_revision": revision,
+        "original_digest": _put_blob(root, original),
+        "body_digest": _put_blob(root, body),
+        "author": fp.text(author),
+        "sources": [slug],
+    }
     lineage.attest(root, record, fp.sign(root, record), inputs=[slug], operation="causal-dream-rewrite")
     return fp.append(root, REWRITES, record)
 
@@ -185,8 +198,7 @@ def review(root: str, identity: str, *, reviewer: str) -> dict[str, Any]:
 
     if not memory_authority.is_operator():
         raise PermissionError("rewrite review requires an operator")
-    proposals = [row for row in fp.journal(root, REWRITES)
-                 if row["kind"] == "proposal" and row["id"] == identity]
+    proposals = [row for row in fp.journal(root, REWRITES) if row["kind"] == "proposal" and row["id"] == identity]
     if len(proposals) != 1 or proposals[0]["author"] == reviewer:
         raise ValueError("an independent reviewer must approve an existing rewrite")
     return fp.append(root, REWRITES, {"kind": "review", "id": identity, "reviewer": fp.text(reviewer)})
@@ -204,23 +216,38 @@ def choose(root: str, identity: str, occasion: str) -> dict[str, Any]:
         raise ValueError("rewrite original has changed; propose and test a fresh rewrite")
     original_text, rewrite_text = _text(root, proposal, "original"), _text(root, proposal, "body")
     analysis = evidence.analyse(root)
-    report = cast(integrity.IntegrityReport | None, analysis.report)
+    report = analysis.report
     effect = next((row for row in analysis.effects if row.lesson_slug == identity), None)
     if effect and effect.verdict == experiment.VERDICT_HURTS:
-        return {"id": identity, "body": original_text, "arm": "original", "rollback": True,
-                "reason": "rewrite lost its randomized holdout"}
+        return {
+            "id": identity,
+            "body": original_text,
+            "arm": "original",
+            "rollback": True,
+            "reason": "rewrite lost its randomized holdout",
+        }
     config = holdout_io.load_config(root)
     if not config.running:
         raise ValueError("a configured randomized experiment is required for rewrite trials")
-    withheld = holdout_io.assign_and_log(root, [identity], occasion_id=fp.text(occasion), rate=.5, salt=config.salt,
-                                        revisions={identity: fp.digest({"body": rewrite_text,
-                                                                       "original": original_text})})
+    withheld = holdout_io.assign_and_log(
+        root,
+        [identity],
+        occasion_id=fp.text(occasion),
+        rate=0.5,
+        salt=config.salt,
+        revisions={identity: fp.digest({"body": rewrite_text, "original": original_text})},
+    )
     original = identity in withheld
-    return {"id": identity, "body": original_text if original else rewrite_text,
-            "arm": "original" if original else "rewrite", "rollback": False,
-            "promoted": bool(effect and report is not None and report.readable
-                             and effect.verdict == experiment.VERDICT_HELPS),
-            "note": "ongoing randomized comparison; report the task outcome under the same occasion id"}
+    return {
+        "id": identity,
+        "body": original_text if original else rewrite_text,
+        "arm": "original" if original else "rewrite",
+        "rollback": False,
+        "promoted": bool(
+            effect and report is not None and report.readable and effect.verdict == experiment.VERDICT_HELPS
+        ),
+        "note": "ongoing randomized comparison; report the task outcome under the same occasion id",
+    }
 
 
 _TRIALS: OrderedDict[str, tuple[tuple[int, str], dict[str, list[dict[str, Any]]]]] = OrderedDict()
@@ -292,13 +319,22 @@ def report(root: str, *, tokens: int = 10_000) -> dict[str, Any]:
     rows = causal_gate.current_rows(root)
     model = causal_gate.fit(rows, causal_gate.sources_for(root, {row.lesson for row in rows}))
     largest = max((p.n_injected + p.n_withheld for p in model.lessons.values()), default=1)
-    items = [{"id": identity, "effect": posterior.mean,
-              "future_retrieval": (posterior.n_injected + posterior.n_withheld) / largest, "tokens": 256}
-             for identity, posterior in model.lessons.items()]
+    items = [
+        {
+            "id": identity,
+            "effect": posterior.mean,
+            "future_retrieval": (posterior.n_injected + posterior.n_withheld) / largest,
+            "tokens": 256,
+        }
+        for identity, posterior in model.lessons.items()
+    ]
     result = dream_budget(items, tokens=tokens, protected=set(safety.protected(root)))
     result["forecast"] = "historical retrieval share, not a calibrated forecast"
-    result["rewrite_trials"] = [{key: value for key, value in r.items() if key not in ("original", "body")}
-                                for r in fp.journal(root, REWRITES) if r["kind"] == "proposal"]
+    result["rewrite_trials"] = [
+        {key: value for key, value in r.items() if key not in ("original", "body")}
+        for r in fp.journal(root, REWRITES)
+        if r["kind"] == "proposal"
+    ]
     return result
 
 
@@ -315,7 +351,7 @@ def selected(root: str, slug: str) -> dict[str, Any] | None:
     if not candidates or path is None:
         return None
     analysis = evidence.analyse(root)
-    report = cast(integrity.IntegrityReport | None, analysis.report)
+    report = analysis.report
     if report is None or not report.readable:
         return None
     helps = {effect.lesson_slug for effect in analysis.effects if effect.verdict == experiment.VERDICT_HELPS}
@@ -358,8 +394,13 @@ def evict(root: str, model: UtilityModel, items: Sequence[dict[str, Any]], *, to
         else:
             hierarchical.forget_fact(root, identity)
             evicted.append(identity)
-    return {"kept": kept, "evicted": evicted, "tokens": used, "kind": "learned utility heuristic",
-            "protected_over_budget": used > token_budget}
+    return {
+        "kept": kept,
+        "evicted": evicted,
+        "tokens": used,
+        "kind": "learned utility heuristic",
+        "protected_over_budget": used > token_budget,
+    }
 
 
 def expire_consent(root: str, receipt: dict[str, Any]) -> dict[str, Any]:
@@ -377,8 +418,13 @@ def expire_consent(root: str, receipt: dict[str, Any]) -> dict[str, Any]:
     if prior and prior["status"] == "complete":
         return {"receipt_id": identity, "status": "complete", "certificate": prior.get("certificate")}
     if prior and prior.get("local_purge"):
-        return {"receipt_id": identity, "status": "pending", "local_purge": True,
-                "reason": "subject vault not configured", "certificate": None}
+        return {
+            "receipt_id": identity,
+            "status": "pending",
+            "local_purge": True,
+            "reason": "subject vault not configured",
+            "certificate": None,
+        }
     ids = sorted(receipt["sources"])
     try:
         incident.assert_unpinned(root, ids)
@@ -397,8 +443,9 @@ def expire_consent(root: str, receipt: dict[str, Any]) -> dict[str, Any]:
                     row = db.execute("SELECT id FROM resource_refs WHERE ref=?", (key,)).fetchone()
                 native_id = row[0] if row is not None else source.get("native_id")
                 if native_id is not None:
-                    journal.forget(native_id, reason="Purpose consent ended.",
-                                   scope=scope_from_labels(source["scopes"]))
+                    journal.forget(
+                        native_id, reason="Purpose consent ended.", scope=scope_from_labels(source["scopes"])
+                    )
             elif source["namespace"] == "lessons":
                 path = lesson_io.lesson_path(root, key)
                 if path:
@@ -424,10 +471,15 @@ def expire_consent(root: str, receipt: dict[str, Any]) -> dict[str, Any]:
             # Local plaintext deletion is real; a missing vault cannot establish
             # destruction of subject wrapping keys or historical backup bytes.
             nextwave_store.event(root, "consent-cleanup", identity, {"status": "pending", "local_purge": True})
-            return {"receipt_id": identity, "status": "pending", "local_purge": True,
-                    "reason": "subject vault not configured", "certificate": None}
+            return {
+                "receipt_id": identity,
+                "status": "pending",
+                "local_purge": True,
+                "reason": "subject vault not configured",
+                "certificate": None,
+            }
         vault = certified_erasure.SubjectVault(root, receipt["vault_directory"])
-        certificate = certified_erasure.erase(root, "consent:"+identity, ids, vault, reason="Purpose consent ended.")
+        certificate = certified_erasure.erase(root, "consent:" + identity, ids, vault, reason="Purpose consent ended.")
         nextwave_store.event(root, "consent-cleanup", identity, {"status": "complete", "certificate": certificate})
         return {"receipt_id": identity, "status": "complete", "certificate": certificate}
     except (PermissionError, ValueError, OSError, RuntimeError) as error:

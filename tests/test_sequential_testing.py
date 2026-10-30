@@ -7,18 +7,23 @@ import pytest
 from unimem import experiment
 
 
-def _run(seed: int, sequential: bool, lift: float, max_n: int = 1000,
-         baseline: float = 0.6, step: int = 50) -> int | None:
+def _run(
+    seed: int, sequential: bool, lift: float, max_n: int = 1000, baseline: float = 0.6, step: int = 50
+) -> int | None:
     rng = random.Random(seed)
     observations: list[experiment.HoldoutObservation] = []
     while len(observations) < max_n:
         for _ in range(step):
             injected = rng.random() < 0.5
             rate = baseline + (lift if injected else 0.0)
-            observations.append(experiment.HoldoutObservation(
-                lesson_slug="L", occasion_id=f"o{len(observations)}",
-                injected=injected, succeeded=rng.random() < rate,
-            ))
+            observations.append(
+                experiment.HoldoutObservation(
+                    lesson_slug="L",
+                    occasion_id=f"o{len(observations)}",
+                    injected=injected,
+                    succeeded=rng.random() < rate,
+                )
+            )
         for effect in experiment.analyze(observations, sequential=sequential):
             if effect.verdict in (experiment.VERDICT_HELPS, experiment.VERDICT_HURTS):
                 return len(observations)
@@ -26,9 +31,7 @@ def _run(seed: int, sequential: bool, lift: float, max_n: int = 1000,
 
 
 def _false_positive_rate(sequential: bool, trials: int = 200) -> float:
-    return sum(
-        _run(seed, sequential, lift=0.0) is not None for seed in range(trials)
-    ) / trials
+    return sum(_run(seed, sequential, lift=0.0) is not None for seed in range(trials)) / trials
 
 
 class TestTheSpendingFunctions:
@@ -46,8 +49,7 @@ class TestTheSpendingFunctions:
 
     def test_spending_increases_with_information(self):
         for shape in experiment.SPENDING_FUNCTIONS:
-            spent = [experiment.alpha_spent(t, shape=shape)
-                     for t in (0.1, 0.3, 0.6, 0.9, 1.0)]
+            spent = [experiment.alpha_spent(t, shape=shape) for t in (0.1, 0.3, 0.6, 0.9, 1.0)]
             assert spent == sorted(spent)
 
     def test_no_information_spends_nothing(self):
@@ -86,9 +88,7 @@ class TestTheConfidenceSequence:
         assert lo <= 0.0 <= hi
 
     def test_an_overwhelming_effect_still_excludes_zero(self):
-        lo, hi = experiment.anytime_confidence_interval(
-            48, 60, 18, 60, target_n_per_arm=98
-        )
+        lo, hi = experiment.anytime_confidence_interval(48, 60, 18, 60, target_n_per_arm=98)
         assert lo > 0.0
 
 
@@ -100,9 +100,7 @@ class TestWhatContinuousMonitoringDoesToAFixedThreshold:
         assert _false_positive_rate(sequential=True) <= 0.05
 
     def test_the_sequential_boundary_is_strictly_better_here(self):
-        assert _false_positive_rate(sequential=True) < _false_positive_rate(
-            sequential=False
-        )
+        assert _false_positive_rate(sequential=True) < _false_positive_rate(sequential=False)
 
 
 class TestItStillDetectsRealEffects:
@@ -112,16 +110,12 @@ class TestItStillDetectsRealEffects:
         # a practical effect may remain underpowered; the large-effect test below
         # verifies that the rule still detects decisive evidence.
         found = sum(
-            _run(seed, sequential=True, lift=experiment.DEFAULT_PRACTICAL_EFFECT)
-            is not None
-            for seed in range(60)
+            _run(seed, sequential=True, lift=experiment.DEFAULT_PRACTICAL_EFFECT) is not None for seed in range(60)
         )
         assert found / 60 >= 0.05
 
     def test_a_large_effect_is_always_found(self):
-        found = sum(
-            _run(seed, sequential=True, lift=0.25) is not None for seed in range(30)
-        )
+        found = sum(_run(seed, sequential=True, lift=0.25) is not None for seed in range(30))
         assert found == 30
 
     def test_it_costs_data_rather_than_certainty(self):
@@ -135,26 +129,20 @@ class TestTheDefaultIsUnchanged:
     def test_a_one_shot_analysis_is_not_penalised(self):
         observations = []
         for i in range(200):
-            observations.append(experiment.HoldoutObservation(
-                "L", f"w{i}", False, i % 10 < 4))
+            observations.append(experiment.HoldoutObservation("L", f"w{i}", False, i % 10 < 4))
         for i in range(200):
-            observations.append(experiment.HoldoutObservation(
-                "L", f"i{i}", True, i % 10 < 6))
+            observations.append(experiment.HoldoutObservation("L", f"i{i}", True, i % 10 < 6))
         [effect] = experiment.analyze(observations)
         assert effect.verdict == experiment.VERDICT_HELPS
 
     def test_a_withheld_sequential_verdict_says_why_and_says_not_yet(self):
         observations = []
         for i in range(60):
-            observations.append(experiment.HoldoutObservation(
-                "L", f"w{i}", False, i % 100 < 50))
+            observations.append(experiment.HoldoutObservation("L", f"w{i}", False, i % 100 < 50))
         for i in range(60):
-            observations.append(experiment.HoldoutObservation(
-                "L", f"i{i}", True, i % 100 < 70))
+            observations.append(experiment.HoldoutObservation("L", f"i{i}", True, i % 100 < 70))
         [fixed] = experiment.analyze(observations)
         [sequential] = experiment.analyze(observations, sequential=True)
-        if fixed.verdict == experiment.VERDICT_HELPS and sequential.verdict != (
-            experiment.VERDICT_HELPS
-        ):
+        if fixed.verdict == experiment.VERDICT_HELPS and sequential.verdict != (experiment.VERDICT_HELPS):
             assert sequential.verdict == experiment.VERDICT_UNDERPOWERED
             assert "running experiment" in sequential.note

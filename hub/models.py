@@ -56,9 +56,11 @@ class MemoryPolicyState(Base):
 
 class AttestedMeasurement(Base):
     """Tenant-approved immutable build policy with monotone revocation."""
+
     __tablename__ = "attested_measurements"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     measurement: Mapped[str] = mapped_column(String(64), primary_key=True)
     profile: Mapped[dict] = mapped_column(JSONB, nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
@@ -67,9 +69,11 @@ class AttestedMeasurement(Base):
 
 class AttestationChallenge(Base):
     """Shared one-use challenge state; process-local caches cannot authorize release."""
+
     __tablename__ = "attestation_challenges"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     nonce: Mapped[str] = mapped_column(String(64), primary_key=True)
     request: Mapped[dict] = mapped_column(JSONB, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -90,9 +94,7 @@ class Organization(Base):
         Boolean, default=False, server_default="false", nullable=False
     )
     trace_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    share_generation: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0", nullable=False
-    )
+    share_generation: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
 
     holdout_rate: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
 
@@ -100,9 +102,7 @@ class Organization(Base):
 
     holdout_prereg: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
-    harm_policy: Mapped[str] = mapped_column(
-        String(16), default="inform", server_default="inform", nullable=False
-    )
+    harm_policy: Mapped[str] = mapped_column(String(16), default="inform", server_default="inform", nullable=False)
 
     deletion_token_hash: Mapped[str | None] = mapped_column(String(200), nullable=True)
     deletion_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -117,7 +117,8 @@ class Organization(Base):
 class TransparencyHead(Base):
     __tablename__ = "transparency_heads"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     tree_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     root_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     signed_head: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -129,7 +130,8 @@ class TransparencyHead(Base):
 class TransparencyEntry(Base):
     __tablename__ = "transparency_entries"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     leaf_index: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     leaf_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     statement: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -138,7 +140,8 @@ class TransparencyEntry(Base):
 class IncidentSnapshot(Base):
     __tablename__ = "incident_snapshots"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
     valid_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -152,7 +155,8 @@ class PooledContribution(Base):
 
     __tablename__ = "pooled_contributions"
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     release_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     unit_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     contribution: Mapped[dict] = mapped_column(JSONB, nullable=False)
@@ -163,9 +167,11 @@ class PooledContribution(Base):
 
 class CapabilityNonce(Base):
     """Shared per-tenant proof-of-possession replay fence across Hub replicas."""
+
     __tablename__ = "capability_nonces"
-    org_id: Mapped[str] = mapped_column(UUID(as_uuid=False),
-        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     nonce_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     __table_args__ = (Index("ix_capability_nonces_expiry", "org_id", "expires_at"),)
@@ -173,13 +179,14 @@ class CapabilityNonce(Base):
 
 class CapabilityAttestation(Base):
     """Committed signed metadata waiting for durable lineage publication; no source bodies."""
+
     __tablename__ = "capability_attestations"
-    org_id: Mapped[str] = mapped_column(UUID(as_uuid=False),
-        ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True)
+    org_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
     event_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     body: Mapped[dict] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
-
 
 
 class ApiKey(Base):
@@ -230,9 +237,7 @@ class Trace(Base):
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    superseded_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
-    )
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     superseded_by_trace_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
 
     trust: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)
@@ -253,13 +258,9 @@ class Trace(Base):
 
     commons_votes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
 
-    commons_review_after: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    commons_review_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    commons_retracted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    commons_retracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     commons_retraction_reason: Mapped[str] = mapped_column(String(200), default="", nullable=False)
 
     commons_source: Mapped[str] = mapped_column(String(16), default="org", nullable=False)
@@ -267,8 +268,7 @@ class Trace(Base):
     search_vector: Mapped[str | None] = mapped_column(
         TSVECTOR,
         Computed(
-            f"to_tsvector('{TEXT_SEARCH_CONFIG}', "
-            "title || ' ' || context_text || ' ' || solution_text)",
+            f"to_tsvector('{TEXT_SEARCH_CONFIG}', title || ' ' || context_text || ' ' || solution_text)",
             persisted=True,
         ),
         nullable=True,
@@ -286,9 +286,7 @@ class Trace(Base):
         Index(
             "ix_traces_commons",
             "shared_with_commons",
-            postgresql_where=text(
-                "shared_with_commons AND NOT quarantined AND commons_retracted_at IS NULL"
-            ),
+            postgresql_where=text("shared_with_commons AND NOT quarantined AND commons_retracted_at IS NULL"),
         ),
         Index(
             "ix_traces_org_live",
@@ -328,9 +326,7 @@ class KnowledgeBaseSubmission(Base):
     request_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('pending', 'approved', 'rejected')", name="ck_kb_submissions_status"
-        ),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_kb_submissions_status"),
         Index("ix_kb_submissions_org_created_at", "org_id", "created_at"),
         Index("ix_kb_submissions_pending", "status", postgresql_where=text("status = 'pending'")),
         UniqueConstraint("org_id", "idempotency_key", name="uq_kb_submissions_org_idempotency_key"),
@@ -360,8 +356,7 @@ COMMONS_CORPUS_COLUMNS = (
 )
 
 _WAS_OR_IS_COMMONS = (
-    "(OLD.shared_with_commons OR OLD.commons_source = 'seed' "
-    "OR NEW.shared_with_commons OR NEW.commons_source = 'seed')"
+    "(OLD.shared_with_commons OR OLD.commons_source = 'seed' OR NEW.shared_with_commons OR NEW.commons_source = 'seed')"
 )
 
 COMMONS_CORPUS_TRIGGER_DDL = (
@@ -463,9 +458,7 @@ class HoldoutObservation(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
-        UniqueConstraint(
-            "org_id", "salt", "trace_id", "occasion_id", name="uq_holdout_org_salt_trace_occasion"
-        ),
+        UniqueConstraint("org_id", "salt", "trace_id", "occasion_id", name="uq_holdout_org_salt_trace_occasion"),
         Index("ix_holdout_org_occasion", "org_id", "occasion_id"),
         Index("ix_holdout_org_salt", "org_id", "salt"),
     )
@@ -497,9 +490,7 @@ class AuditLogEntry(Base):
     target_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     summary: Mapped[str] = mapped_column(String(500), default="", nullable=False)
 
-    __table_args__ = (
-        Index("ix_audit_log_org_created_at", "org_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_audit_log_org_created_at", "org_id", "created_at"),)
 
 
 class UsageCounter(Base):
@@ -516,9 +507,7 @@ class UsageCounter(Base):
     n: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("org_id", "period", "metric", name="uq_usage_org_period_metric"),
-    )
+    __table_args__ = (UniqueConstraint("org_id", "period", "metric", name="uq_usage_org_period_metric"),)
 
 
 class RetentionPolicy(Base):
@@ -528,8 +517,10 @@ class RetentionPolicy(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     object_type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="any", nullable=False)
@@ -538,11 +529,7 @@ class RetentionPolicy(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint(
-            "org_id", "object_type", "status", name="uq_retention_org_type_status"
-        ),
-    )
+    __table_args__ = (UniqueConstraint("org_id", "object_type", "status", name="uq_retention_org_type_status"),)
 
 
 class LegalHold(Base):
@@ -552,8 +539,10 @@ class LegalHold(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     object_type: Mapped[str] = mapped_column(String(32), default="", nullable=False)
     target_id: Mapped[str] = mapped_column(String(64), default="", nullable=False)
@@ -566,7 +555,8 @@ class LegalHold(Base):
     __table_args__ = (
         Index(
             "ix_legal_holds_active",
-            "org_id", "object_type",
+            "org_id",
+            "object_type",
             postgresql_where=text("released_at IS NULL"),
         ),
     )
@@ -579,13 +569,13 @@ class WebhookEndpoint(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     url: Mapped[str] = mapped_column(String(2000), nullable=False)
-    events: Mapped[list[str]] = mapped_column(
-        ARRAY(String(64)), default=list, nullable=False
-    )
+    events: Mapped[list[str]] = mapped_column(ARRAY(String(64)), default=list, nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     key_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
@@ -598,8 +588,10 @@ class WebhookDelivery(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     endpoint_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -613,7 +605,9 @@ class WebhookDelivery(Base):
 
     __table_args__ = (
         Index(
-            "ix_webhook_deliveries_due", "status", "next_attempt_at",
+            "ix_webhook_deliveries_due",
+            "status",
+            "next_attempt_at",
             postgresql_where=text("status = 'pending'"),
         ),
     )
@@ -624,8 +618,10 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), default="", nullable=False)
@@ -642,7 +638,10 @@ class User(Base):
     __table_args__ = (
         UniqueConstraint("org_id", "email", name="uq_users_org_email"),
         Index(
-            "ix_users_issuer_subject", "issuer", "external_subject", unique=True,
+            "ix_users_issuer_subject",
+            "issuer",
+            "external_subject",
+            unique=True,
             postgresql_where=text("external_subject != ''"),
         ),
     )
@@ -653,19 +652,22 @@ class ScimGroup(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     external_id: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_now, onupdate=_now, nullable=False,
+        DateTime(timezone=True),
+        default=_now,
+        onupdate=_now,
+        nullable=False,
     )
 
-    __table_args__ = (
-        UniqueConstraint("org_id", "display_name", name="uq_scim_groups_org_display_name"),
-    )
+    __table_args__ = (UniqueConstraint("org_id", "display_name", name="uq_scim_groups_org_display_name"),)
 
 
 class ScimGroupMembership(Base):
@@ -673,22 +675,26 @@ class ScimGroupMembership(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     group_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("scim_groups.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("scim_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
-    __table_args__ = (
-        UniqueConstraint("group_id", "user_id", name="uq_scim_group_memberships"),
-    )
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_scim_group_memberships"),)
 
 
 class Comment(Base):
@@ -696,20 +702,22 @@ class Comment(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)
     target_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     author_user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     body: Mapped[str] = mapped_column(String(4000), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
-    __table_args__ = (
-        Index("ix_comments_target", "org_id", "target_type", "target_id"),
-    )
+    __table_args__ = (Index("ix_comments_target", "org_id", "target_type", "target_id"),)
 
 
 class Assignment(Base):
@@ -719,22 +727,31 @@ class Assignment(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)
     target_id: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
     assignee_user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     assigned_by_user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
     __table_args__ = (
         UniqueConstraint(
-            "org_id", "target_type", "target_id", name="uq_assignments_target",
+            "org_id",
+            "target_type",
+            "target_id",
+            name="uq_assignments_target",
         ),
     )
 
@@ -744,11 +761,15 @@ class Notification(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     user_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=False),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
     )
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     target_type: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -757,9 +778,7 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    __table_args__ = (
-        Index("ix_notifications_user_unread", "org_id", "user_id", "read_at"),
-    )
+    __table_args__ = (Index("ix_notifications_user_unread", "org_id", "user_id", "read_at"),)
 
 
 class AlertRule(Base):
@@ -767,8 +786,10 @@ class AlertRule(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     metric: Mapped[str] = mapped_column(String(64), nullable=False)
     comparator: Mapped[str] = mapped_column(String(8), nullable=False)
@@ -779,9 +800,7 @@ class AlertRule(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     created_by: Mapped[str] = mapped_column(String(128), default="", nullable=False)
 
-    __table_args__ = (
-        Index("ix_alert_rules_org_enabled", "org_id", "enabled"),
-    )
+    __table_args__ = (Index("ix_alert_rules_org_enabled", "org_id", "enabled"),)
 
 
 class ProcessedWebhookEvent(Base):
@@ -800,8 +819,10 @@ class Connector(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     name: Mapped[str] = mapped_column(String(100), default="", nullable=False)
@@ -817,18 +838,20 @@ class ConnectorDelivery(Base):
     """The replay ledger: one row per vendor delivery a connector has handled."""
 
     __tablename__ = "connector_deliveries"
-    __table_args__ = (
-        UniqueConstraint("connector_id", "delivery_id", "dry_run", name="uq_connector_delivery"),
-    )
+    __table_args__ = (UniqueConstraint("connector_id", "delivery_id", "dry_run", name="uq_connector_delivery"),)
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     connector_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("connectors.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("connectors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     delivery_id: Mapped[str] = mapped_column(String(255), nullable=False)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -847,12 +870,16 @@ class PendingOutcome(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     connector_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("connectors.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("connectors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     occasion_id: Mapped[str] = mapped_column(String(255), nullable=False)
     ref: Mapped[str] = mapped_column(String(255), default="", nullable=False)
@@ -867,8 +894,10 @@ class MarketPublisher(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     principal_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     organization: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -887,8 +916,10 @@ class MarketListing(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     org_id: Mapped[str] = mapped_column(
-        UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        UUID(as_uuid=False),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     publisher_principal: Mapped[str] = mapped_column(String(128), nullable=False)
     publisher_org: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -907,6 +938,8 @@ class MarketListing(Base):
     status: Mapped[str] = mapped_column(String(16), default="listed", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class MemoryRecordEvent(Base):
     __tablename__ = "memory_record_events"
     org_id: Mapped[str] = mapped_column(
@@ -933,8 +966,12 @@ class MemoryRecordProjection(Base):
     __table_args__ = (
         Index("ix_memory_records_search", "search_vector", postgresql_using="gin"),
         Index("ix_memory_records_scope", "scope", postgresql_using="gin"),
-        Index("ix_memory_records_session", "org_id", text("((record -> 'payload'::text) ->> 'session_id'::text)"),
-              text("(record ->> 'created_at'::text)")),
+        Index(
+            "ix_memory_records_session",
+            "org_id",
+            text("((record -> 'payload'::text) ->> 'session_id'::text)"),
+            text("(record ->> 'created_at'::text)"),
+        ),
     )
 
 

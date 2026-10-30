@@ -5,6 +5,7 @@ caps, deterministic sampling, shared signature memos) while keeping small
 inputs byte-identical. These tests pin: determinism, bounded runtime on large
 synthetic inputs, and small-input equivalence.
 """
+
 from __future__ import annotations
 
 import time
@@ -14,20 +15,30 @@ from unimem import consolidate, distill, redundancy, reliability, taxonomy
 
 def _trace(i: int, topic: str = "refund delay") -> distill.TraceCandidate:
     return distill.TraceCandidate(
-        id=f"t{i:04d}", path=f"/tmp/t{i:04d}.md",
+        id=f"t{i:04d}",
+        path=f"/tmp/t{i:04d}.md",
         title=f"{topic} case {i % 5}",
         context_text=f"customer reports {topic} with order {i % 5}",
-        solution_text="issued refund", tags=["support"], agent_type="support",
+        solution_text="issued refund",
+        tags=["support"],
+        agent_type="support",
     )
 
 
 def _lesson(i: int, topic: str = "refund delay") -> dict:
     return {
-        "name": f"lesson_{i:04d}", "description": f"{topic} handling rule {i % 5}",
-        "status": "active", "domain": "support", "agent_type": "support",
-        "tags": ["support"], "importance": 3,
-        "importance_rationale": "test", "applies_when": f"when {topic} occurs",
-        "do_not_apply_when": "never", "uses": 0, "last_hit": "NEVER",
+        "name": f"lesson_{i:04d}",
+        "description": f"{topic} handling rule {i % 5}",
+        "status": "active",
+        "domain": "support",
+        "agent_type": "support",
+        "tags": ["support"],
+        "importance": 3,
+        "importance_rationale": "test",
+        "applies_when": f"when {topic} occurs",
+        "do_not_apply_when": "never",
+        "uses": 0,
+        "last_hit": "NEVER",
         "source_traces": [f"t{i:04d}"],
     }
 
@@ -37,8 +48,7 @@ class TestDistillCaps:
         traces = [_trace(i) for i in range(10)]
         first = distill.find_clusters(traces, existing_lessons_source_traces=[])
         second = distill.find_clusters(traces, existing_lessons_source_traces=[])
-        assert [(sorted(m.id for m in c.traces)) for c in first] == [
-            (sorted(m.id for m in c.traces)) for c in second]
+        assert [(sorted(m.id for m in c.traces)) for c in first] == [(sorted(m.id for m in c.traces)) for c in second]
         assert sum(len(c.traces) for c in first) == 10
 
     def test_large_input_bounded_and_deterministic(self):
@@ -48,8 +58,7 @@ class TestDistillCaps:
         elapsed = time.perf_counter() - start
         assert elapsed < 20, f"700 traces took {elapsed:.1f}s"
         second = distill.find_clusters(traces, existing_lessons_source_traces=[])
-        assert [sorted(m.id for m in c.traces) for c in first] == [
-            sorted(m.id for m in c.traces) for c in second]
+        assert [sorted(m.id for m in c.traces) for c in first] == [sorted(m.id for m in c.traces) for c in second]
         assert sum(len(c.traces) for c in first) == 700
 
     def test_representative_is_member_and_capped(self):

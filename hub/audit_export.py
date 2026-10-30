@@ -34,8 +34,7 @@ def _header(value: str) -> str:
 
 def _ext(value: Any) -> str:
     text = "" if value is None else str(value)
-    return (text.replace("\\", "\\\\").replace("=", "\\=")
-            .replace("\r", "\\r").replace("\n", "\\n"))
+    return text.replace("\\", "\\\\").replace("=", "\\=").replace("\r", "\\r").replace("\n", "\\n")
 
 
 def severity(action: str) -> int:
@@ -44,17 +43,30 @@ def severity(action: str) -> int:
 
 def to_cef(entry: Any) -> str:
     target = f"{entry.target_type}:{entry.target_id}" if entry.target_type else ""
-    extension = " ".join(f"{k}={_ext(v)}" for k, v in (
-        ("rt", int(entry.created_at.timestamp() * 1000)),
-        ("externalId", entry.id),
-        ("suser", entry.actor),
-        ("cs1Label", "org_id"), ("cs1", entry.org_id or ""),
-        ("cs2Label", "target"), ("cs2", target),
-        ("msg", safe_summary(entry.action, entry.summary)),
-    ))
-    header = "|".join(_header(v) for v in (
-        "UniMem", "Hub", __version__, entry.action, entry.action, severity(entry.action),
-    ))
+    extension = " ".join(
+        f"{k}={_ext(v)}"
+        for k, v in (
+            ("rt", int(entry.created_at.timestamp() * 1000)),
+            ("externalId", entry.id),
+            ("suser", entry.actor),
+            ("cs1Label", "org_id"),
+            ("cs1", entry.org_id or ""),
+            ("cs2Label", "target"),
+            ("cs2", target),
+            ("msg", safe_summary(entry.action, entry.summary)),
+        )
+    )
+    header = "|".join(
+        _header(str(v))
+        for v in (
+            "UniMem",
+            "Hub",
+            __version__,
+            entry.action,
+            entry.action,
+            severity(entry.action),
+        )
+    )
     return f"CEF:0|{header}|{extension}"
 
 
@@ -72,13 +84,20 @@ def verify_incident_pack(bundle: dict, principals: dict) -> bool:
     try:
         manifest, anchor = bundle["manifest"], bundle["anchor"]
         head = anchor["head"]["record"]
-        return (origin.verify(manifest, principals) and origin.verify(anchor["head"], principals)
-                and origin.verify(anchor["statement"], principals)
-                and anchor["statement"]["record"]["statement"]["manifest_digest"] == fp.digest(manifest)
-                and transparency_log.verify_inclusion(transparency_log.leaf_hash(anchor["statement"]),
-                    anchor["leaf"], head["tree_size"], anchor["proof"], head["root_hash"])
-                and set(manifest["record"]["files"]) == set(bundle["files"])
-                and all(fp.digest(bundle["files"][name]) == digest
-                        for name, digest in manifest["record"]["files"].items()))
+        return (
+            origin.verify(manifest, principals)
+            and origin.verify(anchor["head"], principals)
+            and origin.verify(anchor["statement"], principals)
+            and anchor["statement"]["record"]["statement"]["manifest_digest"] == fp.digest(manifest)
+            and transparency_log.verify_inclusion(
+                transparency_log.leaf_hash(anchor["statement"]),
+                anchor["leaf"],
+                head["tree_size"],
+                anchor["proof"],
+                head["root_hash"],
+            )
+            and set(manifest["record"]["files"]) == set(bundle["files"])
+            and all(fp.digest(bundle["files"][name]) == digest for name, digest in manifest["record"]["files"].items())
+        )
     except (ValueError, KeyError, TypeError):
         return False

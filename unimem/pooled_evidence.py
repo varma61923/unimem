@@ -13,6 +13,7 @@ Gaussian releases protect replacement of one clipped score, conditional on a
 fixed public cohort, assignment and frozen public nuisance model. Membership,
 counts, unit fingerprints and public identities are outside that adjacency.
 """
+
 from __future__ import annotations
 
 import math
@@ -45,15 +46,23 @@ def gaussian_sigma(epsilon: float, delta: float, sensitivity: float) -> float:
     doi:10.1561/0400000042, Appendix A. The reference sampler uses finite-precision
     stdlib Gaussian sampling; this is not an audited exact-arithmetic DP engine.
     """
-    fp.number(epsilon, .001, 1, "epsilon")
-    fp.number(delta, 1e-12, .1, "delta")
+    fp.number(epsilon, 0.001, 1, "epsilon")
+    fp.number(delta, 1e-12, 0.1, "delta")
     fp.number(sensitivity, 1e-9, 1e9, "L2 sensitivity")
     return sensitivity * math.sqrt(2 * math.log(1.25 / delta)) / epsilon
 
 
-def summarize(tenant: str, unit_hash: str, rows: Sequence[dict[str, Any]], *, release_id: str,
-              propensity_floor: float = .05, nuisance: tuple[float, float] = (.5, .5),
-              epsilon: float | None = None, delta: float | None = None) -> dict[str, Any]:
+def summarize(
+    tenant: str,
+    unit_hash: str,
+    rows: Sequence[dict[str, Any]],
+    *,
+    release_id: str,
+    propensity_floor: float = 0.05,
+    nuisance: tuple[float, float] = (0.5, 0.5),
+    epsilon: float | None = None,
+    delta: float | None = None,
+) -> dict[str, Any]:
     """Compute frozen-nuisance AIPW sums, squares and public counts per arm.
 
     Do not fit nuisances on these private outcomes before requesting DP: changing
@@ -64,7 +73,7 @@ def summarize(tenant: str, unit_hash: str, rows: Sequence[dict[str, Any]], *, re
     fingerprint(unit_hash)
     fp.text(release_id, "release identity", 128)
     fp.count(len(rows), 2, fp.MAX_ROWS)
-    floor = fp.number(propensity_floor, .001, .5, "declared propensity floor")
+    floor = fp.number(propensity_floor, 0.001, 0.5, "declared propensity floor")
     if len(nuisance) != 2:
         raise ValueError("two frozen public arm predictions required")
     m0, m1 = (fp.number(x, 0, 1, "public nuisance prediction") for x in nuisance)
@@ -80,8 +89,7 @@ def summarize(tenant: str, unit_hash: str, rows: Sequence[dict[str, Any]], *, re
         if type(row["injected"]) is not bool or type(row["outcome"]) is not bool:
             raise ValueError("binary logged assignment and outcome required")
         p = fp.number(1 - row["rate"], floor, 1 - floor, "injection propensity")
-        score = m1 - m0 + ((int(row["outcome"]) - m1) / p if row["injected"]
-                           else -(int(row["outcome"]) - m0) / (1 - p))
+        score = m1 - m0 + ((int(row["outcome"]) - m1) / p if row["injected"] else -(int(row["outcome"]) - m0) / (1 - p))
         fp.number(score, -bound, bound, "AIPW score")
         arm = arms["treated" if row["injected"] else "control"]
         arm["count"] += 1
@@ -90,10 +98,20 @@ def summarize(tenant: str, unit_hash: str, rows: Sequence[dict[str, Any]], *, re
         observations.append(aipw.Observation(row["injected"], row["outcome"], row["rate"]))
     if any(arms[arm]["count"] == 0 for arm in ARMS):
         raise ValueError("both randomized arms need observations")
-    body: dict[str, Any] = {"type": DOMAIN, "version": VERSION, "tenant": tenant, "unit_hash": unit_hash,
-        "release_id": release_id, "arms": arms, "score_bound": bound, "noise_variance": 0.0,
-        "nuisance": [m0, m1], "e_value": eprocess.process(observations).e_value,
-        "classification": "estimate", "privacy": None}
+    body: dict[str, Any] = {
+        "type": DOMAIN,
+        "version": VERSION,
+        "tenant": tenant,
+        "unit_hash": unit_hash,
+        "release_id": release_id,
+        "arms": arms,
+        "score_bound": bound,
+        "noise_variance": 0.0,
+        "nuisance": [m0, m1],
+        "e_value": eprocess.process(observations).e_value,
+        "classification": "estimate",
+        "privacy": None,
+    }
     if epsilon is not None or delta is not None:
         if epsilon is None or delta is None:
             raise ValueError("Gaussian releases require epsilon and delta")
@@ -105,21 +123,44 @@ def summarize(tenant: str, unit_hash: str, rows: Sequence[dict[str, Any]], *, re
             arm["square_sum"] += rng.gauss(0, sigma)
         body["noise_variance"] = sigma * sigma
         body["e_value"] = 1.0  # An exact private-data e-value would bypass the noise mechanism.
-        body["privacy"] = {"mechanism": "Gaussian reference", "epsilon": epsilon, "delta": delta,
-            "sigma": sigma, "adjacency": "one bounded score replacement; fixed public cohort and arm counts",
+        body["privacy"] = {
+            "mechanism": "Gaussian reference",
+            "epsilon": epsilon,
+            "delta": delta,
+            "sigma": sigma,
+            "adjacency": "one bounded score replacement; fixed public cohort and arm counts",
             "protected_fields": ["arm score sums", "arm squared-score sums"],
-            "nuisance": "frozen public predictions", "numerics": "finite-precision reference sampler",
-            "e_value": "withheld; constant one carries no private evidence"}
+            "nuisance": "frozen public predictions",
+            "numerics": "finite-precision reference sampler",
+            "e_value": "withheld; constant one carries no private evidence",
+        }
     return body
 
 
 def validate(body: dict[str, Any]) -> None:
     fp.wire(body)
-    required = {"type", "version", "tenant", "unit_hash", "release_id", "arms", "score_bound",
-                "noise_variance", "nuisance", "e_value", "classification", "privacy"}
-    if (not isinstance(body, dict) or set(body) != required or body["type"] != DOMAIN
-            or type(body["version"]) is not int or body["version"] != VERSION
-            or body["classification"] != "estimate"):
+    required = {
+        "type",
+        "version",
+        "tenant",
+        "unit_hash",
+        "release_id",
+        "arms",
+        "score_bound",
+        "noise_variance",
+        "nuisance",
+        "e_value",
+        "classification",
+        "privacy",
+    }
+    if (
+        not isinstance(body, dict)
+        or set(body) != required
+        or body["type"] != DOMAIN
+        or type(body["version"]) is not int
+        or body["version"] != VERSION
+        or body["classification"] != "estimate"
+    ):
         raise ValueError("unsupported UniMem contribution envelope")
     fp.text(body["tenant"], "contributor", 128)
     fp.text(body["release_id"], "release identity", 128)
@@ -140,8 +181,11 @@ def validate(body: dict[str, Any]) -> None:
         count = fp.count(arm["count"], 1, fp.MAX_ROWS)
         total = fp.number(arm["score_sum"], -1e20, 1e20)
         squares = fp.number(arm["square_sum"], -1e20 if noise else 0, 1e20)
-        if not noise and (abs(total) > bound * count + 1e-8 or squares > bound**2 * count + 1e-8
-                          or total * total > count * squares + 1e-6):
+        if not noise and (
+            abs(total) > bound * count + 1e-8
+            or squares > bound**2 * count + 1e-8
+            or total * total > count * squares + 1e-6
+        ):
             raise ValueError("aggregate scores violate their declared bounds")
         n += count
     fp.count(n, 2, fp.MAX_ROWS)
@@ -150,9 +194,11 @@ def validate(body: dict[str, Any]) -> None:
         if not isinstance(privacy, dict) or body["e_value"] != 1:
             raise ValueError("private releases cannot expose a raw e-value")
         sigma = gaussian_sigma(privacy["epsilon"], privacy["delta"], math.hypot(2 * bound, bound * bound))
-        if (privacy.get("mechanism") != "Gaussian reference"
-                or not math.isclose(fp.number(privacy["sigma"], 0, 1e15), sigma, rel_tol=1e-12)
-                or not math.isclose(noise, sigma * sigma, rel_tol=1e-12)):
+        if (
+            privacy.get("mechanism") != "Gaussian reference"
+            or not math.isclose(fp.number(privacy["sigma"], 0, 1e15), sigma, rel_tol=1e-12)
+            or not math.isclose(noise, sigma * sigma, rel_tol=1e-12)
+        ):
             raise ValueError("privacy noise variance does not match the declared mechanism")
     elif noise:
         raise ValueError("noise variance requires a privacy mechanism")
@@ -169,8 +215,10 @@ def _beta_fraction(a: float, b: float, x: float) -> float:
     d = 1 / (d if abs(d) > tiny else tiny)
     value = d
     for m in range(1, 201):
-        for numerator in (m * (b - m) * x / ((a + 2*m - 1) * (a + 2*m)),
-                          -(a + m) * (a + b + m) * x / ((a + 2*m) * (a + 2*m + 1))):
+        for numerator in (
+            m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m)),
+            -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1)),
+        ):
             d = 1 + numerator * d
             c = 1 + numerator / c
             d = 1 / (d if abs(d) > tiny else tiny)
@@ -187,25 +235,24 @@ def _beta(a: float, b: float, x: float) -> float:
         return 0.0
     if x >= 1:
         return 1.0
-    factor = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
-                      + a * math.log(x) + b * math.log1p(-x))
+    factor = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b) + a * math.log(x) + b * math.log1p(-x))
     if x < (a + 1) / (a + b + 2):
         return factor * _beta_fraction(a, b, x) / a
     return 1 - factor * _beta_fraction(b, a, 1 - x) / b
 
 
 @lru_cache(maxsize=256)
-def t_critical(degrees: int, alpha: float = .05) -> float:
+def t_critical(degrees: int, alpha: float = 0.05) -> float:
     fp.count(degrees, 1, MAX_TENANTS - 1)
-    fp.number(alpha, 1e-6, .5)
+    fp.number(alpha, 1e-6, 0.5)
     lo, hi = 0.0, 2.0
     for _ in range(30):
-        if _beta(degrees / 2, .5, degrees / (degrees + hi * hi)) <= alpha:
+        if _beta(degrees / 2, 0.5, degrees / (degrees + hi * hi)) <= alpha:
             break
         hi *= 2
     for _ in range(60):
         mid = (lo + hi) / 2
-        if _beta(degrees / 2, .5, degrees / (degrees + mid * mid)) > alpha:
+        if _beta(degrees / 2, 0.5, degrees / (degrees + mid * mid)) > alpha:
             lo = mid
         else:
             hi = mid
@@ -217,17 +264,22 @@ def _fit(estimates: Sequence[tuple[float, float]], alpha: float) -> dict[str, An
     weights = [1 / variance for _, variance in estimates]
     sw = math.fsum(weights)
     fixed = math.fsum(w * y for w, (y, _) in zip(weights, estimates)) / sw
-    q = math.fsum(w * (y - fixed)**2 for w, (y, _) in zip(weights, estimates))
-    c = sw - math.fsum(w*w for w in weights) / sw
+    q = math.fsum(w * (y - fixed) ** 2 for w, (y, _) in zip(weights, estimates))
+    c = sw - math.fsum(w * w for w in weights) / sw
     tau2 = max(0.0, (q - k + 1) / c) if c > 0 else 0.0
     random_weights = [1 / (variance + tau2) for _, variance in estimates]
     total = math.fsum(random_weights)
     effect = math.fsum(w * y for w, (y, _) in zip(random_weights, estimates)) / total
-    dispersion = math.fsum(w * (y - effect)**2 for w, (y, _) in zip(random_weights, estimates)) / (k - 1)
+    dispersion = math.fsum(w * (y - effect) ** 2 for w, (y, _) in zip(random_weights, estimates)) / (k - 1)
     standard_error = math.sqrt(max(1.0, dispersion) / total)
     radius = t_critical(k - 1, alpha) * standard_error
-    return {"effect": effect, "interval": [effect - radius, effect + radius], "tau_squared": tau2,
-            "standard_error": standard_error, "hartung_knapp_scale": max(1.0, dispersion)}
+    return {
+        "effect": effect,
+        "interval": [effect - radius, effect + radius],
+        "tau_squared": tau2,
+        "standard_error": standard_error,
+        "hartung_knapp_scale": max(1.0, dispersion),
+    }
 
 
 def _estimate(shards: Sequence[dict[str, Any]]) -> tuple[float, float, int]:
@@ -240,14 +292,15 @@ def _estimate(shards: Sequence[dict[str, Any]]) -> tuple[float, float, int]:
     return total / n, variance, n
 
 
-def pool(contributions: Sequence[dict[str, Any]], *, groups: dict[str, str],
-         alpha: float = .05, independent: bool = False) -> dict[str, Any]:
+def pool(
+    contributions: Sequence[dict[str, Any]], *, groups: dict[str, str], alpha: float = 0.05, independent: bool = False
+) -> dict[str, Any]:
     """Combine authenticated contributions using operator-established ownership.
 
     The pure function expects the caller to have verified signatures and pinned
     `groups`. It does not accept a contribution's assertion of independence.
     """
-    fp.number(alpha, 1e-6, .5)
+    fp.number(alpha, 1e-6, 0.5)
     if type(independent) is not bool:
         raise ValueError("independence must be an explicit boolean assumption")
     fp.count(len(contributions), 2, 512)
@@ -277,18 +330,30 @@ def pool(contributions: Sequence[dict[str, Any]], *, groups: dict[str, str],
         mean, variance, n = _estimate(shards)
         estimates.append((mean, variance))
         se = math.sqrt(variance)
-        powers.append({"group": fp.digest(group), "n": n, "standard_error": se,
-                       "minimum_detectable_effect": (NormalDist().inv_cdf(1 - alpha/2)
-                                                      + NormalDist().inv_cdf(.8)) * se})
+        powers.append(
+            {
+                "group": fp.digest(group),
+                "n": n,
+                "standard_error": se,
+                "minimum_detectable_effect": (NormalDist().inv_cdf(1 - alpha / 2) + NormalDist().inv_cdf(0.8)) * se,
+            }
+        )
         evidence.append(eprocess.combine([s["e_value"] for s in shards]))
     result = _fit(estimates, alpha)
-    z = NormalDist().inv_cdf(1 - alpha/2)
+    z = NormalDist().inv_cdf(1 - alpha / 2)
     tenant_power = []
     for tenant, shards in sorted(tenants.items()):
         _, variance, n = _estimate(shards)
         se = math.sqrt(variance)
-        tenant_power.append({"tenant": fp.digest(tenant), "group": fp.digest(groups[tenant]), "n": n,
-            "standard_error": se, "minimum_detectable_effect": (z + NormalDist().inv_cdf(.8)) * se})
+        tenant_power.append(
+            {
+                "tenant": fp.digest(tenant),
+                "group": fp.digest(groups[tenant]),
+                "n": n,
+                "standard_error": se,
+                "minimum_detectable_effect": (z + NormalDist().inv_cdf(0.8)) * se,
+            }
+        )
     for item in powers + tenant_power:
         signal = abs(result["effect"]) / item["standard_error"]
         item["design_power_at_pooled_estimate"] = NormalDist().cdf(-z - signal) + 1 - NormalDist().cdf(z - signal)
@@ -306,26 +371,43 @@ def pool(contributions: Sequence[dict[str, Any]], *, groups: dict[str, str],
                 mean, variance, _ = _estimate(remaining)
                 remainder.append((mean, variance))
         effect = _fit(remainder, alpha)["effect"] if len(remainder) > 1 else remainder[0][0]
-        tenant_influence.append({"tenant": fp.digest(tenant), "effect_without": effect,
-                                 "change": effect - result["effect"]})
+        tenant_influence.append(
+            {"tenant": fp.digest(tenant), "effect_without": effect, "change": effect - result["effect"]}
+        )
     combined = eprocess.combine(evidence, independent=independent)
-    mde = (t_critical(len(grouped) - 1, alpha) + NormalDist().inv_cdf(.8)) * result["standard_error"]
-    return {**result, "type": DOMAIN + ".report", "version": VERSION,
-        "unit_hash": contributions[0]["unit_hash"], "tenants": len({c["tenant"] for c in contributions}),
-        "ownership_groups": len(grouped), "tenant_power": tenant_power, "group_power": powers,
-        "leave_one_out": tenant_influence, "leave_one_group_out": influence,
-        "minimum_detectable_effect": mde, "combined_e_value": combined,
+    mde = (t_critical(len(grouped) - 1, alpha) + NormalDist().inv_cdf(0.8)) * result["standard_error"]
+    return {
+        **result,
+        "type": DOMAIN + ".report",
+        "version": VERSION,
+        "unit_hash": contributions[0]["unit_hash"],
+        "tenants": len({c["tenant"] for c in contributions}),
+        "ownership_groups": len(grouped),
+        "tenant_power": tenant_power,
+        "group_power": powers,
+        "leave_one_out": tenant_influence,
+        "leave_one_group_out": influence,
+        "minimum_detectable_effect": mde,
+        "combined_e_value": combined,
         "e_value_combination": "independent product" if independent else "dependence-robust arithmetic mean",
         "e_value_null": "every contributing group's conditional directional effect is nonpositive",
         "verdict": "POSITIVE_ESTIMATE" if result["interval"][0] > 0 else "UNDERPOWERED",
-        "classification": "estimate", "interval_method": "DerSimonian-Laird; modified Hartung-Knapp Student-t",
-        "alpha": alpha, "assumptions": ["independent operator-established ownership groups",
+        "classification": "estimate",
+        "interval_method": "DerSimonian-Laird; modified Hartung-Knapp Student-t",
+        "alpha": alpha,
+        "assumptions": [
+            "independent operator-established ownership groups",
             "approximately normal within-group estimates with correctly estimated variances",
             "random-effects population model; fixed public unit and cohort design",
-            "exact randomization propensities and bounded outcomes; no within-trial interference"],
-        "warnings": (["Few ownership groups: DL/HK intervals can under-cover with strongly unequal precisions."]
-                     if len(grouped) < 10 else []),
-        "release_certificate": False}
+            "exact randomization propensities and bounded outcomes; no within-trial interference",
+        ],
+        "warnings": (
+            ["Few ownership groups: DL/HK intervals can under-cover with strongly unequal precisions."]
+            if len(grouped) < 10
+            else []
+        ),
+        "release_certificate": False,
+    }
 
 
 def verify_contribution(signed: dict[str, Any], *, card: dict[str, Any]) -> dict[str, Any]:
@@ -334,19 +416,24 @@ def verify_contribution(signed: dict[str, Any], *, card: dict[str, Any]) -> dict
         raise ValueError("UniMem contribution requires an object envelope and record")
     if fp.moment(card["expires_at"]) <= fp.now():
         raise PermissionError("UniMem contributor registration expired")
-    identity = origin.Principal(card["principal"], card["organization"], "operator", b"", "ed25519",
-                                bytes.fromhex(card["public_key"]))
+    identity = origin.Principal(
+        card["principal"], card["organization"], "operator", b"", "ed25519", bytes.fromhex(card["public_key"])
+    )
     if not origin.verify(signed, {identity.id: identity}, authority="operator"):
         raise PermissionError("UniMem contribution signature is not trusted")
     record = signed["record"]
-    if (record.get("type") != "unimem.pooled-contribution" or type(record.get("version")) is not int
-            or record.get("version") != 1
-            or fp.moment(record["expires_at"]) <= fp.now() or fp.moment(record["issued_at"]) > fp.now()):
+    if (
+        record.get("type") != "unimem.pooled-contribution"
+        or type(record.get("version")) is not int
+        or record.get("version") != 1
+        or fp.moment(record["expires_at"]) <= fp.now()
+        or fp.moment(record["issued_at"]) > fp.now()
+    ):
         raise PermissionError("UniMem contribution has an invalid domain or validity window")
     body: dict[str, Any] = record["contribution"]
-    if (datetime.fromisoformat(fp.moment(record["expires_at"]))
-            - datetime.fromisoformat(fp.moment(record["issued_at"]))
-            > timedelta(days=7)):
+    if datetime.fromisoformat(fp.moment(record["expires_at"])) - datetime.fromisoformat(
+        fp.moment(record["issued_at"])
+    ) > timedelta(days=7):
         raise PermissionError("UniMem contribution validity exceeds seven days")
     validate(body)
     if body["tenant"] != card["tenant"]:

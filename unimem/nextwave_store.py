@@ -5,6 +5,7 @@ Content is stored separately so erasure can remove every managed copy. This is
 local storage plumbing, not an admission bypass: callers use `admit` before
 exporting source material, and artifact reads enforce their inherited scopes.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,8 +61,9 @@ def event(root: str, kind: str, identity: str, value: dict[str, Any]) -> dict[st
     fp.text(identity)
     if set(value) & {"type", "version", "id", "sequence", "previous", "recorded_at"}:
         raise ValueError("reserved UniMem event fields")
-    return fp.append(root, journal_name(kind),
-                     {"type": "unimem." + kind_name(kind), "version": 1, "id": identity, **value})
+    return fp.append(
+        root, journal_name(kind), {"type": "unimem." + kind_name(kind), "version": 1, "id": identity, **value}
+    )
 
 
 def _blob(root: str, kind: str, digest: str) -> str:
@@ -74,8 +76,16 @@ def _blob(root: str, kind: str, digest: str) -> str:
     return filename
 
 
-def put(root: str, kind: str, identity: str, value: dict[str, Any], *, scopes: Sequence[str] = (),
-        sources: Sequence[str] = (), immutable: bool = False) -> dict[str, Any]:
+def put(
+    root: str,
+    kind: str,
+    identity: str,
+    value: dict[str, Any],
+    *,
+    scopes: Sequence[str] = (),
+    sources: Sequence[str] = (),
+    immutable: bool = False,
+) -> dict[str, Any]:
     if re.fullmatch(r"tier-[a-f0-9]{32}", kind):
         from unimem import tiering
 
@@ -116,11 +126,12 @@ def put(root: str, kind: str, identity: str, value: dict[str, Any], *, scopes: S
         if total + len(data) > MAX_TOTAL:
             raise ValueError("UniMem artifact content exceeds 64 MiB; archive a scoped namespace")
         if not os.path.exists(filename):
+
             def write(stream: Any) -> None:
                 stream.write(data.decode("utf-8") + "\n")
+
             _jsonl._replace(filename, write)
-        signed = event(root, kind, identity, {"digest": digest, "scopes": labels,
-                                             "sources": ids, "status": "active"})
+        signed = event(root, kind, identity, {"digest": digest, "scopes": labels, "sources": ids, "status": "active"})
         return dict(signed["record"])
 
 
@@ -129,8 +140,7 @@ def visible(scopes: Sequence[str], context: Sequence[str]) -> bool:
     return (not required or required in scopes) and set(scopes) <= set(context)
 
 
-def get(root: str, kind: str, identity: str, *, context: Sequence[str] = (),
-        owner: bool = False) -> dict[str, Any]:
+def get(root: str, kind: str, identity: str, *, context: Sequence[str] = (), owner: bool = False) -> dict[str, Any]:
     if owner:
         operator()
     return _get(root, kind, identity, context=context, owner=owner, stack=set(), cache={}, budget=[0])
@@ -140,9 +150,17 @@ def reference(kind: str, identity: str) -> str:
     return fp.text("artifact:" + kind_name(kind) + ":" + fp.text(identity), "UniMem source reference", 256)
 
 
-def _get(root: str, kind: str, identity: str, *, context: Sequence[str], owner: bool,
-         stack: set[tuple[str, str]], cache: dict[tuple[str, str], dict[str, Any]],
-         budget: list[int]) -> dict[str, Any]:
+def _get(
+    root: str,
+    kind: str,
+    identity: str,
+    *,
+    context: Sequence[str],
+    owner: bool,
+    stack: set[tuple[str, str]],
+    cache: dict[tuple[str, str], dict[str, Any]],
+    budget: list[int],
+) -> dict[str, Any]:
     if re.fullmatch(r"tier-[a-f0-9]{32}", kind):
         from unimem import tiering
 
@@ -226,8 +244,9 @@ def traces(root: str) -> dict[str, dict[str, Any]]:
     return result
 
 
-def admit(root: str, identities: Sequence[str], *, context: Sequence[str] = (),
-          action_class: str = "") -> dict[str, dict[str, Any]]:
+def admit(
+    root: str, identities: Sequence[str], *, context: Sequence[str] = (), action_class: str = ""
+) -> dict[str, dict[str, Any]]:
     """Canonical fact admission, eligible lesson admission and IFC presentation.
 
     This helper deliberately does not turn an arbitrary artifact ID into a fact.
@@ -239,8 +258,12 @@ def admit(root: str, identities: Sequence[str], *, context: Sequence[str] = (),
     ids = sorted({fp.text(i) for i in identities})
     existing: set[str] = set()
     facts = search_recipes.admit(root, ids, context=list(context), action_class=action_class, existing=existing)
-    result = {identity: memory_ifc.label(root, {"id": identity, "text": fact.statement,
-        "revision": fact.revision, "scopes": fact.scopes}) for identity, fact in facts.items()}
+    result = {
+        identity: memory_ifc.label(
+            root, {"id": identity, "text": fact.statement, "revision": fact.revision, "scopes": fact.scopes}
+        )
+        for identity, fact in facts.items()
+    }
     for identity in ids:
         if identity in existing:
             continue
@@ -248,11 +271,20 @@ def admit(root: str, identities: Sequence[str], *, context: Sequence[str] = (),
         if path is None:
             continue
         fm, body = frontmatter.read(path)
-        if (memory_control.matches(fm.get("scopes", []), list(context))
-                and lesson_cache.fresh_eligible(path, fm, identity, body=body, root=root)
-                and not memory_authority.lineage_blocked(root, identity)):
-            result[identity] = memory_ifc.label(root, {"id": identity, "text": body,
-                "revision": lesson_io.current_revision(path), "scopes": fm.get("scopes", [])})
+        if (
+            memory_control.matches(fm.get("scopes", []), list(context))
+            and lesson_cache.fresh_eligible(path, fm, identity, body=body, root=root)
+            and not memory_authority.lineage_blocked(root, identity)
+        ):
+            result[identity] = memory_ifc.label(
+                root,
+                {
+                    "id": identity,
+                    "text": body,
+                    "revision": lesson_io.current_revision(path),
+                    "scopes": fm.get("scopes", []),
+                },
+            )
     runtime_ids = [identity for identity in ids if identity.startswith(("record:", "capture:"))]
     if runtime_ids and os.path.isfile(os.path.join(paths.memory_dir(root), "runtime.sqlite3")):
         from unimem.memory_journal import Journal
@@ -272,10 +304,20 @@ def admit(root: str, identities: Sequence[str], *, context: Sequence[str] = (),
                 continue
             record = memory_authority.trace_record(trace)
             receipt = trace.get("extensions", {}).get("profile", {}).get("origin", {})
-            if (memory_control.matches(trace.get("scopes", []), list(context)) and ttl.trace_is_live(trace)
-                    and memory_authority.permits_record(root, receipt, record, action_class=action_class)):
-                result[identity] = memory_ifc.label(root, {"id": identity, "text": trace.get("solution_text", ""),
-                    "content_digest": fp.digest(record), "scopes": trace.get("scopes", [])})
+            if (
+                memory_control.matches(trace.get("scopes", []), list(context))
+                and ttl.trace_is_live(trace)
+                and memory_authority.permits_record(root, receipt, record, action_class=action_class)
+            ):
+                result[identity] = memory_ifc.label(
+                    root,
+                    {
+                        "id": identity,
+                        "text": trace.get("solution_text", ""),
+                        "content_digest": fp.digest(record),
+                        "scopes": trace.get("scopes", []),
+                    },
+                )
     return result
 
 
@@ -301,11 +343,11 @@ def _erase_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]
     directory = Path(paths.memory_dir(root))
     files = sorted(directory.glob("unimem-*.jsonl"))
     fp.count(len(files), 0, 128)
-    snapshots = {filename: latest(root, filename.name[len("unimem-"):-len(".jsonl")]) for filename in files}
+    snapshots = {filename: latest(root, filename.name[len("unimem-") : -len(".jsonl")]) for filename in files}
     for _ in range(16):
         affected_ids: set[str] = set()
         for path, objects in snapshots.items():
-            kind = path.name[len("unimem-"):-len(".jsonl")]
+            kind = path.name[len("unimem-") : -len(".jsonl")]
             for identity, row in objects.items():
                 qualified = reference(kind, identity)
                 if identity in deleted or qualified in deleted or set(row.get("sources", [])) & deleted:
@@ -322,14 +364,19 @@ def _erase_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]
     safety.assert_mutable(root, list(deleted))
     removed = []
     for filename in files:
-        kind = filename.name[len("unimem-"):-len(".jsonl")]
+        kind = filename.name[len("unimem-") : -len(".jsonl")]
         with _jsonl.locked(str(filename)):
             objects = latest(root, kind)
-            affected = {identity for identity, row in objects.items()
-                        if identity in deleted or reference(kind, identity) in deleted
-                        or set(row.get("sources", [])) & deleted}
-            live_digests = {row.get("digest") for identity, row in objects.items()
-                            if identity not in affected and row.get("status") == "active"}
+            affected = {
+                identity
+                for identity, row in objects.items()
+                if identity in deleted or reference(kind, identity) in deleted or set(row.get("sources", [])) & deleted
+            }
+            live_digests = {
+                row.get("digest")
+                for identity, row in objects.items()
+                if identity not in affected and row.get("status") == "active"
+            }
             if kind == "rl-captures":
                 trace_ids = {i for i in affected if objects[i].get("status") != "erased"}
                 # Revoke every trace before removing provenance edges, so
@@ -338,8 +385,10 @@ def _erase_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]
                     memory_authority.record_forgetting(root, identity, forgotten=True)
                 origins = os.path.join(paths.memory_dir(root), "origins.jsonl")
                 with _jsonl.locked(origins):
-                    _jsonl.write_rows(origins, [r for r in _jsonl.read_rows(origins)
-                                              if r.get("record", {}).get("id") not in trace_ids])
+                    _jsonl.write_rows(
+                        origins,
+                        [r for r in _jsonl.read_rows(origins) if r.get("record", {}).get("id") not in trace_ids],
+                    )
             for identity in sorted(affected):
                 row = objects[identity]
                 if row.get("status") == "erased":
@@ -373,10 +422,25 @@ def _erase_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]
                         os.unlink(target)
                     except FileNotFoundError:
                         pass
-                event(root, kind, identity, {"status": "erased", "digest": row.get("digest"),
-                                            "scopes": row.get("scopes", []), "sources": row.get("sources", [])})
-                removed.append({"kind": kind, "id": identity, "content_digests": sorted(versions),
-                                **({"cold_tiers": cold_tiers} if cold_tiers else {})})
+                event(
+                    root,
+                    kind,
+                    identity,
+                    {
+                        "status": "erased",
+                        "digest": row.get("digest"),
+                        "scopes": row.get("scopes", []),
+                        "sources": row.get("sources", []),
+                    },
+                )
+                removed.append(
+                    {
+                        "kind": kind,
+                        "id": identity,
+                        "content_digests": sorted(versions),
+                        **({"cold_tiers": cold_tiers} if cold_tiers else {}),
+                    }
+                )
     affected_kinds = {item["kind"] for item in removed}
     for kind, hook in list(_ERASURE_HOOKS.items()):
         if kind in affected_kinds:
@@ -386,8 +450,13 @@ def _erase_sources(root: str, identities: Sequence[str]) -> list[dict[str, Any]]
     from unimem import kv_capsules
 
     for receipt in kv_capsules.evict_sources(root, sorted(deleted)):
-        removed.append({"kind": "kv-capsules", "id": receipt["memory_id"],
-                        "capsule_tiers": receipt["capsule_tiers"],
-                        "removed_tiers": receipt["removed_tiers"],
-                        "failed_tiers": receipt["failed_tiers"]})
+        removed.append(
+            {
+                "kind": "kv-capsules",
+                "id": receipt["memory_id"],
+                "capsule_tiers": receipt["capsule_tiers"],
+                "removed_tiers": receipt["removed_tiers"],
+                "failed_tiers": receipt["failed_tiers"],
+            }
+        )
     return removed

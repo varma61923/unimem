@@ -1,4 +1,5 @@
 """Source checkpoints acknowledge durable scoped writes, including deletions."""
+
 from __future__ import annotations
 
 import os
@@ -117,8 +118,14 @@ def test_crawler_retries_write_failure_and_isolates_scopes(tmp_path, monkeypatch
     root = str(tmp_path / "store")
     crawler = WebCrawlerConnector()
     monkeypatch.setattr(crawler, "_allowed", lambda _url: True)
-    monkeypatch.setattr(crawler, "_fetch_text", lambda _url: "# Operations\n\n" +
-                        "Invoices must include the purchase order before the payment queue processes them. " * 3)
+    monkeypatch.setattr(
+        crawler,
+        "_fetch_text",
+        lambda _url: (
+            "# Operations\n\n"
+            + "Invoices must include the purchase order before the payment queue processes them. " * 3
+        ),
+    )
     url = "https://example.com/operations"
     with monkeypatch.context() as patch:
         patch.setattr(hierarchical, "add_facts", fail)
@@ -156,7 +163,8 @@ def test_local_read_failure_preserves_existing_facts_and_checkpoint(tmp_path, mo
 @pytest.mark.parametrize("delete_before_upgrade", [False, True])
 @pytest.mark.parametrize("initial_scan_failure", [False, True])
 def test_legacy_scoped_sources_retire_without_touching_other_owners(
-        tmp_path, monkeypatch, delete_before_upgrade, initial_scan_failure):
+    tmp_path, monkeypatch, delete_before_upgrade, initial_scan_failure
+):
     from unimem.connectors import local_dir
     from unimem.connectors.base import chunk_markdown_text, record_chunks, save_connector_state
     from unimem.ingest import IngestionResult
@@ -169,12 +177,22 @@ def test_legacy_scoped_sources_retire_without_touching_other_owners(
     connector = LocalDirConnector(str(source))
     chunks = chunk_markdown_text(path.read_text(encoding="utf-8"), str(path))
     for scope in ("tenant:one", "tenant:two"):
-        record_chunks(root, chunks, source_id="local_dir:" + str(path), scope=scope,
-                      run_id="legacy", connector="local_dir",
-                      result=IngestionResult(source_path=str(path), source_type="local_dir"))
+        record_chunks(
+            root,
+            chunks,
+            source_id="local_dir:" + str(path),
+            scope=scope,
+            run_id="legacy",
+            connector="local_dir",
+            result=IngestionResult(source_path=str(path), source_type="local_dir"),
+        )
     stamp = path.stat()
-    save_connector_state(root, connector._key_for(str(source)), "", {
-        "files": {path.name: {"mtime": stamp.st_mtime, "size": float(stamp.st_size)}}})
+    save_connector_state(
+        root,
+        connector._key_for(str(source)),
+        "",
+        {"files": {path.name: {"mtime": stamp.st_mtime, "size": float(stamp.st_size)}}},
+    )
     token = None
     if delete_before_upgrade:
         path.unlink()
@@ -206,7 +224,9 @@ def test_document_pipeline_checkpoints_are_per_destination(tmp_path):
         again = create_document_pipeline(str(path), root, scope=scope, contextualize="none").run()
         assert again.chunks_extracted == 0
     assert {tuple(fact.scopes) for fact in hierarchical.list_facts(root, status="active")} == {
-        ("tenant:one",), ("tenant:two",)}
+        ("tenant:one",),
+        ("tenant:two",),
+    }
     for space in ("one", "two"):
         first = create_document_pipeline(str(path), root, space=space, contextualize="none").run()
         assert first.chunks_extracted
@@ -278,8 +298,11 @@ def test_incomplete_enumeration_never_acknowledges_deletion(tmp_path, monkeypatc
         return original_scandir(filename)
 
     with monkeypatch.context() as patch:
-        patch.setattr(os, "stat" if failure == "stat" else "scandir",
-                      inaccessible_stat if failure == "stat" else inaccessible_scandir)
+        patch.setattr(
+            os,
+            "stat" if failure == "stat" else "scandir",
+            inaccessible_stat if failure == "stat" else inaccessible_scandir,
+        )
         failed = connector.sync(root)
     assert failed.pending == 1 and failed.result.errors
     assert failed.new_state_token == before.new_state_token

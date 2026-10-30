@@ -1,4 +1,5 @@
 """Conservative query-time hints; ambiguous dates never silently pick a past state."""
+
 from __future__ import annotations
 
 import re
@@ -19,8 +20,10 @@ def resolve(query: str, *, now: datetime | None = None) -> dict:
     reference = parse_moment(now or datetime.now(timezone.utc))
     text = query.casefold()
     # Python 3.10 needs a colon in UTC offsets; 3.11+ also accepts +HHMM.
-    explicit = {parse_moment(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", match.group(1).upper()))
-                for match in _EXPLICIT.finditer(text)}
+    explicit = {
+        parse_moment(re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", match.group(1).upper()))
+        for match in _EXPLICIT.finditer(text)
+    }
     if len(explicit) > 1:
         return {"mode": "unspecified", "as_of": None}
     if explicit:
@@ -33,8 +36,10 @@ def resolve(query: str, *, now: datetime | None = None) -> dict:
         offset = next(iter(offsets))
         if offset == 0:
             return {"mode": "current", "as_of": None}
-        return {"mode": "historical" if offset < 0 else "future",
-                "as_of": (reference + timedelta(days=offset)).isoformat()}
+        return {
+            "mode": "historical" if offset < 0 else "future",
+            "as_of": (reference + timedelta(days=offset)).isoformat(),
+        }
     if re.search(r"\b(current|currently|now|today|latest)\b", text):
         return {"mode": "current", "as_of": None}
     if re.search(r"\b(upcoming|future|planned)\b", text):

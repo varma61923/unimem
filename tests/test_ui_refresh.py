@@ -1,4 +1,5 @@
 """Exercise the real console poll controller with deterministic asynchronous IO."""
+
 import json
 import pathlib
 import shutil
@@ -13,7 +14,7 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="Node is needed to execute 
 
 def run(script):
     source = SOURCE.read_text(encoding="utf-8")
-    controller = source[source.index("  var refreshGeneration ="):source.index("  function schedule()")]
+    controller = source[source.index("  var refreshGeneration =") : source.index("  function schedule()")]
     harness = """
 let token = 'first-token', location = {hash: '#/overview'}, route = 'overview';
 let state = {}, lastOk = 0, painted = 0, connection = '', requested = [], pending = [];
@@ -30,40 +31,59 @@ function render() {painted++;}
 function paint(force) {painted++;}
 function api(path) {requested.push(path); return Promise.resolve({path});}
 """
-    output = subprocess.run([NODE, "-e", harness + controller + "\n(async()=>{" + script +
-                             "})().catch(e=>{console.error(e);process.exit(1);});"],
-                            capture_output=True, text=True, timeout=10, check=True)
+    output = subprocess.run(
+        [
+            NODE,
+            "-e",
+            harness + controller + "\n(async()=>{" + script + "})().catch(e=>{console.error(e);process.exit(1);});",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=True,
+    )
     return json.loads(output.stdout)
 
 
-@pytest.mark.parametrize(("route", "paths"), [
-    ("overview", ["status", "memories", "agents"]),
-    ("explore", ["status"]),
-    ("memories", ["status", "memories"]),
-    ("live", ["status", "occasions"]),
-    ("fleet", ["status", "agents"]),
-    ("safety", ["status", "agents"]),
-    ("review", ["status", "lessons?status=review&limit=50&offset=0"]),
-    ("lesson", ["status", "memories", "lesson?slug=lesson_one"]),
-    ("commands", ["status", "command-catalog"]),
-])
+@pytest.mark.parametrize(
+    ("route", "paths"),
+    [
+        ("overview", ["status", "memories", "agents"]),
+        ("explore", ["status"]),
+        ("memories", ["status", "memories"]),
+        ("live", ["status", "occasions"]),
+        ("fleet", ["status", "agents"]),
+        ("safety", ["status", "agents"]),
+        ("review", ["status", "lessons?status=review&limit=50&offset=0"]),
+        ("lesson", ["status", "memories", "lesson?slug=lesson_one"]),
+        ("commands", ["status", "command-catalog"]),
+    ],
+)
 def test_each_page_polls_its_sources_and_capabilities_have_a_freshness_window(route, paths):
-    result = run(f"route={json.dumps(route)}; await refresh(); const first=requested.slice(); "
-                 "requested=[]; await refresh(); const warm=requested.slice(); "
-                 "capabilitiesAt=Date.now()-60001; requested=[]; await refresh(); "
-                 "console.log(JSON.stringify({first,warm,expired:requested}));")
+    result = run(
+        f"route={json.dumps(route)}; await refresh(); const first=requested.slice(); "
+        "requested=[]; await refresh(); const warm=requested.slice(); "
+        "capabilitiesAt=Date.now()-60001; requested=[]; await refresh(); "
+        "console.log(JSON.stringify({first,warm,expired:requested}));"
+    )
     assert result["first"] == ["/v1/status", "/v1/capabilities"] + ["/v1/" + p for p in paths[1:]]
     assert result["warm"] == ["/v1/" + p for p in paths]
     assert result["expired"] == result["first"]
 
 
-@pytest.mark.parametrize(("offset", "expected"), [("50", 50), ("0", 0), ("-20", 0),
-                                                  ("1.5", 0), ("invalid", 0), ("9007199254740992", 0)])
+@pytest.mark.parametrize(
+    ("offset", "expected"), [("50", 50), ("0", 0), ("-20", 0), ("1.5", 0), ("invalid", 0), ("9007199254740992", 0)]
+)
 def test_review_poll_preserves_safe_integer_offsets_and_resets_invalid_offsets(offset, expected):
-    result = run(f"route='review'; hashQuery=()=>{json.dumps(offset)}; await refresh(); "
-                 "console.log(JSON.stringify({requested}));")
-    assert result["requested"] == ["/v1/status", "/v1/capabilities",
-                                   f"/v1/lessons?status=review&limit=50&offset={expected}"]
+    result = run(
+        f"route='review'; hashQuery=()=>{json.dumps(offset)}; await refresh(); "
+        "console.log(JSON.stringify({requested}));"
+    )
+    assert result["requested"] == [
+        "/v1/status",
+        "/v1/capabilities",
+        f"/v1/lessons?status=review&limit=50&offset={expected}",
+    ]
 
 
 def test_older_poll_cannot_overwrite_a_newer_page():
@@ -111,9 +131,15 @@ console.log(JSON.stringify({waiting,requested,capabilities:state.capabilities.ve
     assert result == {
         "waiting": {"cleared": True, "selected": [], "notice": None, "lastPaint": "", "lastOk": 0},
         "requested": ["/v1/status", "/v1/capabilities", "/v1/lessons?status=review&limit=50&offset=0"],
-        "capabilities": "new", "capabilitiesToken": "new-token", "stateToken": "new-token",
-        "agents": None, "memories": None, "lesson": None, "events": None,
-        "commandCatalog": None, "commandResult": None,
+        "capabilities": "new",
+        "capabilitiesToken": "new-token",
+        "stateToken": "new-token",
+        "agents": None,
+        "memories": None,
+        "lesson": None,
+        "events": None,
+        "commandCatalog": None,
+        "commandResult": None,
     }
 
 
@@ -125,8 +151,15 @@ await refresh();
 console.log(JSON.stringify({token,cleared:Object.values(state).every(value=>value===null),
                            selected:Object.keys(selected),notice,lastPaint,lastOk,capabilitiesToken}));
 """)
-    assert result == {"token": "", "cleared": True, "selected": [], "notice": None,
-                      "lastPaint": "", "lastOk": 0, "capabilitiesToken": ""}
+    assert result == {
+        "token": "",
+        "cleared": True,
+        "selected": [],
+        "notice": None,
+        "lastPaint": "",
+        "lastOk": 0,
+        "capabilitiesToken": "",
+    }
 
 
 def test_empty_credentials_are_checked_by_the_gateway_and_never_retain_data():
@@ -140,5 +173,8 @@ api = function(path) {
 await refresh();
 console.log(JSON.stringify({requested,connection,cleared:Object.values(state).every(value=>value===null)}));
 """)
-    assert result == {"requested": ["/v1/status", "/v1/capabilities", "/v1/memories", "/v1/agents"],
-                      "connection": "bad", "cleared": True}
+    assert result == {
+        "requested": ["/v1/status", "/v1/capabilities", "/v1/memories", "/v1/agents"],
+        "connection": "bad",
+        "cleared": True,
+    }

@@ -1,4 +1,5 @@
 """Coding-agent installer: explicit git history bootstrap and isolated SDK skill."""
+
 from __future__ import annotations
 
 import hashlib
@@ -11,8 +12,15 @@ import sys
 from unimem import agent_registry, memory_authority, paths, trace_io
 
 
-def install(root: str, agent_id: str, *, repo: str | None = None, commits: int = 100,
-            rotate: bool = False, labels: list[str] | None = None) -> dict:
+def install(
+    root: str,
+    agent_id: str,
+    *,
+    repo: str | None = None,
+    commits: int = 100,
+    rotate: bool = False,
+    labels: list[str] | None = None,
+) -> dict:
     if not isinstance(commits, int) or isinstance(commits, bool) or not 0 <= commits <= 1000:
         raise ValueError("commits must be in 0..1000")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", agent_id or ""):
@@ -24,20 +32,32 @@ def install(root: str, agent_id: str, *, repo: str | None = None, commits: int =
     captured = 0
     history = []
     if repo and commits:
-        result = subprocess.run(["git", "log", f"--max-count={commits}",
-                                 "--format=%H%x00%aI%x00%s", "--no-merges"],
-                                cwd=repo, capture_output=True, text=True, timeout=30, check=True)
+        result = subprocess.run(
+            ["git", "log", f"--max-count={commits}", "--format=%H%x00%aI%x00%s", "--no-merges"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
         for line in result.stdout.splitlines():
             sha, stamp, subject = line.split("\0", 2)
             history.append((sha, stamp, subject))
     for sha, stamp, subject in history:
         with memory_authority.writer("git-history", "external"):
-            imported = trace_io.write_new(root, title=subject, context="Git history bootstrap: " + subject,
-                              solution=f"Recorded repository commit {sha}; task outcome was not evaluated.",
-                              tags=["git-history"], agent_type="code",
-                              trace_id=hashlib.sha256((agent_id + "\0" + sha).encode()).hexdigest(),
-                              extra={"scopes": ["agent:" + agent_id],
-                                     "extensions": {"profile": {"git": {"commit": sha, "authored_at": stamp}}}})
+            imported = trace_io.write_new(
+                root,
+                title=subject,
+                context="Git history bootstrap: " + subject,
+                solution=f"Recorded repository commit {sha}; task outcome was not evaluated.",
+                tags=["git-history"],
+                agent_type="code",
+                trace_id=hashlib.sha256((agent_id + "\0" + sha).encode()).hexdigest(),
+                extra={
+                    "scopes": ["agent:" + agent_id],
+                    "extensions": {"profile": {"git": {"commit": sha, "authored_at": stamp}}},
+                },
+            )
         if imported:
             captured += 1
     directory = os.path.join(root, "distribution", "agents", agent_id)
@@ -46,18 +66,38 @@ def install(root: str, agent_id: str, *, repo: str | None = None, commits: int =
     paths.safe_prepare_output_path(filename)
     with open(filename, "w", encoding="utf-8") as fh:
         fh.write(agent_registry.SDK_SKILL)
-    hook_prefix = (shlex.quote(sys.executable) + " evolve hook" if getattr(sys, "frozen", False)
-                   else shlex.quote(sys.executable) + " -m unimem.agent_hooks")
-    manifest = {"name": "unimem-" + agent_id, "agent_id": agent_id, "version": "1.0.0",
-                "api": {"version": "v1", "auth": "bearer", "token_env": "UNIMEM_AGENT_TOKEN"},
-                "skills": [{"name": "unimem-sdk",
-                "path": "skills/unimem-sdk/SKILL.md"}],
-                "hooks": {"session_start": {"module": "unimem.agent_hooks", "operation": "start",
-                    "command": hook_prefix + " start --agent-id " + shlex.quote(agent_id)
-                               + " --dest " + shlex.quote(os.path.abspath(root))},
-                          "session_end": {"module": "unimem.agent_hooks", "operation": "end",
-                    "command": hook_prefix + " end --agent-id " + shlex.quote(agent_id)
-                               + " --dest " + shlex.quote(os.path.abspath(root))}}}
+    hook_prefix = (
+        shlex.quote(sys.executable) + " evolve hook"
+        if getattr(sys, "frozen", False)
+        else shlex.quote(sys.executable) + " -m unimem.agent_hooks"
+    )
+    manifest = {
+        "name": "unimem-" + agent_id,
+        "agent_id": agent_id,
+        "version": "1.0.0",
+        "api": {"version": "v1", "auth": "bearer", "token_env": "UNIMEM_AGENT_TOKEN"},
+        "skills": [{"name": "unimem-sdk", "path": "skills/unimem-sdk/SKILL.md"}],
+        "hooks": {
+            "session_start": {
+                "module": "unimem.agent_hooks",
+                "operation": "start",
+                "command": hook_prefix
+                + " start --agent-id "
+                + shlex.quote(agent_id)
+                + " --dest "
+                + shlex.quote(os.path.abspath(root)),
+            },
+            "session_end": {
+                "module": "unimem.agent_hooks",
+                "operation": "end",
+                "command": hook_prefix
+                + " end --agent-id "
+                + shlex.quote(agent_id)
+                + " --dest "
+                + shlex.quote(os.path.abspath(root)),
+            },
+        },
+    }
     from unimem import _jsonl
 
     manifest_path = os.path.join(directory, "plugin.json")
@@ -65,7 +105,6 @@ def install(root: str, agent_id: str, *, repo: str | None = None, commits: int =
     paths.safe_prepare_output_path(manifest_path)
     _jsonl.write_json(manifest_path, manifest)
     # All potentially failing filesystem/git work precedes credential issuance.
-    signup = agent_registry.rotate(root, agent_id) if exists else \
-        agent_registry.signup(root, agent_id, labels=labels)
+    signup = agent_registry.rotate(root, agent_id) if exists else agent_registry.signup(root, agent_id, labels=labels)
     # Never write the token into the plugin, git history or returned file paths.
     return {**signup, "traces_imported": captured, "skill_path": filename}

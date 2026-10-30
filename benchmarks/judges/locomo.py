@@ -224,11 +224,15 @@ class LoCoMoJudge:
         if complete_fn is None:
             from unimem import llm
 
-            cfg = llm.Config(
-                provider="openai-compatible",
-                model=model or self.model,
-                api_key=llm.load_config().api_key if hasattr(llm, "load_config") else "",
-            ) if model else None
+            cfg = (
+                llm.Config(
+                    provider="openai-compatible",
+                    model=model or self.model,
+                    api_key=llm.load_config().api_key if hasattr(llm, "load_config") else "",
+                )
+                if model
+                else None
+            )
             raw_response, usage = llm.complete(prompt, config=cfg)
         else:
             raw_response, usage = complete_fn(prompt)

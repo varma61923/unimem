@@ -1,4 +1,5 @@
 """`unimem pilot` — the 30-day pilot, bundled into one report."""
+
 from __future__ import annotations
 
 import html
@@ -137,8 +138,7 @@ def render_markdown(r: PilotReport) -> str:
         "",
         "## 1. Map the issues",
         "",
-        f"- Recurring patterns found: **{r.taxonomy.n_patterns}** "
-        f"(across {r.taxonomy.n_traces_total} traces)",
+        f"- Recurring patterns found: **{r.taxonomy.n_patterns}** (across {r.taxonomy.n_traces_total} traces)",
         f"- Already covered by an active lesson: **{r.taxonomy.n_covered}**",
         f"- Gaps (recurring, no lesson yet): **{r.taxonomy.n_gaps}**",
         "",
@@ -147,11 +147,10 @@ def render_markdown(r: PilotReport) -> str:
         "## 2. Reproduce + reinforce",
         "",
         f"- Active lessons: **{r.n_active_lessons}**",
-        f"- Holdout assignments logged (`unimem query --experiment`): "
-        f"**{r.n_holdout_assignments}**",
+        f"- Holdout assignments logged (`unimem query --experiment`): **{r.n_holdout_assignments}**",
         "",
         "Re-run representative cases with the lesson enforced: "
-        "`unimem query \"<task>\" --experiment --occasion-id <id>`, then "
+        '`unimem query "<task>" --experiment --occasion-id <id>`, then '
         "`unimem capture ... --occasion-id <id>`. See the pilot design for sample "
         "sizes.",
         "",
@@ -167,15 +166,12 @@ def render_markdown(r: PilotReport) -> str:
         )
     else:
         out.append(
-            "- No baseline traces yet (`unimem capture --baseline ...`) — "
-            "nothing to compare resolution rate against."
+            "- No baseline traces yet (`unimem capture --baseline ...`) — nothing to compare resolution rate against."
         )
     out += [
-        f"- Errors avoided: **{r.impact.errors_avoided}** · "
-        f"Lessons reused: **{r.impact.lessons_reused}**",
+        f"- Errors avoided: **{r.impact.errors_avoided}** · Lessons reused: **{r.impact.lessons_reused}**",
         "",
-        "Full breakdown: `unimem impact`. Full outcome-metric table: "
-        "`unimem bench --pilot`.",
+        "Full breakdown: `unimem impact`. Full outcome-metric table: `unimem bench --pilot`.",
         "",
         "---",
         "",

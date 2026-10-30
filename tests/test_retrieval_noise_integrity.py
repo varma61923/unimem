@@ -5,11 +5,16 @@ import pytest
 from unimem import holdout_io, integrity
 
 
-def _row(lesson, occasion, injected=True, relevance=0.5, floor=0.10,
-         scorer="idf-v2", succeeded=True, salt="s"):
+def _row(lesson, occasion, injected=True, relevance=0.5, floor=0.10, scorer="idf-v2", succeeded=True, salt="s"):
     return integrity.Assignment(
-        lesson=lesson, occasion_id=occasion, injected=injected, salt=salt,
-        relevance=relevance, floor=floor, scorer=scorer, succeeded=succeeded,
+        lesson=lesson,
+        occasion_id=occasion,
+        injected=injected,
+        salt=salt,
+        relevance=relevance,
+        floor=floor,
+        scorer=scorer,
+        succeeded=succeeded,
     )
 
 
@@ -18,8 +23,14 @@ class TestTheEvidenceIsRecorded:
         root = str(tmp_path)
         (tmp_path / "memory").mkdir()
         holdout_io.assign_and_log(
-            root, ["a", "b"], occasion_id="occ-1", rate=0.5, salt="s",
-            relevance={"a": 0.62, "b": 0.11}, scorer="idf-v2", floor=0.10,
+            root,
+            ["a", "b"],
+            occasion_id="occ-1",
+            rate=0.5,
+            salt="s",
+            relevance={"a": 0.62, "b": 0.11},
+            scorer="idf-v2",
+            floor=0.10,
         )
         records, corrupt = holdout_io.read_log(root)
         assert corrupt == 0
@@ -35,10 +46,18 @@ class TestTheEvidenceIsRecorded:
         root = str(tmp_path)
         (tmp_path / "memory").mkdir()
         with open(holdout_io.holdout_log_path(root), "w", encoding="utf-8") as fh:
-            fh.write(json.dumps({
-                "occasion_id": "old-1", "lesson": "a", "injected": True,
-                "rate": 0.1, "salt": "s",
-            }) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "occasion_id": "old-1",
+                        "lesson": "a",
+                        "injected": True,
+                        "rate": 0.1,
+                        "salt": "s",
+                    }
+                )
+                + "\n"
+            )
         records, corrupt = holdout_io.read_log(root)
         assert corrupt == 0
         assert records[0].relevance is None
@@ -49,8 +68,14 @@ class TestTheEvidenceIsRecorded:
         root = str(tmp_path)
         (tmp_path / "memory").mkdir()
         holdout_io.assign_and_log(
-            root, ["a"], occasion_id="occ-1", rate=0.5, salt="s",
-            relevance={"a": 0.0}, scorer="idf-v2", floor=0.0,
+            root,
+            ["a"],
+            occasion_id="occ-1",
+            rate=0.5,
+            salt="s",
+            relevance={"a": 0.0},
+            scorer="idf-v2",
+            floor=0.0,
         )
         records, _ = holdout_io.read_log(root)
         assert records[0].relevance == 0.0
@@ -59,12 +84,8 @@ class TestTheEvidenceIsRecorded:
 
 class TestMarginalEligibility:
     def test_the_246_versus_80_case_is_caught(self):
-        rows = [
-            _row("polluted", f"real-{i}", injected=(i % 2 == 0), relevance=0.52)
-            for i in range(80)
-        ] + [
-            _row("polluted", f"collateral-{i}", injected=(i % 2 == 0), relevance=0.12)
-            for i in range(166)
+        rows = [_row("polluted", f"real-{i}", injected=(i % 2 == 0), relevance=0.52) for i in range(80)] + [
+            _row("polluted", f"collateral-{i}", injected=(i % 2 == 0), relevance=0.12) for i in range(166)
         ]
         finding = integrity.check_marginal_eligibility(rows)
         assert finding.severity == integrity.SEVERITY_WEAKENS
@@ -84,10 +105,7 @@ class TestMarginalEligibility:
         assert integrity.check_marginal_eligibility(rows).severity == integrity.SEVERITY_OK
 
     def test_unscored_rows_are_skipped_not_assumed(self):
-        rows = [
-            integrity.Assignment(lesson="a", occasion_id=f"o-{i}", injected=True, salt="s")
-            for i in range(50)
-        ]
+        rows = [integrity.Assignment(lesson="a", occasion_id=f"o-{i}", injected=True, salt="s") for i in range(50)]
         finding = integrity.check_marginal_eligibility(rows)
         assert finding.severity == integrity.SEVERITY_OK
         assert finding.numbers["n_scored"] == 0
@@ -102,18 +120,14 @@ class TestAssignmentConcentration:
         return rows
 
     def test_a_lesson_that_is_both_far_more_frequent_and_weaker_is_flagged(self):
-        rows = self._peers() + [
-            _row("greedy", f"g-{i}", relevance=0.15) for i in range(246)
-        ]
+        rows = self._peers() + [_row("greedy", f"g-{i}", relevance=0.15) for i in range(246)]
         finding = integrity.check_assignment_concentration(rows)
         assert finding.severity == integrity.SEVERITY_WEAKENS
         assert "greedy" in finding.headline
         assert finding.numbers["flagged"] == ["greedy"]
 
     def test_a_genuinely_broad_lesson_matching_strongly_is_not_flagged(self):
-        rows = self._peers() + [
-            _row("broad", f"b-{i}", relevance=0.60) for i in range(246)
-        ]
+        rows = self._peers() + [_row("broad", f"b-{i}", relevance=0.60) for i in range(246)]
         assert integrity.check_assignment_concentration(rows).severity == integrity.SEVERITY_OK
 
     def test_too_few_lessons_to_compare_is_not_a_finding(self):
@@ -143,10 +157,7 @@ class TestScorerDrift:
         assert "floor" in finding.headline
 
     def test_an_old_log_with_no_settings_recorded_is_not_drift(self):
-        rows = [
-            integrity.Assignment(lesson="a", occasion_id=f"o-{i}", injected=True, salt="s")
-            for i in range(20)
-        ]
+        rows = [integrity.Assignment(lesson="a", occasion_id=f"o-{i}", injected=True, salt="s") for i in range(20)]
         assert integrity.check_scorer_drift(rows).severity == integrity.SEVERITY_OK
 
 

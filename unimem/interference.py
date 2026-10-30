@@ -5,6 +5,7 @@ is a warning of possible write-back contamination, not proof of its cause.
 The early diagnostic is descriptive; cluster-randomized designs must supply
 their own design-based variance and define their interference boundary.
 """
+
 from __future__ import annotations
 
 import math
@@ -27,8 +28,7 @@ class Cluster:
     propensity: float
 
 
-def cluster_effect(rows: Sequence[Cluster], *, propensity_floor: float = .05,
-                   alpha: float = .05) -> dict[str, Any]:
+def cluster_effect(rows: Sequence[Cluster], *, propensity_floor: float = 0.05, alpha: float = 0.05) -> dict[str, Any]:
     """HT mean across clusters with a design-based time-uniform Hoeffding bound.
 
     Fixed/predictable cluster potential outcomes, independent randomized clusters,
@@ -36,8 +36,8 @@ def cluster_effect(rows: Sequence[Cluster], *, propensity_floor: float = .05,
     an equal-cluster effect, not an equal-task effect. arXiv:2210.08639.
     """
     fp.count(len(rows), 1, fp.MAX_ROWS)
-    fp.number(propensity_floor, .001, .5)
-    fp.number(alpha, 1e-6, .99)
+    fp.number(propensity_floor, 0.001, 0.5)
+    fp.number(alpha, 1e-6, 0.99)
     seen, scores = set(), []
     for row in rows:
         if row.id in seen:
@@ -51,13 +51,18 @@ def cluster_effect(rows: Sequence[Cluster], *, propensity_floor: float = .05,
     n = len(scores)
     estimate = math.fsum(scores) / n
     radius = 1 / propensity_floor * math.sqrt(2 * math.log(2 * n * (n + 1) / alpha) / n)
-    return {"estimate": estimate, "confidence_sequence": [max(-1, estimate - radius), min(1, estimate + radius)],
-            "clusters": n, "target": "equal-cluster average treatment effect",
-            "kind": "finite-sample design-based guarantee under declared randomization/interference assumptions"}
+    return {
+        "estimate": estimate,
+        "confidence_sequence": [max(-1, estimate - radius), min(1, estimate + radius)],
+        "clusters": n,
+        "target": "equal-cluster average treatment effect",
+        "kind": "finite-sample design-based guarantee under declared randomization/interference assumptions",
+    }
 
 
-def switchback(lesson: str, cluster: str, period: int, *, salt: str, block_length: int,
-                burn_in: int = 1, rate: float = .5) -> dict[str, Any]:
+def switchback(
+    lesson: str, cluster: str, period: int, *, salt: str, block_length: int, burn_in: int = 1, rate: float = 0.5
+) -> dict[str, Any]:
     """Clustered random switchbacks with explicit carryover exclusion.
 
     arXiv:2312.15574 and 2009.00148. Washout sufficiency is a design assumption,
@@ -68,20 +73,26 @@ def switchback(lesson: str, cluster: str, period: int, *, salt: str, block_lengt
     fp.count(period, 0, 10_000_000)
     fp.count(block_length, 2, 100_000)
     fp.count(burn_in, 0, block_length - 1)
-    fp.number(rate, .001, .999)
+    fp.number(rate, 0.001, 0.999)
     unit = fp.text(cluster) + ":block:" + str(period // block_length)
     treated = not experiment.is_held_out(fp.text(lesson), unit, rate, fp.text(salt))
-    return {"treated": treated, "eligible": period % block_length >= burn_in,
-            "block": unit, "propensity": 1 - rate, "burn_in": burn_in}
+    return {
+        "treated": treated,
+        "eligible": period % block_length >= burn_in,
+        "block": unit,
+        "propensity": 1 - rate,
+        "burn_in": burn_in,
+    }
 
 
-def publish(root: str, identity: str, lesson: str, *, rate: float = .5,
-            block_length: int | None = None, burn_in: int = 1) -> dict[str, Any]:
+def publish(
+    root: str, identity: str, lesson: str, *, rate: float = 0.5, block_length: int | None = None, burn_in: int = 1
+) -> dict[str, Any]:
     from unimem import allocation, holdout_io, lineage
 
     fp.text(identity)
     fp.text(lesson)
-    fp.number(rate, .001, .999)
+    fp.number(rate, 0.001, 0.999)
     config = holdout_io.load_config(root)
     if not config.running or allocation.active(root, config.salt) is not None:
         raise ValueError("cluster designs require a configured fixed-rate experiment, without adaptive allocation")
@@ -97,9 +108,19 @@ def publish(root: str, identity: str, lesson: str, *, rate: float = .5,
     with _jsonl.locked(fp.filename(root, "cluster-designs.jsonl")):
         if any(row["id"] == identity for row in fp.journal(root, "cluster-designs.jsonl")):
             raise ValueError("cluster design is immutable")
-        return fp.append(root, "cluster-designs.jsonl", {"id": identity, "lesson": lesson, "rate": rate,
-            "salt": config.salt, "lineage_position": fp.checkpoint(root, lineage.JOURNAL)[0],
-            "block_length": block_length, "burn_in": burn_in})
+        return fp.append(
+            root,
+            "cluster-designs.jsonl",
+            {
+                "id": identity,
+                "lesson": lesson,
+                "rate": rate,
+                "salt": config.salt,
+                "lineage_position": fp.checkpoint(root, lineage.JOURNAL)[0],
+                "block_length": block_length,
+                "burn_in": burn_in,
+            },
+        )
 
 
 def _design(root: str, identity: str) -> dict[str, Any]:
@@ -127,10 +148,17 @@ def assign_cluster(root: str, design: str, cluster: str, *, period: int | None =
     if allocation.active(root, row["salt"]) is not None:
         raise ValueError("adaptive schedules cannot reshuffle a running cluster design")
     occasion = "cluster-" + fp.digest({"design": design, "cluster": fp.text(cluster)})[:32]
-    withheld = holdout_io.assign_and_log(root, [row["lesson"]], occasion_id=occasion,
-                                        rate=row["rate"], salt=row["salt"], context="cluster")
-    return {"cluster": cluster, "occasion_id": occasion, "treated": row["lesson"] not in withheld,
-            "eligible": eligible, "propensity": 1 - row["rate"], "design_hash": fp.digest(row)}
+    withheld = holdout_io.assign_and_log(
+        root, [row["lesson"]], occasion_id=occasion, rate=row["rate"], salt=row["salt"], context="cluster"
+    )
+    return {
+        "cluster": cluster,
+        "occasion_id": occasion,
+        "treated": row["lesson"] not in withheld,
+        "eligible": eligible,
+        "propensity": 1 - row["rate"],
+        "design_hash": fp.digest(row),
+    }
 
 
 @contextmanager
@@ -175,8 +203,9 @@ def read_allowed(root: str, identity: str) -> bool:
     return True
 
 
-def symbiosis_bias(task_effect: float, cluster_effect: float, task_se: float, cluster_se: float,
-                   *, tolerance: float = .1) -> dict[str, Any]:
+def symbiosis_bias(
+    task_effect: float, cluster_effect: float, task_se: float, cluster_se: float, *, tolerance: float = 0.1
+) -> dict[str, Any]:
     fp.number(task_effect, -1, 1)
     fp.number(cluster_effect, -1, 1)
     fp.number(task_se, 0, 10)
@@ -185,6 +214,11 @@ def symbiosis_bias(task_effect: float, cluster_effect: float, task_se: float, cl
     gap = abs(task_effect - cluster_effect)
     # Sum of SEs is conservative even when the two estimates are dependent.
     threshold = max(tolerance, 1.96 * (task_se + cluster_se))
-    return {"check": "symbiosis_bias", "flagged": gap > threshold, "gap": gap,
-            "threshold": threshold, "kind": "diagnostic heuristic, not a causal attribution",
-            "scaled_gap": gap / max(math.ulp(1.0), task_se + cluster_se)}
+    return {
+        "check": "symbiosis_bias",
+        "flagged": gap > threshold,
+        "gap": gap,
+        "threshold": threshold,
+        "kind": "diagnostic heuristic, not a causal attribution",
+        "scaled_gap": gap / max(math.ulp(1.0), task_se + cluster_se),
+    }

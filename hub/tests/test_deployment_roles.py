@@ -18,9 +18,7 @@ class TestTheShippedStackServesAsANonBypassingRole:
         return after
 
     def _init_sql(self) -> str:
-        return (self._ROOT / "hub" / "postgres-init" / "10-runtime-role.sql").read_text(
-            encoding="utf-8"
-        )
+        return (self._ROOT / "hub" / "postgres-init" / "10-runtime-role.sql").read_text(encoding="utf-8")
 
     def test_the_hub_service_connects_as_the_runtime_role_not_the_owner(self):
         hub_block = self._service_block("hub")

@@ -5,6 +5,7 @@ from retrieval. A recalled person's name cannot establish an unrecorded
 attribute. This gate requests deeper reading when subject evidence is absent;
 it does not infer an answer or claim a calibrated probability.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,10 +17,13 @@ from unimem._lexical import WORD_RE, has_cjk, segment_cjk
 from unimem.conversation import profile
 
 _WORDS = re.compile(r"[a-z0-9]+")
-_QUESTIONS = frozenset("what when where which who whom whose why how did does tell know remember mention "
-                       "mentioned said say ever".split())
-_ATTRIBUTES = frozenset("name color colour type kind brand model date time day cost price age size height weight "
-                        "amount number title phone email address city country state job car pet".split())
+_QUESTIONS = frozenset(
+    "what when where which who whom whose why how did does tell know remember mention mentioned said say ever".split()
+)
+_ATTRIBUTES = frozenset(
+    "name color colour type kind brand model date time day cost price age size height weight "
+    "amount number title phone email address city country state job car pet".split()
+)
 _QUALIFIERS = frozenset("name color colour type kind date time day amount number title".split())
 # These identifiers must be mentioned explicitly, not inferred from a familiar
 # person, object, timestamp or neighbouring passage. Ordinary semantic answer
@@ -38,9 +42,15 @@ class EvidenceCoverage:
     missing_subject_terms: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
-        return {"confidence": self.confidence, "abstain": self.abstain, "reason": self.reason,
-                "matched_terms": self.matched_terms, "query_terms": self.query_terms,
-                "subject_terms": list(self.subject_terms), "missing_subject_terms": list(self.missing_subject_terms)}
+        return {
+            "confidence": self.confidence,
+            "abstain": self.abstain,
+            "reason": self.reason,
+            "matched_terms": self.matched_terms,
+            "query_terms": self.query_terms,
+            "subject_terms": list(self.subject_terms),
+            "missing_subject_terms": list(self.missing_subject_terms),
+        }
 
 
 def _terms(text: str) -> set[str]:
@@ -56,8 +66,11 @@ def _terms(text: str) -> set[str]:
 
 
 def _covered(term: str, words: set[str]) -> bool:
-    return term in words or term.isascii() and len(term) >= 5 and any(
-        word.isascii() and len(word) >= 5 and word[:5] == term[:5] for word in words
+    return (
+        term in words
+        or term.isascii()
+        and len(term) >= 5
+        and any(word.isascii() and len(word) >= 5 and word[:5] == term[:5] for word in words)
     )
 
 
@@ -69,8 +82,11 @@ def assess(question: str, evidence: Sequence[str], *, labels: Iterable[str] = ()
     not arbitrary substrings. Semantic matches without lexical coverage remain
     available to a deeper reader even when this conservative gate abstains.
     """
-    asked = {word for word in _terms(question) if (len(word) > 2 or has_cjk(word))
-             and word not in profile.STOPWORDS and word not in _QUESTIONS}
+    asked = {
+        word
+        for word in _terms(question)
+        if (len(word) > 2 or has_cjk(word)) and word not in profile.STOPWORDS and word not in _QUESTIONS
+    }
     entities = {word for name in profile.entities(question) for word in _terms(name)}
     subjects = asked - _ATTRIBUTES - entities
     if not subjects:
@@ -90,6 +106,12 @@ def assess(question: str, evidence: Sequence[str], *, labels: Iterable[str] = ()
     label_words = {word for label in labels for word in _terms(label)}
     matched = max(sum(_covered(word, body | label_words) for word in asked) for body in passage_words)
     value = round(matched / len(asked), 3)
-    return EvidenceCoverage(value, value == 0.0,
-                            "lexical evidence covers part of the question; answer correctness is unverified",
-                            matched, len(asked), tuple(sorted(subjects)), tuple(sorted(missing)))
+    return EvidenceCoverage(
+        value,
+        value == 0.0,
+        "lexical evidence covers part of the question; answer correctness is unverified",
+        matched,
+        len(asked),
+        tuple(sorted(subjects)),
+        tuple(sorted(missing)),
+    )

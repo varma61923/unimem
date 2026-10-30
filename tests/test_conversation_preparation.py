@@ -1,4 +1,5 @@
 """Local embedding work is incremental, restartable and shared across requests."""
+
 import concurrent.futures
 import threading
 
