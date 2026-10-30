@@ -150,3 +150,45 @@ def test_mcp_tool(store, monkeypatch):
     got = call("memory_recall", question="postgres failover", budget=500)
     assert got["ok"] and got["tokens"] <= 500 and got["items"]
     assert not call("memory_recall", question="x", channels=["nope"])["ok"]
+
+
+def _reference_diversify(items, lam=recall.MMR_LAMBDA):
+    """The original O(N^3) MMR, kept as an oracle for the incremental version."""
+    if not items:
+        return []
+    top = items[0].fused or 1.0
+    terms = [recall._terms(i.text) for i in items]
+    chosen, left = [], list(range(len(items)))
+    while left:
+        best, best_score = None, None
+        for i in left:
+            overlap = max((len(terms[i] & terms[j]) / (len(terms[i] | terms[j]) or 1) for j in chosen), default=0.0)
+            if overlap >= 0.9:
+                continue
+            score = lam * (items[i].fused / top) - (1 - lam) * overlap
+            if best_score is None or score > best_score:
+                best, best_score = i, score
+        if best is None:
+            break
+        chosen.append(best)
+        left.remove(best)
+    return [items[i] for i in chosen]
+
+
+def test_incremental_diversify_matches_the_reference_mmr():
+    import random
+
+    rng = random.Random(7)
+    vocab = [f"word{n}" for n in range(30)]
+    for trial in range(200):
+        n = rng.randint(0, 40)
+        items = []
+        for k in range(n):
+            text = " ".join(rng.choices(vocab, k=rng.randint(0, 12)))
+            if k and rng.random() < 0.15:
+                text = items[rng.randrange(k)].text  # exact restatements must be dropped
+            items.append(recall.Item("lexical", f"i{k}", text, fused=rng.choice([1.0, 0.5, 0.5, 0.2, 0.0])))
+        items.sort(key=lambda i: -i.fused)
+        lam = rng.choice([recall.MMR_LAMBDA, 0.0, 0.5, 1.0])
+        expected = [i.id for i in _reference_diversify(items, lam)]
+        assert [i.id for i in recall.diversify(items, lam)] == expected, trial

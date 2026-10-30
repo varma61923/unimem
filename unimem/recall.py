@@ -601,21 +601,34 @@ def diversify(items: list[Item], lam: float = MMR_LAMBDA) -> list[Item]:
         return []
     top = items[0].fused or 1.0
     terms = [_terms(i.text) for i in items]
+    # Running max overlap of each candidate against everything chosen so far.
+    # Recomputing max(...) over all chosen items every round made selection
+    # O(N^3) Jaccards (~10 s at the 256-item adaptive pool); updating against
+    # only the newest pick is O(N^2) and yields the identical order, since a
+    # running max equals the max over the chosen set.
+    overlap = [0.0] * len(items)
     chosen: list[int] = []
     left = list(range(len(items)))
     while left:
         best, best_score = None, None
+        # Overlap only grows, so a near-restatement (>= 0.9) can never be
+        # chosen later; drop it for good instead of rescanning it every round.
+        left = [i for i in left if overlap[i] < 0.9]
         for i in left:
-            overlap = max((len(terms[i] & terms[j]) / (len(terms[i] | terms[j]) or 1) for j in chosen), default=0.0)
-            if overlap >= 0.9:
-                continue
-            score = lam * (items[i].fused / top) - (1 - lam) * overlap
+            score = lam * (items[i].fused / top) - (1 - lam) * overlap[i]
             if best_score is None or score > best_score:
                 best, best_score = i, score
         if best is None:
             break
         chosen.append(best)
         left.remove(best)
+        picked = terms[best]
+        for i in left:
+            shared = len(terms[i] & picked)
+            if shared:
+                current = shared / (len(terms[i] | picked) or 1)
+                if current > overlap[i]:
+                    overlap[i] = current
     return [items[i] for i in chosen]
 
 
