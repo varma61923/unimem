@@ -54,10 +54,13 @@ try:
 except ImportError:
     yaml = None
 
+SentenceTransformer: type[Any] | None = None
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
 except ImportError:
-    SentenceTransformer = None
+    pass
+else:
+    SentenceTransformer = _SentenceTransformer
 
 _DELIM_RE = re.compile(r"^---[ \t]*\r?$", re.MULTILINE)
 

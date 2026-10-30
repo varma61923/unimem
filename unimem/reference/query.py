@@ -29,6 +29,7 @@ import re
 import sys
 import time
 import zipfile
+from typing import Any
 
 try:
     import numpy as np_import
@@ -42,10 +43,13 @@ try:
 except ImportError:
     yaml = None
 
+SentenceTransformer: type[Any] | None = None
 try:
-    from sentence_transformers import SentenceTransformer
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
 except ImportError:
-    SentenceTransformer = None
+    pass
+else:
+    SentenceTransformer = _SentenceTransformer
 
 SUPPORTED_MODELS = {
     "multi-qa-mpnet-base-dot-v1": "",
