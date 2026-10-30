@@ -76,7 +76,7 @@ memory-foundry = ["httpx>=0.27,<1.0"]
 memory-anthropic = ["httpx>=0.27,<1.0"]
 kv-cache = []  # Provider plugins implement compression.KVReuse; no eager inference dependency.
 kv = []  # LMCache, Dynamo KVBM and Mooncake adapters register at runtime.
-crdt = ["cryptography>=50.0.2,<51", "automerge==0.2.0.dev4; python_version >= '3.12'"]
+crdt = ["cryptography>=50.0.2,<51", "automerge==1.0.0rc1; python_version >= '3.12'"]
 vector-lance = ["lancedb>=0.40,<1.0"]
 vector-postgres = [
     "asyncpg>=0.31,<1.0",
