@@ -6,7 +6,7 @@ DB-free: storage is faked, so these run without HUB_TEST_DATABASE_URL.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import replace
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import httpx
@@ -236,4 +236,6 @@ async def test_console_session_rechecks_delegate_enrollment(monkeypatch, failure
     else:
         assert response.status_code == 303, response.text
         assert response.headers["location"] == "/app/signin"
-    assert checks == [key]
+    # Other tests reload hub.auth to verify pepper configuration. Compare the
+    # authenticated fields, independent of the reloaded dataclass identity.
+    assert [asdict(checked) for checked in checks] == [asdict(key)]
