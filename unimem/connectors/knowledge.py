@@ -13,6 +13,7 @@ import urllib.parse
 import urllib.request
 
 from unimem import _jsonl, additive_extract, hierarchical, memory_authority, paths, trace_io
+from unimem.retry import read_within
 
 # Exact provider origin and read endpoint; resource identifiers are URL encoded.
 PROVIDERS = {
@@ -173,7 +174,7 @@ def sync(
                 headers={**headers, "Content-Type": "application/json"},
             )
         with opener.open(req, timeout=30) as response:
-            data = response.read(8 * 1024 * 1024 + 1)
+            data = read_within(response, 8 * 1024 * 1024, 30)
             if len(data) > 8 * 1024 * 1024:
                 raise ValueError("provider response exceeds 8 MiB")
             text = data.decode("utf-8")
@@ -204,7 +205,7 @@ def sync(
             else:
                 endpoint += "?alt=media"
             with opener.open(urllib.request.Request(endpoint, headers=headers), timeout=30) as response:
-                data = response.read(8 * 1024 * 1024 + 1)
+                data = read_within(response, 8 * 1024 * 1024, 30)
                 if len(data) > 8 * 1024 * 1024:
                     raise ValueError("provider content exceeds 8 MiB")
                 text = data.decode("utf-8")
@@ -225,7 +226,7 @@ def sync(
                 raise ValueError("invalid Microsoft preauthenticated download origin")
             # The signed download URL needs no OAuth header; never forward the provider token.
             with opener.open(urllib.request.Request(download), timeout=30) as response:
-                data = response.read(8 * 1024 * 1024 + 1)
+                data = read_within(response, 8 * 1024 * 1024, 30)
                 if len(data) > 8 * 1024 * 1024:
                     raise ValueError("provider content exceeds 8 MiB")
                 text = data.decode("utf-8")
