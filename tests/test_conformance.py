@@ -215,7 +215,11 @@ def test_gateway_redirect_does_not_forward_bearer_token():
             thread.join(timeout=2)
 
 
-@pytest.mark.parametrize("body", [b"not-json", b"[]", b'"string"', b"\xff"])
+@pytest.mark.parametrize(
+    "body",
+    [b"not-json", b"[]", b'"string"', b"\xff", b'{"data":"' + b"x" * (8 * 1024 * 1024) + b'"}'],
+    ids=["invalid-json", "array", "string", "invalid-encoding", "oversized"],
+)
 def test_gateway_invalid_json_response_is_reported(body):
     class InvalidResponse(BaseHTTPRequestHandler):
         def do_GET(self):

@@ -19,6 +19,7 @@ from unimem import experiment, frontmatter, paths, raw_export, revision, validat
 
 SUITE_VERSION = "1"
 OPS = ("assign", "ledger", "digest", "revision", "allocate")
+MAX_GATEWAY_RESPONSE_BYTES = 8 * 1024 * 1024
 VECTORS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conformance_vectors.json")
 SPEC_VECTORS_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "protocol", "conformance", "vectors.json"
@@ -342,8 +343,11 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
     request = urllib.request.Request(base.rstrip("/") + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.build_opener(_NoRedirect).open(request, timeout=10) as resp:  # nosec B310
+            payload = resp.read(MAX_GATEWAY_RESPONSE_BYTES + 1)
+            if len(payload) > MAX_GATEWAY_RESPONSE_BYTES:
+                return 0, {"error": "gateway response exceeds 8 MiB"}
             try:
-                result = json.loads(resp.read() or b"{}")
+                result = json.loads(payload or b"{}")
             except ValueError:
                 return 0, {"error": "gateway returned invalid JSON"}
             if not isinstance(result, dict):
@@ -351,8 +355,11 @@ def _call(base: str, method: str, path: str, token: str | None, body: dict | Non
             return resp.status, result
     except urllib.error.HTTPError as exc:
         with exc:
+            payload = exc.read(MAX_GATEWAY_RESPONSE_BYTES + 1)
+            if len(payload) > MAX_GATEWAY_RESPONSE_BYTES:
+                return exc.code, {}
             try:
-                result = json.loads(exc.read() or b"{}")
+                result = json.loads(payload or b"{}")
             except ValueError:
                 return exc.code, {}
             return exc.code, result if isinstance(result, dict) else {}
