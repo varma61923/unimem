@@ -467,27 +467,54 @@ class MemoryClient:
         assurance.record_recall(self.root, result["occasion_id"], [*combined, *rules], result["context"], self.context)
         return result
 
-    def outcome(self, occasion_id: str, succeeded: bool, *, secondary_metrics: dict | None = None) -> bool:
+    def outcome(
+        self,
+        occasion_id: str,
+        succeeded: bool | None = None,
+        *,
+        reward: float | None = None,
+        metrics: dict | None = None,
+        secondary_metrics: dict | None = None,
+    ) -> bool:
+        """Record how the occasion went: `succeeded`, a graded `reward` in [0, 1], or utility `metrics`.
+
+        A graded outcome feeds the reflect policy and the exploration learner at full
+        resolution and the holdout experiment through audited randomized rounding
+        (`unimem.rewards`), locally or through a remote gateway's memory API.
+        """
+        if sum(v is not None for v in (succeeded, reward, metrics)) != 1:
+            raise ValueError("give exactly one of succeeded, reward or metrics")
         occasion_id = self._occasion(occasion_id)
         if self.url:
-            body = {"occasion_id": occasion_id, "succeeded": succeeded}
+            body: dict = {"occasion_id": occasion_id}
+            for key, value in (("succeeded", succeeded), ("reward", reward), ("metrics", metrics)):
+                if value is not None:
+                    body[key] = value
             if secondary_metrics is not None:
                 body["secondary_metrics"] = secondary_metrics
             return self._request("outcome", body)["recorded"]
+        if succeeded is None:
+            return self._graded_outcome(occasion_id, reward, metrics, secondary_metrics)
         from unimem import causal_policy, holdout_io, policy
 
         if not isinstance(succeeded, bool):
             raise ValueError("succeeded must be boolean")
-        if secondary_metrics is not None:
-            from unimem import sycophancy_io
-
-            sycophancy_io.record_metrics(self.root, occasion_id, secondary_metrics)
+        written = holdout_io.record_outcome(self.root, occasion_id, succeeded, secondary_metrics=secondary_metrics)
         policy.outcome(self.root, occasion_id, float(succeeded))
         exploration = causal_policy.record_outcome(self.root, occasion_id, float(succeeded))
-        return (
-            holdout_io.record_outcome(self.root, occasion_id, succeeded, secondary_metrics=secondary_metrics)
-            or exploration
+        return written or exploration
+
+    def _graded_outcome(
+        self, occasion_id: str, reward: float | None, metrics: dict | None, secondary_metrics: dict | None
+    ) -> bool:
+        from unimem import causal_policy, policy, rewards
+
+        out = rewards.record(
+            self.root, occasion_id, reward=reward, metrics=metrics, secondary_metrics=secondary_metrics
         )
+        policy.outcome(self.root, occasion_id, out["reward"])
+        exploration = causal_policy.record_outcome(self.root, occasion_id, out["reward"])
+        return bool(out["recorded"]) or exploration
 
     def check_action(self, tool: str, *, tags: list[str] | None = None) -> None:
         if self.url:

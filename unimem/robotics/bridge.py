@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import json
 from typing import Any, Callable, Protocol
+from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from unimem import frontier_protocol as fp
+
+REFUSALS = (400, 409, 413, 422)
+
+
+class GatewayRefused(ValueError):
+    """The gateway definitively refused a request (one of `REFUSALS`): invalid, or conflicting with
+    recorded state. Resending the same body can never succeed, so it must not stay queued."""
+
+    def __init__(self, status: int, code: str = "") -> None:
+        super().__init__(f"gateway refused the request with HTTP {status}" + (f" ({code})" if code else ""))
+        self.status, self.code = status, code
 
 
 class GatewayTransport(Protocol):
@@ -55,8 +67,23 @@ class HTTPGateway:
             if not isinstance(value, dict):
                 raise ValueError("gateway returned a non-object")
             return value
+        except HTTPError as exc:
+            try:
+                if exc.code in REFUSALS:
+                    raise GatewayRefused(exc.code, _error_code(exc)) from None
+                raise ConnectionError("robot gateway request failed; outcome remains queued for retry") from None
+            finally:
+                exc.close()
         except Exception:
             raise ConnectionError("robot gateway request failed; outcome remains queued for retry") from None
+
+
+def _error_code(exc: HTTPError) -> str:
+    try:
+        error = json.loads(exc.read(4096)).get("error", {})
+        return fp.text(str(error.get("code", "")), "gateway error code", 64) if isinstance(error, dict) else ""
+    except Exception:
+        return ""
 
 
 class RobotBridge:
@@ -149,11 +176,35 @@ class RobotBridge:
             "monitor": result,
         }
 
-    def finish(self, occasion: str, succeeded: bool) -> dict[str, Any]:
+    def finish(
+        self,
+        occasion: str,
+        succeeded: bool | None = None,
+        *,
+        reward: float | None = None,
+        metrics: dict[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Report the task outcome: a binary detector, a graded `reward` in [0, 1] or utility `metrics`.
+
+        Graded outcomes (task progress, energy, cycle time, contact force) are realized
+        by the gateway's audited randomized rounding; see `unimem.rewards`.
+        """
         fp.text(occasion)
-        if type(succeeded) is not bool:
-            raise ValueError("robot success detector must supply a binary final outcome")
-        body = {"occasion_id": occasion, "succeeded": succeeded, "agent_id": self.robot}
+        if sum(v is not None for v in (succeeded, reward, metrics)) != 1:
+            raise ValueError("robot outcome needs exactly one of succeeded, reward or metrics")
+        body: dict[str, Any] = {"occasion_id": occasion, "agent_id": self.robot}
+        if succeeded is not None:
+            if type(succeeded) is not bool:
+                raise ValueError("robot success detector must supply a binary final outcome")
+            body["succeeded"] = succeeded
+        elif reward is not None:
+            body["reward"] = fp.number(reward, 0, 1, "reward")
+        else:
+            if not isinstance(metrics, dict) or not 1 <= len(metrics) <= 64:
+                raise ValueError("robot metrics must be an object of 1 to 64 numbers")
+            body["metrics"] = {
+                fp.text(k, "metric", 64): fp.number(v, -1e12, 1e12, "metric") for k, v in metrics.items()
+            }
         if self.queue is not None:
             self.queue.enqueue(body)
         try:
@@ -162,6 +213,10 @@ class RobotBridge:
             if self.queue is None:
                 raise
             return {"queued": True, "occasion_id": occasion}
+        except GatewayRefused as exc:
+            if self.queue is not None:
+                self.queue.reject(occasion, exc.status, exc.code)
+            raise
         if self.queue is not None:
             self.queue.acknowledge(occasion)
         self._recalls.pop(occasion, None)
@@ -241,7 +296,9 @@ def create_node(
 
     def end(message: Any) -> None:
         body = decode(message)
-        bridge.finish(body["occasion_id"], body["succeeded"])
+        bridge.finish(
+            body["occasion_id"], body.get("succeeded"), reward=body.get("reward"), metrics=body.get("metrics")
+        )
 
     node.create_subscription(message_type, config["start"], guarded(start), 10)
     node.create_subscription(message_type, config["end"], guarded(end), 10)
