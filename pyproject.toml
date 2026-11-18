@@ -30,7 +30,7 @@ security = [
 ]
 policy-cedar = ["cedarpy==4.12.2"]
 extraction = [
-    "gliner>=0.2,<1.0",
+    "gliner>=0.2.30,<1.0",
 ]
 attention = [
     "numpy>=1.24,<3.0",
