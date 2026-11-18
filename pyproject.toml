@@ -51,7 +51,7 @@ hub-sync = [
 ]
 llm = [
     "boto3>=1.43.123,<2.0",
-    "google-genai>=1.0,<3.0",
+    "google-genai>=2.33.0,<3.0",
 ]
 serve = [
     "mcp>=2.0,<3.0",
