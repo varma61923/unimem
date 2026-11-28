@@ -151,26 +151,35 @@ def _original_permits(journal: Journal, source: dict, scope: dict, original: dic
                         if parent is None:
                             return False
                         pending.append(parent)
-                    for identity in current.relations.get("caused_by", []):
+                    caused_by = current.relations.get("caused_by", [])
+                    if caused_by:
+                        by_id: dict[str, tuple[Any, ...]] = {}
                         with journal.connect() as db:
-                            capture = db.execute(
-                                "SELECT session,event,body,scope FROM captures WHERE id=?", (identity,)
-                            ).fetchone()
-                        if capture is None:
-                            return False
-                        descriptor = capability_io.capture_descriptor(
-                            identity, capture[0], capture[1], json.loads(capture[2]), json.loads(capture[3])
-                        )
-                        namespace, kind, labels = capability_io.record_policy(descriptor, namespace="records")
-                        if not capabilities.permits(
-                            verified["caveats"],
-                            namespace=namespace,
-                            operation="read",
-                            memory_class=kind,
-                            purpose=original["purpose"],
-                            labels=labels,
-                        ):
-                            return False
+                            for start in range(0, len(caused_by), 500):
+                                batch = caused_by[start : start + 500]
+                                placeholders = ",".join("?" for _ in batch)
+                                for row in db.execute(
+                                    f"SELECT id,session,event,body,scope FROM captures WHERE id IN ({placeholders})",  # nosec B608 - ? placeholders only
+                                    tuple(batch),
+                                ).fetchall():
+                                    by_id[row[0]] = row[1:]
+                        for identity in caused_by:
+                            capture = by_id.get(identity)
+                            if capture is None:
+                                return False
+                            descriptor = capability_io.capture_descriptor(
+                                identity, capture[0], capture[1], json.loads(capture[2]), json.loads(capture[3])
+                            )
+                            namespace, kind, labels = capability_io.record_policy(descriptor, namespace="records")
+                            if not capabilities.permits(
+                                verified["caveats"],
+                                namespace=namespace,
+                                operation="read",
+                                memory_class=kind,
+                                purpose=original["purpose"],
+                                labels=labels,
+                            ):
+                                return False
             return True
     except (ValueError, PermissionError, KeyError, TypeError):
         return False
@@ -459,10 +468,10 @@ def operate(
     # under the write fence before applying any policy changes.
     with journal.connect() as db:
         saved = db.execute(
-            "SELECT body FROM learning_assignments WHERE namespace=? AND experiment=? ORDER BY rowid LIMIT ?",
+            "SELECT rowid, body FROM learning_assignments WHERE namespace=? AND experiment=? ORDER BY rowid LIMIT ?",
             (namespace, experiment_id, body.get("limit", 10000) + 1),
         ).fetchall()
-    assignments = [json.loads(item[0]) for item in saved]
+    assignments = [json.loads(item[1]) for item in saved]
     if len(assignments) > body.get("limit", 10000):
         # Refusal is a completed bounded pass, not a retryable worker failure.
         # Count the complete cohort and settle its work request under the same
@@ -513,14 +522,13 @@ def operate(
         _, locked = _experiment(db, namespace, experiment_id)
         # Evidence may have arrived while source admission ran; abort instead of
         # accidentally checkpointing an unprocessed accepted outcome.
-        current_assignments = [
-            json.loads(item[0])
-            for item in db.execute(
-                "SELECT body FROM learning_assignments WHERE namespace=? AND experiment=? ORDER BY rowid LIMIT ?",
-                (namespace, experiment_id, body.get("limit", 10000) + 1),
-            ).fetchall()
-        ]
-        if contract.digest(current_assignments) != contract.digest(assignments):
+        current_saved = db.execute(
+            "SELECT rowid, body FROM learning_assignments WHERE namespace=? AND experiment=? ORDER BY rowid LIMIT ?",
+            (namespace, experiment_id, body.get("limit", 10000) + 1),
+        ).fetchall()
+        if current_saved != saved and (
+            contract.digest([json.loads(item[1]) for item in current_saved]) != contract.digest(assignments)
+        ):
             raise contract.LearningConflict("learning evidence changed; retry bounded pass")
         _check_revisions(journal, db, admitted, actual_scope)
         checkpoint = contract.digest(

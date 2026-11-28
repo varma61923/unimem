@@ -138,11 +138,18 @@ def sync(
     context = sorted({v.strip() for v in context})
     if not 1 <= max_pages <= 100:
         raise ValueError("max_pages must be in 1-100")
+    import re
+
     encoded = urllib.parse.quote(resource, safe="/" if provider == "github" else "")
     host, route = PROVIDERS[provider]
-    if provider in ("zendesk", "servicenow", "salesforce"):
-        import re
-
+    if provider == "github":
+        parts = resource.split("/")
+        if (
+            len(parts) != 2
+            or not all(re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", part) and part not in (".", "..") for part in parts)
+        ):
+            raise ValueError("GitHub provider resource must be owner/repo")
+    elif provider in ("zendesk", "servicenow", "salesforce"):
         if not re.fullmatch(r"[a-zA-Z0-9-]{1,63}", resource):
             raise ValueError("provider resource must be a tenant subdomain")
     base = host.format(resource=encoded)
@@ -157,6 +164,7 @@ def sync(
     transport_cursor = [None]
 
     def request(address):
+        offline.check_url(address, "the " + provider + " knowledge connector")
         headers = {"Authorization": "Bearer " + token, "Accept": "application/json"}
         if provider == "greenhouse":
             import base64
@@ -228,6 +236,7 @@ def sync(
                 )
             ):
                 raise ValueError("invalid Microsoft preauthenticated download origin")
+            offline.check_url(download, "the onedrive download endpoint")
             # The signed download URL needs no OAuth header; never forward the provider token.
             with opener.open(urllib.request.Request(download), timeout=30) as response:
                 data = read_within(response, 8 * 1024 * 1024, 30)
@@ -248,10 +257,20 @@ def sync(
         digests = set(state["digests"])
         snapshot_sources = set()
         while current and pages < max_pages:
-            if urllib.parse.urlsplit(current).netloc != urllib.parse.urlsplit(base).netloc or not current.startswith(
-                base + "/"
+            base_parts = urllib.parse.urlsplit(base)
+            cur_parts = urllib.parse.urlsplit(current)
+            cur_segments = [urllib.parse.unquote(seg) for seg in cur_parts.path.split("/")]
+            if (
+                cur_parts.scheme != base_parts.scheme
+                or cur_parts.netloc != base_parts.netloc
+                or not current.startswith(base + "/")
+                or any(seg in (".", "..") for seg in cur_segments)
             ):
                 raise ValueError("provider cursor crossed its pinned origin")
+            if provider == "github" and not (
+                cur_parts.path == f"/repos/{encoded}" or cur_parts.path.startswith(f"/repos/{encoded}/")
+            ):
+                raise ValueError("GitHub provider cursor left the pinned repository")
             transport_cursor[0] = None
             raw = fetch(current)
             # Downloaded documents are content, even when their text is valid JSON.

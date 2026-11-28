@@ -161,7 +161,7 @@ def test_missing_vectors_cannot_claim_conformance():
 
 def test_correct_answers_followed_by_a_crash_fail_conformance(tmp_path):
     script = tmp_path / "crash_after_answers.py"
-    script.write_text("from unimem.conformance import main_reference\nmain_reference()\nraise SystemExit(3)\n")
+    script.write_text(f"import sys\nsys.path.insert(0, {ROOT!r})\nfrom unimem.conformance import main_reference\nmain_reference()\nraise SystemExit(3)\n")
     results = conformance.run_exec(f"{sys.executable} {script}", conformance.load_vectors())
     assert len(results) == 1 and not results[0].ok
     assert "status 3" in results[0].detail

@@ -190,10 +190,14 @@ _LISTINGS_LOCK = threading.Lock()
 
 
 def _listing_after_fork():
-    global _LISTINGS_LOCK
+    global _LISTINGS_LOCK, _CACHE_LOCK
     # A thread holding the parent's lock does not survive into the child.
     _LISTINGS_LOCK = threading.Lock()
+    _CACHE_LOCK = threading.Lock()
     _LISTINGS.clear()
+    _FAST.clear()
+    _MEMO.clear()
+    _SNAPSHOTS.clear()
     _SCAN_SCOPE.set(None)
 
 
@@ -305,10 +309,11 @@ def _scan_listing(ldir: str) -> _Listing:
     return result
 
 
-_FAST: dict[str, tuple[tuple, tuple | None, dict, list]] = {}
+_FAST: OrderedDict[str, tuple[tuple, tuple | None, dict, list]] = OrderedDict()
 
 
-_MEMO: dict[str, tuple[tuple, dict, frozenset]] = {}
+_MEMO: OrderedDict[str, tuple[tuple, dict, frozenset]] = OrderedDict()
+_CACHE_LOCK = threading.Lock()
 
 
 def _file_identity(path: str) -> tuple | None:
@@ -404,16 +409,21 @@ def _load_entries_keyed(root: str, reader) -> tuple[dict[str, dict], list[str], 
     cpath = cache_path(root)
     source_key = listing.fingerprint
     identity = _file_identity(cpath)
-    fast = _FAST.get(cpath)
-    if fast is not None and identity is not None and fast[1] == identity and fast[0] == source_key:
-        return fast[2], fast[3], fast[0]
+    with _CACHE_LOCK:
+        fast = _FAST.get(cpath)
+        if fast is not None and identity is not None and fast[1] == identity and fast[0] == source_key:
+            _FAST.move_to_end(cpath)
+            return fast[2], fast[3], fast[0]
+        memo = _MEMO.get(cpath)
+        if memo is not None and identity is not None and memo[0] == identity:
+            _MEMO.move_to_end(cpath)
+            cached, validated = memo[1], memo[2]
+        else:
+            cached, validated = None, frozenset()
+    if cached is None:
+        cached = _read_cache(cpath)
     lesson_paths = [p for p, _m, _s in listing]
     stamps = {p: (m, size) for p, m, size in listing}
-    memo = _MEMO.get(cpath)
-    if memo is not None and identity is not None and memo[0] == identity:
-        cached, validated = memo[1], memo[2]
-    else:
-        cached, validated = _read_cache(cpath), frozenset()
 
     entries: dict = {}
     repaired = False
@@ -452,18 +462,30 @@ def _load_entries_keyed(root: str, reader) -> tuple[dict[str, dict], list[str], 
 
     if repaired or _stamps_differ(cached, entries):
         written = _write_cache(cpath, entries)
-        if written is not None:
-            _MEMO[cpath] = (written, entries, frozenset(entries))
-        else:
-            _MEMO.pop(cpath, None)
+        with _CACHE_LOCK:
+            if written is not None:
+                _MEMO[cpath] = (written, entries, frozenset(entries))
+                _MEMO.move_to_end(cpath)
+                while len(_MEMO) > _LISTING_ROOTS_MAX:
+                    _MEMO.popitem(last=False)
+            else:
+                _MEMO.pop(cpath, None)
         identity = written
     elif identity is not None:
-        _MEMO[cpath] = (identity, cached, validated | frozenset(entries))
+        with _CACHE_LOCK:
+            _MEMO[cpath] = (identity, cached, validated | frozenset(entries))
+            _MEMO.move_to_end(cpath)
+            while len(_MEMO) > _LISTING_ROOTS_MAX:
+                _MEMO.popitem(last=False)
     ordered = [p for p in lesson_paths if p in entries]
-    if identity is not None:
-        _FAST[cpath] = (source_key, identity, entries, ordered)
-    else:
-        _FAST.pop(cpath, None)
+    with _CACHE_LOCK:
+        if identity is not None:
+            _FAST[cpath] = (source_key, identity, entries, ordered)
+            _FAST.move_to_end(cpath)
+            while len(_FAST) > _LISTING_ROOTS_MAX:
+                _FAST.popitem(last=False)
+        else:
+            _FAST.pop(cpath, None)
     return entries, ordered, source_key
 
 
@@ -506,7 +528,7 @@ class TermCache(dict):
         return scoped
 
 
-_SNAPSHOTS: dict[tuple, tuple[tuple, list, TermCache]] = {}
+_SNAPSHOTS: OrderedDict[tuple, tuple[tuple, list, TermCache]] = OrderedDict()
 
 
 def load_active_with_terms(
@@ -516,9 +538,11 @@ def load_active_with_terms(
 ) -> tuple[list[tuple[str, dict]], TermCache]:
     entries, ordered, snap_key = _load_entries_keyed(root, reader)
     memo_key = (os.path.abspath(root), agent_type)
-    prior = _SNAPSHOTS.get(memo_key)
-    if prior is not None and prior[0] == snap_key:
-        return prior[1], prior[2]
+    with _CACHE_LOCK:
+        prior = _SNAPSHOTS.get(memo_key)
+        if prior is not None and prior[0] == snap_key:
+            _SNAPSHOTS.move_to_end(memo_key)
+            return prior[1], prior[2]
     lessons: list[tuple[str, dict]] = []
     term_cache = TermCache()
     for path in ordered:
@@ -537,12 +561,23 @@ def load_active_with_terms(
     term_cache.fingerprint = tuple((p, term_cache.stamps[p]) for p, _fm in lessons)
     term_cache.fingerprint_hash = hash(term_cache.fingerprint)
     term_cache.bin_dir = os.path.join(paths.memory_dir(root), CACHE_DIR)
-    _SNAPSHOTS[memo_key] = (snap_key, lessons, term_cache)
+    with _CACHE_LOCK:
+        _SNAPSHOTS[memo_key] = (snap_key, lessons, term_cache)
+        _SNAPSHOTS.move_to_end(memo_key)
+        while len(_SNAPSHOTS) > _LISTING_ROOTS_MAX:
+            _SNAPSHOTS.popitem(last=False)
     return lessons, term_cache
 
 
 def invalidate(root: str) -> None:
+    cpath = cache_path(root)
+    abs_root = os.path.abspath(root)
+    with _CACHE_LOCK:
+        _FAST.pop(cpath, None)
+        _MEMO.pop(cpath, None)
+        for key in [k for k in _SNAPSHOTS if k[0] == abs_root]:
+            _SNAPSHOTS.pop(key, None)
     try:
-        os.unlink(cache_path(root))
+        os.unlink(cpath)
     except OSError:
         pass

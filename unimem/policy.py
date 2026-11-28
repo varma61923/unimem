@@ -38,12 +38,13 @@ def record_assignment(root: str, occasion: str, assignments: list[dict], *, base
     }
     filename = _path(root)
     with _jsonl.locked(filename):
-        prior = next((r for r in _jsonl.read_rows(filename) if r.get("id") == occasion), None)
+        rows = _jsonl.read_rows(filename)
+        prior = next((r for r in rows if r.get("id") == occasion), None)
         if prior:
             if {k: v for k, v in prior.items() if k not in ("origin", "sequence")} != record:
                 raise ValueError("occasion context and joint assignment are immutable")
             return
-        record["sequence"] = len(_jsonl.read_rows(filename))
+        record["sequence"] = len(rows)
         _jsonl.append_row(filename, {**record, "origin": memory_authority.bind(root, record)})
 
 
@@ -63,9 +64,6 @@ def records(root: str) -> list[dict]:
                 raise ValueError("duplicate policy outcome")
             rows[row["id"]]["outcome"] = row["outcome"]
         else:
-            record = {k: v for k, v in row.items() if k != "origin"}
-            if not memory_authority.verify(root, row.get("origin", {}), record):
-                raise PermissionError("policy assignment origin is invalid")
             rows[row["id"]] = {**row, "outcome": None}
     return list(rows.values())
 

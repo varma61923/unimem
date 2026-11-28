@@ -21,6 +21,9 @@ def store(tmp_path):
 
 def _cli(*args, cwd=None):
     env = {k: v for k, v in os.environ.items() if k not in ("UNIMEM_ROOT", "JUSTDOIT_ROOT")}
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{repo}{os.pathsep}{existing}" if existing else repo
     return subprocess.run(
         [sys.executable, "-m", "unimem", *args],
         capture_output=True,

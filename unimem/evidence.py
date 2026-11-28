@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,6 +13,7 @@ from datetime import datetime, timezone
 from unimem import experiment, harm, holdout_io, integrity, paths
 
 TTL_SECONDS = 300.0
+_CACHE_MAX_ENTRIES = 128
 """Upper bound, in seconds, on how stale a cached evidence payload can be.
 
 An entry is served only while the file-stats key still matches the store
@@ -21,7 +24,18 @@ how long such a blind spot can survive. Retrieval calls for_lessons on every
 request; without the cache each one would recompute the whole analysis.
 """
 
-_cache: dict[tuple[str, tuple], tuple[tuple, float, dict]] = {}
+_cache: OrderedDict[tuple[str, tuple], tuple[tuple, float, dict]] = OrderedDict()
+_cache_lock = threading.Lock()
+
+
+def _after_fork() -> None:
+    global _cache_lock
+    _cache_lock = threading.Lock()
+    _cache.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_after_fork)
 """Evidence payloads, keyed by ((root, query key) -> (file-stats key, cached-at, payload)).
 
 The key has TWO parts on purpose. The file-stats key (see _key) detects that
@@ -66,8 +80,8 @@ def _stat(path: str) -> tuple:
     try:
         st = os.stat(path)
     except OSError:
-        return (None, None)
-    return (st.st_size, st.st_mtime_ns)
+        return (None, None, None, None, None)
+    return (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
 
 def _key(root: str) -> tuple:
@@ -98,10 +112,12 @@ def for_lessons(root: str, *, lesson_slugs: Collection[str] | None = None) -> di
     query_key = (wanted,)
     cache_key = (root, query_key)
     file_key = _key(root)
-    cached = _cache.get(cache_key)
     now = time.monotonic()
-    if cached is not None and cached[0] == file_key and now - cached[1] < TTL_SECONDS:
-        return cached[2]
+    with _cache_lock:
+        cached = _cache.get(cache_key)
+        if cached is not None and cached[0] == file_key and now - cached[1] < TTL_SECONDS:
+            _cache.move_to_end(cache_key)
+            return cached[2]
 
     measured_at = datetime.now(timezone.utc).isoformat()
     analysis = analyse(root)
@@ -130,7 +146,11 @@ def for_lessons(root: str, *, lesson_slugs: Collection[str] | None = None) -> di
         if wanted is not None:
             by_lesson = {slug: item for slug, item in by_lesson.items() if slug in wanted}
         evidence = {"available": True, "reason": "", "measured_at": measured_at, "by_lesson": by_lesson}
-    _cache[cache_key] = (file_key, now, evidence)
+    with _cache_lock:
+        _cache[cache_key] = (file_key, now, evidence)
+        _cache.move_to_end(cache_key)
+        while len(_cache) > _CACHE_MAX_ENTRIES:
+            _cache.popitem(last=False)
     return evidence
 
 

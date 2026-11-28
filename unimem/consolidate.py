@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from unimem import redundancy, reliability, revision, templates
@@ -44,8 +45,22 @@ def never_hit(fm: dict) -> bool:
 # `hierarchical._FACT_TOKENS` pattern (when full, new entries are computed
 # fresh but not stored). The memo only ever holds default-`num_perm`
 # signatures, which is all `build_report` needs (it varies thresholds only).
+from collections import OrderedDict
+import threading
+
 _SIGNATURE_MEMO_MAX = 4096
-_SIGNATURE_MEMO: dict[tuple[str, str], "_LessonSignatures"] = {}
+_SIGNATURE_MEMO: OrderedDict[tuple[str, str], "_LessonSignatures"] = OrderedDict()
+_SIGNATURE_MEMO_LOCK = threading.Lock()
+
+
+def _reset_signature_memo() -> None:
+    global _SIGNATURE_MEMO_LOCK
+    _SIGNATURE_MEMO_LOCK = threading.Lock()
+    _SIGNATURE_MEMO.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_signature_memo)
 
 
 @dataclass(frozen=True)
@@ -62,17 +77,23 @@ def _lesson_signatures(slug: str, fm: dict, body: str) -> _LessonSignatures:
     except Exception:  # noqa: BLE001 - an unhashable lesson simply skips the memo
         key = None
     if key is not None:
-        hit = _SIGNATURE_MEMO.get(key)
-        if hit is not None:
-            return hit
+        with _SIGNATURE_MEMO_LOCK:
+            hit = _SIGNATURE_MEMO.get(key)
+            if hit is not None:
+                _SIGNATURE_MEMO.move_to_end(key)
+                return hit
     text = redundancy.comparable_text(fm, body)
     bundle = _LessonSignatures(
         tokens=redundancy.token_set(text),
         redundancy_signature=tuple(minhash(text, num_perm=DEFAULT_NUM_PERM)),
         activation_signature=tuple(minhash(reliability._activation_text(fm))),
     )
-    if key is not None and len(_SIGNATURE_MEMO) < _SIGNATURE_MEMO_MAX:
-        _SIGNATURE_MEMO[key] = bundle
+    if key is not None:
+        with _SIGNATURE_MEMO_LOCK:
+            _SIGNATURE_MEMO[key] = bundle
+            _SIGNATURE_MEMO.move_to_end(key)
+            while len(_SIGNATURE_MEMO) > _SIGNATURE_MEMO_MAX:
+                _SIGNATURE_MEMO.popitem(last=False)
     return bundle
 
 

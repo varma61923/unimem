@@ -16,6 +16,14 @@ import threading
 import time
 import traceback
 
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if __name__ == "__main__":
+    import importlib.util
+
+    sys.path[:] = [p for p in sys.path if os.path.abspath(p or ".") != _HERE]
+    if importlib.util.find_spec("unimem") is None:
+        sys.path.insert(0, os.path.dirname(_HERE))
+
 from unimem.configuration import getenv as _configuration_getenv
 
 PROTOCOL = 1
@@ -27,7 +35,6 @@ _MAX_REQUEST_BYTES = 8 << 20
 _MAX_REPLY_BYTES = 64 << 20
 _MAX_SOCKET_PATH = 100
 _TICK_SECONDS = 5.0
-_HERE = os.path.dirname(os.path.abspath(__file__))
 _QUERY_SCRIPT = os.path.join("memory", "attention", "query.py")
 _BUILD_SCRIPT = os.path.join("memory", "attention", "build_index.py")
 

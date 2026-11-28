@@ -122,7 +122,22 @@ def _path(root: str) -> str:
     return os.path.join(paths.memory_dir(root), "allocation", SCHEDULES_NAME)
 
 
-_CACHE: dict[str, tuple[tuple, list[Schedule]]] = {}
+from collections import OrderedDict
+import threading
+
+_CACHE_MAX = 128
+_CACHE: OrderedDict[str, tuple[tuple, list[Schedule]]] = OrderedDict()
+_CACHE_LOCK = threading.Lock()
+
+
+def _reset_cache_after_fork() -> None:
+    global _CACHE_LOCK
+    _CACHE_LOCK = threading.Lock()
+    _CACHE.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_cache_after_fork)
 
 
 def history(root: str) -> list[Schedule]:
@@ -132,18 +147,24 @@ def history(root: str) -> list[Schedule]:
         st = os.stat(path)
     except OSError:
         return []
-    ident = (st.st_ino, st.st_size, st.st_mtime_ns)
-    cached = _CACHE.get(path)
-    if cached is not None and cached[0] == ident:
-        return cached[1]
+    ident = (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+    with _CACHE_LOCK:
+        cached = _CACHE.get(path)
+        if cached is not None and cached[0] == ident:
+            _CACHE.move_to_end(path)
+            return list(cached[1])
     out = []
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             if line.strip():
                 raw = json.loads(line)
                 out.append(Schedule(**{k: v for k, v in raw.items()}))
-    _CACHE[path] = (ident, out)
-    return out
+    with _CACHE_LOCK:
+        _CACHE[path] = (ident, out)
+        _CACHE.move_to_end(path)
+        while len(_CACHE) > _CACHE_MAX:
+            _CACHE.popitem(last=False)
+    return list(out)
 
 
 def verify(root: str) -> list[str]:
@@ -335,5 +356,10 @@ def due(root: str, salt: str) -> bool:
         return False
     records, _ = holdout_io.read_log(root)
     since = current.effective_at()
-    seen = {r.occasion_id for r in records if r.salt == salt and r.at is not None and r.at >= since}
+
+    def _utc(dt: datetime.datetime) -> datetime.datetime:
+        return dt.replace(tzinfo=datetime.timezone.utc) if dt.tzinfo is None else dt.astimezone(datetime.timezone.utc)
+
+    since_utc = _utc(since)
+    seen = {r.occasion_id for r in records if r.salt == salt and r.at is not None and _utc(r.at) >= since_utc}
     return len(seen) >= current.policy.get("era_occasions", ERA_OCCASIONS)

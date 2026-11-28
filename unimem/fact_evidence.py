@@ -340,13 +340,14 @@ def bind_evidence(
     *,
     polarity: EvidencePolarity = "support",
     revision: str | None = None,
+    _resolver: EvidenceResolver | None = None,
 ) -> FactEvidence:
     """Capture a current source digest; an explicit stale digest is rejected."""
     from unimem import hierarchical, lesson_io
 
     identity = lesson_io.canonical_slug(source_id) if kind == "lesson" else source_id
     provisional = FactEvidence(kind, identity, revision or "0" * 64, polarity)
-    resolver = EvidenceResolver(root, hierarchical.load_facts(root))
+    resolver = _resolver if _resolver is not None else EvidenceResolver(root, hierarchical.load_facts(root))
     source = resolver.source(provisional)
     if source is None or revision is not None and source[0] != revision:
         raise EvidenceError("source evidence is unavailable or changed")
@@ -359,6 +360,11 @@ def parse_evidence(root: str, rows: Sequence[Mapping[str, object]]) -> list[Fact
     """Bind untrusted tool receipt arguments; recorded time is set by this store."""
     if len(rows) > MAX_EVIDENCE:
         raise EvidenceError(f"at most {MAX_EVIDENCE} evidence receipts may be submitted")
+    if not rows:
+        return []
+    from unimem import hierarchical
+
+    resolver = EvidenceResolver(root, hierarchical.load_facts(root))
     output = []
     for row in rows:
         if not isinstance(row, Mapping) or set(row) - {"kind", "source_id", "revision", "polarity"}:
@@ -373,5 +379,5 @@ def parse_evidence(root: str, rows: Sequence[Mapping[str, object]]) -> list[Fact
             and not isinstance(revision, str)
         ):
             raise EvidenceError("invalid submitted evidence values")
-        output.append(bind_evidence(root, kind, identity, polarity=polarity, revision=revision))
+        output.append(bind_evidence(root, kind, identity, polarity=polarity, revision=revision, _resolver=resolver))
     return output

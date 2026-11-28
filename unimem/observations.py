@@ -40,10 +40,6 @@ BOOST_STEP = 0.05
 _TRACE_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def _parse(value: str | None) -> datetime | None:
     if not value:
         return None

@@ -24,6 +24,17 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def _utc(value: datetime.datetime) -> datetime.datetime:
+    return value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
+
+
+def _parse_moment(raw: object) -> datetime.datetime:
+    text = str(raw).strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    return _utc(datetime.datetime.fromisoformat(text))
+
+
 def read_all(root: str) -> list[dict]:
     path = environments_log_path(root)
     if not os.path.isfile(path):
@@ -72,7 +83,7 @@ def promote(
                 authors=approval.authors_of(root, slug),
             )
 
-    moment = activate_at or _now()
+    moment = _utc(activate_at) if activate_at is not None else _now()
     record = {
         "release_id": release_id,
         "environment": environment,
@@ -91,28 +102,26 @@ def promote(
 
 
 def current(root: str, environment: str, *, now: datetime.datetime | None = None) -> str | None:
-    moment = now or _now()
+    moment = _utc(now) if now is not None else _now()
     eligible = [
-        r
+        (r, _parse_moment(r["activate_at"]))
         for r in read_all(root)
-        if r["environment"] == environment and datetime.datetime.fromisoformat(r["activate_at"]) <= moment
+        if r["environment"] == environment and _parse_moment(r["activate_at"]) <= moment
     ]
     if not eligible:
         return None
-    return max(eligible, key=lambda r: r["activate_at"])["release_id"]
+    return max(eligible, key=lambda pair: pair[1])[0]["release_id"]
 
 
 def pending(root: str, environment: str, *, now: datetime.datetime | None = None) -> list[dict]:
     """Promotions scheduled for the future, soonest first."""
-    moment = now or _now()
-    return sorted(
-        (
-            r
-            for r in read_all(root)
-            if r["environment"] == environment and datetime.datetime.fromisoformat(r["activate_at"]) > moment
-        ),
-        key=lambda r: r["activate_at"],
-    )
+    moment = _utc(now) if now is not None else _now()
+    future = [
+        (r, _parse_moment(r["activate_at"]))
+        for r in read_all(root)
+        if r["environment"] == environment and _parse_moment(r["activate_at"]) > moment
+    ]
+    return [r for r, _at in sorted(future, key=lambda pair: pair[1])]
 
 
 def history(root: str, environment: str) -> list[dict]:

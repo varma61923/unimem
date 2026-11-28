@@ -411,3 +411,21 @@ def test_real_mcp_admits_queries_and_revokes_bound_facts(root):
     assert not bad["ok"]
     hierarchical.delete_fact(root, premise.id)
     assert not call("query_facts", query="Lumen timeout")["facts"]
+
+
+def test_parse_evidence_loads_store_facts_once_for_multiple_receipts(root, monkeypatch):
+    from unimem.fact_evidence import parse_evidence
+
+    sources = [source(root, f"Sensor observation {i}") for i in range(4)]
+    loads = 0
+    original_load = hierarchical.load_facts
+
+    def counted_load(r):
+        nonlocal loads
+        loads += 1
+        return original_load(r)
+
+    monkeypatch.setattr(hierarchical, "load_facts", counted_load)
+    receipts = parse_evidence(root, [{"kind": "fact", "source_id": s.id} for s in sources])
+    assert len(receipts) == 4
+    assert loads == 1

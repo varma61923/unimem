@@ -228,3 +228,43 @@ def test_telemetry_commitment_binds_sample_times(tmp_path):
     records = [row for row in shield.fp.journal(root, shield.JOURNAL) if row.get("type") == "verdict"]
     assert records[0]["trace_digest"] == records[1]["trace_digest"]
     assert records[0]["telemetry_digest"] != records[1]["telemetry_digest"]
+
+
+def test_shield_checks_use_cached_spec_without_recopying_verdict_history(tmp_path, monkeypatch):
+    from unimem import frontier_protocol as fp
+
+    root = str(tmp_path)
+    shield._SPECS_CACHE.clear()
+    shield.register(
+        root,
+        "speed_cap",
+        formula={"op": "predicate", "signal": "v", "cmp": "<=", "value": 2.0},
+        memory_id="mem-speed",
+        embodiment="base-v1",
+        description="Bound linear velocity.",
+    )
+    offsets = []
+    original_snapshot = fp.event_snapshot
+
+    def spy(r, name, offset):
+        if name == shield.JOURNAL:
+            offsets.append(offset)
+        return original_snapshot(r, name, offset)
+
+    monkeypatch.setattr(fp, "event_snapshot", spy)
+    for idx in range(5):
+        out = shield.check(
+            root,
+            "speed_cap",
+            action={"move": idx},
+            trace=[{"t": 0, "v": 1.0}],
+            source_memory_ids=["mem-speed"],
+        )
+        assert out["verdict"] == "safe"
+    # Cold check scans only the spec row; subsequent checks see incremental slices only (1 new verdict row each).
+    assert offsets == [0, 1, 2, 3, 4]
+    # Next read advances once (fetching only verdict #5 appended by check #4); an immediate second read hits O(1) cache.
+    assert shield._specs_for(root)["speed_cap"]["memory_id"] == "mem-speed"
+    assert offsets == [0, 1, 2, 3, 4, 5]
+    assert shield._specs_for(root)["speed_cap"]["memory_id"] == "mem-speed"
+    assert offsets == [0, 1, 2, 3, 4, 5]

@@ -189,3 +189,26 @@ def test_command_catalog_and_store_scoped_runner(tmp_path):
         headers=auth,
     )
     assert status == 409 and error["error"]["code"] == "command_unavailable"
+
+
+def test_conflicting_container_tag_headers_fail_closed(tmp_path):
+    store = str(tmp_path / "store")
+    gw = gateway.Gateway(store, token="secret-token-12345")
+    auth = {"Authorization": "Bearer secret-token-12345"}
+
+    status, err, headers = _call(
+        gw,
+        "GET",
+        "/v1/status",
+        headers={**auth, "X-Container-Tag": "team-a", "Container-Tag": "team-b"},
+    )
+    assert status == 400 and err["error"]["code"] == "invalid_request"
+    assert "X-Container-Tag" not in headers
+
+    status, _, headers = _call(
+        gw,
+        "GET",
+        "/v1/status",
+        headers={**auth, "X-Container-Tag": "team-a", "Container-Tag": "team-a"},
+    )
+    assert status == 200 and headers["X-Container-Tag"] == "team-a"

@@ -321,7 +321,7 @@ def randomized_response(
             budget = json.load(fh)
         releases = _jsonl.read_rows(ledger)
         spent = sum(r["epsilon"] for r in releases)
-        if spent + epsilon > budget["epsilon"]:
+        if spent + epsilon > budget["epsilon"] + 1e-12:
             raise PermissionError("federation privacy budget exhausted")
         positive = sum(v if secrets.randbelow(4) else not v for v in outcomes)
         body = {

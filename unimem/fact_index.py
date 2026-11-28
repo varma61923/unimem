@@ -295,6 +295,10 @@ def _retained_bytes(value: object) -> int:
         size += sys.getsizeof(item)
         # Most retained objects are leaves. Avoid ABC/dataclass introspection
         # on every term, timestamp and scalar in a large immutable generation.
+        if type(item) is int and sys.getsizeof(item) == 28 and not -5 <= item <= 256:
+            # CPython 3.12+ allocates sizeof(PyLongObject) == 32 for 1-digit heap ints.
+            size += 4
+            continue
         if isinstance(item, (str, bytes, int, float, datetime, type(None))):
             continue
         if isinstance(item, _FrozenMap):

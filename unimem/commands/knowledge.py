@@ -1214,7 +1214,8 @@ def memory_run_validate(args, root) -> int:
 
     if args.staged:
         memfs.require_repo(root)
-        files = [f for f in memfs._staged(root) if f.startswith(paths.memory_dir(root))]
+        mem_dir = paths.memory_dir(root)
+        files = [f for f in memfs._staged(root) if paths.is_within_directory(mem_dir, f)]
         report = memfs.validate(root, files)
     else:
         report = memfs.validate(root)

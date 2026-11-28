@@ -237,3 +237,17 @@ def test_tls_setup_failure_closes_bound_server_socket(tmp_path, monkeypatch):
         )
     assert len(sockets) == 1
     assert sockets[0].fileno() == -1
+
+
+def test_conflicting_and_duplicate_container_tag_headers_rejected_before_dispatch(server):
+    for extra in (
+        b"X-Container-Tag: a\r\nX-Container-Tag: a\r\n",
+        b"X-Container-Tag: a\r\nContainer-Tag: b\r\n",
+    ):
+        wait_until(lambda: server.connection_slots._value == 1)
+        with connect(server) as client:
+            client.sendall(
+                b"GET /v1/health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n" + extra + b"\r\n"
+            )
+            assert b" 400 " in client.recv(4096).split(b"\r\n")[0]
+        assert_health_available(server)
