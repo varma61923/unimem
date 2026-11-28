@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "UniMem Protocol client — capture agent experience, validate lessons, and inject them into any agent platform (Claude Code, Cursor, Devin, Windsurf, generic MCP)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = "AGPL-3.0-only"
+license = "LicenseRef-UniMem-Commercial"
 authors = [{ name = "UniMem" }]
 keywords = ["agents", "llm", "mcp", "memory", "protocol", "fleet-learning"]
 dependencies = [
@@ -102,7 +102,7 @@ unimem = "unimem.cli:main"
 include = ["unimem*"]
 
 [tool.setuptools.package-data]
-unimem = ["schemas/*.json", "configuration.schema.json", "reference/*.py", "fixtures/fields/*.json", "kb_packs/*.jsonl", "vertical_packs/*.json", "vertical_packs/*.md", "ui/*", "conformance_vectors.json", "ontology_typing_model.json"]
+unimem = ["schemas/*.json", "configuration.schema.json", "reference/*.py", "fixtures/fields/*.json", "kb_packs/*.jsonl", "vertical_packs/*.json", "vertical_packs/*.md", "ui/*", "conformance_vectors.json", "ontology_typing_model.json", "*.so", "*/*.so"]
 
 [tool.ruff]
 line-length = 120

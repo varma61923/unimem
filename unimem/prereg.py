@@ -233,7 +233,10 @@ def check(
 
     if first_observation_at is not None and prereg.registered_at:
         try:
-            registered = datetime.datetime.fromisoformat(prereg.registered_at)
+            text = str(prereg.registered_at).strip()
+            if text.endswith(("Z", "z")):
+                text = text[:-1] + "+00:00"
+            registered = datetime.datetime.fromisoformat(text)
         except ValueError:
             registered = None
         if registered is not None:

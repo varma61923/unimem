@@ -504,3 +504,84 @@ def test_untrusted_sdk_source_admission_uses_agent_writer(root, monkeypatch):
     )
     assert actors and all(actor == ("reader", "agent") for actor in actors)
     assert memory_authority.bound_writer() == ("local", "operator")
+
+
+def test_original_permits_batches_caused_by_capture_lookups(root, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from unimem import capability_io
+    from unimem import frontier_protocol as fp
+
+    journal = Journal(root)
+    capture_ids = [f"cap-{i}" for i in range(6)]
+    for cid in capture_ids:
+        journal.capture(
+            "session-1", "UserPromptSubmit", {"prompt": f"text {cid}"}, scope={"tenant": "acme"}, event_id=cid
+        )
+    journal.put(
+        MemoryRecord(
+            id="two-derived",
+            kind="fact",
+            version=1,
+            payload={"text": "Two insight"},
+            relations={"caused_by": capture_ids[:2]},
+            scope={"tenant": "acme"},
+        )
+    )
+    journal.put(
+        MemoryRecord(
+            id="multi-derived",
+            kind="fact",
+            version=1,
+            payload={"text": "Combined insight"},
+            relations={"caused_by": capture_ids},
+            scope={"tenant": "acme"},
+        )
+    )
+    two_record = journal.current("two-derived", scope={"tenant": "acme"})
+    record = journal.current("multi-derived", scope={"tenant": "acme"})
+    capability_io.register_agent(root, "agent-a", "a", clearance=["tenant:acme"])
+    registration = capability_io.agent(root, "agent-a")
+    granted = capability_io.grant(
+        root,
+        {
+            "namespaces": ["records"],
+            "operations": ["read"],
+            "classes": ["capture", "fact"],
+            "purposes": ["support"],
+            "labels": ["tenant:acme"],
+            "delegates": [],
+            "ceiling": 1,
+            "audience": "agent-a",
+            "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        },
+    )
+    original = {
+        "principal": "a",
+        "authority": "agent",
+        "purpose": "support",
+        "delegation": {"token": granted["token"], "registration": fp.digest(registration)},
+    }
+    connect_calls = 0
+    original_connect = journal.connect
+
+    def counted_connect(*, write=False):
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect(write=write)
+
+    monkeypatch.setattr(journal, "connect", counted_connect)
+    assert learning._original_permits(
+        journal,
+        {"id": "two-derived", "revision": two_record.version},
+        {"tenant": "acme"},
+        original,
+    )
+    two_calls = connect_calls
+    connect_calls = 0
+    assert learning._original_permits(
+        journal,
+        {"id": "multi-derived", "revision": record.version},
+        {"tenant": "acme"},
+        original,
+    )
+    assert connect_calls == two_calls == 3

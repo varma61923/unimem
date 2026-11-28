@@ -12,7 +12,10 @@ from collections.abc import Callable, Sequence
 
 ROOT_FILES = ("Dockerfile.local", "pyproject.toml", "README.md", "LICENSE")
 ROOT_TREES = ("unimem", "protocol")
-EXTRA_FILES = (os.path.join("deploy", "docker", "local-entrypoint.sh"),)
+EXTRA_FILES = (
+    os.path.join("deploy", "docker", "local-entrypoint.sh"),
+    os.path.join("scripts", "compile_extensions.py"),
+)
 EXCLUDED_DIRS = {".git", ".pytest_cache", "__pycache__"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo"}
 

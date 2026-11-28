@@ -27,8 +27,28 @@ EVENTS = (
 )
 AGENTS = ("claude", "codex", "cursor", "cline", "gemini", "kimi", "windsurf", "openhands")
 FRAME_LIMIT = 100000
+MAX_JSON_DEPTH = 64
 RESPONSE_SECONDS = 0.050
 RECEIPT_SECONDS = 0.020
+
+
+def _check_json_depth(value: object, max_depth: int = MAX_JSON_DEPTH) -> None:
+    """Reject pathologically deep JSON structures iteratively (works even when C json.loads is iterative)."""
+    stack: list[tuple[object, int]] = [(value, 0)]
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, list):
+            if depth >= max_depth:
+                raise ValueError("json nesting exceeds maximum depth")
+            for item in node:
+                if isinstance(item, (list, dict)):
+                    stack.append((item, depth + 1))
+        elif isinstance(node, dict):
+            if depth >= max_depth:
+                raise ValueError("json nesting exceeds maximum depth")
+            for item in node.values():
+                if isinstance(item, (list, dict)):
+                    stack.append((item, depth + 1))
 
 
 def format_reply(agent: str | None, event: str, reply: dict) -> dict | str:
@@ -152,20 +172,21 @@ def _capture(args, payload):
     import subprocess
     import tempfile
 
-    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    bootstrap = (
-        "import sys;sys.path.insert(0," + repr(package_root) + ");"
-        "from unimem.hook_kit import main;raise SystemExit(main())"
-    )
+    if (getattr(sys, "frozen", False) or "__compiled__" in globals()) and not args.python:
+        child_argv = [sys.executable, "__internal_hook_kit"]
+    else:
+        package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        bootstrap = (
+            "import sys;sys.path.insert(0," + repr(package_root) + ");"
+            "from unimem.hook_kit import main;raise SystemExit(main())"
+        )
+        child_argv = [args.python or sys.executable, "-I", "-c", bootstrap]
     with tempfile.TemporaryFile() as stream:
         stream.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         stream.seek(0)
         subprocess.Popen(  # noqa: S603 - interpreter and argv are generated, never a shell
             [
-                args.python or sys.executable,
-                "-I",
-                "-c",
-                bootstrap,
+                *child_argv,
                 "--capture-only",
                 "--dest",
                 args.dest,
@@ -216,7 +237,8 @@ def _exchange(args, scope, payload):
                 if len(response) > FRAME_LIMIT:
                     raise ValueError("oversized broker frame")
             reply = json.loads(response)
-            if not isinstance(reply, dict) or not isinstance(reply.get("context", ""), str):
+            _check_json_depth(reply)
+            if not isinstance(reply, dict) or not isinstance(reply.get("context"), str):
                 raise ValueError("invalid broker reply")
             token = reply.get("delivery_token")
             if token is not None and (not isinstance(token, str) or len(token) > 256):
@@ -256,6 +278,8 @@ def main(argv=None):
         if len(raw) > FRAME_LIMIT:
             raise ValueError("oversized host input")
         payload, scope = json.loads(raw), json.loads(args.scope)
+        _check_json_depth(payload)
+        _check_json_depth(scope)
         if not isinstance(payload, dict) or not isinstance(scope, dict):
             raise ValueError("host payload and scope must be objects")
         payload = dict(payload)

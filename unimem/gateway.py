@@ -517,6 +517,12 @@ class Gateway:
         self._event_tail_lock = threading.Lock()
         self._event_tail: tuple[tuple[int, ...], list[bytes], dict[int, dict | None]] | None = None
         self._conversation_pool = None  # optional local adapter; requests cannot set it
+        from unimem import capabilities as _capabilities
+
+        self.commercial_license = _capabilities.enforce_commercial_license(
+            env_prefix="UNIMEM",
+            deployment_mode=(_configuration_getenv("UNIMEM_DEPLOYMENT_MODE", "") or "").strip() or "gateway",
+        )
         self.routes: dict[tuple[str, str], tuple[Callable, dict]] = {}
         self._register()
 
@@ -886,6 +892,14 @@ class Gateway:
             summary="Install a verified listing at status=review. Needs --allow-approval.",
         )
 
+    @staticmethod
+    def _container_tag(headers: Mapping[str, str]) -> str:
+        values = [str(v) for k, v in headers.items() if k.lower() in ("x-container-tag", "container-tag") and v]
+        unique = set(values)
+        if len(unique) > 1:
+            raise ApiError(400, "invalid_request", "conflicting container tag headers")
+        return values[0] if values else ""
+
     @configured
     def handle(
         self,
@@ -901,7 +915,10 @@ class Gateway:
         headers = headers or {}
         supplied = next((v for k, v in headers.items() if k.lower() == "x-request-id"), "")
         request_id = supplied if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", supplied or "") else telemetry.new_request_id()
-        container_tag = next((v for k, v in headers.items() if k.lower() in ("x-container-tag", "container-tag")), "")
+        try:
+            container_tag = self._container_tag(headers)
+        except ApiError:
+            container_tag = ""
         path_label = urlsplit(target).path if (method, urlsplit(target).path) in self.routes else "other"
         with (
             telemetry.bind(request_id=request_id, container_tag=container_tag, surface="gateway"),
@@ -1036,9 +1053,7 @@ class Gateway:
                             agent_registry.admit(self.root, principal["id"])
                         except PermissionError as exc:
                             raise ApiError(429, "agent_quota", str(exc)) from exc
-            container_tag = next(
-                (v for k, v in headers.items() if k.lower() in ("x-container-tag", "container-tag")), ""
-            )
+            container_tag = self._container_tag(headers)
             if container_tag:
                 self._validated_tag(container_tag)
             payload: dict = {}

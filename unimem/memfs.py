@@ -84,6 +84,8 @@ def init(root: str) -> dict:
             fh.write(GITIGNORE)
     hook = install_hook(root)
     commit = memory_git.commit_all(root, "unimem: version memory")
+    if not commit.get("ok"):
+        raise MemfsError(commit.get("error", "git commit failed"))
     return {"root": root, "hook": hook, "committed": commit.get("committed", False)}
 
 
@@ -95,10 +97,14 @@ def install_hook(root: str) -> str:
     os.makedirs(hooks, exist_ok=True)
     path = os.path.join(hooks, "pre-commit")
     prefix = shlex.quote(sys.executable)
+    env_line = ""
     if not getattr(sys, "frozen", False):
         prefix += " -m unimem.cli"
+        package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env_line = f'export PYTHONPATH="${{PYTHONPATH:+$PYTHONPATH:}}"{shlex.quote(package_root)}\n'
     script = (
         "#!/bin/sh\n# installed by unimem: validate memory before it is committed\n"
+        f"{env_line}"
         f"exec {prefix} memory validate --staged --dest {shlex.quote(os.path.abspath(root))}\n"
     )
     with open(path, "w", encoding="utf-8") as fh:
@@ -471,7 +477,7 @@ def attach(root: str, shared_root: str, *, agent_id: str, token: str) -> dict:
     path = os.path.join(paths.memory_dir(root), "attachments.jsonl")
     row = {"shared_root": shared_root, "agent_id": agent_id, "handoff": token, "commit": claims["commit"]}
     with _jsonl.locked(path):
-        _jsonl.append_row(path, row)
+        _jsonl.append_row(path, row, nofollow=True)
     os.chmod(path, 0o600)
     return {k: v for k, v in row.items() if k != "handoff"}
 

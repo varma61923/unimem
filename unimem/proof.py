@@ -225,10 +225,20 @@ def _mode(state: dict) -> str:
     return "fixed-horizon" if state.get("stopping_rule") == prereg.STOP_FIXED_N else "sequential"
 
 
+def _parse_iso_utc(value: str) -> datetime.datetime:
+    text = str(value).strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone(datetime.timezone.utc)
+
+
 def analyse_rows(rows: list, mode: str, audited_at: str, vpo: float | None, schedules: list | None = None) -> Analysis:
     from unimem.commands import experiment_cmd
 
-    at = datetime.datetime.fromisoformat(audited_at)
+    at = _parse_iso_utc(audited_at)
     report = integrity.audit(rows, now=at, schedules=schedules or None)
     effects = experiment.analyze(experiment_cmd._observations(rows, schedules), sequential=(mode == "sequential"))
     priced = value.compute(
@@ -271,8 +281,10 @@ def status(root: str, *, now: datetime.datetime | None = None) -> Status:
     if state is None:
         raise ProofError("no proof has been started here (`unimem proof start`)")
     moment = _now(now)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.timezone.utc)
     rows = _current_rows(root)
-    started = datetime.datetime.fromisoformat(state["started_at"])
+    started = _parse_iso_utc(state["started_at"])
     elapsed = max(0.0, (moment - started).total_seconds() / 86400)
     occasions = len({r.occasion_id for r in rows})
     resolved = len({r.occasion_id for r in rows if r.succeeded is not None})
@@ -714,7 +726,7 @@ def rows_from_csv(csv_text: str) -> list[integrity.Assignment]:
         raise ProofError("assignments.csv does not have the expected columns")
 
     def when(cell: str):
-        return datetime.datetime.fromisoformat(cell) if cell else None
+        return _parse_iso_utc(cell) if cell else None
 
     rows = []
     for number, cells in enumerate(reader, start=2):

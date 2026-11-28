@@ -2602,7 +2602,7 @@ def document(app=None) -> dict:
                 "413. When HUB_IP_ALLOWLIST is set, sources outside it get 403 everywhere except /healthz, "
                 "/readyz and /disclosure."
             ),
-            "license": {"name": "GNU AGPLv3", "identifier": "AGPL-3.0-only"},
+            "license": {"name": "UniMem Commercial License", "identifier": "LicenseRef-UniMem-Commercial"},
         },
         "tags": [{"name": name, "description": text} for name, text in _TAGS],
         "paths": paths,

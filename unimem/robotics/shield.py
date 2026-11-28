@@ -7,9 +7,12 @@ is a runtime guardrail and evidence record, not a certified safety controller.
 from __future__ import annotations
 
 import math
+import os
 import re
+import threading
 import time
 from bisect import bisect_left, bisect_right
+from collections import OrderedDict
 from typing import Any, cast
 
 from unimem import _jsonl
@@ -18,6 +21,49 @@ from unimem import frontier_protocol as fp
 JOURNAL = "robot-shield.jsonl"
 MAX_MONITOR_WORK = 1_000_000
 MAX_FORMULA_NODES = 256
+_SPECS_CACHE_MAX = 128
+_SPECS_CACHE: OrderedDict[str, tuple[int, str, dict[str, dict[str, Any]]]] = OrderedDict()
+_SPECS_LOCK = threading.Lock()
+
+
+def _reset_specs_cache() -> None:
+    global _SPECS_LOCK
+    _SPECS_LOCK = threading.Lock()
+    _SPECS_CACHE.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_specs_cache)
+
+
+def _specs_for(root: str) -> dict[str, dict[str, Any]]:
+    key = os.path.abspath(root)
+    count, tip = fp.checkpoint(root, JOURNAL)
+    with _SPECS_LOCK:
+        cached = _SPECS_CACHE.get(key)
+        if cached is not None and cached[0] == count and cached[1] == tip:
+            _SPECS_CACHE.move_to_end(key)
+            return dict(cached[2])
+    start = 0
+    base: dict[str, dict[str, Any]] = {}
+    if cached is not None and count >= cached[0] and cached[0] > 0:
+        try:
+            if fp.digest(fp.signed_at(root, JOURNAL, cached[0] - 1)) == cached[1]:
+                start = cached[0]
+                base = dict(cached[2])
+        except (OSError, ValueError):
+            start = 0
+            base = {}
+    total, new_tip, rows = fp.event_snapshot(root, JOURNAL, start)
+    for row in rows:
+        if row.get("type") == "spec":
+            base[row["spec_id"]] = row
+    with _SPECS_LOCK:
+        _SPECS_CACHE[key] = (total, new_tip, base)
+        _SPECS_CACHE.move_to_end(key)
+        while len(_SPECS_CACHE) > _SPECS_CACHE_MAX:
+            _SPECS_CACHE.popitem(last=False)
+    return dict(base)
 
 
 class _MonitorBudgetExceeded(Exception):
@@ -137,7 +183,7 @@ def register(
         "at": fp.now(),
     }
     with _jsonl.locked(fp.filename(root, JOURNAL)):
-        if any(row.get("type") == "spec" and row["spec_id"] == spec_id for row in fp.journal(root, JOURNAL)):
+        if spec_id in _specs_for(root):
             raise ValueError("STL spec identifiers are immutable")
         return cast(dict[str, Any], fp.append(root, JOURNAL, {"type": "spec", **body})["record"])
 
@@ -154,8 +200,8 @@ def check(
     failure_type: str | None = None,
 ) -> dict[str, Any]:
     start_ns = time.perf_counter_ns()
-    rows = [row for row in fp.journal(root, JOURNAL) if row.get("type") == "spec" and row["spec_id"] == spec_id]
-    if not rows:
+    spec = _specs_for(root).get(spec_id)
+    if spec is None:
         raise KeyError("unknown STL spec")
     if not isinstance(trace, list) or not trace or len(trace) > 100_000:
         raise ValueError("telemetry trace must contain 1..100000 samples")
@@ -177,7 +223,6 @@ def check(
         values = {str(k): fp.number(v, -1e12, 1e12) for k, v in row.items() if k != "t"}
         clean.append(values)
         times.append(t)
-    spec = rows[-1]
     if not isinstance(action, dict) or not action:
         raise ValueError("shield requires the proposed robot action")
     fp.wire(action)

@@ -51,6 +51,7 @@ from hub.connector_routes import add_connector_routes
 from hub.console import CONSOLE_PATH, add_console_routes
 from hub.db import check_row_level_security, operator_session_scope, session_scope
 from hub.disclosure import add_disclosure_route
+from hub.licensing import enforce_hub_license
 from hub.observability import RequestContextMiddleware, add_health_routes
 from hub.openapi import add_openapi_route
 from hub.otlp import add_otlp_routes
@@ -1629,6 +1630,7 @@ def build_mcp_server(config: HubConfig, session_factory: async_sessionmaker, rat
 
 
 def build_app(config: HubConfig, session_factory: async_sessionmaker) -> Starlette:
+    enforce_hub_license(config)
     if config.ledger_signing_key:
         session_factory.configure(
             info={

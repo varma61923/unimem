@@ -2531,7 +2531,14 @@ _WORKING_SET_ENTRY_CHARS = 320
 def _evidence_age_days(last_measured_at: str, now: datetime) -> float | None:
     if not last_measured_at:
         return None
-    return max(0.0, (now - datetime.fromisoformat(last_measured_at)).total_seconds() / 86400.0)
+    text = last_measured_at.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    ref = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now
+    return max(0.0, (ref - parsed).total_seconds() / 86400.0)
 
 
 def _working_set_entry(title: str, solution: str, trace_id: str, effect: float, n: int) -> str:

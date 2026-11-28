@@ -372,23 +372,34 @@ class HookKit:
             "dense_available": provider is not None,
         }
 
+    def _bridge_argv(self) -> list[str]:
+        if getattr(sys, "frozen", False) or "__compiled__" in globals():
+            base = [sys.executable, "__internal_hook_bridge"]
+        else:
+            bridge_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hook_bridge.py")
+            if os.path.isfile(bridge_py):
+                base = [sys.executable, "-I", "-S", bridge_py]
+            else:
+                base = [
+                    sys.executable,
+                    "-I",
+                    "-c",
+                    "import sys; from unimem.hook_bridge import main; raise SystemExit(main(sys.argv[1:]))",
+                ]
+        return [
+            *base,
+            "--dest",
+            os.path.abspath(self.root),
+            "--agent-id",
+            self.agent_id,
+            "--scope",
+            json.dumps(self.scope, sort_keys=True),
+        ]
+
     def manifest(self, agent: str) -> dict:
         if agent not in AGENTS:
             raise ValueError("unsupported coding agent")
-        command = shlex.join(
-            [
-                sys.executable,
-                "-I",
-                "-S",
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "hook_bridge.py"),
-                "--dest",
-                os.path.abspath(self.root),
-                "--agent-id",
-                self.agent_id,
-                "--scope",
-                json.dumps(self.scope, sort_keys=True),
-            ]
-        )
+        command = shlex.join(self._bridge_argv())
         return {
             "version": 1,
             "agent": agent,

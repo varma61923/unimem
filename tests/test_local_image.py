@@ -14,6 +14,8 @@ def test_local_image_is_pinned_non_root_and_health_checked():
     assert images and all(re.search(r"@sha256:[0-9a-f]{64}$", i) for i in images)
     assert re.search(r"^USER unimem$", dockerfile, flags=re.M)
     assert "/v1/health/live" in dockerfile and "UNIMEM_ROOT=/data" in dockerfile
+    assert "compile_extensions.py compile" in dockerfile and "--strip-sources" in dockerfile
+    assert "compile_extensions.py check-no-source" in dockerfile
 
 
 def test_build_context_ships_only_the_package():

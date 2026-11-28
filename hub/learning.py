@@ -92,6 +92,8 @@ async def _sources(session, session_factory, org_id, identities, scope, *, allow
         )
         .scalars()
         .all()
+        if trace_ids
+        else []
     )
     labels = set(context.get("labels", []))
     result = {}

@@ -254,6 +254,12 @@ def consume_nonce(root: str, identity: str, expires_at: str) -> None:
     now, expiry = cap.moment(fp.now()).timestamp(), cap.moment(expires_at).timestamp()
     if not now < expiry <= now + 30:
         raise PermissionError("UniMem request proof expired before nonce consumption")
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    try:
+        fd = os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.close(fd)
+    except FileExistsError:
+        pass
     db = sqlite3.connect(filename, timeout=2, isolation_level=None)
     try:
         os.chmod(filename, 0o600)

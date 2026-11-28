@@ -78,9 +78,9 @@ def test_the_mcp_server_the_plugin_registers_is_the_real_command():
 def test_marketplace_metadata_uses_the_repository_license():
     with open(os.path.join(os.path.dirname(ROOT), "LICENSE"), encoding="utf-8") as stream:
         license_text = stream.read(4096)
-    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in license_text
+    assert "UniMem Commercial License" in license_text
     plugin = _json(PLUGIN, ".claude-plugin", "plugin.json")
     vscode = _json(ROOT, "vscode", "package.json")
-    assert plugin["license"] == vscode["license"] == "AGPL-3.0-only"
+    assert plugin["license"] == vscode["license"] == "Apache-2.0"
     with open(os.path.join(os.path.dirname(ROOT), "pyproject.toml"), encoding="utf-8") as stream:
-        assert 'license = "AGPL-3.0-only"' in stream.read()
+        assert 'license = "LicenseRef-UniMem-Commercial"' in stream.read()

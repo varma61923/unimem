@@ -146,8 +146,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _transport(url: str, body: dict[str, Any], credential_env: str) -> bytes:
+    from unimem import offline
     from unimem.secrets_provider import env_secret
 
+    offline.check_url(url, "the relationship authorization provider")
     secret = env_secret(credential_env)
     if not secret:
         raise PermissionError("UniMem relationship provider credential is unavailable")

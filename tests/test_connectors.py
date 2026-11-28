@@ -401,3 +401,104 @@ def test_crawler_response_deadline_stops_a_trickling_body_and_closes_it(monkeypa
     with pytest.raises(TimeoutError, match="within 1s"):
         web_crawler._get("https://example.com/a", "bot", 1, 1024)
     assert response.reads == 1 and response.closed
+
+
+def test_github_connector_blocks_resource_and_cursor_path_traversal(tmp_path, monkeypatch):
+    from unimem import offline
+    from unimem.connectors import knowledge
+
+    monkeypatch.setenv("GH_TEST_TOKEN", "ghp_" + "a" * 36)
+    with pytest.raises(ValueError, match="owner/repo"):
+        knowledge.sync(str(tmp_path), "github", "org/repo/../../user", token="GH_TEST_TOKEN", context=["scope:a"])
+
+    monkeypatch.setattr(offline, "check_url", lambda *_a, **_kw: None)
+    calls = []
+
+    class FakeResponse:
+        def __init__(self, body: bytes, link: str = ""):
+            self._body = body
+            self.headers = {"Link": link}
+
+        def read(self, n=-1):
+            return self._body
+
+        def read1(self, n=-1):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            pass
+
+    monkeypatch.setattr(knowledge, "read_within", lambda resp, *_a: resp.read())
+
+    class FakeOpener:
+        def open(self, req, timeout=30):
+            calls.append(req.full_url)
+            if len(calls) == 1:
+                return FakeResponse(
+                    b'[{"id": 1, "title": "t", "body": "b"}]',
+                    link='<https://api.github.com/repos/org/other/issues?page=2>; rel="next"',
+                )
+            return FakeResponse(b"[]")
+
+    monkeypatch.setattr(knowledge.urllib.request, "build_opener", lambda *_a: FakeOpener())
+    with pytest.raises(ValueError, match="pinned repository"):
+        knowledge.sync(str(tmp_path), "github", "org/repo", token="GH_TEST_TOKEN", context=["scope:a"])
+
+    calls.clear()
+
+    class TraversalOpener:
+        def open(self, req, timeout=30):
+            calls.append(req.full_url)
+            return FakeResponse(
+                b'[{"id": 1, "title": "t", "body": "b"}]',
+                link='<https://api.github.com/repos/org/repo/../../user>; rel="next"',
+            )
+
+    monkeypatch.setattr(knowledge.urllib.request, "build_opener", lambda *_a: TraversalOpener())
+    with pytest.raises(ValueError, match="pinned origin"):
+        knowledge.sync(str(tmp_path), "github", "org/repo", token="GH_TEST_TOKEN", context=["scope:a"])
+
+
+def test_onedrive_connector_checks_download_url_against_offline(tmp_path, monkeypatch):
+    from unimem import offline
+    from unimem.connectors import knowledge
+
+    monkeypatch.setenv("OD_TOKEN", "od_" + "b" * 32)
+    monkeypatch.delenv("UNIMEM_OFFLINE", raising=False)
+    monkeypatch.setattr(knowledge, "read_within", lambda resp, *_a: resp.read())
+
+    class FakeResponse:
+        def __init__(self, body: bytes):
+            self._body = body
+            self.headers = {}
+
+        def read(self, n=-1):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            pass
+
+    class FakeOpener:
+        def open(self, req, timeout=30):
+            if "sharepoint.com" in req.full_url:
+                raise AssertionError("downloadUrl should not be fetched when check_url blocks it")
+            return FakeResponse(b'{"@microsoft.graph.downloadUrl": "https://tenant.sharepoint.com/dl/doc"}')
+
+    monkeypatch.setattr(knowledge.urllib.request, "build_opener", lambda *_a: FakeOpener())
+    checked = []
+
+    def fake_check(url, purpose):
+        checked.append((url, purpose))
+        if "download" in purpose:
+            raise offline.OfflineError("blocked offline download")
+
+    monkeypatch.setattr(offline, "check_url", fake_check)
+    with pytest.raises(offline.OfflineError, match="blocked offline download"):
+        knowledge.sync(str(tmp_path), "onedrive", "item123", token="OD_TOKEN", context=["scope:a"])
+    assert any("onedrive" in purpose for _u, purpose in checked)

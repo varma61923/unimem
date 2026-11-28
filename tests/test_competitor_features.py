@@ -223,6 +223,13 @@ class TestRelativeDeltas:
         assert csearch.relative_time_delta(base - dt.timedelta(hours=3), base) == "3h ago"
         assert csearch.relative_time_delta(base - dt.timedelta(days=5), base) == "5d ago"
 
+    def test_aware_moment_without_explicit_now_uses_utc(self):
+        aware_past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=5)
+        result = csearch.relative_time_delta(aware_past)
+        assert result.endswith("m ago")
+        naive_past = aware_past.replace(tzinfo=None)
+        assert csearch.relative_time_delta(naive_past, dt.datetime.now(dt.timezone.utc)).endswith("m ago")
+
     def test_header_carries_delta(self, tmp_path):
         st = Store(str(tmp_path), "h")
         st.add(

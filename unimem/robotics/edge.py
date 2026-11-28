@@ -3,12 +3,31 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
+import threading
+from collections import OrderedDict
 from typing import Any, Callable, Sequence
 
 from unimem import _jsonl, evidence, learning_contract, safety, search_recipes
 from unimem import frontier_protocol as fp
 from unimem import transparency_log as log
+
+_QUEUE_CACHE_MAX = 128
+_QUEUE_CACHE: OrderedDict[
+    str, tuple[int, str, dict[str, dict[str, Any]], set[str], list[dict[str, Any]], dict[str, str]]
+] = OrderedDict()
+_QUEUE_LOCK = threading.Lock()
+
+
+def _reset_queue_cache() -> None:
+    global _QUEUE_LOCK
+    _QUEUE_LOCK = threading.Lock()
+    _QUEUE_CACHE.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_queue_cache)
 
 
 def publish_update(
@@ -166,12 +185,15 @@ class OutcomeQueue:
         entries, settled, _ = self._state()
         return [row["body"] for key, row in entries.items() if key not in settled]
 
-    def _state(self) -> tuple[dict[str, dict[str, Any]], set[str], list[dict[str, Any]]]:
-        entries: dict[str, dict[str, Any]] = {}
-        settled: set[str] = set()
-        rejected = []
-        identities: dict[str, str] = {}
-        for row in fp.journal(self.root, "edge-outcomes.jsonl"):
+    @staticmethod
+    def _apply_rows(
+        rows: list[dict[str, Any]],
+        entries: dict[str, dict[str, Any]],
+        settled: set[str],
+        rejected: list[dict[str, Any]],
+        identities: dict[str, str],
+    ) -> None:
+        for row in rows:
             if row.get("kind") == "enqueue":
                 identity = _outcome_key(row["body"], row.get("path", "/v1/outcome"))
                 if "identity" in row:
@@ -207,7 +229,38 @@ class OutcomeQueue:
                 settled.add(settlement_id)
                 if row["kind"] == "reject":
                     rejected.append({**row, "body": entries[settlement_id]["body"]})
-        return entries, settled, rejected
+
+    def _state(self) -> tuple[dict[str, dict[str, Any]], set[str], list[dict[str, Any]]]:
+        cache_key = os.path.abspath(self.root)
+        count, tip = fp.checkpoint(self.root, "edge-outcomes.jsonl")
+        with _QUEUE_LOCK:
+            cached = _QUEUE_CACHE.get(cache_key)
+            if cached is not None and cached[0] == count and cached[1] == tip:
+                _QUEUE_CACHE.move_to_end(cache_key)
+                return dict(cached[2]), set(cached[3]), list(cached[4])
+        start = 0
+        entries: dict[str, dict[str, Any]] = {}
+        settled: set[str] = set()
+        rejected: list[dict[str, Any]] = []
+        identities: dict[str, str] = {}
+        if cached is not None and count >= cached[0] and cached[0] > 0:
+            try:
+                if fp.digest(fp.signed_at(self.root, "edge-outcomes.jsonl", cached[0] - 1)) == cached[1]:
+                    start = cached[0]
+                    entries = dict(cached[2])
+                    settled = set(cached[3])
+                    rejected = list(cached[4])
+                    identities = dict(cached[5])
+            except (OSError, ValueError):
+                start = 0
+        total, new_tip, rows = fp.event_snapshot(self.root, "edge-outcomes.jsonl", start)
+        self._apply_rows(rows, entries, settled, rejected, identities)
+        with _QUEUE_LOCK:
+            _QUEUE_CACHE[cache_key] = (total, new_tip, entries, settled, rejected, identities)
+            _QUEUE_CACHE.move_to_end(cache_key)
+            while len(_QUEUE_CACHE) > _QUEUE_CACHE_MAX:
+                _QUEUE_CACHE.popitem(last=False)
+        return dict(entries), set(settled), list(rejected)
 
     def rejected(self) -> list[dict[str, Any]]:
         """Outcomes the gateway definitively refused, with its status and error code, for an operator."""
@@ -222,7 +275,7 @@ class OutcomeQueue:
             for r in rejected
         ]
 
-    def _settle(self, occasion: str, kind: str, queue_id: str | None, **fields: Any) -> None:
+    def _settle(self, occasion: str, kind: str, queue_id: str | None, **fields: Any) -> int:
         entries, settled, _ = self._state()
         matches = [
             key
@@ -237,6 +290,8 @@ class OutcomeQueue:
                 "edge-outcomes.jsonl",
                 {"kind": kind, "occasion_id": occasion, "queue_id": matches[0], **fields},
             )
+            settled.add(matches[0])
+        return sum(1 for key in entries if key not in settled)
 
     def reject(self, occasion: str, status: int, code: str = "", *, queue_id: str | None = None) -> None:
         """Settle a pending outcome the gateway refused, so it never blocks the outcomes queued after it."""
@@ -300,10 +355,10 @@ class OutcomeQueue:
     def acknowledge(self, occasion: str, *, queue_id: str | None = None) -> None:
         fp.text(occasion, "occasion", 1024)
         with _jsonl.locked(fp.filename(self.root, "edge-outcomes.jsonl")):
-            self._settle(occasion, "ack", queue_id)
+            remaining = self._settle(occasion, "ack", queue_id)
             # Acknowledged outcomes live in the gateway; once nothing is pending the
             # queue restarts so a long-lived robot never fills its bounded journal.
-            if not self.pending() and fp.checkpoint(self.root, "edge-outcomes.jsonl")[0] >= ROTATE_OUTCOMES_AFTER:
+            if remaining == 0 and fp.checkpoint(self.root, "edge-outcomes.jsonl")[0] >= ROTATE_OUTCOMES_AFTER:
                 fp.rotate(self.root, "edge-outcomes.jsonl", [])
 
     def _settle_batch(self, rows: list[dict[str, Any]]) -> None:

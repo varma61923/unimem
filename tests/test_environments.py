@@ -226,3 +226,19 @@ class TestHistory:
         environments.promote(str(tmp_path), second.release_id, "dev", actor="cli:alice", reason="second")
         reasons = [r["reason"] for r in environments.history(str(tmp_path), "dev")]
         assert reasons == ["first", "second"]
+
+    def test_mixed_naive_and_offset_activation_timestamps_compare_accurately(self, tmp_path):
+        _lesson(tmp_path, "alpha")
+        first = _cut(tmp_path, actor="cli:alice")
+        _lesson(tmp_path, "beta")
+        second = _cut(tmp_path, actor="cli:alice")
+        naive_past = datetime.datetime(2025, 1, 1, 12, 0, 0)
+        later_with_offset = datetime.datetime(
+            2025, 1, 1, 15, 0, 0, tzinfo=datetime.timezone(datetime.timedelta(hours=2))
+        )  # 13:00Z, after 12:00Z
+        environments.promote(str(tmp_path), second.release_id, "dev", activate_at=later_with_offset)
+        environments.promote(str(tmp_path), first.release_id, "dev", activate_at=naive_past)
+        assert environments.current(str(tmp_path), "dev", now=datetime.datetime(2025, 1, 1, 12, 30, 0)) == first.release_id
+        assert environments.current(str(tmp_path), "dev", now=datetime.datetime(2025, 1, 1, 13, 30, 0, tzinfo=datetime.timezone.utc)) == second.release_id
+        future = environments.pending(str(tmp_path), "dev", now=datetime.datetime(2025, 1, 1, 12, 30, 0))
+        assert [row["release_id"] for row in future] == [second.release_id]

@@ -259,7 +259,14 @@ def run_promote(args: argparse.Namespace) -> int:
     activate_at = None
     if args.at:
         try:
-            activate_at = datetime.datetime.fromisoformat(args.at)
+            text = str(args.at).strip()
+            if text.endswith(("Z", "z")):
+                text = text[:-1] + "+00:00"
+            activate_at = datetime.datetime.fromisoformat(text)
+            if activate_at.tzinfo is None:
+                activate_at = activate_at.replace(tzinfo=datetime.timezone.utc)
+            else:
+                activate_at = activate_at.astimezone(datetime.timezone.utc)
         except ValueError:
             print(f"[unimem] --at must be an ISO-8601 timestamp, got {args.at!r}", file=sys.stderr)
             return 1

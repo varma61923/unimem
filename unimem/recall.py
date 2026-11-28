@@ -390,9 +390,10 @@ def _dense_facts(root: str, question: str, as_of: str | None, k: int, scope: str
                 with fact_store.transaction(root) as current:
                     resolver = EvidenceResolver(root, current)
                     lineage_blocked = memory_authority.lineage_checker(root)
+                    hydrated = current.get_many(list(candidate_scores)) if len(candidate_scores) > 1 else None
                     ranked = []
                     for identity, cosine in candidate_scores.items():
-                        fact = current.get(identity)
+                        fact = current.get(identity) if hydrated is None else hydrated.get(identity)
                         if (
                             fact is None
                             or fact.forgotten

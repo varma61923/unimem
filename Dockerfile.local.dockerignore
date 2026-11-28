@@ -5,6 +5,7 @@
 !LICENSE
 !unimem/
 !protocol/
+!scripts/compile_extensions.py
 !deploy/docker/local-entrypoint.sh
 **/__pycache__
 **/*.pyc

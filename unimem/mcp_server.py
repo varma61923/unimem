@@ -568,10 +568,13 @@ def build_server(root: str, *, allow_approval: bool = True):
                     # tools without exposing request context. Keep progress
                     # disabled and hide the optional internal argument there.
                     wrapped = telemetry.wrap_tool(func)
-                    signature = inspect.signature(func)
-                    wrapped.__signature__ = signature.replace(
-                        parameters=[p for name, p in signature.parameters.items() if name != "ctx"]
-                    )
+                    try:
+                        signature = inspect.signature(func)
+                        wrapped.__signature__ = signature.replace(
+                            parameters=[p for name, p in signature.parameters.items() if name != "ctx"]
+                        )
+                    except (ValueError, TypeError):
+                        pass
                     return decorate(_capacity_guard(wrapped))
                 func.__annotations__["ctx"] = MCPContext
             return decorate(_capacity_guard(telemetry.wrap_tool(func)))
@@ -3686,7 +3689,10 @@ def build_server(root: str, *, allow_approval: bool = True):
 
     if hasattr(mcp, "call_tool"):
         _orig_call_tool = mcp.call_tool
-        _accepts_context = "context" in inspect.signature(_orig_call_tool).parameters
+        try:
+            _accepts_context = "context" in inspect.signature(_orig_call_tool).parameters
+        except (ValueError, TypeError):
+            _accepts_context = False
 
         async def _call_tool_compat(name: str, arguments: dict | None = None, *args: Any, **kwargs: Any):
             # SDK v2 passes a request-scoped Context; forwarding it preserves

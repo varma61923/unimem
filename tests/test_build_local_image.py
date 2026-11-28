@@ -24,6 +24,8 @@ def make_checkout(root: Path) -> None:
     (root / "protocol" / "schema.json").write_text("{}\n", encoding="utf-8")
     (root / "deploy" / "docker").mkdir(parents=True)
     (root / "deploy" / "docker" / "local-entrypoint.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "compile_extensions.py").write_text("# compiler\n", encoding="utf-8")
     (root / ".dockerignore").write_text("must not be copied\n", encoding="utf-8")
     (root / "Dockerfile.local.dockerignore").write_text("must not be copied\n", encoding="utf-8")
     (root / "hub" / "secrets").mkdir(parents=True)
@@ -63,6 +65,7 @@ class BuildLocalImageTests(unittest.TestCase):
                         "unimem/nested/module.py",
                         "protocol/schema.json",
                         "deploy/docker/local-entrypoint.sh",
+                        "scripts/compile_extensions.py",
                     },
                 )
                 self.assertNotIn(".dockerignore", files)

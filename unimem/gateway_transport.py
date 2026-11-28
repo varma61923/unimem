@@ -125,10 +125,16 @@ def make_http_server(
         def parse_request(self) -> bool:
             if not super().parse_request():
                 return False
-            for name in ("Host", "Authorization", "Origin"):
+            for name in ("Host", "Authorization", "Origin", "X-Container-Tag", "Container-Tag"):
                 if len(self.headers.get_all(name, [])) > 1:
                     self._fail(400, "ambiguous_header", f"send at most one {name} header")
                     return False
+            container_tags = {
+                v for name in ("X-Container-Tag", "Container-Tag") for v in self.headers.get_all(name, []) if v
+            }
+            if len(container_tags) > 1:
+                self._fail(400, "ambiguous_header", "conflicting container tag headers")
+                return False
             # A persistent stream must have one unambiguous framing rule.
             # Reject unsupported encodings even when they omit 'chunked'.
             if self.headers.get_all("Transfer-Encoding"):

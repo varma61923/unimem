@@ -9,6 +9,8 @@ import json
 import os
 import re
 import sys
+import threading
+from collections import OrderedDict
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -1726,7 +1728,19 @@ def list_facts(
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
-_FACT_TOKENS: dict[tuple[str, str, str], frozenset] = {}
+_FACT_TOKENS_MAX = 4096
+_FACT_TOKENS: OrderedDict[tuple[str, str, str], frozenset] = OrderedDict()
+_FACT_TOKENS_LOCK = threading.Lock()
+
+
+def _reset_fact_tokens() -> None:
+    global _FACT_TOKENS_LOCK
+    _FACT_TOKENS_LOCK = threading.Lock()
+    _FACT_TOKENS.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_fact_tokens)
 
 
 def _fact_tokens(fact: AtomicFact) -> frozenset:
@@ -1736,14 +1750,20 @@ def _fact_tokens(fact: AtomicFact) -> frozenset:
     `text_lemmatized` at write time; same idea, lazy). Imported ids/revisions
     can collide across stores or be stale. Actual text
     identity prevents one store's token set from changing another's rankings.
-    The memo is capped to bound memory.
+    The memo is bounded via LRU eviction.
     """
     key = (fact.id, fact.revision, fact.statement)
-    toks = _FACT_TOKENS.get(key)
-    if toks is None:
-        toks = frozenset(_TOKEN_RE.findall(fact.statement.lower()))
-        if len(_FACT_TOKENS) < 4096:
-            _FACT_TOKENS[key] = toks
+    with _FACT_TOKENS_LOCK:
+        toks = _FACT_TOKENS.get(key)
+        if toks is not None:
+            _FACT_TOKENS.move_to_end(key)
+            return toks
+    toks = frozenset(_TOKEN_RE.findall(fact.statement.lower()))
+    with _FACT_TOKENS_LOCK:
+        _FACT_TOKENS[key] = toks
+        _FACT_TOKENS.move_to_end(key)
+        while len(_FACT_TOKENS) > _FACT_TOKENS_MAX:
+            _FACT_TOKENS.popitem(last=False)
     return toks
 
 

@@ -548,7 +548,19 @@ def relative_time_delta(moment: dt.datetime, now: dt.datetime | None = None) -> 
 
     Examples: ``"12s ago"``, ``"4m ago"``, ``"2h ago"``, ``"5d ago"``.
     """
-    ref = now or dt.datetime.utcnow()
+    if now is None:
+        ref = (
+            dt.datetime.now(dt.timezone.utc)
+            if moment.tzinfo is not None
+            else dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+        )
+    else:
+        ref = now
+        if (ref.tzinfo is None) != (moment.tzinfo is None):
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=dt.timezone.utc)
+            else:
+                ref = ref.replace(tzinfo=dt.timezone.utc)
     delta = ref - moment
     total_seconds = int(delta.total_seconds())
     if total_seconds < 0:

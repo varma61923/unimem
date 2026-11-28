@@ -100,7 +100,7 @@ def test_typescript_generator_prevents_model_and_parameter_name_collisions(tmp_p
     assert calls[0][calls[0].index("--git-repo-id") + 1] == "unimem"
     assert "npmVersion=2.3.4-rc.1" in options
     assert "prefixParameterInterfaces=true" in options
-    assert "licenseName=AGPL-3.0-only" in options
+    assert "licenseName=Apache-2.0" in options
 
 
 @pytest.mark.parametrize("version", ["latest", "1.2", "01.2.3", "1.2.3,npmName=evil", "$(command)", "1.2.3\n"])

@@ -160,3 +160,47 @@ def test_concurrent_reporters_never_lose_or_duplicate_an_outcome(tmp_path):
     assert got == _naive(root) and len(got) == 4 * 60 + 60
     with open(holdout_io.outcomes_log_path(root), encoding="utf-8") as fh:
         assert len([line for line in fh if line.strip()]) == len(got)
+
+
+def test_concurrent_readers_see_isolated_dicts_and_bounded_root_lru(tmp_path):
+    roots = [str(tmp_path / f"store-{i}") for i in range(holdout_io._MAX_CACHED_ROOTS + 10)]
+    for i, r in enumerate(roots):
+        holdout_io.record_outcome(r, f"o-{i}", i % 2 == 0)
+        assert holdout_io.read_outcomes(r) == {f"o-{i}": i % 2 == 0}
+    assert len(holdout_io._outcome_cache) <= holdout_io._MAX_CACHED_ROOTS
+
+    root = roots[0]
+    with open(holdout_io.holdout_log_path(root), "a", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(holdout_io.holdout_log_path(root)), exist_ok=True)
+    # Verify read_log parses Z timestamps cleanly into UTC-aware datetimes.
+    log_path = holdout_io.holdout_log_path(root)
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"lesson": "a", "occasion_id": "occ-z", "injected": True, "at": "2026-01-01T00:00:00Z"}) + "\n")
+    rows, corrupt = holdout_io.read_log(root)
+    assert corrupt == 0 and len(rows) == 1 and rows[0].at is not None and rows[0].at.utcoffset().total_seconds() == 0
+
+    errors = []
+
+    def reader():
+        try:
+            for _ in range(40):
+                d = holdout_io.read_outcomes(root)
+                d["mutated"] = True
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    def writer():
+        try:
+            for i in range(40):
+                holdout_io.record_outcome(root, f"rw-{i}", True)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    threads = [threading.Thread(target=reader), threading.Thread(target=reader), threading.Thread(target=writer)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert "mutated" not in holdout_io.read_outcomes(root)

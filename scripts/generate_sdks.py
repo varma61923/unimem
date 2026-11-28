@@ -25,7 +25,7 @@ SHA256 = "1760050094997b9cc790cc1350be095f15da8c08a996b184d3eadc4ccda5e35e"
 GENERATORS = {"typescript": "typescript-fetch", "go": "go", "rust": "rust", "java": "java", "kotlin": "kotlin"}
 PROPERTIES = {
     "typescript": "npmName=@unimem/sdk,npmVersion=0.1.0,supportsES6=true,"
-    "prefixParameterInterfaces=true,licenseName=AGPL-3.0-only",
+    "prefixParameterInterfaces=true,licenseName=Apache-2.0",
     "go": "packageName=unimem,packageVersion=0.1.0,generateInterfaces=true",
     "rust": "packageName=unimem-sdk,packageVersion=0.1.0,reqwestDefaultFeatures=rustls",
     "java": "groupId=io.unimem,artifactId=memory-sdk,artifactVersion=0.1.0,"

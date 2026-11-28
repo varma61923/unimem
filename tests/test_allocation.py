@@ -222,3 +222,32 @@ def test_mixture_benchmark_uses_a_predeclared_horizon(monkeypatch):
     assert observed_targets
     assert set(observed_targets) == {expected}
     assert bench.MIXTURE_TARGET_N_PER_ARM == expected
+
+
+def test_history_returns_copies_and_due_handles_naive_log_timestamps(tmp_path, clock):
+    root = str(tmp_path / "alloc-tz")
+    holdout_io.configure(root, rate=0.5, salt="tz")
+    allocation.enable(root, allocation.Policy(era_occasions=1))
+    clock.tick(10)
+    hist = allocation.history(root)
+    hist.clear()
+    assert len(allocation.history(root)) == 1
+
+    log_path = holdout_io.holdout_log_path(root)
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    later_naive = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60)).replace(tzinfo=None)
+    with open(log_path, "w", encoding="utf-8") as fh:
+        fh.write(
+            json.dumps(
+                {
+                    "lesson": "x",
+                    "occasion_id": "naive-1",
+                    "injected": True,
+                    "rate": 0.5,
+                    "salt": "tz",
+                    "at": later_naive.isoformat(),
+                }
+            )
+            + "\n"
+        )
+    assert allocation.due(root, "tz") is True

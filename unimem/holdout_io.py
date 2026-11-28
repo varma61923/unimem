@@ -8,6 +8,7 @@ import math
 import os
 import threading
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import SupportsIndex, SupportsInt
 
@@ -296,7 +297,8 @@ class _OutcomeCache:
     outcomes: dict = field(default_factory=dict)
 
 
-_outcome_cache: dict[str, _OutcomeCache] = {}
+_MAX_CACHED_ROOTS = 128
+_outcome_cache: OrderedDict[str, _OutcomeCache] = OrderedDict()
 _outcome_cache_lock = threading.Lock()
 
 
@@ -326,6 +328,9 @@ def _outcomes_shared(path: str) -> dict[str, bool]:
                 _outcome_cache[path] = cache
             fh.seek(cache.offset)
             chunk = fh.read()
+        _outcome_cache.move_to_end(path)
+        while len(_outcome_cache) > _MAX_CACHED_ROOTS:
+            _outcome_cache.popitem(last=False)
         whole = chunk.rfind(b"\n") + 1
         for line in chunk[:whole].splitlines():
             _parse_outcome_line(line, cache.outcomes)
@@ -334,14 +339,14 @@ def _outcomes_shared(path: str) -> dict[str, bool]:
             cache.tail = (cache.tail + chunk[:whole])[-_TAIL_CHECK:]
         pending = chunk[whole:]
         if not pending.strip():
-            return cache.outcomes
+            return dict(cache.outcomes)
         merged = dict(cache.outcomes)
-        _parse_outcome_line(pending, merged)
-        return merged
+    _parse_outcome_line(pending, merged)
+    return merged
 
 
 def read_outcomes(root: str) -> dict[str, bool]:
-    return dict(_outcomes_shared(outcomes_log_path(root)))
+    return _outcomes_shared(outcomes_log_path(root))
 
 
 def record_outcome(
@@ -430,7 +435,12 @@ def _parse_log_line(line: str) -> LogRecord | None:
     at = None
     if raw.get("at"):
         try:
-            at = datetime.datetime.fromisoformat(str(raw["at"]))
+            text = str(raw["at"]).strip()
+            if text.endswith(("Z", "z")):
+                text = text[:-1] + "+00:00"
+            at = datetime.datetime.fromisoformat(text)
+            if at.tzinfo is None:
+                at = at.replace(tzinfo=datetime.timezone.utc)
         except ValueError:
             at = None
     return LogRecord(
@@ -459,8 +469,20 @@ class _LogCache:
     corrupt: int = 0
 
 
-_log_cache: dict[str, _LogCache] = {}
+_log_cache: OrderedDict[str, _LogCache] = OrderedDict()
 _log_cache_lock = threading.Lock()
+
+
+def _reset_caches_after_fork() -> None:
+    global _outcome_cache_lock, _log_cache_lock
+    _outcome_cache_lock = threading.Lock()
+    _log_cache_lock = threading.Lock()
+    _outcome_cache.clear()
+    _log_cache.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_caches_after_fork)
 
 
 def read_log(root: str) -> tuple[list[LogRecord], int]:
@@ -483,6 +505,9 @@ def read_log(root: str) -> tuple[list[LogRecord], int]:
                 _log_cache[path] = cache
             fh.seek(cache.offset)
             chunk = fh.read()
+        _log_cache.move_to_end(path)
+        while len(_log_cache) > _MAX_CACHED_ROOTS:
+            _log_cache.popitem(last=False)
         whole = chunk.rfind(b"\n") + 1
         for raw_line in chunk[:whole].decode("utf-8", errors="replace").split("\n"):
             if not raw_line.strip():

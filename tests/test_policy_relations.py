@@ -182,3 +182,12 @@ def test_capture_buffer_and_grounded_record_require_their_own_relationship_ids(t
     permitted.append("raw")
     assert [record.id for record in journal.search("sensor")] == ["derived"]
     assert [item["id"] for item in journal.buffer("run", scope={})] == ["raw"]
+
+
+def test_relationship_transport_enforces_offline_before_credentials(monkeypatch):
+    from unimem import offline
+
+    monkeypatch.setenv("UNIMEM_OFFLINE", "1")
+    monkeypatch.delenv("TEST_REL_TOKEN", raising=False)
+    with pytest.raises(offline.OfflineError):
+        relations._transport("https://auth.example.com/check", {"user": "a"}, "TEST_REL_TOKEN")
