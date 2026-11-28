@@ -48,7 +48,10 @@ class Schedule:
         return self.rates.get(lesson, self.default_rate)
 
     def effective_at(self) -> datetime.datetime:
-        parsed = datetime.datetime.fromisoformat(str(self.effective_from).strip().replace("Z", "+00:00").replace("z", "+00:00"))
+        raw = str(self.effective_from).strip()
+        if raw.endswith(("Z", "z")):
+            raw = raw[:-1] + "+00:00"
+        parsed = datetime.datetime.fromisoformat(raw)
         if parsed.tzinfo is None:
             return parsed.replace(tzinfo=datetime.timezone.utc)
         return parsed.astimezone(datetime.timezone.utc)

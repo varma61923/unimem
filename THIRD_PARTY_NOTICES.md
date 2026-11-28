@@ -1,6 +1,6 @@
 # Third-party notices
 
-UniMem is licensed under AGPL-3.0-only. Parts of it are adapted from the permissively licensed projects listed below. Apache-2.0 and MIT code may be included in an AGPL-3.0 work. Each license's conditions are met by keeping the notices below. Files containing adapted code also say so in their headers.
+UniMem's core runtime and Hub server are licensed under a proprietary commercial license (see `LICENSE`), while thin client SDKs and protocol schemas under `sdk/`, `protocol/`, and `distribution/` are licensed under `Apache-2.0`. Parts of UniMem incorporate permissively licensed code from the projects listed below (Apache-2.0 and MIT). Each license's conditions are met by keeping the copyright, license, and attribution notices below. Files containing adapted code also say so in their headers.
 
 Techniques that are only cited in docstrings (re-implemented from papers or public descriptions, with no code carried over) are not listed here.
 

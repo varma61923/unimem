@@ -44,6 +44,8 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import threading
+from collections import OrderedDict
 from dataclasses import asdict, dataclass
 
 from unimem import experiment, paths
@@ -121,9 +123,6 @@ def next_rate(verdict: str, policy: Policy) -> float:
 def _path(root: str) -> str:
     return os.path.join(paths.memory_dir(root), "allocation", SCHEDULES_NAME)
 
-
-from collections import OrderedDict
-import threading
 
 _CACHE_MAX = 128
 _CACHE: OrderedDict[str, tuple[tuple, list[Schedule]]] = OrderedDict()

@@ -342,3 +342,9 @@ def test_every_base_image_is_pinned_by_digest():
     assert images
     unpinned = [i for i in images if not re.search(r"@sha256:[0-9a-f]{64}$", i)]
     assert not unpinned, f"pin by digest (image:tag@sha256:...): {unpinned}"
+
+
+def test_hub_image_compiles_extensions_and_audits_zero_source():
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    assert "compile_extensions.py compile" in dockerfile and "--strip-sources" in dockerfile
+    assert "compile_extensions.py check-no-source" in dockerfile

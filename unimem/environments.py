@@ -25,7 +25,9 @@ def _now() -> datetime.datetime:
 
 
 def _utc(value: datetime.datetime) -> datetime.datetime:
-    return value.replace(tzinfo=datetime.timezone.utc) if value.tzinfo is None else value.astimezone(datetime.timezone.utc)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=datetime.timezone.utc)
+    return value.astimezone(datetime.timezone.utc)
 
 
 def _parse_moment(raw: object) -> datetime.datetime:

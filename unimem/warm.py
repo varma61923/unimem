@@ -24,7 +24,7 @@ if __name__ == "__main__":
     if importlib.util.find_spec("unimem") is None:
         sys.path.insert(0, os.path.dirname(_HERE))
 
-from unimem.configuration import getenv as _configuration_getenv
+from unimem.configuration import getenv as _configuration_getenv  # noqa: E402
 
 PROTOCOL = 1
 DEFAULT_IDLE_SECONDS = 600.0
@@ -206,13 +206,36 @@ def _exchange(path: str, request: dict, *, connect_deadline: float) -> tuple[boo
     return True, (reply if reply.get("protocol") == PROTOCOL else None)
 
 
-def _spawn(script: str, path: str, root: str | None, env: dict) -> bool:
-    cmd = [sys.executable]
-    if sys.version_info >= (3, 11):
-        cmd.append("-P")
-    cmd.extend([os.path.abspath(__file__), "serve", "--script", script, "--socket", path])
+def _spawn_command(script: str, path: str, root: str | None) -> list[str]:
+    if getattr(sys, "frozen", False) or "__compiled__" in globals():
+        cmd = [sys.executable, "__internal_warm", "serve", "--script", script, "--socket", path]
+    elif os.path.isfile(__file__) and __file__.endswith((".py", ".pyw")):
+        cmd = [sys.executable]
+        if sys.version_info >= (3, 11):
+            cmd.append("-P")
+        cmd.extend([os.path.abspath(__file__), "serve", "--script", script, "--socket", path])
+    else:
+        cmd = [sys.executable]
+        if sys.version_info >= (3, 11):
+            cmd.append("-P")
+        cmd.extend(
+            [
+                "-c",
+                "import sys; from unimem.warm import main; raise SystemExit(main(sys.argv[1:]))",
+                "serve",
+                "--script",
+                script,
+                "--socket",
+                path,
+            ]
+        )
     if root:
         cmd.extend(["--warm-root", root])
+    return cmd
+
+
+def _spawn(script: str, path: str, root: str | None, env: dict) -> bool:
+    cmd = _spawn_command(script, path, root)
     try:
         process = subprocess.Popen(
             cmd,

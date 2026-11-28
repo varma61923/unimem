@@ -517,6 +517,12 @@ class Gateway:
         self._event_tail_lock = threading.Lock()
         self._event_tail: tuple[tuple[int, ...], list[bytes], dict[int, dict | None]] | None = None
         self._conversation_pool = None  # optional local adapter; requests cannot set it
+        from unimem import capabilities as _capabilities
+
+        self.commercial_license = _capabilities.enforce_commercial_license(
+            env_prefix="UNIMEM",
+            deployment_mode=(_configuration_getenv("UNIMEM_DEPLOYMENT_MODE", "") or "").strip() or "gateway",
+        )
         self.routes: dict[tuple[str, str], tuple[Callable, dict]] = {}
         self._register()
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 
 from unimem import redundancy, reliability, revision, templates
@@ -45,9 +47,6 @@ def never_hit(fm: dict) -> bool:
 # `hierarchical._FACT_TOKENS` pattern (when full, new entries are computed
 # fresh but not stored). The memo only ever holds default-`num_perm`
 # signatures, which is all `build_report` needs (it varies thresholds only).
-from collections import OrderedDict
-import threading
-
 _SIGNATURE_MEMO_MAX = 4096
 _SIGNATURE_MEMO: OrderedDict[tuple[str, str], "_LessonSignatures"] = OrderedDict()
 _SIGNATURE_MEMO_LOCK = threading.Lock()

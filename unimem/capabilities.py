@@ -9,8 +9,10 @@ portable prefix MACs alone cannot authorize an alternate delegation branch.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
+import json
 from collections.abc import Callable, Mapping, Sequence
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -383,3 +385,183 @@ def header_parameters() -> list[dict[str, Any]]:
             ("X-UniMem-Purpose", 256, "Declared purpose, authorized by the leaf capability and signed by the holder."),
         )
     ]
+
+
+COMMERCIAL_LICENSE_TYPE = "unimem.commercial.license.v1"
+COMMERCIAL_PLANS = frozenset({"free", "team", "scale", "enterprise", "sovereign"})
+
+
+def parse_ed25519_public_key(raw: str) -> bytes:
+    """Decode a 32-byte Ed25519 public key from hex or base64url."""
+    value = fp.text(raw, "license public key", 256).strip()
+    if len(value) == 64:
+        try:
+            key = bytes.fromhex(value)
+            if len(key) == 32:
+                return key
+        except ValueError:
+            pass
+    padded = value + "=" * (-len(value) % 4)
+    try:
+        key = base64.urlsafe_b64decode(padded.encode("ascii"))
+    except (UnicodeEncodeError, binascii.Error, ValueError) as exc:
+        raise ValueError("UniMem license public key must be 32-byte hex or base64url") from exc
+    if len(key) != 32:
+        raise ValueError("UniMem license public key must decode to exactly 32 bytes")
+    return key
+
+
+def issue_commercial_license(
+    *,
+    private_key: bytes,
+    org_id: str,
+    plan: str,
+    deployment_modes: Sequence[str],
+    max_agents: int,
+    features: Sequence[str],
+    issued_at: str,
+    expires_at: str,
+    license_id: str,
+) -> str:
+    """Sign an offline Ed25519 commercial deployment license token."""
+    plan_name = fp.text(plan, "license plan", 32).strip().lower()
+    if plan_name not in COMMERCIAL_PLANS:
+        raise ValueError(f"unsupported commercial license plan: {plan!r}")
+    modes = sorted({_label(mode) for mode in deployment_modes})
+    if not modes or len(modes) > 16:
+        raise ValueError("commercial license requires 1 to 16 deployment modes")
+    feat = sorted({_label(item) for item in features})
+    if len(feat) > 64:
+        raise ValueError("commercial license exceeds feature bound")
+    if type(max_agents) is not int or (max_agents != -1 and not 1 <= max_agents <= 10_000_000):
+        raise ValueError("max_agents must be -1 (unlimited) or between 1 and 10,000,000")
+    issued, expires = moment(issued_at), moment(expires_at)
+    if expires <= issued:
+        raise ValueError("commercial license expiry must follow issued_at")
+    record = {
+        "type": COMMERCIAL_LICENSE_TYPE,
+        "license_id": _label(license_id),
+        "org_id": _label(org_id),
+        "plan": plan_name,
+        "deployment_modes": modes,
+        "max_agents": max_agents,
+        "features": feat,
+        "issued_at": issued.isoformat(),
+        "expires_at": expires.isoformat(),
+    }
+    envelope = {
+        "version": 1,
+        "algorithm": "ed25519",
+        "record": record,
+        "signature": _sign("ed25519", private_key, _bytes(COMMERCIAL_LICENSE_TYPE, record)),
+    }
+    return base64.urlsafe_b64encode(fp.wire(envelope)).decode("ascii").rstrip("=")
+
+
+def verify_commercial_license(
+    token_or_envelope: str | Mapping[str, Any],
+    *,
+    public_key: bytes,
+    now: str | None = None,
+    deployment_mode: str | None = None,
+    required_features: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Verify an offline Ed25519 commercial license certificate and return its claims."""
+    if isinstance(token_or_envelope, str):
+        raw_text = token_or_envelope.strip()
+        if not raw_text or len(raw_text) > 65_536:
+            raise PermissionError("UniMem commercial license token missing or oversized")
+        if raw_text.startswith("{"):
+            decoded = json.loads(raw_text)
+        else:
+            padded = raw_text + "=" * (-len(raw_text) % 4)
+            try:
+                decoded = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+            except (UnicodeEncodeError, binascii.Error, ValueError) as exc:
+                raise PermissionError("UniMem commercial license encoding rejected") from exc
+    elif isinstance(token_or_envelope, Mapping):
+        decoded = dict(token_or_envelope)
+    else:
+        raise PermissionError("UniMem commercial license must be a token string or mapping")
+
+    if not isinstance(decoded, dict) or set(decoded) != {"version", "algorithm", "record", "signature"}:
+        raise PermissionError("UniMem invalid commercial license envelope")
+    if type(decoded["version"]) is not int or decoded["version"] != 1 or decoded["algorithm"] != "ed25519":
+        raise PermissionError("UniMem unsupported commercial license version or algorithm")
+    record = decoded["record"]
+    required_fields = {
+        "type",
+        "license_id",
+        "org_id",
+        "plan",
+        "deployment_modes",
+        "max_agents",
+        "features",
+        "issued_at",
+        "expires_at",
+    }
+    if not isinstance(record, dict) or set(record) != required_fields:
+        raise PermissionError("UniMem commercial license record fields invalid")
+    if record.get("type") != COMMERCIAL_LICENSE_TYPE or record.get("plan") not in COMMERCIAL_PLANS:
+        raise PermissionError("UniMem commercial license type or plan rejected")
+    modes = record.get("deployment_modes")
+    feats = record.get("features")
+    max_agents = record.get("max_agents")
+    if (
+        not isinstance(modes, list)
+        or not modes
+        or any(not isinstance(m, str) for m in modes)
+        or not isinstance(feats, list)
+        or any(not isinstance(f, str) for f in feats)
+        or type(max_agents) is not int
+        or (max_agents != -1 and max_agents < 1)
+    ):
+        raise PermissionError("UniMem commercial license claim bounds rejected")
+    _verify("ed25519", public_key, _bytes(COMMERCIAL_LICENSE_TYPE, record), decoded["signature"])
+    issued, expires = moment(record["issued_at"]), moment(record["expires_at"])
+    stamp = moment(now or fp.now())
+    if not issued <= stamp < expires:
+        raise PermissionError("UniMem commercial license is not active or has expired")
+    if deployment_mode is not None and deployment_mode not in set(modes):
+        raise PermissionError(f"UniMem commercial license does not permit mode {deployment_mode!r}")
+    if required_features and not set(required_features) <= set(feats):
+        missing = sorted(set(required_features) - set(feats))
+        raise PermissionError(f"UniMem commercial license missing required features: {', '.join(missing)}")
+    return dict(record)
+
+
+def enforce_commercial_license(
+    *,
+    env_prefix: str = "UNIMEM",
+    deployment_mode: str | None = None,
+    required_features: Sequence[str] = (),
+    now: str | None = None,
+) -> dict[str, Any] | None:
+    """Validate commercial licensing when required or when a license credential is supplied."""
+    from unimem.configuration import getenv as _configuration_getenv
+
+    required_raw = (_configuration_getenv(f"{env_prefix}_COMMERCIAL_LICENSE_REQUIRED", "") or "").strip().lower()
+    required = required_raw in {"1", "true", "yes", "on"}
+    token = (_configuration_getenv(f"{env_prefix}_LICENSE_KEY", "") or "").strip()
+    token_file = (_configuration_getenv(f"{env_prefix}_LICENSE_FILE", "") or "").strip()
+    if not token and token_file:
+        try:
+            with open(token_file, encoding="utf-8") as handle:
+                token = handle.read(65_537).strip()
+        except OSError as exc:
+            raise PermissionError(f"cannot read {env_prefix}_LICENSE_FILE: {exc}") from exc
+    pub_raw = (_configuration_getenv(f"{env_prefix}_LICENSE_PUBLIC_KEY", "") or "").strip()
+    if not token and not required:
+        return None
+    if not pub_raw:
+        raise PermissionError(f"{env_prefix}_LICENSE_PUBLIC_KEY is required to verify commercial licenses")
+    if not token:
+        raise PermissionError(f"{env_prefix}_LICENSE_KEY or {env_prefix}_LICENSE_FILE is required")
+    public_key = parse_ed25519_public_key(pub_raw)
+    return verify_commercial_license(
+        token,
+        public_key=public_key,
+        now=now,
+        deployment_mode=deployment_mode,
+        required_features=required_features,
+    )

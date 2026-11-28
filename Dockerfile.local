@@ -1,6 +1,5 @@
-# The local UniMem runtime: CLI, gateway + console, and the MCP server over
-# streamable HTTP, on one store volume. The Hub image (Dockerfile) is separate and
-# deliberately ships only the client modules the server imports.
+# The sealed local UniMem runtime: CLI, gateway + console, and the MCP server over
+# streamable HTTP, compiled to native `.so` extensions without raw `.py` sources.
 #
 #   docker compose --profile local up        # gateway on :8787, MCP on :8421
 #   docker run --rm -v unimem:/data unimem-local query "release checklist"
@@ -12,11 +11,30 @@ ENV PIP_NO_CACHE_DIR=1 \
     PIP_DEFAULT_TIMEOUT=30 \
     PIP_RETRIES=3
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential binutils \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /build
 COPY pyproject.toml README.md LICENSE ./
 COPY unimem/ ./unimem/
 COPY protocol/ ./protocol/
-RUN pip install --prefix=/install ".[serve,security]"
+COPY scripts/compile_extensions.py ./scripts/compile_extensions.py
+RUN pip install --prefix=/install --no-compile ".[serve,security]" \
+    && pip install --target=/compiler-tools "Cython>=3.1,<4.0" setuptools==78.1.1 wheel \
+    && pkg_dir=$(python -c "import glob; print(glob.glob('/install/lib/python*/site-packages/unimem')[0])") \
+    && PYTHONPATH=/compiler-tools python ./scripts/compile_extensions.py compile \
+        --root "$pkg_dir" \
+        --package-prefix unimem \
+        --strip-sources \
+        --keep-shim __init__.py \
+        --keep-shim __main__.py \
+        --keep-trampoline cli.py \
+        --keep-trampoline warm.py \
+        --keep-trampoline hook_bridge.py \
+    && python ./scripts/compile_extensions.py check-no-source "$pkg_dir" \
+        --allow-shim __init__.py \
+        --allow-shim __main__.py
 
 FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS runtime
 

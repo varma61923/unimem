@@ -1,0 +1,99 @@
+name: Private Release (Compiled Artifacts)
+
+# Builds and verifies closed-source commercial artifacts (sealed OCI images,
+# standalone Nuitka native binaries, and Cython-compiled wheels) without pushing
+# core Python source code to public package registries.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Artifact release tag (defaults to short SHA).
+        type: string
+        default: ""
+      push_registry:
+        description: Push sealed container images to private GHCR.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-compiled-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Compile unimem extensions and audit zero core Python sources
+        run: |
+          python -m pip install --upgrade build==1.6.1 "Cython>=3.1,<4.0" setuptools wheel
+          mkdir -p build/compiled-pkg
+          cp -r unimem protocol pyproject.toml README.md LICENSE build/compiled-pkg/
+          python scripts/compile_extensions.py compile \
+            --root build/compiled-pkg/unimem \
+            --package-prefix unimem \
+            --strip-sources \
+            --keep-shim __init__.py \
+            --keep-shim __main__.py \
+            --keep-trampoline cli.py \
+            --keep-trampoline warm.py \
+            --keep-trampoline hook_bridge.py
+          python scripts/compile_extensions.py check-no-source build/compiled-pkg/unimem \
+            --allow-shim __init__.py \
+            --allow-shim __main__.py
+          python -m build --wheel build/compiled-pkg --outdir dist-private
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: private-compiled-wheel
+          path: dist-private/
+          if-no-files-found: error
+
+  build-native-binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Build Nuitka native standalone binary and verify no extractable bytecode archive
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends patchelf ccache
+          python -m pip install -e ".[security]" "nuitka>=2.6,<3.0" ordered-set zstandard
+          ./scripts/build-local-binary.sh
+          python scripts/compile_extensions.py check-binary dist/unimem-local
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: private-native-binary
+          path: dist/unimem-local
+          if-no-files-found: error
+
+  build-sealed-containers:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build sealed Hub and Local OCI images and audit container contents
+        run: |
+          docker build -t unimem-hub:private .
+          docker run --rm --entrypoint python -v "$PWD/scripts/compile_extensions.py:/tmp/ce.py:ro" unimem-hub:private \
+            /tmp/ce.py check-no-source /app/hub /app/unimem --exclude-dir alembic --allow-shim __init__.py --allow-shim __main__.py
+          docker build -f Dockerfile.local -t unimem-local:private .
+          docker run --rm --entrypoint python -v "$PWD/scripts/compile_extensions.py:/tmp/ce.py:ro" unimem-local:private -c \
+            "import importlib.util, pathlib, subprocess, sys; p = pathlib.Path(importlib.util.find_spec('unimem').origin).parent; raise SystemExit(subprocess.call([sys.executable, '/tmp/ce.py', 'check-no-source', str(p), '--allow-shim', '__init__.py', '--allow-shim', '__main__.py']))"
+          docker run --rm unimem-local:private --version
+      - name: Log in and push to private GHCR when enabled
+        if: inputs.push_registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ inputs.tag || github.sha }}"
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker tag unimem-hub:private "ghcr.io/${owner}/unimem-hub-private:${tag}"
+          docker tag unimem-local:private "ghcr.io/${owner}/unimem-local-private:${tag}"
+          docker push "ghcr.io/${owner}/unimem-hub-private:${tag}"
+          docker push "ghcr.io/${owner}/unimem-local-private:${tag}"

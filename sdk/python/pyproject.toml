@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unimem-client"
+version = "1.0.0"
+description = "Thin Apache-2.0 remote HTTP client for UniMem Gateways and UniMem Hub (no bundled engine source)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{ name = "UniMem" }]
+keywords = ["agents", "llm", "mcp", "memory", "sdk", "client"]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/varma61923/unimem"
+
+[tool.setuptools.packages.find]
+include = ["unimem_client*"]

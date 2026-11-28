@@ -444,7 +444,7 @@ live vendor requests, payments, enclaves or robot actuation.
 
 ## License
 
-AGPL-3.0-only. See [LICENSE](LICENSE).
+Proprietary commercial license (`LicenseRef-UniMem-Commercial`) for the `unimem` runtime engine, `hub` server, and sealed/compiled distributions; see [LICENSE](LICENSE). Thin client SDKs under `sdk/`, protocol schemas under `protocol/`, and editor manifests under `distribution/` are licensed under `Apache-2.0` (see [LICENSES/Apache-2.0.txt](LICENSES/Apache-2.0.txt)).
 
 Some components are adapted from permissively licensed projects (Apache-2.0 and MIT). Their notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 

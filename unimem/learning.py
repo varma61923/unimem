@@ -158,10 +158,11 @@ def _original_permits(journal: Journal, source: dict, scope: dict, original: dic
                             for start in range(0, len(caused_by), 500):
                                 batch = caused_by[start : start + 500]
                                 placeholders = ",".join("?" for _ in batch)
-                                for row in db.execute(
-                                    f"SELECT id,session,event,body,scope FROM captures WHERE id IN ({placeholders})",  # nosec B608 - ? placeholders only
-                                    tuple(batch),
-                                ).fetchall():
+                                sql = (
+                                    "SELECT id,session,event,body,scope FROM captures "
+                                    f"WHERE id IN ({placeholders})"  # nosec B608 - ? placeholders only
+                                )
+                                for row in db.execute(sql, tuple(batch)).fetchall():
                                     by_id[row[0]] = row[1:]
                         for identity in caused_by:
                             capture = by_id.get(identity)

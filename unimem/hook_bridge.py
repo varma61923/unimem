@@ -172,20 +172,21 @@ def _capture(args, payload):
     import subprocess
     import tempfile
 
-    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    bootstrap = (
-        "import sys;sys.path.insert(0," + repr(package_root) + ");"
-        "from unimem.hook_kit import main;raise SystemExit(main())"
-    )
+    if (getattr(sys, "frozen", False) or "__compiled__" in globals()) and not args.python:
+        child_argv = [sys.executable, "__internal_hook_kit"]
+    else:
+        package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        bootstrap = (
+            "import sys;sys.path.insert(0," + repr(package_root) + ");"
+            "from unimem.hook_kit import main;raise SystemExit(main())"
+        )
+        child_argv = [args.python or sys.executable, "-I", "-c", bootstrap]
     with tempfile.TemporaryFile() as stream:
         stream.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         stream.seek(0)
         subprocess.Popen(  # noqa: S603 - interpreter and argv are generated, never a shell
             [
-                args.python or sys.executable,
-                "-I",
-                "-c",
-                bootstrap,
+                *child_argv,
                 "--capture-only",
                 "--dest",
                 args.dest,
